@@ -1,0 +1,12 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="260" height="240" viewBox="0 0 260 240" role="img" aria-label="AI秘書猫ぱるる">
+  <path d="M48 100 72 36l36 49h44l36-49 24 64c20 21 30 47 30 78 0 39-33 62-112 62S18 217 18 178c0-31 10-57 30-78Z" fill="#fff" stroke="#303452" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M74 91 64 59l34 28M186 91l10-32-34 28" fill="#DDE2FF" stroke="#303452" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M66 121c15-11 31-11 46 0M148 121c15-11 31-11 46 0" fill="none" stroke="#303452" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="91" cy="137" r="8" fill="#303452"/>
+  <circle cx="169" cy="137" r="8" fill="#303452"/>
+  <path d="M124 153h12l-6 8-6-8Z" fill="#E66A7A"/>
+  <path d="M111 176c11 12 27 12 38 0" fill="none" stroke="#303452" stroke-width="5" stroke-linecap="round"/>
+  <path d="M55 152H18M60 169H25M205 152h37M200 169h35" stroke="#303452" stroke-width="4" stroke-linecap="round"/>
+  <rect x="164" y="30" width="60" height="40" rx="10" fill="#5C6BC0"/>
+  <path d="M178 50h32M194 36v28" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+</svg>
