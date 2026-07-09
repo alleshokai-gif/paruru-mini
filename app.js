@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260709-02";
+const ASSET_VERSION = "v20260709-03";
 const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PARURU_STATES = {
@@ -63,6 +63,16 @@ const CATEGORY_COLORS = {
   お金: "#b7791f",
 };
 
+const categoryRules = {
+  買い物: ["牛乳", "卵", "パン", "買う", "スーパー", "OK", "ライフ"],
+  仕事: ["会議", "資料", "部長", "メール", "会社", "出張"],
+  学校: ["学校", "給食", "面談", "受験", "宿題", "部活"],
+  薬局: ["薬局", "薬", "在庫", "ロキソ", "処方", "患者"],
+  開発: ["Git", "GAS", "CSS", "HTML", "JavaScript", "アプリ", "デプロイ"],
+  お金: ["楽天", "カード", "家計", "支払い", "予算", "請求"],
+  家: ["ゴミ", "洗濯", "掃除", "エアコン", "SwitchBot"],
+};
+
 const DUMMY_STORAGE_KEY = "paruru-mini-inbox";
 
 let inboxItems = [];
@@ -119,9 +129,10 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  const inferredCategory = inferCategory(memo, categoryInput.value);
   const payload = {
     memo,
-    category: categoryInput.value,
+    category: inferredCategory || categoryInput.value,
     priority: new FormData(form).get("priority") || "Normal",
     tags: "",
   };
@@ -134,7 +145,11 @@ form.addEventListener("submit", async (event) => {
     await saveMemo(payload);
     form.reset();
     categoryInput.value = "未分類";
-    setParuruState("success", { showStatus: true });
+    if (inferredCategory) {
+      showParuruMessage(`${inferredCategory}っぽいね。入れとく。`, "success", "success");
+    } else {
+      setParuruState("success", { showStatus: true });
+    }
     if (activeView === "inbox") {
       await loadInbox();
     }
@@ -374,9 +389,29 @@ function setParuruState(stateName, options = {}) {
   }
 }
 
+function showParuruMessage(line, type, imageState = "normal") {
+  const state = PARURU_STATES[imageState] || PARURU_STATES.normal;
+  paruruImage.src = state.image;
+  paruruLine.textContent = line;
+  showMessage(line, type || "");
+}
+
 function showMessage(text, type) {
   message.textContent = text;
   message.className = type ? `message ${type}` : "message";
+}
+
+function inferCategory(memo, selectedCategory) {
+  if (selectedCategory !== "未分類") {
+    return "";
+  }
+
+  const normalizedMemo = memo.toLowerCase();
+  const matchedRule = Object.entries(categoryRules).find(([, keywords]) =>
+    keywords.some((keyword) => normalizedMemo.includes(keyword.toLowerCase()))
+  );
+
+  return matchedRule ? matchedRule[0] : "";
 }
 
 function getCategoryColor(category) {

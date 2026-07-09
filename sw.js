@@ -1,4 +1,4 @@
-﻿const ASSET_VERSION = "v20260709-02";
+﻿const ASSET_VERSION = "v20260709-03";
 const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
 const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
 const ASSETS = [
@@ -64,4 +64,5 @@ async function networkFirst(request) {
     throw error;
   }
 }
+
 
