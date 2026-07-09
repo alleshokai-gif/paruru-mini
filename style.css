@@ -70,26 +70,29 @@ textarea {
   width: min(100%, 520px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: max(18px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
+  padding: max(24px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
 }
 
 .paruru {
   display: grid;
   justify-items: center;
-  gap: 10px;
-  padding: 18px 0 20px;
+  gap: 12px;
+  padding: 0 0 22px;
+  text-align: center;
 }
 
 .paruru-image {
-  width: min(46vw, 190px);
+  width: min(180px, 42vw);
+  max-height: 180px;
   height: auto;
   display: block;
+  object-fit: contain;
 }
 
 .paruru-line {
   margin: 0;
   color: var(--accent-dark);
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   font-weight: 700;
 }
 

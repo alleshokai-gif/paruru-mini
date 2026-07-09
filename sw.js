@@ -1,4 +1,4 @@
-const CACHE_NAME = "paruru-mini-v2";
+const CACHE_NAME = "paruru-mini-v3";
 const ASSETS = [
   "./",
   "index.html",
