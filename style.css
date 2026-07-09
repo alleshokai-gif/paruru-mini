@@ -12,8 +12,17 @@
   --page: #f7f8ff;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -28,6 +37,7 @@ button,
 select,
 textarea {
   font: inherit;
+  max-width: 100%;
 }
 
 .splash {
@@ -67,10 +77,11 @@ textarea {
 }
 
 .app-shell {
-  width: min(100%, 520px);
+  width: 100%;
+  max-width: 480px;
   min-height: 100vh;
   margin: 0 auto;
-  padding: max(24px, env(safe-area-inset-top)) 18px calc(96px + env(safe-area-inset-bottom));
+  padding: max(24px, env(safe-area-inset-top)) 24px calc(96px + env(safe-area-inset-bottom));
 }
 
 .paruru {
@@ -121,6 +132,7 @@ textarea,
 input,
 select {
   width: 100%;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -149,8 +161,9 @@ select:focus {
 
 .priority-group {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
@@ -192,6 +205,8 @@ select:focus {
 }
 
 button {
+  width: 100%;
+  max-width: 100%;
   min-height: 52px;
   border: 0;
   border-radius: 8px;
@@ -275,9 +290,11 @@ button:disabled {
 }
 
 .card-main h2 {
+  min-width: 0;
   margin: 0;
   font-size: 1rem;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .card-main time {
@@ -336,15 +353,16 @@ button:disabled {
 
 .bottom-nav {
   position: fixed;
-  right: 0;
   bottom: 0;
-  left: 0;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 8;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  width: min(100%, 520px);
-  margin: 0 auto;
+  width: min(100%, 480px);
+  max-width: 100%;
+  margin: 0;
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.96);
@@ -388,8 +406,14 @@ button:disabled {
 }
 
 .dialog-header h2 {
+  min-width: 0;
   margin: 0;
   font-size: 1.2rem;
+}
+
+.dialog-header .ghost-button {
+  width: auto;
+  padding: 0 12px;
 }
 
 .edit-form {
@@ -399,13 +423,13 @@ button:disabled {
 
 .dialog-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 4px;
 }
 
 .confirm-dialog .dialog-actions {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .ghost-button,
