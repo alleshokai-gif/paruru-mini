@@ -1,50 +1,52 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
+const ASSET_VERSION = "v20260709-01";
 const CHARACTER_BASE_PATH = "assets/character";
+const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PARURU_STATES = {
   loading: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_sleepy.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_sleepy.png`),
     line: "……",
   },
   normal: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`),
     line: "……メモしとく？",
   },
   sending: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`),
     line: "ちょっと待って。",
   },
   success: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_smile.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_smile.png`),
     line: "はいはい、僕が覚えとく。",
     messageType: "success",
   },
   empty: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`),
     line: "えぇ……何も書いてないけど？",
     messageType: "error",
   },
   error: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`),
     line: "送れなかった。あとでもう一回やって。",
     messageType: "error",
   },
   inboxEmpty: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_sleepy.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_sleepy.png`),
     line: "今日はまだ何も預かってないよ。",
   },
   done: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_smile.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_smile.png`),
     line: "えらいえらい。",
     messageType: "success",
   },
   deleteConfirm: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`),
     line: "ほんまに消す？",
     messageType: "error",
   },
   deleted: {
-    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`,
+    image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`),
     line: "消しといたよ。",
     messageType: "success",
   },
@@ -443,3 +445,4 @@ function dummyDelete(id) {
   saveDummyItems(loadDummyItems().filter((item) => item.id !== id));
   return Promise.resolve({ success: true, data: { id }, message: "deleted" });
 }
+
