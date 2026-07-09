@@ -22,11 +22,13 @@ html,
 body {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  overflow-x: clip;
 }
 
 body {
-  margin: 0;
+  position: relative;
   min-height: 100vh;
   background: var(--page);
   color: var(--text);
@@ -43,6 +45,8 @@ textarea {
 .splash {
   position: fixed;
   inset: 0;
+  max-width: 100%;
+  overflow-x: clip;
   z-index: 10;
   display: grid;
   place-content: center;
@@ -79,9 +83,20 @@ textarea {
 .app-shell {
   width: 100%;
   max-width: 480px;
+  overflow-x: clip;
   min-height: 100vh;
   margin: 0 auto;
   padding: max(24px, env(safe-area-inset-top)) 24px calc(96px + env(safe-area-inset-bottom));
+}
+
+main,
+.app-view,
+.inbox-form,
+.inbox-list,
+.settings-placeholder {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 .paruru {
@@ -93,7 +108,7 @@ textarea {
 }
 
 .paruru-image {
-  width: min(180px, 42vw);
+  width: min(180px, 42%);
   max-height: 180px;
   height: auto;
   display: block;
@@ -355,6 +370,7 @@ button:disabled {
   position: fixed;
   bottom: 0;
   left: 50%;
+  right: auto;
   transform: translateX(-50%);
   z-index: 8;
   display: grid;
@@ -363,7 +379,7 @@ button:disabled {
   width: min(100%, 480px);
   max-width: 100%;
   margin: 0;
-  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  padding: 8px 12px max(12px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
@@ -385,6 +401,7 @@ button:disabled {
 
 .app-dialog {
   width: min(calc(100% - 28px), 480px);
+  max-width: calc(100% - 28px);
   max-height: calc(100vh - 48px);
   border: 0;
   border-radius: 8px;

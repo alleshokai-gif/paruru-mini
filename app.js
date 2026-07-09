@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260709-01";
+const ASSET_VERSION = "v20260709-02";
 const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PARURU_STATES = {
@@ -106,6 +106,7 @@ if ("serviceWorker" in navigator) {
 window.addEventListener("load", () => {
   setParuruState("normal");
   splash?.classList.add("is-hidden");
+  logOverflowElements();
 });
 
 form.addEventListener("submit", async (event) => {
@@ -444,5 +445,16 @@ function dummyUpdate(id, updates) {
 function dummyDelete(id) {
   saveDummyItems(loadDummyItems().filter((item) => item.id !== id));
   return Promise.resolve({ success: true, data: { id }, message: "deleted" });
+}
+
+function logOverflowElements() {
+  if (!location.hostname.includes("localhost") && location.protocol !== "file:") {
+    return;
+  }
+
+  const viewportWidth = document.documentElement.clientWidth;
+  [...document.querySelectorAll("*")]
+    .filter((element) => element.scrollWidth > viewportWidth)
+    .forEach((element) => console.log("overflow:", element, element.scrollWidth));
 }
 
