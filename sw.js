@@ -7,7 +7,7 @@ const ASSETS = [
   "manifest.json",
   "assets/icons/icon-192.svg",
   "assets/icons/icon-512.svg",
-  "assets/character/paruru.svg",
+  "assets/character/paruru_current.svg",
 ];
 
 self.addEventListener("install", (event) => {

@@ -1,10 +1,12 @@
-﻿<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="ぱるる">
-  <rect width="512" height="512" rx="112" fill="#5C6BC0"/>
-  <path d="M139 205 184 104l54 75h36l54-75 45 101c40 34 59 75 59 130 0 96-75 154-176 154S80 431 80 335c0-55 19-96 59-130Z" fill="#fff"/>
-  <path d="M187 213 155 144l72 59M325 213l32-69-72 59" fill="#C8D0FF"/>
-  <circle cx="195" cy="309" r="19" fill="#202236"/>
-  <circle cx="317" cy="309" r="19" fill="#202236"/>
-  <path d="M245 341h22l-11 14-11-14Z" fill="#E66A7A"/>
-  <path d="M219 379c21 21 53 21 74 0" fill="none" stroke="#202236" stroke-width="13" stroke-linecap="round"/>
-  <path d="M117 335H48M125 373H63M395 335h69M387 373h62" stroke="#fff" stroke-width="13" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="ぱるる">
+  <rect width="512" height="512" rx="112" fill="#f7f9ff"/>
+  <path d="M93 203 139 80l72 86h90l72-86 46 123c38 37 57 85 57 144 0 94-82 149-220 149S36 441 36 347c0-59 19-107 57-144Z" fill="#fff" stroke="#24304f" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M144 174 131 118l64 64M368 174l13-56-64 64" fill="#ffe5e8" stroke="#24304f" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M221 138c31-28 85-32 120 0 2 39-25 67-77 74-35 4-59-2-78-16 24-10 36-30 35-58Z" fill="#d7d9e8" stroke="#24304f" stroke-width="11" stroke-linejoin="round"/>
+  <path d="M161 270c33-16 69-16 101 0M296 270c32-16 67-16 96 0" fill="none" stroke="#24304f" stroke-width="14" stroke-linecap="round"/>
+  <ellipse cx="208" cy="307" rx="24" ry="18" fill="#6da7e8" stroke="#24304f" stroke-width="11"/>
+  <ellipse cx="336" cy="307" rx="24" ry="18" fill="#6da7e8" stroke="#24304f" stroke-width="11"/>
+  <path d="M244 346h26l-13 16-13-16Z" fill="#f2a6b0" stroke="#24304f" stroke-width="6"/>
+  <path d="M225 386c24 18 61 18 85 0" fill="none" stroke="#24304f" stroke-width="9" stroke-linecap="round"/>
+  <path d="M123 323H48M130 360H66M464 323h-78M443 360h-65" stroke="#24304f" stroke-width="9" stroke-linecap="round"/>
 </svg>
