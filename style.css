@@ -30,6 +30,42 @@ textarea {
   font: inherit;
 }
 
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  background: #ffffff;
+  color: var(--accent-dark);
+  transition: opacity 160ms ease, visibility 160ms ease;
+}
+
+.splash.is-hidden {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.splash-icon {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+}
+
+.splash-logo {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.splash-loading {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .app-shell {
   width: min(100%, 520px);
   min-height: 100vh;

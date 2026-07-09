@@ -1,10 +1,46 @@
-﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
+
+const CHARACTER_BASE_PATH = "assets/character";
+const PARURU_STATES = {
+  loading: {
+    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_sleepy.png`,
+    line: "……",
+  },
+  normal: {
+    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`,
+    line: "……メモしとく？",
+  },
+  sending: {
+    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`,
+    line: "ちょっと待って。",
+  },
+  success: {
+    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_smile.png`,
+    line: "はいはい、僕が覚えとく。",
+    messageType: "success",
+  },
+  empty: {
+    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`,
+    line: "えぇ……何も書いてないけど？",
+    messageType: "error",
+  },
+  error: {
+    image: `${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`,
+    line: "送れなかった。あとでもう一回やって。",
+    messageType: "error",
+  },
+};
 
 const form = document.querySelector("#inboxForm");
 const memoInput = document.querySelector("#memo");
 const categoryInput = document.querySelector("#category");
+const paruruImage = document.querySelector("#paruruImage");
+const paruruLine = document.querySelector(".paruru-line");
 const submitButton = document.querySelector("#submitButton");
 const message = document.querySelector("#message");
+const splash = document.querySelector("#splash");
+
+setParuruState("loading");
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -14,12 +50,17 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+window.addEventListener("load", () => {
+  setParuruState("normal");
+  splash?.classList.add("is-hidden");
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const memo = memoInput.value.trim();
   if (!memo) {
-    showMessage("……空っぽじゃ覚えようがないんだけど。", "error");
+    setParuruState("empty", { showStatus: true });
     memoInput.focus();
     return;
   }
@@ -32,15 +73,16 @@ form.addEventListener("submit", async (event) => {
   };
 
   setSending(true);
+  setParuruState("sending");
   showMessage("", "");
 
   try {
     await saveMemo(payload);
     form.reset();
     categoryInput.value = "未分類";
-    showMessage("はいはい。僕が覚えとく。", "success");
+    setParuruState("success", { showStatus: true });
   } catch (error) {
-    showMessage("送れなかった。あとでもう一回やって。", "error");
+    setParuruState("error", { showStatus: true });
   } finally {
     setSending(false);
   }
@@ -97,6 +139,16 @@ function dummySave(payload) {
 function setSending(isSending) {
   submitButton.disabled = isSending;
   submitButton.textContent = isSending ? "預け中..." : "ぱるるに預ける";
+}
+
+function setParuruState(stateName, options = {}) {
+  const state = PARURU_STATES[stateName] || PARURU_STATES.normal;
+  paruruImage.src = state.image;
+  paruruLine.textContent = state.line;
+
+  if (options.showStatus) {
+    showMessage(state.line, state.messageType || "");
+  }
 }
 
 function showMessage(text, type) {

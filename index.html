@@ -6,14 +6,20 @@
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="assets/icons/icon-192.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="assets/icons/icon-192.svg">
+    <link rel="icon" href="assets/icons/favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
+    <div id="splash" class="splash" aria-label="Loading">
+      <img class="splash-icon" src="assets/character/official/paruru_face.png" alt="ぱるる">
+      <p class="splash-logo">Paruru</p>
+      <p class="splash-loading">Loading...</p>
+    </div>
+
     <main class="app-shell">
       <section class="paruru">
-        <img class="paruru-image" src="assets/character/paruru_current.svg" alt="ぱるる">
+        <img id="paruruImage" class="paruru-image" src="assets/character/official/paruru_bust.png" alt="ぱるる">
         <p class="paruru-line">……メモしとく？</p>
       </section>
 

@@ -1,13 +1,19 @@
-const CACHE_NAME = "paruru-mini-v1";
+const CACHE_NAME = "paruru-mini-v2";
 const ASSETS = [
   "./",
   "index.html",
   "style.css",
   "app.js",
   "manifest.json",
-  "assets/icons/icon-192.svg",
-  "assets/icons/icon-512.svg",
-  "assets/character/paruru_current.svg",
+  "assets/icons/favicon.png",
+  "assets/icons/icon-192.png",
+  "assets/icons/icon-512.png",
+  "assets/character/official/paruru_face.png",
+  "assets/character/official/paruru_bust.png",
+  "assets/character/expressions/paruru_bust_normal.png",
+  "assets/character/expressions/paruru_bust_smile.png",
+  "assets/character/expressions/paruru_bust_angry.png",
+  "assets/character/expressions/paruru_bust_sleepy.png",
 ];
 
 self.addEventListener("install", (event) => {
