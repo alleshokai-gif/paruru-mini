@@ -1,4 +1,4 @@
-const CACHE_NAME = "paruru-mini-v3";
+const CACHE_NAME = "paruru-mini-v4";
 const ASSETS = [
   "./",
   "index.html",
@@ -14,6 +14,7 @@ const ASSETS = [
   "assets/character/expressions/paruru_bust_smile.png",
   "assets/character/expressions/paruru_bust_angry.png",
   "assets/character/expressions/paruru_bust_sleepy.png",
+  "assets/character/expressions/paruru_bust_happy.png",
 ];
 
 self.addEventListener("install", (event) => {

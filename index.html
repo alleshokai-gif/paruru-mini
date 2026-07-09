@@ -23,15 +23,92 @@
         <p class="paruru-line">……メモしとく？</p>
       </section>
 
-      <form id="inboxForm" class="inbox-form">
+      <section id="homeView" class="app-view is-active" data-view="home">
+        <form id="inboxForm" class="inbox-form">
+          <label class="field">
+            <span>思いついたことを書く</span>
+            <textarea id="memo" name="memo" rows="7" placeholder="牛乳買う" required></textarea>
+          </label>
+
+          <label class="field">
+            <span>カテゴリ</span>
+            <select id="category" name="category">
+              <option value="未分類">未分類</option>
+              <option value="家">家</option>
+              <option value="仕事">仕事</option>
+              <option value="買い物">買い物</option>
+              <option value="学校">学校</option>
+              <option value="薬局">薬局</option>
+              <option value="開発">開発</option>
+              <option value="お金">お金</option>
+            </select>
+          </label>
+
+          <fieldset class="priority-group">
+            <legend>優先度</legend>
+            <label>
+              <input type="radio" name="priority" value="Low">
+              <span>Low</span>
+            </label>
+            <label>
+              <input type="radio" name="priority" value="Normal" checked>
+              <span>Normal</span>
+            </label>
+            <label>
+              <input type="radio" name="priority" value="High">
+              <span>High</span>
+            </label>
+          </fieldset>
+
+          <button id="submitButton" type="submit">ぱるるに預ける</button>
+        </form>
+      </section>
+
+      <section id="inboxView" class="app-view" data-view="inbox">
+        <div class="view-header">
+          <h1>Inbox</h1>
+          <button id="refreshInboxButton" class="icon-button" type="button" aria-label="Inboxを更新">↻</button>
+        </div>
+        <div id="inboxList" class="inbox-list" aria-live="polite"></div>
+      </section>
+
+      <section id="settingsView" class="app-view" data-view="settings">
+        <div class="settings-placeholder">
+          <h1>設定</h1>
+          <p>設定はまだ仮だよ。</p>
+        </div>
+      </section>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+    </main>
+
+    <nav class="bottom-nav" aria-label="メインナビゲーション">
+      <button class="nav-item is-active" type="button" data-target-view="home">ホーム</button>
+      <button class="nav-item" type="button" data-target-view="inbox">Inbox</button>
+      <button class="nav-item" type="button" data-target-view="settings">設定</button>
+    </nav>
+
+    <dialog id="detailDialog" class="app-dialog">
+      <form id="editForm" class="edit-form" method="dialog">
+        <input id="editId" type="hidden">
+        <div class="dialog-header">
+          <h2>詳細</h2>
+          <button class="ghost-button" type="button" data-close-dialog="detailDialog">閉じる</button>
+        </div>
+
         <label class="field">
-          <span>思いついたことを書く</span>
-          <textarea id="memo" name="memo" rows="7" placeholder="牛乳買う" required></textarea>
+          <span>タイトル</span>
+          <input id="editTitle" type="text" maxlength="60">
+        </label>
+
+        <label class="field">
+          <span>メモ</span>
+          <textarea id="editMemo" rows="6" required></textarea>
         </label>
 
         <label class="field">
           <span>カテゴリ</span>
-          <select id="category" name="category">
+          <select id="editCategory">
             <option value="未分類">未分類</option>
             <option value="家">家</option>
             <option value="仕事">仕事</option>
@@ -43,29 +120,34 @@
           </select>
         </label>
 
-        <fieldset class="priority-group">
-          <legend>優先度</legend>
-          <label>
-            <input type="radio" name="priority" value="Low">
-            <span>Low</span>
-          </label>
-          <label>
-            <input type="radio" name="priority" value="Normal" checked>
-            <span>Normal</span>
-          </label>
-          <label>
-            <input type="radio" name="priority" value="High">
-            <span>High</span>
-          </label>
-        </fieldset>
+        <label class="field">
+          <span>優先度</span>
+          <select id="editPriority">
+            <option value="Low">Low</option>
+            <option value="Normal">Normal</option>
+            <option value="High">High</option>
+          </select>
+        </label>
 
-        <button id="submitButton" type="submit">ぱるるに預ける</button>
+        <div class="dialog-actions">
+          <button id="deleteButton" class="danger-button" type="button">削除</button>
+          <button id="doneButton" class="secondary-button" type="button">完了</button>
+          <button id="saveEditButton" type="submit">保存</button>
+        </div>
       </form>
+    </dialog>
 
-      <p id="message" class="message" role="status" aria-live="polite"></p>
-    </main>
+    <dialog id="deleteDialog" class="app-dialog confirm-dialog">
+      <div class="dialog-header">
+        <h2>削除</h2>
+      </div>
+      <p>このメモを消す？</p>
+      <div class="dialog-actions">
+        <button class="secondary-button" type="button" data-close-dialog="deleteDialog">やめる</button>
+        <button id="confirmDeleteButton" class="danger-button" type="button">削除</button>
+      </div>
+    </dialog>
 
     <script src="app.js" defer></script>
   </body>
 </html>
-

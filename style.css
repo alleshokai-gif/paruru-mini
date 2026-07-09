@@ -70,7 +70,7 @@ textarea {
   width: min(100%, 520px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: max(24px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
+  padding: max(24px, env(safe-area-inset-top)) 18px calc(96px + env(safe-area-inset-bottom));
 }
 
 .paruru {
@@ -101,6 +101,14 @@ textarea {
   gap: 16px;
 }
 
+.app-view {
+  display: none;
+}
+
+.app-view.is-active {
+  display: block;
+}
+
 .field {
   display: grid;
   gap: 8px;
@@ -110,6 +118,7 @@ textarea {
 }
 
 textarea,
+input,
 select {
   width: 100%;
   border: 1px solid var(--line);
@@ -132,6 +141,7 @@ select {
 }
 
 textarea:focus,
+input:focus,
 select:focus {
   border-color: var(--accent);
   outline: 3px solid rgba(92, 107, 192, 0.18);
@@ -211,5 +221,200 @@ button:disabled {
 }
 
 .message.error {
+  color: var(--danger);
+}
+
+.view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.view-header h1,
+.settings-placeholder h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.icon-button,
+.ghost-button,
+.secondary-button,
+.danger-button {
+  min-height: 40px;
+  box-shadow: none;
+}
+
+.icon-button {
+  width: 42px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.inbox-list {
+  display: grid;
+  gap: 12px;
+}
+
+.inbox-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(92, 107, 192, 0.12);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 20px rgba(32, 34, 54, 0.08);
+}
+
+.card-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-main h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.card-main time {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.category-chip,
+.priority-chip {
+  display: inline-grid;
+  min-height: 26px;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.category-chip {
+  background: color-mix(in srgb, var(--category-color) 14%, white);
+  color: var(--category-color);
+}
+
+.priority-chip {
+  background: #eef0ff;
+  color: var(--accent-dark);
+}
+
+.priority-High {
+  background: #ffe9e7;
+  color: #b3261e;
+}
+
+.priority-Low {
+  background: #edf7f1;
+  color: #265d38;
+}
+
+.empty-state,
+.settings-placeholder {
+  padding: 24px 16px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  text-align: center;
+  font-weight: 700;
+}
+
+.bottom-nav {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: min(100%, 520px);
+  margin: 0 auto;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.nav-item {
+  min-height: 48px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 0.86rem;
+}
+
+.nav-item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.app-dialog {
+  width: min(calc(100% - 28px), 480px);
+  max-height: calc(100vh - 48px);
+  border: 0;
+  border-radius: 8px;
+  padding: 18px;
+  color: var(--text);
+  box-shadow: 0 24px 60px rgba(32, 34, 54, 0.28);
+}
+
+.app-dialog::backdrop {
+  background: rgba(32, 34, 54, 0.34);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.edit-form {
+  display: grid;
+  gap: 14px;
+}
+
+.dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.confirm-dialog .dialog-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+.ghost-button,
+.secondary-button {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.danger-button {
+  background: #ffe9e7;
   color: var(--danger);
 }
