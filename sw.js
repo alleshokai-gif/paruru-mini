@@ -1,12 +1,16 @@
-﻿const ASSET_VERSION = "v20260710-01";
+const ASSET_VERSION = "v20260710-04";
 const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
 const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
-const ASSETS = [
+
+const APP_SHELL_RUNTIME_ASSETS = [
   "./",
   "index.html",
   versioned("style.css"),
   versioned("app.js"),
   "manifest.json",
+];
+
+const STATIC_IMAGE_ASSETS = [
   versioned("assets/icons/favicon.png"),
   versioned("assets/icons/icon-192.png"),
   versioned("assets/icons/icon-512.png"),
@@ -20,13 +24,15 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
+  console.log("[Paruru SW] install", ASSET_VERSION);
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_IMAGE_ASSETS))
   );
 });
 
 self.addEventListener("activate", (event) => {
+  console.log("[Paruru SW] activate", ASSET_VERSION);
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.map((key) => {
@@ -35,35 +41,128 @@ self.addEventListener("activate", (event) => {
         }
         return Promise.resolve(false);
       }))
-    ).then(() => self.clients.claim())
+    )
+      .then(() => warmAppShellCache())
+      .then(() => self.clients.claim())
   );
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    console.log("[Paruru SW] SKIP_WAITING message");
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") {
+  const { request } = event;
+
+  if (request.method !== "GET") {
     return;
   }
 
-  event.respondWith(networkFirst(event.request));
+  if (request.mode === "navigate") {
+    event.respondWith(networkFirst(request, getAppShellFallbackUrl()));
+    return;
+  }
+
+  if (isAppShellRequest(request)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  if (isImageRequest(request)) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  event.respondWith(networkFirst(request));
 });
 
-async function networkFirst(request) {
+async function networkFirst(request, fallbackUrl) {
   const cache = await caches.open(CACHE_NAME);
 
   try {
-    const response = await fetch(request);
-    if (response && response.ok) {
+    const response = await fetch(request, { cache: "no-store" });
+    if (response && response.ok && isCacheableSameOrigin(request)) {
       await cache.put(request, response.clone());
     }
     return response;
   } catch (error) {
-    const cached = await cache.match(request);
+    const cached = await cache.match(request, { ignoreSearch: shouldIgnoreSearch(request) });
     if (cached) {
       return cached;
     }
+
+    if (fallbackUrl) {
+      const fallback = await cache.match(fallbackUrl, { ignoreSearch: true });
+      if (fallback) {
+        return fallback;
+      }
+    }
+
     throw error;
   }
 }
 
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) {
+    return cached;
+  }
 
+  const response = await fetch(request);
+  if (response && response.ok && isCacheableSameOrigin(request)) {
+    await cache.put(request, response.clone());
+  }
+  return response;
+}
 
+async function warmAppShellCache() {
+  const cache = await caches.open(CACHE_NAME);
+  await Promise.allSettled(APP_SHELL_RUNTIME_ASSETS.map(async (path) => {
+    const request = new Request(new URL(path, self.registration.scope).toString(), {
+      cache: "no-store",
+    });
+    const response = await fetch(request);
+    if (response && response.ok) {
+      await cache.put(request, response.clone());
+    }
+  }));
+}
+
+function getAppShellFallbackUrl() {
+  return new URL("./", self.registration.scope).toString();
+}
+
+function isAppShellRequest(request) {
+  const url = new URL(request.url);
+  const pathname = url.pathname.toLowerCase();
+  return (
+    pathname.endsWith("/") ||
+    pathname.endsWith(".html") ||
+    pathname.endsWith(".js") ||
+    pathname.endsWith(".css") ||
+    pathname.endsWith(".json") ||
+    pathname.endsWith("/manifest.webmanifest")
+  );
+}
+
+function isImageRequest(request) {
+  if (request.destination === "image") {
+    return true;
+  }
+
+  const pathname = new URL(request.url).pathname.toLowerCase();
+  return /\.(png|jpg|jpeg|webp|gif|svg|ico)$/.test(pathname);
+}
+
+function isCacheableSameOrigin(request) {
+  return new URL(request.url).origin === self.location.origin;
+}
+
+function shouldIgnoreSearch(request) {
+  const url = new URL(request.url);
+  return isAppShellRequest(request) && url.origin === self.location.origin;
+}

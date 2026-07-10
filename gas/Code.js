@@ -129,12 +129,14 @@ function createItemWithAI_(body) {
   }
 
   try {
-    const analysis = analyzeMemoWithAI_(memo);
+    Logger.log('[createWithAI] received body: ' + JSON.stringify(body));
+    const analysis = enforceFollowupRules_(analyzeMemoWithAI_(memo), memo);
+    const requestedPriority = normalizePriority_(body.priority);
     const now = nowTokyoString_();
     const itemInput = Object.assign({}, analysis, {
       memo: memo,
       category: body.category || analysis.category,
-      priority: body.priority || analysis.priority,
+      priority: requestedPriority || analysis.priority,
       status: 'inbox',
       source: 'ai',
       createdAt: now,
@@ -149,6 +151,7 @@ function createItemWithAI_(body) {
     });
 
     const savedItem = appendNewItem_(itemInput);
+    Logger.log('[createWithAI] final priority: ' + savedItem.priority);
     const responseItem = Object.assign({}, analysis, itemInput, savedItem, {
       updatedAt: now,
     });
@@ -442,6 +445,101 @@ function normalizeValueForSheet_(field, value) {
   return value;
 }
 
+function normalizePriority_(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  const priorities = {
+    low: 'Low',
+    normal: 'Normal',
+    high: 'High',
+    urgent: 'Urgent',
+  };
+
+  return priorities[normalized] || '';
+}
+
+function enforceFollowupRules_(analysis, memo) {
+  const normalizedAnalysis = Object.assign({}, analysis);
+  const isImportantWorkTask = isImportantWorkTaskMemo_(memo);
+
+  if (isImportantWorkTask) {
+    normalizedAnalysis.category = '仕事';
+    normalizedAnalysis.type = 'task';
+  }
+
+  if (isWorkTaskMissingDue_(normalizedAnalysis, memo)) {
+    normalizedAnalysis.needsFollowup = true;
+    normalizedAnalysis.followupQuestion = normalizedAnalysis.followupQuestion || '締切はいつ？';
+  }
+
+  return normalizedAnalysis;
+}
+
+function isImportantWorkTaskMemo_(memo) {
+  const text = String(memo || '');
+  const workSignals = [
+    '部長',
+    '課長',
+    '上司',
+    '社長',
+    '会社',
+    '顧客',
+    '取引先',
+    '資料',
+    'メール',
+    '会議',
+    '出張',
+  ];
+  const taskSignals = [
+    '送る',
+    '提出',
+    '共有',
+    '確認',
+    '作る',
+    '修正',
+    '連絡',
+    '返信',
+  ];
+
+  return workSignals.some(function(keyword) {
+    return text.indexOf(keyword) !== -1;
+  }) && taskSignals.some(function(keyword) {
+    return text.indexOf(keyword) !== -1;
+  });
+}
+
+function isWorkTaskMissingDue_(analysis, memo) {
+  if (analysis.category !== '仕事' || analysis.type !== 'task') {
+    return false;
+  }
+
+  if (analysis.dueDate || analysis.dueTime) {
+    return false;
+  }
+
+  const text = String(memo || '');
+  const importantWorkKeywords = [
+    '部長',
+    '課長',
+    '上司',
+    '社長',
+    '会社',
+    '顧客',
+    '取引先',
+    '資料',
+    'メール',
+    '送る',
+    '提出',
+    '共有',
+    '確認',
+    '会議',
+    '出張',
+  ];
+
+  return importantWorkKeywords.some(function(keyword) {
+    return text.indexOf(keyword) !== -1;
+  });
+}
+
 function nowTokyoString_() {
   return Utilities.formatDate(
     new Date(),
@@ -559,6 +657,36 @@ function testCreateItemWithAI_() {
   return result;
 }
 
+function testWorkTaskFollowup_() {
+  const memo = '部長へ資料を送る';
+  const analysis = enforceFollowupRules_(analyzeMemoWithAI_(memo), memo);
+  const result = {
+    memo: memo,
+    title: analysis.title,
+    category: analysis.category,
+    type: analysis.type,
+    dueDate: analysis.dueDate,
+    dueTime: analysis.dueTime,
+    needsFollowup: analysis.needsFollowup,
+    followupQuestion: analysis.followupQuestion,
+  };
+
+  console.log(JSON.stringify(result, null, 2));
+
+  if (
+    result.category !== '仕事' ||
+    result.type !== 'task' ||
+    result.dueDate ||
+    result.dueTime ||
+    result.needsFollowup !== true ||
+    !result.followupQuestion
+  ) {
+    throw new Error('仕事taskの期限確認テストが期待値になってへんで');
+  }
+
+  return result;
+}
+
 
 function analyzeMemoWithAI_(memo) {
   const apiKey = PropertiesService
@@ -600,6 +728,9 @@ function analyzeMemoWithAI_(memo) {
       '・categoryとtypeとpriorityは指定候補から選ぶ',
       '・情報不足でも管理できる場合は質問しない',
       '・タスク管理上、重要な期限などが不足している場合のみ確認質問を作る',
+      '・categoryが仕事、typeがtask、dueDateとdueTimeがどちらも空で、相手・提出物・送付先・目的から期限確認が重要な業務タスクなら、原則としてneedsFollowupをtrueにする',
+      '・その場合のfollowupQuestionは「締切はいつ？」または文脈に合う自然な短い質問にする',
+      '・買い物、単なるメモ、アイデア、締切がなくても成立する軽微な家庭タスクでは期限確認を求めない',
       '・titleは30文字以内の簡潔な表現にする',
       '・confidenceは0から1の数値にする'
     ].join('\n'),
@@ -704,11 +835,13 @@ function analyzeMemoWithAI_(memo) {
             },
 
             needsFollowup: {
-              type: 'boolean'
+              type: 'boolean',
+              description: '仕事のtaskでdueDateとdueTimeが空、かつ期限確認が重要な業務タスクならtrue。買い物、単なるメモ、アイデア、軽微な家庭タスクではfalse。'
             },
 
             followupQuestion: {
-              type: 'string'
+              type: 'string',
+              description: 'needsFollowupがtrueの場合だけ、ユーザーに確認する短い質問。不明な仕事タスクの締切確認は「締切はいつ？」を基本にする。'
             },
 
             aiSummary: {

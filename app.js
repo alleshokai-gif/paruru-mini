@@ -1,6 +1,8 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260710-01";
+const ASSET_VERSION = "v20260710-04";
+const BUILD_VERSION = ASSET_VERSION;
+const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PARURU_STATES = {
@@ -91,6 +93,7 @@ const paruruLine = document.querySelector(".paruru-line");
 const submitButton = document.querySelector("#submitButton");
 const message = document.querySelector("#message");
 const splash = document.querySelector("#splash");
+const buildVersion = document.querySelector("#buildVersion");
 const views = document.querySelectorAll(".app-view");
 const navItems = document.querySelectorAll(".nav-item");
 const inboxList = document.querySelector("#inboxList");
@@ -110,18 +113,86 @@ const confirmDeleteButton = document.querySelector("#confirmDeleteButton");
 setParuruState("loading");
 
 if ("serviceWorker" in navigator) {
+  let refreshingForNewServiceWorker = false;
+
+  console.log("[Paruru] build version", BUILD_VERSION);
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    console.log("[Paruru] controllerchange");
+    if (refreshingForNewServiceWorker) {
+      return;
+    }
+    refreshingForNewServiceWorker = true;
+    location.reload();
+  });
+
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {
-      // PWA registration failure should not block memo submission.
-    });
+    navigator.serviceWorker
+      .register("./sw.js", {
+        scope: "./",
+        updateViaCache: "none",
+      })
+      .then((registration) => {
+        console.log("[Paruru] Service Worker registered", {
+          scope: registration.scope,
+          updateViaCache: registration.updateViaCache,
+        });
+        logServiceWorkerState(registration);
+        updateServiceWorker(registration);
+        registration.update();
+      })
+      .catch(() => {
+        // PWA registration failure should not block memo submission.
+      });
   });
 }
 
 window.addEventListener("load", () => {
   setParuruState("normal");
+  if (buildVersion) {
+    buildVersion.textContent = `Build ${BUILD_VERSION}`;
+  }
   splash?.classList.add("is-hidden");
   logOverflowElements();
 });
+
+function updateServiceWorker(registration) {
+  if (registration.waiting) {
+    console.log("[Paruru] Service Worker waiting on load");
+    activateWaitingServiceWorker(registration.waiting);
+  }
+
+  registration.addEventListener("updatefound", () => {
+    console.log("[Paruru] Service Worker updatefound");
+    const newWorker = registration.installing;
+    logServiceWorkerState(registration);
+    if (!newWorker) {
+      return;
+    }
+
+    newWorker.addEventListener("statechange", () => {
+      console.log("[Paruru] Service Worker installing state", newWorker.state);
+      logServiceWorkerState(registration);
+      if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+        activateWaitingServiceWorker(newWorker);
+      }
+    });
+  });
+}
+
+function activateWaitingServiceWorker(worker) {
+  console.log("[Paruru] Service Worker skip waiting requested");
+  worker.postMessage({ type: "SKIP_WAITING" });
+}
+
+function logServiceWorkerState(registration) {
+  console.log("[Paruru] Service Worker state", {
+    installing: registration.installing?.state || null,
+    waiting: registration.waiting?.state || null,
+    active: registration.active?.state || null,
+    controlled: Boolean(navigator.serviceWorker.controller),
+  });
+}
 
 categoryInput.addEventListener("change", () => {
   categoryExplicitlySelected = categoryInput.value !== "未分類";
@@ -287,6 +358,7 @@ async function saveMemo(payload) {
 }
 
 function buildCreateWithAIPayload(memo) {
+  const selectedPriority = getSelectedPriority();
   const payload = {
     action: "createWithAI",
     memo,
@@ -296,10 +368,11 @@ function buildCreateWithAIPayload(memo) {
     payload.category = categoryInput.value;
   }
 
-  if (priorityExplicitlySelected) {
-    payload.priority = new FormData(form).get("priority") || "Normal";
+  if (priorityExplicitlySelected || selectedPriority !== DEFAULT_PRIORITY) {
+    payload.priority = selectedPriority;
   }
 
+  console.log("[Paruru] createWithAI payload", payload);
   return payload;
 }
 
@@ -438,6 +511,10 @@ function showSuccessResult(result) {
 function resetExplicitSelectionState() {
   categoryExplicitlySelected = false;
   priorityExplicitlySelected = false;
+}
+
+function getSelectedPriority() {
+  return new FormData(form).get("priority") || DEFAULT_PRIORITY;
 }
 
 function showMessage(text, type) {

@@ -366,6 +366,12 @@ button:disabled {
   font-weight: 700;
 }
 
+.build-version {
+  margin: 12px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .bottom-nav {
   position: fixed;
   bottom: 0;
