@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260710-04";
+const ASSET_VERSION = "v20260710-05";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -109,6 +109,16 @@ const editPriority = document.querySelector("#editPriority");
 const doneButton = document.querySelector("#doneButton");
 const deleteButton = document.querySelector("#deleteButton");
 const confirmDeleteButton = document.querySelector("#confirmDeleteButton");
+const homeFollowup = document.querySelector("#homeFollowup");
+const homeFollowupQuestion = document.querySelector("#homeFollowupQuestion");
+const homeFollowupAnswer = document.querySelector("#homeFollowupAnswer");
+const homeFollowupSubmit = document.querySelector("#homeFollowupSubmit");
+const homeFollowupLater = document.querySelector("#homeFollowupLater");
+const detailFollowup = document.querySelector("#detailFollowup");
+const detailFollowupQuestion = document.querySelector("#detailFollowupQuestion");
+const detailFollowupAnswer = document.querySelector("#detailFollowupAnswer");
+const detailFollowupSubmit = document.querySelector("#detailFollowupSubmit");
+const detailFollowupLater = document.querySelector("#detailFollowupLater");
 
 setParuruState("loading");
 
@@ -301,6 +311,11 @@ confirmDeleteButton.addEventListener("click", async () => {
   setParuruState("deleted", { showStatus: true });
 });
 
+homeFollowupSubmit.addEventListener("click", () => submitFollowupAnswer("home"));
+detailFollowupSubmit.addEventListener("click", () => submitFollowupAnswer("detail"));
+homeFollowupLater.addEventListener("click", () => hideFollowupPanel("home"));
+detailFollowupLater.addEventListener("click", () => hideFollowupPanel("detail"));
+
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelector(`#${button.dataset.closeDialog}`)?.close();
@@ -404,6 +419,22 @@ async function updateInboxItem(id, updates) {
   return parseApiResponse(response);
 }
 
+async function answerFollowup(id, answer) {
+  if (!GAS_WEB_APP_URL) {
+    return dummyAnswerFollowup(id, answer);
+  }
+
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify({ action: "answerFollowup", id, answer }),
+  });
+
+  return parseApiResponse(response);
+}
+
 async function deleteInboxItem(id) {
   if (!GAS_WEB_APP_URL) {
     return dummyDelete(id);
@@ -473,6 +504,7 @@ function openDetail(id) {
   editMemo.value = item.memo || "";
   editCategory.value = item.category || "未分類";
   editPriority.value = item.priority || "Normal";
+  renderFollowupPanel("detail", item);
   detailDialog.showModal();
 }
 
@@ -500,12 +532,17 @@ function showParuruMessage(line, type, imageState = "normal") {
 }
 
 function showSuccessResult(result) {
-  const followupQuestion = result?.item?.followupQuestion;
+  const item = result?.item;
+  const followupQuestion = item?.followupQuestion;
   setParuruState("success", { showStatus: true });
 
-  if (followupQuestion) {
+  if (isFollowupNeeded(item) && followupQuestion) {
     showMessage(`確認したいこと: ${followupQuestion}`, "success");
+    renderFollowupPanel("home", item);
+    return;
   }
+
+  hideFollowupPanel("home");
 }
 
 function resetExplicitSelectionState() {
@@ -520,6 +557,93 @@ function getSelectedPriority() {
 function showMessage(text, type) {
   message.textContent = text;
   message.className = type ? `message ${type}` : "message";
+}
+
+async function submitFollowupAnswer(target) {
+  const state = getFollowupUi(target);
+  const id = state.panel.dataset.itemId;
+  const answer = state.answer.value.trim();
+
+  if (!id || !answer) {
+    state.answer.focus();
+    return;
+  }
+
+  setFollowupSubmitting(target, true);
+  try {
+    const result = await answerFollowup(id, answer);
+    state.answer.value = "";
+    hideFollowupPanel(target);
+    updateLocalItem(result.item);
+    if (target === "detail" && result.item) {
+      renderFollowupPanel("detail", result.item);
+    }
+    if (activeView === "inbox") {
+      await loadInbox({ quiet: true });
+    }
+    showParuruMessage("更新したで。", "success", "success");
+  } catch (error) {
+    setParuruState("error", { showStatus: true });
+  } finally {
+    setFollowupSubmitting(target, false);
+  }
+}
+
+function renderFollowupPanel(target, item) {
+  const state = getFollowupUi(target);
+  if (!isFollowupNeeded(item) || !item?.followupQuestion) {
+    hideFollowupPanel(target);
+    return;
+  }
+
+  state.panel.dataset.itemId = item.id;
+  state.question.textContent = item.followupQuestion;
+  state.panel.classList.remove("is-hidden");
+}
+
+function hideFollowupPanel(target) {
+  const state = getFollowupUi(target);
+  state.panel.classList.add("is-hidden");
+  state.panel.dataset.itemId = "";
+}
+
+function setFollowupSubmitting(target, isSubmittingAnswer) {
+  const state = getFollowupUi(target);
+  state.submit.disabled = isSubmittingAnswer;
+  state.later.disabled = isSubmittingAnswer;
+  state.submit.textContent = isSubmittingAnswer ? "更新中..." : "回答する";
+}
+
+function getFollowupUi(target) {
+  if (target === "detail") {
+    return {
+      panel: detailFollowup,
+      question: detailFollowupQuestion,
+      answer: detailFollowupAnswer,
+      submit: detailFollowupSubmit,
+      later: detailFollowupLater,
+    };
+  }
+
+  return {
+    panel: homeFollowup,
+    question: homeFollowupQuestion,
+    answer: homeFollowupAnswer,
+    submit: homeFollowupSubmit,
+    later: homeFollowupLater,
+  };
+}
+
+function isFollowupNeeded(item) {
+  return item?.needsFollowup === true || item?.needsFollowup === "true" || item?.needsFollowup === "TRUE";
+}
+
+function updateLocalItem(updatedItem) {
+  if (!updatedItem?.id) {
+    return;
+  }
+
+  inboxItems = inboxItems.map((item) => item.id === updatedItem.id ? { ...item, ...updatedItem } : item);
 }
 
 function inferCategory(memo, selectedCategory) {
@@ -588,6 +712,7 @@ function dummyCreate(payload) {
     priority: payload.priority || "Normal",
     source: payload.action === "createWithAI" ? "ai" : "PWA",
     tags: payload.tags || "[]",
+    needsFollowup: false,
     followupQuestion: "",
     aiSummary: "",
     aiComment: "",
@@ -598,6 +723,31 @@ function dummyCreate(payload) {
     return Promise.resolve({ success: true, item });
   }
   return Promise.resolve({ success: true, data: { id }, message: "saved" });
+}
+
+function dummyAnswerFollowup(id, answer) {
+  let updatedItem = null;
+  const items = loadDummyItems().map((item) => {
+    if (item.id !== id) {
+      return item;
+    }
+
+    updatedItem = {
+      ...item,
+      dueDate: answer,
+      needsFollowup: false,
+      followupQuestion: "",
+      updatedAt: new Date().toISOString(),
+    };
+    return updatedItem;
+  });
+  saveDummyItems(items);
+
+  if (!updatedItem) {
+    return Promise.resolve({ success: false, message: "not found" });
+  }
+
+  return Promise.resolve({ success: true, item: updatedItem, message: "followup answered" });
 }
 
 function dummyUpdate(id, updates) {

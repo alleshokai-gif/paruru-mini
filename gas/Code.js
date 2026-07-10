@@ -58,6 +58,10 @@ function doPost(e) {
       return createItemWithAI_(body);
     }
 
+    if (action === 'answerFollowup') {
+      return answerFollowup_(body);
+    }
+
     if (action === 'update') {
       return updateItem_(body);
     }
@@ -159,6 +163,43 @@ function createItemWithAI_(body) {
     return json_({
       success: true,
       item: responseItem,
+    });
+  } catch (error) {
+    return json_({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+function answerFollowup_(body) {
+  const id = String(body.id || '').trim();
+  const answer = String(body.answer || '').trim();
+
+  if (!id) {
+    return json_({ success: false, status: 400, message: 'id is required' });
+  }
+
+  if (!answer) {
+    return json_({ success: false, status: 400, message: 'answer is required' });
+  }
+
+  try {
+    const target = getItemById_(id);
+    if (!target) {
+      return json_({ success: false, message: 'not found' });
+    }
+
+    const analysis = analyzeFollowupAnswerWithAI_(target.item, answer);
+    const now = nowTokyoString_();
+    const updates = buildFollowupUpdates_(target.item, analysis, now);
+    updateRowFields_(target.sheet, target.rowNumber, target.index, updates);
+
+    const updatedItem = Object.assign({}, target.item, updates);
+    return json_({
+      success: true,
+      item: updatedItem,
+      message: 'followup answered',
     });
   } catch (error) {
     return json_({
@@ -281,6 +322,41 @@ function deleteItem_(body) {
     success: true,
     data: { id: id },
     message: 'deleted',
+  });
+}
+
+function getItemById_(id) {
+  const sheet = getInboxSheet_();
+  const index = getHeaderIndex_();
+  const rowNumber = findRowNumberById_(sheet, id, index.id + 1);
+  if (!rowNumber) {
+    return null;
+  }
+
+  const headers = getActualHeaders_(sheet);
+  const row = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+  const item = {};
+  headers.forEach(function(header, position) {
+    if (!header) {
+      return;
+    }
+    const value = row[position];
+    item[header] = value instanceof Date ? value.toISOString() : value;
+  });
+
+  return {
+    sheet: sheet,
+    index: index,
+    rowNumber: rowNumber,
+    item: item,
+  };
+}
+
+function updateRowFields_(sheet, rowNumber, index, updates) {
+  Object.keys(updates).forEach(function(field) {
+    if (Object.prototype.hasOwnProperty.call(index, field)) {
+      sheet.getRange(rowNumber, index[field] + 1).setValue(normalizeValueForSheet_(field, updates[field]));
+    }
   });
 }
 
@@ -538,6 +614,76 @@ function isWorkTaskMissingDue_(analysis, memo) {
   return importantWorkKeywords.some(function(keyword) {
     return text.indexOf(keyword) !== -1;
   });
+}
+
+function analyzeFollowupAnswerWithAI_(item, answer) {
+  const context = [
+    'Follow-up回答の再解析です。',
+    '回答単独を新規メモとして扱わず、必ず元アイテムの文脈と確認質問への回答として解析してください。',
+    '既存JSON schemaで出力してください。',
+    '元データは維持し、回答で確定した項目だけ反映できる値にしてください。',
+    '',
+    '元memo: ' + (item.memo || ''),
+    '元title: ' + (item.title || ''),
+    '元type: ' + (item.type || ''),
+    '元category: ' + (item.category || ''),
+    '元dueDate: ' + (item.dueDate || ''),
+    '元dueTime: ' + (item.dueTime || ''),
+    '元eventStart: ' + (item.eventStart || ''),
+    '元eventStartTime: ' + (item.eventStartTime || ''),
+    'followupQuestion: ' + (item.followupQuestion || ''),
+    'answer: ' + answer,
+    '',
+    '重要:',
+    '・answerが「明日」「来週」など相対表現なら現在日時基準で日付化する',
+    '・締切への回答ならdueDate/dueTimeを更新する',
+    '・予定日時への回答ならeventStart/eventStartTimeを更新する',
+    '・回答で確認が解決したらneedsFollowupはfalse、followupQuestionは空文字にする',
+  ].join('\n');
+
+  return analyzeMemoWithAI_(context);
+}
+
+function buildFollowupUpdates_(item, analysis, updatedAt) {
+  const updates = {
+    updatedAt: updatedAt,
+    needsFollowup: false,
+    followupQuestion: '',
+    confidence: normalizeNumberForSheet_(analysis.confidence),
+  };
+
+  [
+    'dueDate',
+    'dueTime',
+    'eventStart',
+    'eventStartTime',
+    'eventEnd',
+    'eventEndTime',
+    'remindAt',
+    'aiSummary',
+  ].forEach(function(field) {
+    if (analysis[field]) {
+      updates[field] = analysis[field];
+    }
+  });
+
+  if (!item.type && analysis.type) {
+    updates.type = analysis.type;
+  }
+
+  if (!item.category && analysis.category) {
+    updates.category = analysis.category;
+  }
+
+  if (!item.title && analysis.title) {
+    updates.title = analysis.title;
+  }
+
+  if (Array.isArray(analysis.tags) && analysis.tags.length > 0) {
+    updates.tags = normalizeTagsForSheet_(analysis.tags);
+  }
+
+  return updates;
 }
 
 function nowTokyoString_() {

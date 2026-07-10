@@ -254,6 +254,39 @@ button:disabled {
   color: var(--danger);
 }
 
+.followup-panel {
+  width: 100%;
+  margin: 16px 0 0;
+  padding: 16px;
+  border: 1px solid rgba(92, 107, 192, 0.22);
+  border-radius: 8px;
+  background: #f9faff;
+}
+
+.followup-panel.is-hidden {
+  display: none;
+}
+
+.followup-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.followup-question {
+  margin: 0 0 14px;
+  color: var(--text);
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.followup-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
 .view-header {
   display: flex;
   align-items: center;
