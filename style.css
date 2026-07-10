@@ -257,13 +257,17 @@ button:disabled {
 .followup-panel {
   width: 100%;
   margin: 16px 0 0;
-  padding: 16px;
+  padding: 18px 16px;
   border: 1px solid rgba(92, 107, 192, 0.22);
-  border-radius: 8px;
+  border-radius: 12px;
   background: #f9faff;
 }
 
 .followup-panel.is-hidden {
+  display: none;
+}
+
+.followup-panel .is-hidden {
   display: none;
 }
 
@@ -275,16 +279,64 @@ button:disabled {
 }
 
 .followup-question {
-  margin: 0 0 14px;
+  margin: 0 0 16px;
   color: var(--text);
+  font-size: 1rem;
   font-weight: 800;
-  line-height: 1.5;
+  line-height: 1.6;
+}
+
+.followup-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.followup-field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.followup-answer-input,
+.followup-date-input,
+.followup-time-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.followup-answer-input:focus,
+.followup-date-input:focus,
+.followup-time-input:focus {
+  border-color: var(--accent);
+  outline: 3px solid rgba(92, 107, 192, 0.18);
 }
 
 .followup-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.followup-actions button,
+.followup-yesno button {
+  min-height: 48px;
+}
+
+.followup-yesno {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
 }
 
 .view-header {

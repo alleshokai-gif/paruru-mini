@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260710-05";
+const ASSET_VERSION = "v20260710-06";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -111,12 +111,12 @@ const deleteButton = document.querySelector("#deleteButton");
 const confirmDeleteButton = document.querySelector("#confirmDeleteButton");
 const homeFollowup = document.querySelector("#homeFollowup");
 const homeFollowupQuestion = document.querySelector("#homeFollowupQuestion");
-const homeFollowupAnswer = document.querySelector("#homeFollowupAnswer");
+const homeFollowupFields = document.querySelector("#homeFollowupFields");
 const homeFollowupSubmit = document.querySelector("#homeFollowupSubmit");
 const homeFollowupLater = document.querySelector("#homeFollowupLater");
 const detailFollowup = document.querySelector("#detailFollowup");
 const detailFollowupQuestion = document.querySelector("#detailFollowupQuestion");
-const detailFollowupAnswer = document.querySelector("#detailFollowupAnswer");
+const detailFollowupFields = document.querySelector("#detailFollowupFields");
 const detailFollowupSubmit = document.querySelector("#detailFollowupSubmit");
 const detailFollowupLater = document.querySelector("#detailFollowupLater");
 
@@ -315,6 +315,8 @@ homeFollowupSubmit.addEventListener("click", () => submitFollowupAnswer("home"))
 detailFollowupSubmit.addEventListener("click", () => submitFollowupAnswer("detail"));
 homeFollowupLater.addEventListener("click", () => hideFollowupPanel("home"));
 detailFollowupLater.addEventListener("click", () => hideFollowupPanel("detail"));
+homeFollowup.addEventListener("click", (event) => handleFollowupPanelClick(event, "home"));
+detailFollowup.addEventListener("click", (event) => handleFollowupPanelClick(event, "detail"));
 
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -419,9 +421,9 @@ async function updateInboxItem(id, updates) {
   return parseApiResponse(response);
 }
 
-async function answerFollowup(id, answer) {
+async function answerFollowup(payload) {
   if (!GAS_WEB_APP_URL) {
-    return dummyAnswerFollowup(id, answer);
+    return dummyAnswerFollowup(payload);
   }
 
   const response = await fetch(GAS_WEB_APP_URL, {
@@ -429,7 +431,7 @@ async function answerFollowup(id, answer) {
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
     },
-    body: JSON.stringify({ action: "answerFollowup", id, answer }),
+    body: JSON.stringify({ action: "answerFollowup", ...payload }),
   });
 
   return parseApiResponse(response);
@@ -561,18 +563,17 @@ function showMessage(text, type) {
 
 async function submitFollowupAnswer(target) {
   const state = getFollowupUi(target);
-  const id = state.panel.dataset.itemId;
-  const answer = state.answer.value.trim();
+  const payload = buildFollowupPayload(state);
 
-  if (!id || !answer) {
-    state.answer.focus();
+  if (!payload) {
+    focusFirstFollowupInput(state);
     return;
   }
 
   setFollowupSubmitting(target, true);
   try {
-    const result = await answerFollowup(id, answer);
-    state.answer.value = "";
+    const result = await answerFollowup(payload);
+    clearFollowupInputs(state);
     hideFollowupPanel(target);
     updateLocalItem(result.item);
     if (target === "detail" && result.item) {
@@ -584,6 +585,7 @@ async function submitFollowupAnswer(target) {
     showParuruMessage("更新したで。", "success", "success");
   } catch (error) {
     setParuruState("error", { showStatus: true });
+    showMessage("更新できなかった。もう一回試して。", "error");
   } finally {
     setFollowupSubmitting(target, false);
   }
@@ -597,7 +599,10 @@ function renderFollowupPanel(target, item) {
   }
 
   state.panel.dataset.itemId = item.id;
+  state.panel.dataset.inputType = normalizeFollowupInputType(item.followupInputType, item.followupQuestion);
   state.question.textContent = item.followupQuestion;
+  state.fields.innerHTML = renderFollowupFields(state.panel.dataset.inputType);
+  state.submit.classList.toggle("is-hidden", state.panel.dataset.inputType === "yesno");
   state.panel.classList.remove("is-hidden");
 }
 
@@ -605,12 +610,17 @@ function hideFollowupPanel(target) {
   const state = getFollowupUi(target);
   state.panel.classList.add("is-hidden");
   state.panel.dataset.itemId = "";
+  state.panel.dataset.inputType = "";
+  clearFollowupInputs(state);
 }
 
 function setFollowupSubmitting(target, isSubmittingAnswer) {
   const state = getFollowupUi(target);
   state.submit.disabled = isSubmittingAnswer;
   state.later.disabled = isSubmittingAnswer;
+  state.fields.querySelectorAll("button").forEach((button) => {
+    button.disabled = isSubmittingAnswer;
+  });
   state.submit.textContent = isSubmittingAnswer ? "更新中..." : "回答する";
 }
 
@@ -619,7 +629,7 @@ function getFollowupUi(target) {
     return {
       panel: detailFollowup,
       question: detailFollowupQuestion,
-      answer: detailFollowupAnswer,
+      fields: detailFollowupFields,
       submit: detailFollowupSubmit,
       later: detailFollowupLater,
     };
@@ -628,10 +638,163 @@ function getFollowupUi(target) {
   return {
     panel: homeFollowup,
     question: homeFollowupQuestion,
-    answer: homeFollowupAnswer,
+    fields: homeFollowupFields,
     submit: homeFollowupSubmit,
     later: homeFollowupLater,
   };
+}
+
+function renderFollowupFields(inputType) {
+  if (inputType === "yesno") {
+    return `
+      <div class="followup-yesno">
+        <button type="button" data-followup-answer="はい">はい</button>
+        <button class="secondary-button" type="button" data-followup-answer="いいえ">いいえ</button>
+      </div>
+    `;
+  }
+
+  const fields = [];
+
+  if (inputType === "date" || inputType === "datetime") {
+    fields.push(`
+      <label class="followup-field">
+        <span>日付を選ぶ</span>
+        <input class="followup-date-input" type="date" data-followup-date>
+      </label>
+    `);
+  }
+
+  if (inputType === "time" || inputType === "datetime") {
+    fields.push(`
+      <label class="followup-field">
+        <span>時刻を選ぶ</span>
+        <input class="followup-time-input" type="time" data-followup-time>
+      </label>
+    `);
+  }
+
+  fields.push(`
+    <label class="followup-field">
+      <span>${inputType === "text" ? "回答" : "または自由入力"}</span>
+      <input class="followup-answer-input" type="text" placeholder="明日、来週月曜、夕方など" data-followup-answer-text>
+    </label>
+  `);
+
+  return fields.join("");
+}
+
+function buildFollowupPayload(state) {
+  const id = state.panel.dataset.itemId;
+  const inputType = state.panel.dataset.inputType || "text";
+  const answerDate = state.fields.querySelector("[data-followup-date]")?.value || "";
+  const answerTime = state.fields.querySelector("[data-followup-time]")?.value || "";
+  const answer = state.fields.querySelector("[data-followup-answer-text]")?.value.trim() || "";
+
+  if (!id || (!answerDate && !answerTime && !answer)) {
+    return null;
+  }
+
+  const payload = {
+    id,
+    answer,
+    followupInputType: inputType,
+  };
+
+  if (answerDate) {
+    payload.answerDate = answerDate;
+  }
+
+  if (answerTime) {
+    payload.answerTime = answerTime;
+  }
+
+  return payload;
+}
+
+function handleFollowupPanelClick(event, target) {
+  const button = event.target.closest("[data-followup-answer]");
+  if (!button) {
+    return;
+  }
+
+  const state = getFollowupUi(target);
+  const id = state.panel.dataset.itemId;
+  if (!id) {
+    return;
+  }
+
+  submitFollowupDirectAnswer(target, button.dataset.followupAnswer);
+}
+
+async function submitFollowupDirectAnswer(target, answer) {
+  const state = getFollowupUi(target);
+  const id = state.panel.dataset.itemId;
+  if (!id || !answer) {
+    return;
+  }
+
+  setFollowupSubmitting(target, true);
+  try {
+    const result = await answerFollowup({
+      id,
+      answer,
+      followupInputType: "yesno",
+    });
+    clearFollowupInputs(state);
+    hideFollowupPanel(target);
+    updateLocalItem(result.item);
+    if (activeView === "inbox") {
+      await loadInbox({ quiet: true });
+    }
+    showParuruMessage("更新したで。", "success", "success");
+  } catch (error) {
+    setParuruState("error", { showStatus: true });
+    showMessage("更新できなかった。もう一回試して。", "error");
+  } finally {
+    setFollowupSubmitting(target, false);
+  }
+}
+
+function clearFollowupInputs(state) {
+  state.fields.querySelectorAll("input").forEach((input) => {
+    input.value = "";
+  });
+}
+
+function focusFirstFollowupInput(state) {
+  state.fields.querySelector("input, button")?.focus();
+}
+
+function normalizeFollowupInputType(value, question) {
+  const allowedTypes = ["date", "datetime", "time", "text", "yesno"];
+  if (allowedTypes.includes(value)) {
+    return value;
+  }
+
+  return inferFollowupInputType(question);
+}
+
+function inferFollowupInputType(question) {
+  const text = String(question || "");
+
+  if (/何日の何時|いつ.*何時|日付.*時刻|訪問日.*何時|いつ通知/.test(text)) {
+    return "datetime";
+  }
+
+  if (/何時|時刻|何時まで|何時から/.test(text)) {
+    return "time";
+  }
+
+  if (/締切|いつまで|何日|予定日|いつ/.test(text)) {
+    return "date";
+  }
+
+  if (/はい|いいえ|必要|実行する|通知する|する？|必要？/.test(text)) {
+    return "yesno";
+  }
+
+  return "text";
 }
 
 function isFollowupNeeded(item) {
@@ -725,18 +888,20 @@ function dummyCreate(payload) {
   return Promise.resolve({ success: true, data: { id }, message: "saved" });
 }
 
-function dummyAnswerFollowup(id, answer) {
+function dummyAnswerFollowup(payload) {
   let updatedItem = null;
   const items = loadDummyItems().map((item) => {
-    if (item.id !== id) {
+    if (item.id !== payload.id) {
       return item;
     }
 
     updatedItem = {
       ...item,
-      dueDate: answer,
+      dueDate: payload.answerDate || item.dueDate || payload.answer || "",
+      dueTime: payload.answerTime || item.dueTime || "",
       needsFollowup: false,
       followupQuestion: "",
+      followupInputType: "",
       updatedAt: new Date().toISOString(),
     };
     return updatedItem;
@@ -771,4 +936,5 @@ function logOverflowElements() {
     .filter((element) => element.scrollWidth > viewportWidth)
     .forEach((element) => console.log("overflow:", element, element.scrollWidth));
 }
+
 

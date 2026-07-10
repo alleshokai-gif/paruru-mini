@@ -5,21 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260710-05">
-    <link rel="icon" href="./assets/icons/favicon.png?v=20260710-05" type="image/png">
-    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260710-05">
-    <link rel="stylesheet" href="./style.css?v=20260710-05">
+    <link rel="manifest" href="./manifest.json?v=20260710-06">
+    <link rel="icon" href="./assets/icons/favicon.png?v=20260710-06" type="image/png">
+    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260710-06">
+    <link rel="stylesheet" href="./style.css?v=20260710-06">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260710-05" alt="ぱるる">
+      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260710-06" alt="ぱるる">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">Loading...</p>
     </div>
 
     <main class="app-shell">
       <section class="paruru">
-        <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260710-05" alt="ぱるる">
+        <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260710-06" alt="ぱるる">
         <p class="paruru-line">……メモしとく？</p>
       </section>
 
@@ -66,10 +66,7 @@
         <section id="homeFollowup" class="followup-panel is-hidden" aria-live="polite">
           <p class="followup-label">確認したいこと</p>
           <p id="homeFollowupQuestion" class="followup-question"></p>
-          <label class="field">
-            <span>回答</span>
-            <input id="homeFollowupAnswer" type="text" placeholder="明日">
-          </label>
+          <div id="homeFollowupFields" class="followup-fields"></div>
           <div class="followup-actions">
             <button id="homeFollowupLater" class="secondary-button" type="button">あとで</button>
             <button id="homeFollowupSubmit" type="button">回答する</button>
@@ -146,10 +143,7 @@
         <section id="detailFollowup" class="followup-panel is-hidden" aria-live="polite">
           <p class="followup-label">確認したいこと</p>
           <p id="detailFollowupQuestion" class="followup-question"></p>
-          <label class="field">
-            <span>回答</span>
-            <input id="detailFollowupAnswer" type="text" placeholder="明日">
-          </label>
+          <div id="detailFollowupFields" class="followup-fields"></div>
           <div class="followup-actions">
             <button id="detailFollowupLater" class="secondary-button" type="button">あとで</button>
             <button id="detailFollowupSubmit" type="button">回答する</button>
@@ -175,9 +169,10 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260710-05" defer></script>
+    <script src="./app.js?v=20260710-06" defer></script>
   </body>
 </html>
+
 
 
 

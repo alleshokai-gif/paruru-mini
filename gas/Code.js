@@ -19,6 +19,7 @@ const HEADERS = [
   'tags',
   'needsFollowup',
   'followupQuestion',
+  'followupInputType',
   'aiSummary',
   'aiComment',
   'confidence',
@@ -107,6 +108,7 @@ function createItem_(body) {
     tags: normalizeTagsForSheet_(body.tags || ''),
     needsFollowup: normalizeBooleanForSheet_(body.needsFollowup),
     followupQuestion: body.followupQuestion || '',
+    followupInputType: getFollowupInputTypeForItem_(body),
     aiSummary: body.aiSummary || '',
     aiComment: body.aiComment || '',
     confidence: normalizeNumberForSheet_(body.confidence),
@@ -148,6 +150,7 @@ function createItemWithAI_(body) {
       aiComment: analysis.aiComment || '',
       tags: normalizeTagsForSheet_(analysis.tags || []),
       needsFollowup: normalizeBooleanForSheet_(analysis.needsFollowup),
+      followupInputType: getFollowupInputTypeForItem_(analysis),
       eventEnd: analysis.eventEnd || '',
       eventEndTime: analysis.eventEndTime || '',
       remindAt: analysis.remindAt || '',
@@ -175,12 +178,15 @@ function createItemWithAI_(body) {
 function answerFollowup_(body) {
   const id = String(body.id || '').trim();
   const answer = String(body.answer || '').trim();
+  const answerDate = String(body.answerDate || '').trim();
+  const answerTime = String(body.answerTime || '').trim();
+  const providedAnswer = answer || answerDate || answerTime;
 
   if (!id) {
     return json_({ success: false, status: 400, message: 'id is required' });
   }
 
-  if (!answer) {
+  if (!providedAnswer) {
     return json_({ success: false, status: 400, message: 'answer is required' });
   }
 
@@ -190,9 +196,21 @@ function answerFollowup_(body) {
       return json_({ success: false, message: 'not found' });
     }
 
-    const analysis = analyzeFollowupAnswerWithAI_(target.item, answer);
+    const inputType = normalizeFollowupInputType_(
+      body.followupInputType || target.item.followupInputType,
+      target.item.followupQuestion
+    );
+    const analysis = answerDate || answerTime
+      ? {}
+      : analyzeFollowupAnswerWithAI_(target.item, answer);
     const now = nowTokyoString_();
-    const updates = buildFollowupUpdates_(target.item, analysis, now);
+    const updates = buildFollowupUpdates_(target.item, analysis, {
+      answer: answer,
+      answerDate: answerDate,
+      answerTime: answerTime,
+      inputType: inputType,
+      updatedAt: now,
+    });
     updateRowFields_(target.sheet, target.rowNumber, target.index, updates);
 
     const updatedItem = Object.assign({}, target.item, updates);
@@ -233,6 +251,7 @@ function appendNewItem_(item) {
     tags: normalizeTagsForSheet_(item.tags || ''),
     needsFollowup: normalizeBooleanForSheet_(item.needsFollowup),
     followupQuestion: item.followupQuestion || '',
+    followupInputType: getFollowupInputTypeForItem_(item),
     aiSummary: item.aiSummary || '',
     aiComment: item.aiComment || '',
     confidence: normalizeNumberForSheet_(item.confidence),
@@ -280,6 +299,7 @@ function updateItem_(body) {
     'tags',
     'needsFollowup',
     'followupQuestion',
+    'followupInputType',
     'aiSummary',
     'aiComment',
     'confidence',
@@ -518,6 +538,13 @@ function normalizeValueForSheet_(field, value) {
     return normalizeNumberForSheet_(value);
   }
 
+  if (field === 'followupInputType') {
+    if (!value) {
+      return '';
+    }
+    return normalizeFollowupInputType_(value, '');
+  }
+
   return value;
 }
 
@@ -533,6 +560,69 @@ function normalizePriority_(value) {
   return priorities[normalized] || '';
 }
 
+function normalizeFollowupInputType_(value, question) {
+  const normalized = String(value || '').trim().toLowerCase();
+  const allowedTypes = ['date', 'datetime', 'time', 'text', 'yesno'];
+  if (allowedTypes.indexOf(normalized) !== -1) {
+    return normalized;
+  }
+
+  return inferFollowupInputType_(question);
+}
+
+function getFollowupInputTypeForItem_(item) {
+  if (!normalizeBooleanForSheet_(item.needsFollowup) || !item.followupQuestion) {
+    return '';
+  }
+
+  return normalizeFollowupInputType_(item.followupInputType, item.followupQuestion);
+}
+
+function inferFollowupInputType_(question) {
+  const text = String(question || '');
+
+  if (
+    text.indexOf('何日の何時') !== -1 ||
+    /いつ.*何時/.test(text) ||
+    /日付.*時刻/.test(text) ||
+    /訪問日.*何時/.test(text) ||
+    text.indexOf('いつ通知') !== -1
+  ) {
+    return 'datetime';
+  }
+
+  if (
+    text.indexOf('何時') !== -1 ||
+    text.indexOf('時刻') !== -1 ||
+    text.indexOf('何時まで') !== -1 ||
+    text.indexOf('何時から') !== -1
+  ) {
+    return 'time';
+  }
+
+  if (
+    text.indexOf('締切') !== -1 ||
+    text.indexOf('いつまで') !== -1 ||
+    text.indexOf('何日') !== -1 ||
+    text.indexOf('予定日') !== -1 ||
+    text.indexOf('いつ') !== -1
+  ) {
+    return 'date';
+  }
+
+  if (
+    text.indexOf('はい') !== -1 ||
+    text.indexOf('いいえ') !== -1 ||
+    text.indexOf('必要') !== -1 ||
+    text.indexOf('実行する') !== -1 ||
+    text.indexOf('通知する') !== -1
+  ) {
+    return 'yesno';
+  }
+
+  return 'text';
+}
+
 function enforceFollowupRules_(analysis, memo) {
   const normalizedAnalysis = Object.assign({}, analysis);
   const isImportantWorkTask = isImportantWorkTaskMemo_(memo);
@@ -546,6 +636,8 @@ function enforceFollowupRules_(analysis, memo) {
     normalizedAnalysis.needsFollowup = true;
     normalizedAnalysis.followupQuestion = normalizedAnalysis.followupQuestion || '締切はいつ？';
   }
+
+  normalizedAnalysis.followupInputType = getFollowupInputTypeForItem_(normalizedAnalysis);
 
   return normalizedAnalysis;
 }
@@ -632,6 +724,7 @@ function analyzeFollowupAnswerWithAI_(item, answer) {
     '元eventStart: ' + (item.eventStart || ''),
     '元eventStartTime: ' + (item.eventStartTime || ''),
     'followupQuestion: ' + (item.followupQuestion || ''),
+    'followupInputType: ' + (item.followupInputType || ''),
     'answer: ' + answer,
     '',
     '重要:',
@@ -644,13 +737,19 @@ function analyzeFollowupAnswerWithAI_(item, answer) {
   return analyzeMemoWithAI_(context);
 }
 
-function buildFollowupUpdates_(item, analysis, updatedAt) {
+function buildFollowupUpdates_(item, analysis, context) {
   const updates = {
-    updatedAt: updatedAt,
+    updatedAt: context.updatedAt,
     needsFollowup: false,
     followupQuestion: '',
-    confidence: normalizeNumberForSheet_(analysis.confidence),
+    followupInputType: '',
   };
+
+  if (typeof analysis.confidence !== 'undefined') {
+    updates.confidence = normalizeNumberForSheet_(analysis.confidence);
+  }
+
+  applyDirectFollowupAnswer_(updates, item, context);
 
   [
     'dueDate',
@@ -662,7 +761,7 @@ function buildFollowupUpdates_(item, analysis, updatedAt) {
     'remindAt',
     'aiSummary',
   ].forEach(function(field) {
-    if (analysis[field]) {
+    if (!updates[field] && analysis[field]) {
       updates[field] = analysis[field];
     }
   });
@@ -684,6 +783,62 @@ function buildFollowupUpdates_(item, analysis, updatedAt) {
   }
 
   return updates;
+}
+
+function applyDirectFollowupAnswer_(updates, item, context) {
+  const question = String(item.followupQuestion || '');
+  const inputType = context.inputType;
+
+  if (context.answerDate) {
+    if (isReminderQuestion_(question)) {
+      updates.remindAt = joinDateTime_(context.answerDate, context.answerTime);
+    } else if (isEventQuestion_(question, item)) {
+      updates.eventStart = context.answerDate;
+    } else {
+      updates.dueDate = context.answerDate;
+    }
+  }
+
+  if (context.answerTime) {
+    if (isReminderQuestion_(question)) {
+      updates.remindAt = joinDateTime_(context.answerDate || item.dueDate || item.eventStart, context.answerTime);
+    } else if (isEventQuestion_(question, item) || inputType === 'datetime') {
+      updates.eventStartTime = context.answerTime;
+    } else {
+      updates.dueTime = context.answerTime;
+    }
+  }
+
+  if (inputType === 'yesno' && context.answer) {
+    updates.aiComment = 'Follow-up回答: ' + context.answer;
+  }
+}
+
+function isEventQuestion_(question, item) {
+  const text = question + ' ' + String(item.memo || '') + ' ' + String(item.type || '');
+  return (
+    text.indexOf('訪問') !== -1 ||
+    text.indexOf('予定') !== -1 ||
+    text.indexOf('授業参観') !== -1 ||
+    text.indexOf('何時から') !== -1 ||
+    text.indexOf('event') !== -1
+  );
+}
+
+function isReminderQuestion_(question) {
+  return (
+    question.indexOf('通知') !== -1 ||
+    question.indexOf('リマインド') !== -1 ||
+    question.indexOf('知らせ') !== -1
+  );
+}
+
+function joinDateTime_(dateValue, timeValue) {
+  if (dateValue && timeValue) {
+    return dateValue + ' ' + timeValue;
+  }
+
+  return dateValue || timeValue || '';
 }
 
 function nowTokyoString_() {
@@ -876,6 +1031,11 @@ function analyzeMemoWithAI_(memo) {
       '・タスク管理上、重要な期限などが不足している場合のみ確認質問を作る',
       '・categoryが仕事、typeがtask、dueDateとdueTimeがどちらも空で、相手・提出物・送付先・目的から期限確認が重要な業務タスクなら、原則としてneedsFollowupをtrueにする',
       '・その場合のfollowupQuestionは「締切はいつ？」または文脈に合う自然な短い質問にする',
+      '・needsFollowupがtrueの場合、followupInputTypeをdate/datetime/time/text/yesnoから選ぶ',
+      '・締切、いつまで、何日、予定日を聞く質問はdateを基本にする',
+      '・何時、時刻を聞く質問はtimeを基本にする',
+      '・何日の何時、いつ通知する、日付と時刻の両方が必要な質問はdatetimeを基本にする',
+      '・はい/いいえ、必要？、実行する？、通知する？の質問はyesnoを基本にする',
       '・買い物、単なるメモ、アイデア、締切がなくても成立する軽微な家庭タスクでは期限確認を求めない',
       '・titleは30文字以内の簡潔な表現にする',
       '・confidenceは0から1の数値にする'
@@ -990,6 +1150,18 @@ function analyzeMemoWithAI_(memo) {
               description: 'needsFollowupがtrueの場合だけ、ユーザーに確認する短い質問。不明な仕事タスクの締切確認は「締切はいつ？」を基本にする。'
             },
 
+            followupInputType: {
+              type: 'string',
+              enum: [
+                'date',
+                'datetime',
+                'time',
+                'text',
+                'yesno'
+              ],
+              description: 'followupQuestionに回答しやすい入力形式。締切/いつまで/何日/予定日はdate、何時/時刻はtime、日付と時刻の両方が必要ならdatetime、はい/いいえで答える質問はyesno、それ以外はtext。'
+            },
+
             aiSummary: {
               type: 'string'
             },
@@ -1016,6 +1188,7 @@ function analyzeMemoWithAI_(memo) {
             'tags',
             'needsFollowup',
             'followupQuestion',
+            'followupInputType',
             'aiSummary',
             'confidence'
           ],
