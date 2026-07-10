@@ -2,14 +2,27 @@
 const HEADERS = [
   'id',
   'createdAt',
+  'updatedAt',
   'title',
   'memo',
   'category',
+  'type',
   'status',
   'priority',
-  'source',
+  'dueDate',
+  'dueTime',
+  'eventStart',
+  'eventStartTime',
+  'eventEnd',
+  'eventEndTime',
+  'remindAt',
   'tags',
+  'needsFollowup',
+  'followupQuestion',
+  'aiSummary',
   'aiComment',
+  'confidence',
+  'source',
 ];
 
 function doGet(e) {
@@ -41,6 +54,10 @@ function doPost(e) {
     const body = parseBody_(e);
     const action = body.action || 'create';
 
+    if (action === 'createWithAI') {
+      return createItemWithAI_(body);
+    }
+
     if (action === 'update') {
       return updateItem_(body);
     }
@@ -68,28 +85,124 @@ function createItem_(body) {
     });
   }
 
-  const id = Utilities.getUuid();
-  const row = [
-    id,
-    new Date(),
-    body.title || memo.slice(0, 20),
-    memo,
-    body.category || '未分類',
-    'Inbox',
-    body.priority || 'Normal',
-    'PWA',
-    body.tags || '',
-    '',
-  ];
-
-  const sheet = getInboxSheet_();
-  sheet.appendRow(row);
+  const item = appendNewItem_({
+    title: body.title || memo.slice(0, 20),
+    memo: memo,
+    category: body.category || '未分類',
+    type: body.type || '',
+    status: 'Inbox',
+    priority: body.priority || 'Normal',
+    dueDate: body.dueDate || '',
+    dueTime: body.dueTime || '',
+    eventStart: body.eventStart || '',
+    eventStartTime: body.eventStartTime || '',
+    eventEnd: body.eventEnd || '',
+    eventEndTime: body.eventEndTime || '',
+    remindAt: body.remindAt || '',
+    source: 'PWA',
+    tags: normalizeTagsForSheet_(body.tags || ''),
+    needsFollowup: normalizeBooleanForSheet_(body.needsFollowup),
+    followupQuestion: body.followupQuestion || '',
+    aiSummary: body.aiSummary || '',
+    aiComment: body.aiComment || '',
+    confidence: normalizeNumberForSheet_(body.confidence),
+    createdAt: nowTokyoString_(),
+    updatedAt: nowTokyoString_(),
+  });
 
   return json_({
     success: true,
-    data: { id },
+    data: { id: item.id },
     message: 'saved',
   });
+}
+
+function createItemWithAI_(body) {
+  const memo = String(body.memo || '').trim();
+
+  if (!memo) {
+    return json_({
+      success: false,
+      status: 400,
+      message: 'memo is required',
+    });
+  }
+
+  try {
+    const analysis = analyzeMemoWithAI_(memo);
+    const now = nowTokyoString_();
+    const itemInput = Object.assign({}, analysis, {
+      memo: memo,
+      category: body.category || analysis.category,
+      priority: body.priority || analysis.priority,
+      status: 'inbox',
+      source: 'ai',
+      createdAt: now,
+      updatedAt: now,
+      aiComment: analysis.aiComment || '',
+      tags: normalizeTagsForSheet_(analysis.tags || []),
+      needsFollowup: normalizeBooleanForSheet_(analysis.needsFollowup),
+      eventEnd: analysis.eventEnd || '',
+      eventEndTime: analysis.eventEndTime || '',
+      remindAt: analysis.remindAt || '',
+      confidence: normalizeNumberForSheet_(analysis.confidence),
+    });
+
+    const savedItem = appendNewItem_(itemInput);
+    const responseItem = Object.assign({}, analysis, itemInput, savedItem, {
+      updatedAt: now,
+    });
+
+    return json_({
+      success: true,
+      item: responseItem,
+    });
+  } catch (error) {
+    return json_({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+function appendNewItem_(item) {
+  const memo = String(item.memo || '').trim();
+  const now = nowTokyoString_();
+  const createdAt = item.createdAt || now;
+  const savedItem = {
+    id: Utilities.getUuid(),
+    createdAt: createdAt,
+    updatedAt: item.updatedAt || createdAt,
+    title: item.title || memo.slice(0, 20),
+    memo: memo,
+    category: item.category || '未分類',
+    type: item.type || '',
+    status: item.status || 'Inbox',
+    priority: item.priority || 'Normal',
+    dueDate: item.dueDate || '',
+    dueTime: item.dueTime || '',
+    eventStart: item.eventStart || '',
+    eventStartTime: item.eventStartTime || '',
+    eventEnd: item.eventEnd || '',
+    eventEndTime: item.eventEndTime || '',
+    remindAt: item.remindAt || '',
+    tags: normalizeTagsForSheet_(item.tags || ''),
+    needsFollowup: normalizeBooleanForSheet_(item.needsFollowup),
+    followupQuestion: item.followupQuestion || '',
+    aiSummary: item.aiSummary || '',
+    aiComment: item.aiComment || '',
+    confidence: normalizeNumberForSheet_(item.confidence),
+    source: item.source || 'PWA',
+  };
+
+  const sheet = getInboxSheet_();
+  const actualHeaders = getActualHeaders_(sheet);
+  const row = actualHeaders.map(function(header) {
+    return header ? savedItem[header] : '';
+  });
+  sheet.appendRow(row);
+
+  return savedItem;
 }
 
 function updateItem_(body) {
@@ -105,10 +218,37 @@ function updateItem_(body) {
     return json_({ success: false, message: 'not found' });
   }
 
-  const allowedFields = ['title', 'memo', 'category', 'status', 'priority', 'tags', 'aiComment'];
+  const allowedFields = [
+    'updatedAt',
+    'title',
+    'memo',
+    'category',
+    'type',
+    'status',
+    'priority',
+    'dueDate',
+    'dueTime',
+    'eventStart',
+    'eventStartTime',
+    'eventEnd',
+    'eventEndTime',
+    'remindAt',
+    'tags',
+    'needsFollowup',
+    'followupQuestion',
+    'aiSummary',
+    'aiComment',
+    'confidence',
+    'source',
+  ];
+  if (!Object.prototype.hasOwnProperty.call(body, 'updatedAt')) {
+    body.updatedAt = nowTokyoString_();
+  }
   allowedFields.forEach(function(field) {
     if (Object.prototype.hasOwnProperty.call(body, field)) {
-      sheet.getRange(rowNumber, index[field] + 1).setValue(body[field]);
+      if (Object.prototype.hasOwnProperty.call(index, field)) {
+        sheet.getRange(rowNumber, index[field] + 1).setValue(normalizeValueForSheet_(field, body[field]));
+      }
     }
   });
 
@@ -148,12 +288,16 @@ function listInboxItems_() {
     return [];
   }
 
-  const values = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
+  const headers = getActualHeaders_(sheet);
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
   return values
     .filter(function(row) { return row[0]; })
     .map(function(row) {
       const item = {};
-      HEADERS.forEach(function(header, index) {
+      headers.forEach(function(header, index) {
+        if (!header) {
+          return;
+        }
         const value = row[index];
         item[header] = value instanceof Date ? value.toISOString() : value;
       });
@@ -190,22 +334,43 @@ function getOrCreateSpreadsheet_() {
 }
 
 function ensureHeader_(sheet) {
-  const firstRow = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
-  const hasHeader = HEADERS.every(function(header, index) {
-    return firstRow[index] === header;
+  const lastColumn = Math.max(sheet.getLastColumn(), 1);
+  const firstRow = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  const currentHeaders = firstRow.filter(function(header) {
+    return header;
   });
 
-  if (!hasHeader) {
+  if (currentHeaders.length === 0) {
     sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+    sheet.setFrozenRows(1);
+    return;
+  }
+
+  const missingHeaders = HEADERS.filter(function(header) {
+    return currentHeaders.indexOf(header) === -1;
+  });
+
+  if (missingHeaders.length > 0) {
+    sheet
+      .getRange(1, lastColumn + 1, 1, missingHeaders.length)
+      .setValues([missingHeaders]);
     sheet.setFrozenRows(1);
   }
 }
 
 function getHeaderIndex_() {
-  return HEADERS.reduce(function(index, header, position) {
-    index[header] = position;
+  const sheet = getInboxSheet_();
+  return getActualHeaders_(sheet).reduce(function(index, header, position) {
+    if (header) {
+      index[header] = position;
+    }
     return index;
   }, {});
+}
+
+function getActualHeaders_(sheet) {
+  const lastColumn = Math.max(sheet.getLastColumn(), HEADERS.length);
+  return sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
 }
 
 function findRowNumberById_(sheet, id, idColumnNumber) {
@@ -224,8 +389,405 @@ function findRowNumberById_(sheet, id, idColumnNumber) {
   return 0;
 }
 
+function normalizeTagsForSheet_(tags) {
+  if (Array.isArray(tags)) {
+    return JSON.stringify(tags);
+  }
+
+  if (tags && typeof tags === 'object') {
+    return JSON.stringify(tags);
+  }
+
+  return tags || '';
+}
+
+function normalizeBooleanForSheet_(value) {
+  if (value === true || value === false) {
+    return value;
+  }
+
+  if (value === 'true' || value === 'TRUE') {
+    return true;
+  }
+
+  if (value === 'false' || value === 'FALSE') {
+    return false;
+  }
+
+  return false;
+}
+
+function normalizeNumberForSheet_(value) {
+  if (value === '' || value === null || typeof value === 'undefined') {
+    return '';
+  }
+
+  const numberValue = Number(value);
+  return Number.isNaN(numberValue) ? '' : numberValue;
+}
+
+function normalizeValueForSheet_(field, value) {
+  if (field === 'tags') {
+    return normalizeTagsForSheet_(value);
+  }
+
+  if (field === 'needsFollowup') {
+    return normalizeBooleanForSheet_(value);
+  }
+
+  if (field === 'confidence') {
+    return normalizeNumberForSheet_(value);
+  }
+
+  return value;
+}
+
+function nowTokyoString_() {
+  return Utilities.formatDate(
+    new Date(),
+    'Asia/Tokyo',
+    'yyyy-MM-dd HH:mm:ss'
+  );
+}
+
 function json_(payload) {
   return ContentService
     .createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function testOpenAIConnection() {
+  const apiKey = PropertiesService
+    .getScriptProperties()
+    .getProperty('OPENAI_API_KEY');
+
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY が設定されてへんで');
+  }
+
+  const url = 'https://api.openai.com/v1/responses';
+
+  const payload = {
+    model: 'gpt-5.5',
+    input: 'あなたはAI秘書ぱるるです。「接続成功やで」とだけ返してください。',
+    max_output_tokens: 50
+  };
+
+  const response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      Authorization: 'Bearer ' + apiKey
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  const statusCode = response.getResponseCode();
+  const responseText = response.getContentText();
+
+  console.log('HTTP Status: ' + statusCode);
+  console.log(responseText);
+
+  if (statusCode < 200 || statusCode >= 300) {
+    throw new Error(
+      'OpenAI APIエラー\n' +
+      'HTTP Status: ' + statusCode + '\n' +
+      responseText
+    );
+  }
+
+  const data = JSON.parse(responseText);
+  const outputText = extractOpenAIOutputText_(data);
+
+  console.log('ぱるる: ' + outputText);
+
+  return outputText;
+}
+
+
+function extractOpenAIOutputText_(responseData) {
+  const output = responseData.output || [];
+
+  for (const item of output) {
+    if (item.type !== 'message') continue;
+
+    const content = item.content || [];
+
+    for (const part of content) {
+      if (part.type === 'output_text' && part.text) {
+        return part.text;
+      }
+    }
+  }
+
+  throw new Error('OpenAIの応答本文が見つからへんかった');
+}
+
+function testPaluruAIAnalysis() {
+  const memo = '7月20日13時半から授業参観';
+
+  const result = analyzeMemoWithAI_(memo);
+
+  console.log('AI解析結果');
+  console.log(JSON.stringify(result, null, 2));
+
+  return result;
+}
+
+function testCreateItemWithAI_() {
+  const response = createItemWithAI_({
+    memo: '7月20日13時半から授業参観',
+  });
+  const result = JSON.parse(response.getContent());
+
+  console.log(JSON.stringify(result, null, 2));
+
+  if (result.success && result.item) {
+    console.log(JSON.stringify({
+      id: result.item.id,
+      title: result.item.title,
+      category: result.item.category,
+      type: result.item.type,
+      eventStart: result.item.eventStart,
+      eventStartTime: result.item.eventStartTime,
+      aiSummary: result.item.aiSummary,
+      confidence: result.item.confidence,
+    }, null, 2));
+  }
+
+  return result;
+}
+
+
+function analyzeMemoWithAI_(memo) {
+  const apiKey = PropertiesService
+    .getScriptProperties()
+    .getProperty('OPENAI_API_KEY');
+
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY が設定されてへんで');
+  }
+
+  if (!memo || !String(memo).trim()) {
+    throw new Error('解析するメモが空やで');
+  }
+
+  const now = new Date();
+  const timeZone = Session.getScriptTimeZone() || 'Asia/Tokyo';
+
+  const currentDateTime = Utilities.formatDate(
+    now,
+    timeZone,
+    'yyyy-MM-dd HH:mm:ss'
+  );
+
+  const payload = {
+    model: 'gpt-5.5',
+
+    instructions: [
+      'あなたは家庭用AI秘書「ぱるる」です。',
+      'ユーザーが入力した雑多なメモを、指定されたJSON形式に整理してください。',
+      '',
+      '現在日時: ' + currentDateTime,
+      'タイムゾーン: ' + timeZone,
+      '',
+      '重要ルール:',
+      '・日本語で解析する',
+      '・原文にない情報を勝手に作らない',
+      '・不明な文字列項目は空文字にする',
+      '・年が省略された日付は、現在日時を基準に次に来る未来の日付として解釈する',
+      '・categoryとtypeとpriorityは指定候補から選ぶ',
+      '・情報不足でも管理できる場合は質問しない',
+      '・タスク管理上、重要な期限などが不足している場合のみ確認質問を作る',
+      '・titleは30文字以内の簡潔な表現にする',
+      '・confidenceは0から1の数値にする'
+    ].join('\n'),
+
+    input: String(memo).trim(),
+
+    reasoning: {
+      effort: 'low'
+    },
+
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'paluru_memo_analysis',
+        strict: true,
+
+        schema: {
+          type: 'object',
+
+          properties: {
+            title: {
+              type: 'string'
+            },
+
+            category: {
+              type: 'string',
+              enum: [
+                '仕事',
+                '学校',
+                '家庭',
+                '買い物',
+                '健康',
+                'お金',
+                '予定',
+                'アイデア',
+                'その他'
+              ]
+            },
+
+            type: {
+              type: 'string',
+              enum: [
+                'note',
+                'task',
+                'event',
+                'shopping',
+                'idea',
+                'reminder'
+              ]
+            },
+
+            priority: {
+              type: 'string',
+              enum: [
+                'Low',
+                'Normal',
+                'High',
+                'Urgent'
+              ]
+            },
+
+            dueDate: {
+              type: 'string',
+              description: '締切日。yyyy-MM-dd形式。不明なら空文字'
+            },
+
+            dueTime: {
+              type: 'string',
+              description: '締切時刻。HH:mm形式。不明なら空文字'
+            },
+
+            eventStart: {
+              type: 'string',
+              description: '予定開始日。yyyy-MM-dd形式。不明なら空文字'
+            },
+
+            eventStartTime: {
+              type: 'string',
+              description: '予定開始時刻。HH:mm形式。不明なら空文字'
+            },
+
+            eventEnd: {
+              type: 'string',
+              description: '予定終了日。yyyy-MM-dd形式。不明なら空文字'
+            },
+
+            eventEndTime: {
+              type: 'string',
+              description: '予定終了時刻。HH:mm形式。不明なら空文字'
+            },
+
+            remindAt: {
+              type: 'string',
+              description: 'リマインド日時。yyyy-MM-dd HH:mm形式。不明なら空文字'
+            },
+
+            tags: {
+              type: 'array',
+              items: {
+                type: 'string'
+              }
+            },
+
+            needsFollowup: {
+              type: 'boolean'
+            },
+
+            followupQuestion: {
+              type: 'string'
+            },
+
+            aiSummary: {
+              type: 'string'
+            },
+
+            confidence: {
+              type: 'number',
+              minimum: 0,
+              maximum: 1
+            }
+          },
+
+          required: [
+            'title',
+            'category',
+            'type',
+            'priority',
+            'dueDate',
+            'dueTime',
+            'eventStart',
+            'eventStartTime',
+            'eventEnd',
+            'eventEndTime',
+            'remindAt',
+            'tags',
+            'needsFollowup',
+            'followupQuestion',
+            'aiSummary',
+            'confidence'
+          ],
+
+          additionalProperties: false
+        }
+      }
+    },
+
+    max_output_tokens: 500
+  };
+
+  const response = UrlFetchApp.fetch(
+    'https://api.openai.com/v1/responses',
+    {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        Authorization: 'Bearer ' + apiKey
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    }
+  );
+
+  const statusCode = response.getResponseCode();
+  const responseText = response.getContentText();
+
+  console.log('HTTP Status: ' + statusCode);
+
+  if (statusCode < 200 || statusCode >= 300) {
+    console.error(responseText);
+
+    throw new Error(
+      'OpenAI APIエラー\n' +
+      'HTTP Status: ' + statusCode + '\n' +
+      responseText
+    );
+  }
+
+  const responseData = JSON.parse(responseText);
+  const outputText = extractOpenAIOutputText_(responseData);
+
+  try {
+    return JSON.parse(outputText);
+  } catch (error) {
+    console.error('AI出力: ' + outputText);
+
+    throw new Error(
+      'AIの返答をJSONとして読めんかったで: ' +
+      error.message
+    );
+  }
 }

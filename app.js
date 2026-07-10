@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260709-03";
+const ASSET_VERSION = "v20260710-01";
 const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PARURU_STATES = {
@@ -14,7 +14,7 @@ const PARURU_STATES = {
   },
   sending: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`),
-    line: "ちょっと待って。",
+    line: "ぱるるが整理中…",
   },
   success: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_smile.png`),
@@ -78,10 +78,14 @@ const DUMMY_STORAGE_KEY = "paruru-mini-inbox";
 let inboxItems = [];
 let selectedItemId = "";
 let activeView = "home";
+let isSubmitting = false;
+let categoryExplicitlySelected = false;
+let priorityExplicitlySelected = false;
 
 const form = document.querySelector("#inboxForm");
 const memoInput = document.querySelector("#memo");
 const categoryInput = document.querySelector("#category");
+const priorityInputs = document.querySelectorAll('input[name="priority"]');
 const paruruImage = document.querySelector("#paruruImage");
 const paruruLine = document.querySelector(".paruru-line");
 const submitButton = document.querySelector("#submitButton");
@@ -119,8 +123,25 @@ window.addEventListener("load", () => {
   logOverflowElements();
 });
 
+categoryInput.addEventListener("change", () => {
+  categoryExplicitlySelected = categoryInput.value !== "未分類";
+});
+
+priorityInputs.forEach((input) => {
+  input.addEventListener("click", () => {
+    priorityExplicitlySelected = true;
+  });
+  input.addEventListener("change", () => {
+    priorityExplicitlySelected = true;
+  });
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+
+  if (isSubmitting) {
+    return;
+  }
 
   const memo = memoInput.value.trim();
   if (!memo) {
@@ -129,27 +150,18 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  const inferredCategory = inferCategory(memo, categoryInput.value);
-  const payload = {
-    memo,
-    category: inferredCategory || categoryInput.value,
-    priority: new FormData(form).get("priority") || "Normal",
-    tags: "",
-  };
+  const payload = buildCreateWithAIPayload(memo);
 
   setSending(true);
   setParuruState("sending");
-  showMessage("", "");
+  showMessage(PARURU_STATES.sending.line, "");
 
   try {
-    await saveMemo(payload);
+    const result = await saveMemo(payload);
     form.reset();
     categoryInput.value = "未分類";
-    if (inferredCategory) {
-      showParuruMessage(`${inferredCategory}っぽいね。入れとく。`, "success", "success");
-    } else {
-      setParuruState("success", { showStatus: true });
-    }
+    resetExplicitSelectionState();
+    showSuccessResult(result);
     if (activeView === "inbox") {
       await loadInbox();
     }
@@ -274,6 +286,23 @@ async function saveMemo(payload) {
   return parseApiResponse(response);
 }
 
+function buildCreateWithAIPayload(memo) {
+  const payload = {
+    action: "createWithAI",
+    memo,
+  };
+
+  if (categoryExplicitlySelected && categoryInput.value) {
+    payload.category = categoryInput.value;
+  }
+
+  if (priorityExplicitlySelected) {
+    payload.priority = new FormData(form).get("priority") || "Normal";
+  }
+
+  return payload;
+}
+
 async function fetchInboxItems() {
   if (!GAS_WEB_APP_URL) {
     return loadDummyItems().filter((item) => item.status !== "Done");
@@ -375,8 +404,9 @@ function openDetail(id) {
 }
 
 function setSending(isSending) {
+  isSubmitting = isSending;
   submitButton.disabled = isSending;
-  submitButton.textContent = isSending ? "預け中..." : "ぱるるに預ける";
+  submitButton.textContent = isSending ? "ぱるるが整理中…" : "ぱるるに預ける";
 }
 
 function setParuruState(stateName, options = {}) {
@@ -394,6 +424,20 @@ function showParuruMessage(line, type, imageState = "normal") {
   paruruImage.src = state.image;
   paruruLine.textContent = line;
   showMessage(line, type || "");
+}
+
+function showSuccessResult(result) {
+  const followupQuestion = result?.item?.followupQuestion;
+  setParuruState("success", { showStatus: true });
+
+  if (followupQuestion) {
+    showMessage(`確認したいこと: ${followupQuestion}`, "success");
+  }
+}
+
+function resetExplicitSelectionState() {
+  categoryExplicitlySelected = false;
+  priorityExplicitlySelected = false;
 }
 
 function showMessage(text, type) {
@@ -458,16 +502,24 @@ function dummyCreate(payload) {
   const item = {
     id,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     title: payload.memo.slice(0, 20),
     memo: payload.memo,
-    category: payload.category,
-    status: "Inbox",
+    category: payload.category || "未分類",
+    type: "",
+    status: payload.action === "createWithAI" ? "inbox" : "Inbox",
     priority: payload.priority || "Normal",
-    source: "PWA",
-    tags: payload.tags || "",
+    source: payload.action === "createWithAI" ? "ai" : "PWA",
+    tags: payload.tags || "[]",
+    followupQuestion: "",
+    aiSummary: "",
     aiComment: "",
+    confidence: "",
   };
   saveDummyItems([item, ...loadDummyItems()]);
+  if (payload.action === "createWithAI") {
+    return Promise.resolve({ success: true, item });
+  }
   return Promise.resolve({ success: true, data: { id }, message: "saved" });
 }
 
