@@ -24,6 +24,20 @@ const HEADERS = [
   'aiComment',
   'confidence',
   'source',
+  'userId',
+  'userDisplayName',
+  'deviceId',
+  'visibility',
+  'calendarTitle',
+  'calendarSyncStatus',
+  'calendarId',
+  'calendarEventId',
+  'calendarName',
+  'calendarSyncedAt',
+  'calendarStart',
+  'calendarEnd',
+  'calendarAllDay',
+  'calendarLastError',
 ];
 
 function doGet(e) {
@@ -61,6 +75,10 @@ function doPost(e) {
 
     if (action === 'answerFollowup') {
       return answerFollowup_(body);
+    }
+
+    if (action === 'syncCalendar') {
+      return syncCalendar_(body);
     }
 
     if (action === 'update') {
@@ -112,6 +130,20 @@ function createItem_(body) {
     aiSummary: body.aiSummary || '',
     aiComment: body.aiComment || '',
     confidence: normalizeNumberForSheet_(body.confidence),
+    userId: body.userId || '',
+    userDisplayName: body.userDisplayName || '',
+    deviceId: body.deviceId || '',
+    visibility: normalizeVisibility_(body.visibility),
+    calendarTitle: body.calendarTitle || '',
+    calendarSyncStatus: getInitialCalendarSyncStatus_(body),
+    calendarId: '',
+    calendarEventId: '',
+    calendarName: '',
+    calendarSyncedAt: '',
+    calendarStart: '',
+    calendarEnd: '',
+    calendarAllDay: false,
+    calendarLastError: '',
     createdAt: nowTokyoString_(),
     updatedAt: nowTokyoString_(),
   });
@@ -155,7 +187,22 @@ function createItemWithAI_(body) {
       eventEndTime: analysis.eventEndTime || '',
       remindAt: analysis.remindAt || '',
       confidence: normalizeNumberForSheet_(analysis.confidence),
+      userId: body.userId || '',
+      userDisplayName: body.userDisplayName || '',
+      deviceId: body.deviceId || '',
+      visibility: normalizeVisibility_(body.visibility),
     });
+
+    itemInput.calendarTitle = body.calendarTitle || '';
+    itemInput.calendarSyncStatus = getInitialCalendarSyncStatus_(itemInput);
+    itemInput.calendarId = '';
+    itemInput.calendarEventId = '';
+    itemInput.calendarName = '';
+    itemInput.calendarSyncedAt = '';
+    itemInput.calendarStart = '';
+    itemInput.calendarEnd = '';
+    itemInput.calendarAllDay = false;
+    itemInput.calendarLastError = '';
 
     const savedItem = appendNewItem_(itemInput);
     Logger.log('[createWithAI] final priority: ' + savedItem.priority);
@@ -227,6 +274,131 @@ function answerFollowup_(body) {
   }
 }
 
+function syncCalendar_(body) {
+  const id = String(body.id || '').trim();
+  if (!id) {
+    return json_({ success: false, status: 400, message: 'id is required' });
+  }
+
+  const lock = LockService.getScriptLock();
+  var target = null;
+
+  try {
+    lock.waitLock(10000);
+    target = getItemById_(id);
+    if (!target) {
+      return json_({ success: false, status: 404, message: 'not found' });
+    }
+
+    if (String(target.item.type || '').toLowerCase() !== 'event') {
+      return json_({ success: false, status: 400, message: 'calendar sync requires event item' });
+    }
+
+    if (target.item.calendarEventId && target.item.calendarSyncStatus === 'synced') {
+      return json_({
+        success: true,
+        item: buildCalendarResponseItem_(target.item),
+        message: 'calendar already synced',
+      });
+    }
+
+    const calendarTarget = normalizeCalendarTarget_(body.calendarTarget || target.item.defaultCalendar || 'family');
+    const calendarConfig = getCalendarConfig_(calendarTarget);
+    const calendar = getCalendarByConfig_(calendarConfig);
+    const calendarName = calendar.getName();
+    const startDate = String(body.startDate || target.item.eventStart || '').trim();
+    const startTime = String(body.startTime || target.item.eventStartTime || '').trim();
+    const endDate = String(body.endDate || target.item.eventEnd || startDate).trim();
+    const endTime = String(body.endTime || target.item.eventEndTime || '').trim();
+    const allDay = normalizeBooleanForSheet_(body.allDay);
+
+    if (!startDate) {
+      throw new Error('startDate is required');
+    }
+
+    const suffix = getCalendarSuffix_(body, target.item);
+    const baseTitle = String(body.calendarTitle || target.item.calendarTitle || target.item.title || target.item.memo || '').trim();
+    const calendarTitle = buildCalendarTitle_(baseTitle, suffix);
+    if (!calendarTitle) {
+      throw new Error('calendarTitle is required');
+    }
+
+    var event;
+    var calendarStart;
+    var calendarEnd;
+
+    if (allDay) {
+      const start = parseDateOnly_(startDate);
+      const endDateOnly = parseDateOnly_(endDate || startDate);
+      if (endDateOnly.getTime() < start.getTime()) {
+        throw new Error('終了日は開始日以降にしてな');
+      }
+      const end = addDays_(endDateOnly, 1);
+      event = calendar.createAllDayEvent(calendarTitle, start, end, {
+        description: buildCalendarDescription_(id, body, target.item),
+      });
+      calendarStart = startDate;
+      calendarEnd = endDate || startDate;
+    } else {
+      const startDateTime = parseTokyoDateTime_(startDate, startTime);
+      const normalizedEndDate = endDate || startDate;
+      const normalizedEndTime = endTime || addMinutesToTime_(startTime, 60);
+      const endDateTime = parseTokyoDateTime_(normalizedEndDate, normalizedEndTime);
+      if (endDateTime.getTime() <= startDateTime.getTime()) {
+        throw new Error('終了日時は開始日時より後にしてな');
+      }
+
+      event = calendar.createEvent(calendarTitle, startDateTime, endDateTime, {
+        description: buildCalendarDescription_(id, body, target.item),
+      });
+      calendarStart = startDate + ' ' + startTime;
+      calendarEnd = normalizedEndDate + ' ' + normalizedEndTime;
+    }
+
+    const now = nowTokyoString_();
+    const updates = {
+      calendarTitle: calendarTitle,
+      calendarSyncStatus: 'synced',
+      calendarId: calendarConfig.calendarId,
+      calendarEventId: event.getId(),
+      calendarName: calendarName,
+      calendarSyncedAt: now,
+      calendarStart: calendarStart,
+      calendarEnd: calendarEnd,
+      calendarAllDay: allDay,
+      calendarLastError: '',
+      updatedAt: now,
+    };
+    updateRowFields_(target.sheet, target.rowNumber, target.index, updates);
+
+    return json_({
+      success: true,
+      item: buildCalendarResponseItem_(Object.assign({}, target.item, updates)),
+      message: 'calendar synced',
+    });
+  } catch (error) {
+    if (target) {
+      updateRowFields_(target.sheet, target.rowNumber, target.index, {
+        calendarSyncStatus: 'failed',
+        calendarLastError: sanitizeCalendarError_(error),
+        updatedAt: nowTokyoString_(),
+      });
+    }
+
+    return json_({
+      success: false,
+      status: 400,
+      message: sanitizeCalendarError_(error),
+    });
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (releaseError) {
+      // Lock may not have been acquired if waitLock failed.
+    }
+  }
+}
+
 function appendNewItem_(item) {
   const memo = String(item.memo || '').trim();
   const now = nowTokyoString_();
@@ -256,6 +428,20 @@ function appendNewItem_(item) {
     aiComment: item.aiComment || '',
     confidence: normalizeNumberForSheet_(item.confidence),
     source: item.source || 'PWA',
+    userId: item.userId || '',
+    userDisplayName: item.userDisplayName || '',
+    deviceId: item.deviceId || '',
+    visibility: normalizeVisibility_(item.visibility),
+    calendarTitle: item.calendarTitle || '',
+    calendarSyncStatus: item.calendarSyncStatus || getInitialCalendarSyncStatus_(item),
+    calendarId: item.calendarId || '',
+    calendarEventId: item.calendarEventId || '',
+    calendarName: item.calendarName || '',
+    calendarSyncedAt: item.calendarSyncedAt || '',
+    calendarStart: item.calendarStart || '',
+    calendarEnd: item.calendarEnd || '',
+    calendarAllDay: normalizeBooleanForSheet_(item.calendarAllDay),
+    calendarLastError: item.calendarLastError || '',
   };
 
   const sheet = getInboxSheet_();
@@ -304,6 +490,10 @@ function updateItem_(body) {
     'aiComment',
     'confidence',
     'source',
+    'userId',
+    'userDisplayName',
+    'deviceId',
+    'visibility',
   ];
   if (!Object.prototype.hasOwnProperty.call(body, 'updatedAt')) {
     body.updatedAt = nowTokyoString_();
@@ -400,7 +590,7 @@ function listInboxItems_() {
         const value = row[index];
         item[header] = value instanceof Date ? value.toISOString() : value;
       });
-      return item;
+      return sanitizeItemForClient_(item);
     })
     .reverse();
 }
@@ -488,6 +678,183 @@ function findRowNumberById_(sheet, id, idColumnNumber) {
   return 0;
 }
 
+function getInitialCalendarSyncStatus_(item) {
+  const type = String(item.type || '').trim().toLowerCase();
+  if (item.calendarSyncStatus) {
+    return normalizeCalendarSyncStatus_(item.calendarSyncStatus);
+  }
+
+  return type === 'event' ? 'pending' : 'not_required';
+}
+
+function normalizeCalendarSyncStatus_(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  const allowed = [
+    'not_required',
+    'pending',
+    'synced',
+    'failed',
+    'update_required',
+    'deleted',
+  ];
+
+  return allowed.indexOf(normalized) !== -1 ? normalized : 'pending';
+}
+
+function normalizeVisibility_(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  const allowed = ['private', 'family', 'shared'];
+  return allowed.indexOf(normalized) !== -1 ? normalized : 'private';
+}
+
+function normalizeCalendarTarget_(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  const allowed = ['family', 'personal', 'shared'];
+  return allowed.indexOf(normalized) !== -1 ? normalized : 'family';
+}
+
+function getCalendarConfig_(calendarTarget) {
+  const target = normalizeCalendarTarget_(calendarTarget);
+  const propertyMap = {
+    family: 'PALURU_FAMILY_CALENDAR_ID',
+    personal: 'PALURU_PERSONAL_CALENDAR_ID',
+    shared: 'PALURU_SHARED_CALENDAR_ID',
+  };
+  const propertyKey = propertyMap[target] || propertyMap.family;
+  const calendarId = PropertiesService
+    .getScriptProperties()
+    .getProperty(propertyKey);
+
+  if (!calendarId) {
+    throw new Error(propertyKey + ' がScript Propertiesに設定されてへんで');
+  }
+
+  return {
+    target: target,
+    propertyKey: propertyKey,
+    calendarId: calendarId,
+  };
+}
+
+function getCalendarByConfig_(config) {
+  const calendar = CalendarApp.getCalendarById(config.calendarId);
+  if (!calendar) {
+    throw new Error('登録先カレンダーが見つからへんで。権限かScript Propertiesを確認してな');
+  }
+
+  return calendar;
+}
+
+function getCalendarSuffix_(body, item) {
+  const explicitSuffix = String(body.calendarSuffix || '').trim();
+  if (explicitSuffix) {
+    return explicitSuffix;
+  }
+
+  const displayName = String(body.userDisplayName || item.userDisplayName || '').trim();
+  return displayName ? '（' + displayName + '）' : '';
+}
+
+function buildCalendarTitle_(title, suffix) {
+  const baseTitle = String(title || '').trim();
+  const normalizedSuffix = String(suffix || '').trim();
+  if (!baseTitle || !normalizedSuffix) {
+    return baseTitle;
+  }
+
+  if (baseTitle.endsWith(normalizedSuffix)) {
+    return baseTitle;
+  }
+
+  return baseTitle + normalizedSuffix;
+}
+
+function parseDateOnly_(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    throw new Error('日付はyyyy-MM-dd形式で指定してな');
+  }
+
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function parseTokyoDateTime_(dateValue, timeValue) {
+  const dateMatch = String(dateValue || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = String(timeValue || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!dateMatch || !timeMatch) {
+    throw new Error('日時はyyyy-MM-ddとHH:mm形式で指定してな');
+  }
+
+  return new Date(
+    Number(dateMatch[1]),
+    Number(dateMatch[2]) - 1,
+    Number(dateMatch[3]),
+    Number(timeMatch[1]),
+    Number(timeMatch[2])
+  );
+}
+
+function addDays_(date, days) {
+  const result = new Date(date.getTime());
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function addMinutesToTime_(timeValue, minutesToAdd) {
+  const match = String(timeValue || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    throw new Error('終了時刻を指定してな');
+  }
+
+  const totalMinutes = Number(match[1]) * 60 + Number(match[2]) + minutesToAdd;
+  const hour = Math.floor(totalMinutes / 60) % 24;
+  const minute = totalMinutes % 60;
+  return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+}
+
+function buildCalendarDescription_(id, body, item) {
+  return [
+    'PALURU Miniから登録',
+    'PALURU ID: ' + id,
+    '登録者: ' + (body.userDisplayName || item.userDisplayName || ''),
+  ].join('\n');
+}
+
+function buildCalendarResponseItem_(item) {
+  return {
+    id: item.id,
+    title: item.title,
+    type: item.type,
+    eventStart: item.eventStart,
+    eventStartTime: item.eventStartTime,
+    eventEnd: item.eventEnd,
+    eventEndTime: item.eventEndTime,
+    calendarTitle: item.calendarTitle,
+    calendarSyncStatus: item.calendarSyncStatus,
+    calendarEventId: item.calendarEventId,
+    calendarName: item.calendarName,
+    calendarSyncedAt: item.calendarSyncedAt,
+    calendarStart: item.calendarStart,
+    calendarEnd: item.calendarEnd,
+    calendarAllDay: item.calendarAllDay,
+    calendarLastError: item.calendarLastError || '',
+  };
+}
+
+function sanitizeItemForClient_(item) {
+  const clientItem = Object.assign({}, item);
+  delete clientItem.calendarId;
+  return clientItem;
+}
+
+function sanitizeCalendarError_(error) {
+  const message = String(error && error.message ? error.message : error || 'calendar sync failed');
+  return message
+    .replace(/https?:\/\/\S+/g, '[url]')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]')
+    .slice(0, 180);
+}
+
 function normalizeTagsForSheet_(tags) {
   if (Array.isArray(tags)) {
     return JSON.stringify(tags);
@@ -534,8 +901,20 @@ function normalizeValueForSheet_(field, value) {
     return normalizeBooleanForSheet_(value);
   }
 
+  if (field === 'calendarAllDay') {
+    return normalizeBooleanForSheet_(value);
+  }
+
   if (field === 'confidence') {
     return normalizeNumberForSheet_(value);
+  }
+
+  if (field === 'visibility') {
+    return normalizeVisibility_(value);
+  }
+
+  if (field === 'calendarSyncStatus') {
+    return normalizeCalendarSyncStatus_(value);
   }
 
   if (field === 'followupInputType') {
@@ -986,6 +1365,16 @@ function testWorkTaskFollowup_() {
   }
 
   return result;
+}
+
+function testFamilyCalendarConnection() {
+  const config = getCalendarConfig_('family');
+  const calendar = getCalendarByConfig_(config);
+  console.log('Family calendar connected: ' + calendar.getName());
+  return {
+    success: true,
+    calendarName: calendar.getName(),
+  };
 }
 
 

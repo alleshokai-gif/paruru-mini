@@ -1,10 +1,17 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260710-07";
+const ASSET_VERSION = "v20260711-01";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
+const PROFILE_STORAGE_KEY = "paruru-mini-profile";
+const DEFAULT_PROFILE = {
+  userId: "father",
+  displayName: "父",
+  calendarSuffix: "（父）",
+  defaultCalendar: "family",
+};
 const PARURU_STATES = {
   loading: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_sleepy.png`),
@@ -97,8 +104,10 @@ let inboxItems = [];
 let selectedItemId = "";
 let activeView = "home";
 let isSubmitting = false;
+let isCalendarSyncing = false;
 let categoryExplicitlySelected = false;
 let priorityExplicitlySelected = false;
+let userProfile = null;
 
 const form = document.querySelector("#inboxForm");
 const memoInput = document.querySelector("#memo");
@@ -135,6 +144,20 @@ const detailFollowupQuestion = document.querySelector("#detailFollowupQuestion")
 const detailFollowupFields = document.querySelector("#detailFollowupFields");
 const detailFollowupSubmit = document.querySelector("#detailFollowupSubmit");
 const detailFollowupLater = document.querySelector("#detailFollowupLater");
+const homeCalendarSync = document.querySelector("#homeCalendarSync");
+const homeCalendarSyncFields = document.querySelector("#homeCalendarSyncFields");
+const homeCalendarSubmit = document.querySelector("#homeCalendarSubmit");
+const homeCalendarLater = document.querySelector("#homeCalendarLater");
+const detailCalendarSync = document.querySelector("#detailCalendarSync");
+const detailCalendarSyncFields = document.querySelector("#detailCalendarSyncFields");
+const detailCalendarSubmit = document.querySelector("#detailCalendarSubmit");
+const detailCalendarLater = document.querySelector("#detailCalendarLater");
+const profileForm = document.querySelector("#profileForm");
+const profileUserId = document.querySelector("#profileUserId");
+const profileDisplayName = document.querySelector("#profileDisplayName");
+const profileCalendarSuffix = document.querySelector("#profileCalendarSuffix");
+const profileDefaultCalendar = document.querySelector("#profileDefaultCalendar");
+const profileDeviceId = document.querySelector("#profileDeviceId");
 
 setParuruState("loading");
 
@@ -174,6 +197,8 @@ if ("serviceWorker" in navigator) {
 }
 
 window.addEventListener("load", () => {
+  userProfile = loadUserProfile();
+  renderProfileForm();
   setParuruState("normal");
   if (buildVersion) {
     buildVersion.textContent = `Build ${BUILD_VERSION}`;
@@ -333,6 +358,17 @@ homeFollowupLater.addEventListener("click", () => hideFollowupPanel("home"));
 detailFollowupLater.addEventListener("click", () => hideFollowupPanel("detail"));
 homeFollowup.addEventListener("click", (event) => handleFollowupPanelClick(event, "home"));
 detailFollowup.addEventListener("click", (event) => handleFollowupPanelClick(event, "detail"));
+homeCalendarSubmit.addEventListener("click", () => submitCalendarSync("home"));
+detailCalendarSubmit.addEventListener("click", () => submitCalendarSync("detail"));
+homeCalendarLater.addEventListener("click", () => hideCalendarSyncPanel("home"));
+detailCalendarLater.addEventListener("click", () => hideCalendarSyncPanel("detail"));
+
+profileForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  userProfile = saveUserProfileFromForm();
+  renderProfileForm();
+  showMessage("プロフィールを保存したで。", "success");
+});
 
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -349,6 +385,10 @@ async function switchView(viewName) {
   if (viewName === "inbox") {
     await loadInbox();
     return;
+  }
+
+  if (viewName === "settings") {
+    renderProfileForm();
   }
 
   setParuruState("normal");
@@ -392,9 +432,14 @@ async function saveMemo(payload) {
 
 function buildCreateWithAIPayload(memo) {
   const selectedPriority = getSelectedPriority();
+  const profile = getCurrentProfile();
   const payload = {
     action: "createWithAI",
     memo,
+    userId: profile.userId,
+    userDisplayName: profile.displayName,
+    deviceId: profile.deviceId,
+    visibility: "private",
   };
 
   if (categoryExplicitlySelected && categoryInput.value) {
@@ -453,6 +498,22 @@ async function answerFollowup(payload) {
   return parseApiResponse(response);
 }
 
+async function syncCalendar(payload) {
+  if (!GAS_WEB_APP_URL) {
+    return dummySyncCalendar(payload);
+  }
+
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify({ action: "syncCalendar", ...payload }),
+  });
+
+  return parseApiResponse(response);
+}
+
 async function deleteInboxItem(id) {
   if (!GAS_WEB_APP_URL) {
     return dummyDelete(id);
@@ -506,6 +567,7 @@ function renderInboxList(items) {
         <span class="category-chip" style="--category-color: ${getCategoryColor(item.category)}">${escapeHtml(item.category || "未分類")}</span>
         ${renderPriorityChip(item.priority)}
         ${renderTypeChip(item.type)}
+        ${renderCalendarStatusChip(item)}
       </div>
       ${renderScheduleLine(item)}
       ${renderFollowupLine(item)}
@@ -524,6 +586,18 @@ function renderTypeChip(type) {
   const normalized = normalizeType(type);
   const label = TYPE_LABELS[normalized] || "メモ";
   return `<span class="type-chip type-${escapeHtml(normalized)}">${escapeHtml(label)}</span>`;
+}
+
+function renderCalendarStatusChip(item) {
+  if (item.calendarSyncStatus === "synced" && item.calendarEventId) {
+    return `<span class="calendar-status-chip calendar-status-synced">カレンダー登録済み</span>`;
+  }
+
+  if (shouldShowCalendarCandidate(item)) {
+    return `<span class="calendar-status-chip calendar-status-pending">カレンダー未登録</span>`;
+  }
+
+  return "";
 }
 
 function renderFollowupBadge(item) {
@@ -652,6 +726,7 @@ function openDetail(id) {
   editCategory.value = item.category || "未分類";
   editPriority.value = item.priority || "Normal";
   renderFollowupPanel("detail", item);
+  renderCalendarSyncPanel("detail", item);
   detailDialog.showModal();
 }
 
@@ -686,10 +761,11 @@ function showSuccessResult(result) {
   if (isFollowupNeeded(item) && followupQuestion) {
     showMessage(`確認したいこと: ${followupQuestion}`, "success");
     renderFollowupPanel("home", item);
-    return;
+  } else {
+    hideFollowupPanel("home");
   }
 
-  hideFollowupPanel("home");
+  renderCalendarSyncPanel("home", item);
 }
 
 function resetExplicitSelectionState() {
@@ -901,6 +977,258 @@ async function submitFollowupDirectAnswer(target, answer) {
   }
 }
 
+function renderCalendarSyncPanel(target, item) {
+  const state = getCalendarSyncUi(target);
+  if (!shouldShowCalendarCandidate(item)) {
+    hideCalendarSyncPanel(target);
+    return;
+  }
+
+  const defaults = buildCalendarDefaults(item);
+  state.panel.dataset.itemId = item.id;
+  state.fields.innerHTML = renderCalendarSyncFields(defaults);
+  state.submit.disabled = false;
+  state.later.disabled = false;
+  state.submit.textContent = "登録する";
+  state.panel.classList.remove("is-hidden");
+}
+
+function hideCalendarSyncPanel(target) {
+  const state = getCalendarSyncUi(target);
+  state.panel.classList.add("is-hidden");
+  state.panel.dataset.itemId = "";
+  state.fields.innerHTML = "";
+}
+
+function getCalendarSyncUi(target) {
+  if (target === "detail") {
+    return {
+      panel: detailCalendarSync,
+      fields: detailCalendarSyncFields,
+      submit: detailCalendarSubmit,
+      later: detailCalendarLater,
+    };
+  }
+
+  return {
+    panel: homeCalendarSync,
+    fields: homeCalendarSyncFields,
+    submit: homeCalendarSubmit,
+    later: homeCalendarLater,
+  };
+}
+
+function renderCalendarSyncFields(defaults) {
+  return `
+    <label class="calendar-sync-field">
+      <span>タイトル</span>
+      <input type="text" data-calendar-title value="${escapeHtml(defaults.calendarTitle)}">
+    </label>
+    <label class="calendar-sync-field">
+      <span>日付</span>
+      <input type="date" data-calendar-start-date value="${escapeHtml(defaults.startDate)}">
+    </label>
+    <label class="calendar-sync-field">
+      <span>開始時刻</span>
+      <input type="time" data-calendar-start-time value="${escapeHtml(defaults.startTime)}">
+    </label>
+    <label class="calendar-sync-field">
+      <span>終了日</span>
+      <input type="date" data-calendar-end-date value="${escapeHtml(defaults.endDate)}">
+    </label>
+    <label class="calendar-sync-field">
+      <span>終了時刻</span>
+      <input type="time" data-calendar-end-time value="${escapeHtml(defaults.endTime)}">
+    </label>
+    <label class="calendar-sync-check">
+      <input type="checkbox" data-calendar-all-day ${defaults.allDay ? "checked" : ""}>
+      <span>終日予定</span>
+    </label>
+    <label class="calendar-sync-field">
+      <span>登録先</span>
+      <select data-calendar-target>
+        <option value="family" ${defaults.calendarTarget === "family" ? "selected" : ""}>ファミリー</option>
+        <option value="personal" ${defaults.calendarTarget === "personal" ? "selected" : ""}>個人</option>
+        <option value="shared" ${defaults.calendarTarget === "shared" ? "selected" : ""}>共有</option>
+      </select>
+    </label>
+  `;
+}
+
+async function submitCalendarSync(target) {
+  if (isCalendarSyncing) {
+    return;
+  }
+
+  const state = getCalendarSyncUi(target);
+  const payload = buildCalendarSyncPayload(state);
+  if (!payload) {
+    showMessage("日付とタイトルを確認してな。", "error");
+    return;
+  }
+
+  setCalendarSubmitting(target, true);
+  try {
+    const result = await syncCalendar(payload);
+    updateLocalItem(result.item);
+    hideCalendarSyncPanel(target);
+    if (target === "detail" && result.item) {
+      renderCalendarSyncPanel("detail", result.item);
+    }
+    if (activeView === "inbox") {
+      await loadInbox({ quiet: true });
+    }
+    showParuruMessage("ファミリーカレンダーに登録したで。", "success", "success");
+  } catch (error) {
+    showMessage("カレンダー登録できなかった。内容を確認してもう一回試して。", "error");
+    setParuruState("error");
+  } finally {
+    setCalendarSubmitting(target, false);
+  }
+}
+
+function buildCalendarSyncPayload(state) {
+  const profile = getCurrentProfile();
+  const id = state.panel.dataset.itemId;
+  const calendarTitle = state.fields.querySelector("[data-calendar-title]")?.value.trim() || "";
+  const startDate = state.fields.querySelector("[data-calendar-start-date]")?.value || "";
+  const startTime = state.fields.querySelector("[data-calendar-start-time]")?.value || "";
+  const endDate = state.fields.querySelector("[data-calendar-end-date]")?.value || startDate;
+  const endTime = state.fields.querySelector("[data-calendar-end-time]")?.value || "";
+  const allDay = Boolean(state.fields.querySelector("[data-calendar-all-day]")?.checked);
+  const calendarTarget = state.fields.querySelector("[data-calendar-target]")?.value || profile.defaultCalendar;
+
+  if (!id || !calendarTitle || !startDate) {
+    return null;
+  }
+
+  if (!allDay && (!startTime || !endDate || !endTime)) {
+    return null;
+  }
+
+  if (!allDay && compareDateTimeValues(startDate, startTime, endDate, endTime) >= 0) {
+    return null;
+  }
+
+  if (allDay && compareDateOnlyValues(startDate, endDate || startDate) > 0) {
+    return null;
+  }
+
+  return {
+    id,
+    calendarTarget,
+    calendarTitle,
+    startDate,
+    startTime: allDay ? "" : startTime,
+    endDate: endDate || startDate,
+    endTime: allDay ? "" : endTime,
+    allDay,
+    userId: profile.userId,
+    userDisplayName: profile.displayName,
+    calendarSuffix: profile.calendarSuffix,
+    deviceId: profile.deviceId,
+  };
+}
+
+function compareDateOnlyValues(leftDate, rightDate) {
+  const left = parseYmd(leftDate);
+  const right = parseYmd(rightDate);
+  if (!left || !right) {
+    return 0;
+  }
+
+  return getDateOnlyEpochDay(left) - getDateOnlyEpochDay(right);
+}
+
+function compareDateTimeValues(startDate, startTime, endDate, endTime) {
+  return parseLocalDateTimeValue(startDate, startTime) - parseLocalDateTimeValue(endDate, endTime);
+}
+
+function setCalendarSubmitting(target, submitting) {
+  isCalendarSyncing = submitting;
+  const state = getCalendarSyncUi(target);
+  state.submit.disabled = submitting;
+  state.later.disabled = submitting;
+  state.submit.textContent = submitting ? "登録中..." : "登録する";
+}
+
+function shouldShowCalendarCandidate(item) {
+  if (!item || normalizeType(item.type) !== "event") {
+    return false;
+  }
+
+  if (!item.eventStart) {
+    return false;
+  }
+
+  if (item.calendarSyncStatus === "synced" && item.calendarEventId) {
+    return false;
+  }
+
+  return !item.calendarEventId;
+}
+
+function buildCalendarDefaults(item) {
+  const profile = getCurrentProfile();
+  const startDate = item.eventStart || "";
+  const startTime = normalizeTimeInputValue(item.eventStartTime);
+  const hasStartTime = Boolean(startTime);
+  const allDay = !hasStartTime;
+  const fallbackEnd = hasStartTime ? addMinutesToDateTime(startDate, startTime, 60) : { date: startDate, time: "" };
+  const endDate = item.eventEnd || fallbackEnd.date || startDate;
+  const endTime = normalizeTimeInputValue(item.eventEndTime) || fallbackEnd.time;
+  return {
+    calendarTitle: buildCalendarTitle(item.calendarTitle || item.title || item.memo?.slice(0, 20) || "予定", profile.calendarSuffix),
+    startDate,
+    startTime,
+    endDate,
+    endTime: allDay ? "" : endTime,
+    allDay,
+    calendarTarget: profile.defaultCalendar || "family",
+  };
+}
+
+function buildCalendarTitle(title, suffix) {
+  const baseTitle = String(title || "").trim();
+  const normalizedSuffix = String(suffix || "").trim();
+  if (!baseTitle || !normalizedSuffix || baseTitle.endsWith(normalizedSuffix)) {
+    return baseTitle;
+  }
+
+  return `${baseTitle}${normalizedSuffix}`;
+}
+
+function normalizeTimeInputValue(value) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!match) {
+    return "";
+  }
+
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function addMinutesToDateTime(dateValue, timeValue, minutesToAdd) {
+  const dateParts = parseYmd(dateValue);
+  const timeMatch = String(timeValue || "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!dateParts || !timeMatch) {
+    return { date: dateValue || "", time: "" };
+  }
+
+  const date = new Date(dateParts.year, dateParts.month - 1, dateParts.day, Number(timeMatch[1]), Number(timeMatch[2]));
+  date.setMinutes(date.getMinutes() + minutesToAdd);
+  return {
+    date: [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-"),
+    time: [
+      String(date.getHours()).padStart(2, "0"),
+      String(date.getMinutes()).padStart(2, "0"),
+    ].join(":"),
+  };
+}
+
 function clearFollowupInputs(state) {
   state.fields.querySelectorAll("input").forEach((input) => {
     input.value = "";
@@ -952,6 +1280,72 @@ function updateLocalItem(updatedItem) {
   }
 
   inboxItems = inboxItems.map((item) => item.id === updatedItem.id ? { ...item, ...updatedItem } : item);
+}
+
+function getCurrentProfile() {
+  if (!userProfile) {
+    userProfile = loadUserProfile();
+  }
+
+  return userProfile;
+}
+
+function loadUserProfile() {
+  const stored = readStoredProfile();
+  const profile = {
+    ...DEFAULT_PROFILE,
+    ...stored,
+    deviceId: stored.deviceId || createDeviceId(),
+  };
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  return profile;
+}
+
+function readStoredProfile() {
+  try {
+    return JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY) || "{}");
+  } catch (error) {
+    return {};
+  }
+}
+
+function createDeviceId() {
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `device-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function renderProfileForm() {
+  const profile = getCurrentProfile();
+  profileUserId.value = profile.userId || DEFAULT_PROFILE.userId;
+  profileDisplayName.value = profile.displayName || DEFAULT_PROFILE.displayName;
+  profileCalendarSuffix.value = profile.calendarSuffix || "";
+  profileDefaultCalendar.value = profile.defaultCalendar || DEFAULT_PROFILE.defaultCalendar;
+  profileDeviceId.value = profile.deviceId || "";
+}
+
+function saveUserProfileFromForm() {
+  const current = getCurrentProfile();
+  const profile = {
+    userId: normalizeUserId(profileUserId.value) || DEFAULT_PROFILE.userId,
+    displayName: profileDisplayName.value.trim() || DEFAULT_PROFILE.displayName,
+    calendarSuffix: profileCalendarSuffix.value.trim(),
+    defaultCalendar: normalizeCalendarTarget(profileDefaultCalendar.value),
+    deviceId: current.deviceId || createDeviceId(),
+  };
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  return profile;
+}
+
+function normalizeUserId(value) {
+  return String(value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+function normalizeCalendarTarget(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["family", "personal", "shared"].includes(normalized) ? normalized : "family";
 }
 
 function inferCategory(memo, selectedCategory) {
@@ -1115,6 +1509,9 @@ function saveDummyItems(items) {
 
 function dummyCreate(payload) {
   const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`;
+  const type = payload.memo.includes("授業参観") || payload.memo.includes("歯医者") ? "event" : "";
+  const eventStart = payload.memo.includes("授業参観") ? "2026-07-20" : "";
+  const eventStartTime = payload.memo.includes("13時半") ? "13:30" : "";
   const item = {
     id,
     createdAt: new Date().toISOString(),
@@ -1122,7 +1519,7 @@ function dummyCreate(payload) {
     title: payload.memo.slice(0, 20),
     memo: payload.memo,
     category: payload.category || "未分類",
-    type: "",
+    type,
     status: payload.action === "createWithAI" ? "inbox" : "Inbox",
     priority: payload.priority || "Normal",
     source: payload.action === "createWithAI" ? "ai" : "PWA",
@@ -1132,6 +1529,14 @@ function dummyCreate(payload) {
     aiSummary: "",
     aiComment: "",
     confidence: "",
+    eventStart,
+    eventStartTime,
+    userId: payload.userId || "",
+    userDisplayName: payload.userDisplayName || "",
+    deviceId: payload.deviceId || "",
+    visibility: payload.visibility || "private",
+    calendarSyncStatus: type === "event" ? "pending" : "not_required",
+    calendarEventId: "",
   };
   saveDummyItems([item, ...loadDummyItems()]);
   if (payload.action === "createWithAI") {
@@ -1165,6 +1570,42 @@ function dummyAnswerFollowup(payload) {
   }
 
   return Promise.resolve({ success: true, item: updatedItem, message: "followup answered" });
+}
+
+function dummySyncCalendar(payload) {
+  let updatedItem = null;
+  const items = loadDummyItems().map((item) => {
+    if (item.id !== payload.id) {
+      return item;
+    }
+
+    if (item.calendarEventId && item.calendarSyncStatus === "synced") {
+      updatedItem = item;
+      return item;
+    }
+
+    updatedItem = {
+      ...item,
+      calendarTitle: buildCalendarTitle(payload.calendarTitle, getCurrentProfile().calendarSuffix),
+      calendarSyncStatus: "synced",
+      calendarEventId: `dummy-calendar-${item.id}`,
+      calendarName: "ファミリー",
+      calendarSyncedAt: new Date().toISOString(),
+      calendarStart: [payload.startDate, payload.startTime].filter(Boolean).join(" "),
+      calendarEnd: [payload.endDate, payload.endTime].filter(Boolean).join(" "),
+      calendarAllDay: payload.allDay,
+      calendarLastError: "",
+      updatedAt: new Date().toISOString(),
+    };
+    return updatedItem;
+  });
+  saveDummyItems(items);
+
+  if (!updatedItem) {
+    return Promise.resolve({ success: false, message: "not found" });
+  }
+
+  return Promise.resolve({ success: true, item: updatedItem, message: "calendar synced" });
 }
 
 function dummyUpdate(id, updates) {

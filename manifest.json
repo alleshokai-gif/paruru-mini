@@ -1,6 +1,6 @@
-Ôªø{
+{
   "name": "Paruru Mini",
-  "short_name": "„Å±„Çã„Çã",
+  "short_name": "ÇœÇÈÇÈ",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -8,13 +8,13 @@
   "background_color": "#ffffff",
   "icons": [
     {
-      "src": "assets/icons/icon-192.png?v=20260710-07",
+      "src": "assets/icons/icon-192.png?v=20260711-01",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "assets/icons/icon-512.png?v=20260710-07",
+      "src": "assets/icons/icon-512.png?v=20260711-01",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

@@ -254,7 +254,8 @@ button:disabled {
   color: var(--danger);
 }
 
-.followup-panel {
+.followup-panel,
+.calendar-sync-panel {
   width: 100%;
   margin: 16px 0 0;
   padding: 18px 16px;
@@ -263,7 +264,8 @@ button:disabled {
   background: #f9faff;
 }
 
-.followup-panel.is-hidden {
+.followup-panel.is-hidden,
+.calendar-sync-panel.is-hidden {
   display: none;
 }
 
@@ -412,7 +414,8 @@ button:disabled {
 .priority-chip,
 .type-chip,
 .followup-badge,
-.date-status {
+.date-status,
+.calendar-status-chip {
   display: inline-grid;
   min-height: 26px;
   place-items: center;
@@ -466,6 +469,16 @@ button:disabled {
   flex: 0 0 auto;
   background: #ffe9e7;
   color: var(--danger);
+}
+
+.calendar-status-synced {
+  background: #edf7f1;
+  color: var(--success);
+}
+
+.calendar-status-pending {
+  background: #fff3d8;
+  color: #8a5a00;
 }
 
 .card-schedule,
@@ -549,6 +562,67 @@ button:disabled {
   color: var(--muted);
   text-align: center;
   font-weight: 700;
+}
+
+.settings-form,
+.calendar-sync-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  text-align: left;
+}
+
+.calendar-sync-label {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.calendar-sync-field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.calendar-sync-field input,
+.calendar-sync-field select,
+.settings-form input,
+.settings-form select {
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 16px;
+  line-height: 1.4;
+  border-radius: 12px;
+}
+
+.calendar-sync-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.calendar-sync-check input {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.calendar-sync-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.calendar-sync-actions button {
+  min-height: 48px;
 }
 
 .build-version {

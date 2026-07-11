@@ -5,21 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260710-07">
-    <link rel="icon" href="./assets/icons/favicon.png?v=20260710-07" type="image/png">
-    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260710-07">
-    <link rel="stylesheet" href="./style.css?v=20260710-07">
+    <link rel="manifest" href="./manifest.json?v=20260711-01">
+    <link rel="icon" href="./assets/icons/favicon.png?v=20260711-01" type="image/png">
+    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260711-01">
+    <link rel="stylesheet" href="./style.css?v=20260711-01">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260710-07" alt="ぱるる">
+      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260711-01" alt="ぱるる">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">Loading...</p>
     </div>
 
     <main class="app-shell">
       <section class="paruru">
-        <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260710-07" alt="ぱるる">
+        <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260711-01" alt="ぱるる">
         <p class="paruru-line">……メモしとく？</p>
       </section>
 
@@ -72,6 +72,15 @@
             <button id="homeFollowupSubmit" type="button">回答する</button>
           </div>
         </section>
+
+        <section id="homeCalendarSync" class="calendar-sync-panel is-hidden" aria-live="polite">
+          <p class="calendar-sync-label">カレンダーに登録しますか？</p>
+          <div id="homeCalendarSyncFields" class="calendar-sync-fields"></div>
+          <div class="calendar-sync-actions">
+            <button id="homeCalendarLater" class="secondary-button" type="button">登録しない</button>
+            <button id="homeCalendarSubmit" type="button">登録する</button>
+          </div>
+        </section>
       </section>
 
       <section id="inboxView" class="app-view" data-view="inbox">
@@ -85,7 +94,33 @@
       <section id="settingsView" class="app-view" data-view="settings">
         <div class="settings-placeholder">
           <h1>設定</h1>
-          <p>設定はまだ仮だよ。</p>
+          <form id="profileForm" class="settings-form">
+            <label class="field">
+              <span>利用者ID</span>
+              <input id="profileUserId" type="text" inputmode="latin" autocomplete="off">
+            </label>
+            <label class="field">
+              <span>利用者名</span>
+              <input id="profileDisplayName" type="text" autocomplete="name">
+            </label>
+            <label class="field">
+              <span>カレンダー接尾辞</span>
+              <input id="profileCalendarSuffix" type="text">
+            </label>
+            <label class="field">
+              <span>デフォルト登録先</span>
+              <select id="profileDefaultCalendar">
+                <option value="family">ファミリー</option>
+                <option value="personal">個人</option>
+                <option value="shared">共有</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>端末ID</span>
+              <input id="profileDeviceId" type="text" readonly>
+            </label>
+            <button type="submit">プロフィールを保存</button>
+          </form>
           <p id="buildVersion" class="build-version">Build loading...</p>
         </div>
       </section>
@@ -150,6 +185,15 @@
           </div>
         </section>
 
+        <section id="detailCalendarSync" class="calendar-sync-panel is-hidden" aria-live="polite">
+          <p class="calendar-sync-label">カレンダーに登録しますか？</p>
+          <div id="detailCalendarSyncFields" class="calendar-sync-fields"></div>
+          <div class="calendar-sync-actions">
+            <button id="detailCalendarLater" class="secondary-button" type="button">登録しない</button>
+            <button id="detailCalendarSubmit" type="button">登録する</button>
+          </div>
+        </section>
+
         <div class="dialog-actions">
           <button id="deleteButton" class="danger-button" type="button">削除</button>
           <button id="doneButton" class="secondary-button" type="button">完了</button>
@@ -169,7 +213,7 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260710-07" defer></script>
+    <script src="./app.js?v=20260711-01" defer></script>
   </body>
 </html>
 
