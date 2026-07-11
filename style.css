@@ -250,7 +250,7 @@ main,
   width: 100%;
   max-width: 440px;
   margin: 0 auto 18px;
-  padding: 4px 0 2px;
+  padding: 4px 1em 2px;
   overflow-x: clip;
 }
 
@@ -324,6 +324,7 @@ main,
   .paruru-hero {
     grid-template-columns: minmax(88px, 0.8fr) minmax(0, 2.2fr);
     gap: 10px;
+    padding-inline: 0.65em;
   }
 
   .paruru-image {
