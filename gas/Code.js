@@ -376,6 +376,7 @@ function syncCalendar_(body) {
       calendarEnd: calendarEnd,
       calendarAllDay: allDay,
       calendarLastError: '',
+      status: 'completed',
       updatedAt: now,
     };
     updateRowFields_(target.sheet, target.rowNumber, target.index, updates);
@@ -1028,6 +1029,7 @@ function buildCalendarDescription_(id, body, item) {
 function buildCalendarResponseItem_(item) {
   return {
     id: item.id,
+    status: item.status,
     title: item.title,
     type: item.type,
     eventStart: item.eventStart,
@@ -1570,6 +1572,51 @@ function testWorkTaskFollowup_() {
   }
 
   return result;
+}
+
+function migrateSyncedEventsToCompleted_() {
+  const sheet = getInboxSheet_();
+  const headers = getActualHeaders_(sheet);
+  const index = getHeaderIndex_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    console.log('対象件数: 0');
+    return { targetCount: 0, updatedCount: 0 };
+  }
+
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const targetRows = [];
+  values.forEach(function(row, offset) {
+    const item = {};
+    headers.forEach(function(header, position) {
+      if (header) {
+        item[header] = row[position];
+      }
+    });
+
+    if (
+      String(item.type || '').toLowerCase() === 'event' &&
+      String(item.status || '').toLowerCase() === 'inbox' &&
+      String(item.calendarSyncStatus || '').toLowerCase() === 'synced' &&
+      String(item.calendarEventId || '').trim()
+    ) {
+      targetRows.push(offset + 2);
+    }
+  });
+
+  console.log('対象件数: ' + targetRows.length);
+  targetRows.forEach(function(rowNumber) {
+    updateRowFields_(sheet, rowNumber, index, {
+      status: 'completed',
+      updatedAt: nowTokyoString_(),
+    });
+  });
+  console.log('更新件数: ' + targetRows.length);
+
+  return {
+    targetCount: targetRows.length,
+    updatedCount: targetRows.length,
+  };
 }
 
 function testFamilyCalendarConnection() {

@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260711-02";
+const ASSET_VERSION = "v20260711-03";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -458,14 +458,14 @@ function buildCreateWithAIPayload(memo) {
 
 async function fetchInboxItems() {
   if (!GAS_WEB_APP_URL) {
-    return sortInboxItems(loadDummyItems().filter(isInboxItem));
+    return sortInboxItemsNewestFirst(loadDummyItems().filter(isInboxItem));
   }
 
   const url = new URL(GAS_WEB_APP_URL);
   url.searchParams.set("action", "list");
   const response = await fetch(url.toString());
   const result = await parseApiResponse(response);
-  return sortInboxItems((result.data || []).filter(isInboxItem));
+  return sortInboxItemsNewestFirst((result.data || []).filter(isInboxItem));
 }
 
 async function updateInboxItem(id, updates) {
@@ -674,56 +674,30 @@ function renderAiSummary(item) {
   return `<p class="card-summary">${escapeHtml(item.aiSummary)}</p>`;
 }
 
-function sortInboxItems(items) {
-  return [...items].sort((a, b) => {
-    const aKey = getInboxSortKey(a);
-    const bKey = getInboxSortKey(b);
+function sortInboxItemsNewestFirst(items) {
+  return items
+    .map((item, index) => ({
+      item,
+      index,
+      createdAt: parseSortableDateValue(item.createdAt),
+      updatedAt: parseSortableDateValue(item.updatedAt),
+    }))
+    .sort((a, b) => {
+      if (a.createdAt !== null && b.createdAt !== null && a.createdAt !== b.createdAt) {
+        return b.createdAt - a.createdAt;
+      }
 
-    if (aKey.group !== bKey.group) {
-      return aKey.group - bKey.group;
-    }
+      if (a.updatedAt !== null && b.updatedAt !== null && a.updatedAt !== b.updatedAt) {
+        return b.updatedAt - a.updatedAt;
+      }
 
-    if (aKey.dateValue !== bKey.dateValue) {
-      return aKey.group === 2 ? bKey.dateValue - aKey.dateValue : aKey.dateValue - bKey.dateValue;
-    }
+      if (a.updatedAt !== b.updatedAt) {
+        return (b.updatedAt ?? -Infinity) - (a.updatedAt ?? -Infinity);
+      }
 
-    if (aKey.priority !== bKey.priority) {
-      return aKey.priority - bKey.priority;
-    }
-
-    return bKey.createdAt - aKey.createdAt;
-  });
-}
-
-function getInboxSortKey(item) {
-  const type = normalizeType(item.type);
-  const priority = PRIORITY_ORDER[normalizePriority(item.priority)] ?? PRIORITY_ORDER.Normal;
-  const createdAt = parseCreatedAtValue(item.createdAt);
-
-  if (type === "task" && item.dueDate) {
-    return {
-      group: 0,
-      dateValue: parseLocalDateTimeValue(item.dueDate, item.dueTime),
-      priority,
-      createdAt,
-    };
-  }
-
-  if (type === "event" && item.eventStart) {
-    return {
-      group: 1,
-      dateValue: parseLocalDateTimeValue(item.eventStart, item.eventStartTime),
-      priority,
-      createdAt,
-    };
-  }
-
-  return {
-    group: 2,
-    dateValue: createdAt,
-    priority,
-    createdAt,
-  };
+      return a.index - b.index;
+    })
+    .map((entry) => entry.item);
 }
 
 function isInboxItem(item) {
@@ -1140,7 +1114,10 @@ async function submitCalendarSync(target) {
     if (activeView === "inbox") {
       await loadInbox({ quiet: true });
     }
-    showParuruMessage(mode === "update" ? "カレンダーを更新したで。" : "ファミリーカレンダーに登録したで。", "success", "success");
+    const successLine = mode === "update"
+      ? "カレンダーを更新したで。"
+      : "ファミリーカレンダーに登録したで。予定はInboxから完了へ移したで。";
+    showParuruMessage(successLine, "success", "success");
   } catch (error) {
     showMessage("カレンダー連携できなかった。内容を確認してもう一回試して。", "error");
     setParuruState("error");
@@ -1584,6 +1561,28 @@ function parseCreatedAtValue(value) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+function parseSortableDateValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  const text = String(value).trim();
+  const localMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (localMatch) {
+    return new Date(
+      Number(localMatch[1]),
+      Number(localMatch[2]) - 1,
+      Number(localMatch[3]),
+      Number(localMatch[4] || 0),
+      Number(localMatch[5] || 0),
+      Number(localMatch[6] || 0)
+    ).getTime();
+  }
+
+  const parsed = Date.parse(text);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 function getTodayTokyoParts() {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
@@ -1709,6 +1708,7 @@ function dummySyncCalendar(payload) {
       calendarEnd: [payload.endDate, payload.endTime].filter(Boolean).join(" "),
       calendarAllDay: payload.allDay,
       calendarLastError: "",
+      status: normalizeType(item.type) === "event" ? "completed" : item.status,
       updatedAt: new Date().toISOString(),
     };
     return updatedItem;
