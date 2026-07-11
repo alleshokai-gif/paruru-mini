@@ -1,11 +1,13 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260711-03";
+const ASSET_VERSION = "v20260711-04";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PROFILE_STORAGE_KEY = "paruru-mini-profile";
+const NOTIFICATION_CACHE_MS = 5000;
+const NOTIFICATION_DISPLAY_LIMIT = 5;
 const DEFAULT_PROFILE = {
   userId: "father",
   displayName: "父",
@@ -108,6 +110,12 @@ let isCalendarSyncing = false;
 let categoryExplicitlySelected = false;
 let priorityExplicitlySelected = false;
 let userProfile = null;
+let notificationCandidatesState = {
+  lastFetchedAt: 0,
+  inFlight: null,
+  items: [],
+  totalCount: 0,
+};
 
 const form = document.querySelector("#inboxForm");
 const memoInput = document.querySelector("#memo");
@@ -159,6 +167,11 @@ const profileDisplayName = document.querySelector("#profileDisplayName");
 const profileCalendarSuffix = document.querySelector("#profileCalendarSuffix");
 const profileDefaultCalendar = document.querySelector("#profileDefaultCalendar");
 const profileDeviceId = document.querySelector("#profileDeviceId");
+const todayParuru = document.querySelector("#todayParuru");
+const todayParuruLine = document.querySelector("#todayParuruLine");
+const todayParuruList = document.querySelector("#todayParuruList");
+const todayParuruAllButton = document.querySelector("#todayParuruAllButton");
+const refreshNotificationsButton = document.querySelector("#refreshNotificationsButton");
 
 setParuruState("loading");
 
@@ -206,6 +219,7 @@ window.addEventListener("load", () => {
   }
   splash?.classList.add("is-hidden");
   logOverflowElements();
+  loadNotificationCandidates({ force: true });
 });
 
 function updateServiceWorker(registration) {
@@ -285,6 +299,7 @@ form.addEventListener("submit", async (event) => {
     categoryInput.value = "未分類";
     resetExplicitSelectionState();
     showSuccessResult(result);
+    await loadNotificationCandidates({ force: true });
     if (activeView === "inbox") {
       await loadInbox();
     }
@@ -337,6 +352,7 @@ doneButton.addEventListener("click", async () => {
   await updateInboxItem(id, { status: "Done" });
   detailDialog.close();
   await loadInbox({ quiet: true });
+  await loadNotificationCandidates({ force: true });
   setParuruState("done", { showStatus: true });
 });
 
@@ -350,6 +366,7 @@ confirmDeleteButton.addEventListener("click", async () => {
   deleteDialog.close();
   detailDialog.close();
   await loadInbox({ quiet: true });
+  await loadNotificationCandidates({ force: true });
   setParuruState("deleted", { showStatus: true });
 });
 
@@ -363,6 +380,20 @@ homeCalendarSubmit.addEventListener("click", () => submitCalendarSync("home"));
 detailCalendarSubmit.addEventListener("click", () => submitCalendarSync("detail"));
 homeCalendarLater.addEventListener("click", () => hideCalendarSyncPanel("home"));
 detailCalendarLater.addEventListener("click", () => hideCalendarSyncPanel("detail"));
+refreshNotificationsButton.addEventListener("click", () => loadNotificationCandidates({ force: true }));
+todayParuruList.addEventListener("click", (event) => {
+  if (event.target.closest("[data-notification-refresh]")) {
+    loadNotificationCandidates({ force: true });
+    return;
+  }
+
+  const item = event.target.closest("[data-notification-id]");
+  if (!item) {
+    return;
+  }
+  openNotificationDetail(item.dataset.notificationId);
+});
+todayParuruAllButton.addEventListener("click", () => switchView("inbox"));
 
 profileForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -386,6 +417,10 @@ async function switchView(viewName) {
   if (viewName === "inbox") {
     await loadInbox();
     return;
+  }
+
+  if (viewName === "home") {
+    await loadNotificationCandidates();
   }
 
   if (viewName === "settings") {
@@ -466,6 +501,57 @@ async function fetchInboxItems() {
   const response = await fetch(url.toString());
   const result = await parseApiResponse(response);
   return sortInboxItemsNewestFirst((result.data || []).filter(isInboxItem));
+}
+
+async function loadNotificationCandidates(options = {}) {
+  const now = Date.now();
+  if (!options.force && notificationCandidatesState.inFlight) {
+    return notificationCandidatesState.inFlight;
+  }
+
+  if (!options.force && now - notificationCandidatesState.lastFetchedAt < NOTIFICATION_CACHE_MS) {
+    renderNotificationCandidates(notificationCandidatesState.items, notificationCandidatesState.totalCount);
+    return notificationCandidatesState.items;
+  }
+
+  renderNotificationLoading();
+  notificationCandidatesState.inFlight = fetchNotificationCandidates()
+    .then((result) => {
+      const items = result.items || [];
+      notificationCandidatesState = {
+        lastFetchedAt: Date.now(),
+        inFlight: null,
+        items,
+        totalCount: result.count || items.length,
+      };
+      renderNotificationCandidates(items, notificationCandidatesState.totalCount);
+      return items;
+    })
+    .catch((error) => {
+      console.log("[Paruru] notification candidates failed", error?.message || error);
+      notificationCandidatesState.inFlight = null;
+      renderNotificationError();
+      return [];
+    });
+
+  return notificationCandidatesState.inFlight;
+}
+
+async function fetchNotificationCandidates() {
+  const profile = getCurrentProfile();
+  if (!GAS_WEB_APP_URL) {
+    return dummyNotificationCandidates(profile.userId);
+  }
+
+  const url = new URL(GAS_WEB_APP_URL);
+  url.searchParams.set("action", "notificationCandidates");
+  url.searchParams.set("limit", "10");
+  if (profile.userId) {
+    url.searchParams.set("userId", profile.userId);
+  }
+
+  const response = await fetch(url.toString(), { cache: "no-store" });
+  return parseApiResponse(response);
 }
 
 async function updateInboxItem(id, updates) {
@@ -567,6 +653,86 @@ function renderInboxLoading() {
 
 function renderInboxError() {
   inboxList.innerHTML = `<div class="empty-state">Inboxを読めなかった。</div>`;
+}
+
+function renderNotificationLoading() {
+  todayParuruLine.textContent = "ちょっと見てくる。";
+  todayParuruList.innerHTML = `<p class="today-paruru-empty">読み込み中...</p>`;
+  todayParuruAllButton.classList.add("is-hidden");
+}
+
+function renderNotificationError() {
+  todayParuruLine.textContent = "今日の確認を読み込めんかったで。";
+  todayParuruList.innerHTML = `
+    <div class="today-paruru-error">
+      <p>今日の確認を読み込めんかったで。</p>
+      <button class="secondary-button" type="button" data-notification-refresh>もう一回</button>
+    </div>
+  `;
+  todayParuruAllButton.classList.add("is-hidden");
+}
+
+function renderNotificationCandidates(items, totalCount) {
+  const visibleItems = items.slice(0, NOTIFICATION_DISPLAY_LIMIT);
+  if (visibleItems.length === 0) {
+    todayParuruLine.textContent = "今日は特に急ぎないで。";
+    todayParuruList.innerHTML = `<p class="today-paruru-empty">今日は特に急ぎないで。</p>`;
+    todayParuruAllButton.classList.add("is-hidden");
+    return;
+  }
+
+  todayParuruLine.textContent = "また忘れてるの、拾っといたで。";
+  todayParuruList.innerHTML = visibleItems.map(renderNotificationItem).join("") + renderNotificationMore(totalCount, visibleItems.length);
+  todayParuruAllButton.classList.remove("is-hidden");
+}
+
+function renderNotificationItem(item) {
+  const level = normalizeNotificationLevel(item.notificationLevel);
+  const labels = (item.reasons || []).slice(0, 2).map(renderNotificationReasonLabel).join("");
+  return `
+    <button class="today-paruru-item today-paruru-${escapeHtml(level)}" type="button" data-notification-id="${escapeHtml(item.id)}">
+      <span class="today-paruru-badges">
+        ${renderNotificationLevelBadge(level)}
+        ${labels}
+      </span>
+      <span class="today-paruru-message">${escapeHtml(item.message || item.title || "確認してな。")}</span>
+    </button>
+  `;
+}
+
+function renderNotificationMore(totalCount, visibleCount) {
+  const rest = Math.max(0, totalCount - visibleCount);
+  if (rest <= 0) {
+    return "";
+  }
+
+  return `<p class="today-paruru-more">ほか${escapeHtml(rest)}件</p>`;
+}
+
+function renderNotificationLevelBadge(level) {
+  const labels = {
+    critical: "重要",
+    high: "要確認",
+    normal: "通常",
+  };
+  return `<span class="today-paruru-badge level-${escapeHtml(level)}">${escapeHtml(labels[level] || "通常")}</span>`;
+}
+
+function renderNotificationReasonLabel(reason) {
+  const labels = {
+    overdue: "期限切れ",
+    due_today: "今日締切",
+    due_tomorrow: "明日締切",
+    followup_required: "確認待ち",
+    urgent: "至急",
+    high_priority: "High",
+  };
+  const label = labels[reason];
+  return label ? `<span class="today-paruru-badge reason-${escapeHtml(reason)}">${escapeHtml(label)}</span>` : "";
+}
+
+function normalizeNotificationLevel(level) {
+  return ["critical", "high", "normal"].includes(level) ? level : "normal";
 }
 
 function renderInboxList(items) {
@@ -740,6 +906,23 @@ function renderDetailCalendarStatus(item) {
   detailCalendarStatus.className = `detail-calendar-status detail-calendar-status-${escapeHtml(status || "none")}`;
 }
 
+async function openNotificationDetail(id) {
+  if (!id) {
+    return;
+  }
+
+  if (!inboxItems.some((item) => item.id === id)) {
+    try {
+      inboxItems = await fetchInboxItems();
+    } catch (error) {
+      showMessage("詳細を開けんかった。Inboxで確認してな。", "error");
+      return;
+    }
+  }
+
+  openDetail(id);
+}
+
 function openDetail(id) {
   const item = inboxItems.find((entry) => entry.id === id);
   if (!item) {
@@ -831,6 +1014,7 @@ async function submitFollowupAnswer(target) {
     if (activeView === "inbox") {
       await loadInbox({ quiet: true });
     }
+    await loadNotificationCandidates({ force: true });
     showParuruMessage("更新したで。", "success", "success");
   } catch (error) {
     setParuruState("error", { showStatus: true });
@@ -996,6 +1180,7 @@ async function submitFollowupDirectAnswer(target, answer) {
     if (activeView === "inbox") {
       await loadInbox({ quiet: true });
     }
+    await loadNotificationCandidates({ force: true });
     showParuruMessage("更新したで。", "success", "success");
   } catch (error) {
     setParuruState("error", { showStatus: true });
@@ -1114,6 +1299,7 @@ async function submitCalendarSync(target) {
     if (activeView === "inbox") {
       await loadInbox({ quiet: true });
     }
+    await loadNotificationCandidates({ force: true });
     const successLine = mode === "update"
       ? "カレンダーを更新したで。"
       : "ファミリーカレンダーに登録したで。予定はInboxから完了へ移したで。";
@@ -1683,6 +1869,146 @@ function dummyAnswerFollowup(payload) {
   }
 
   return Promise.resolve({ success: true, item: updatedItem, message: "followup answered" });
+}
+
+function dummyNotificationCandidates(userId) {
+  const target = getTodayTokyoParts();
+  const targetDay = getDateOnlyEpochDay(target);
+  const items = loadDummyItems()
+    .filter((item) => !userId || item.userId === userId)
+    .filter(isDummyNotificationSource)
+    .map((item, index) => buildDummyNotificationCandidate(item, index, targetDay))
+    .filter((item) => item.reasons.length > 0)
+    .sort(sortDummyNotificationCandidates)
+    .slice(0, 10)
+    .map(({ sortIndex, ...item }) => item);
+
+  return Promise.resolve({
+    success: true,
+    targetDate: `${target.year}-${String(target.month).padStart(2, "0")}-${String(target.day).padStart(2, "0")}`,
+    count: items.length,
+    items,
+  });
+}
+
+function isDummyNotificationSource(item) {
+  const type = normalizeType(item.type);
+  if (!isInboxItem(item) || type === "event" || type === "shopping") {
+    return false;
+  }
+
+  return type === "task" ||
+    type === "reminder" ||
+    isFollowupNeeded(item) ||
+    normalizePriority(item.priority) === "High" ||
+    normalizePriority(item.priority) === "Urgent";
+}
+
+function buildDummyNotificationCandidate(item, index, targetDay) {
+  const title = item.title || item.memo?.slice(0, 20) || "無題";
+  const reasons = getDummyNotificationReasons(item, targetDay);
+  return {
+    id: item.id,
+    title,
+    type: item.type || "",
+    category: item.category || "",
+    priority: normalizePriority(item.priority),
+    dueDate: item.dueDate || "",
+    dueTime: item.dueTime || "",
+    needsFollowup: isFollowupNeeded(item),
+    reasons,
+    notificationLevel: getDummyNotificationLevel(reasons),
+    message: buildDummyNotificationMessage(title, reasons),
+    userId: item.userId || "",
+    userDisplayName: item.userDisplayName || "",
+    createdAt: item.createdAt || "",
+    sortIndex: index,
+  };
+}
+
+function getDummyNotificationReasons(item, targetDay) {
+  const reasons = [];
+  const due = parseYmd(item.dueDate);
+  if (due) {
+    const diff = getDateOnlyEpochDay(due) - targetDay;
+    if (diff < 0) {
+      reasons.push("overdue");
+    } else if (diff === 0) {
+      reasons.push("due_today");
+    } else if (diff === 1) {
+      reasons.push("due_tomorrow");
+    }
+  }
+
+  if (isFollowupNeeded(item)) {
+    reasons.push("followup_required");
+  }
+
+  const priority = normalizePriority(item.priority);
+  if (priority === "Urgent") {
+    reasons.push("urgent");
+  } else if (priority === "High") {
+    reasons.push("high_priority");
+  }
+
+  return reasons;
+}
+
+function sortDummyNotificationCandidates(a, b) {
+  const reasonOrder = ["overdue", "due_today", "urgent", "followup_required", "due_tomorrow", "high_priority"];
+  const rankA = Math.min(...a.reasons.map((reason) => reasonOrder.indexOf(reason)).filter((rank) => rank >= 0));
+  const rankB = Math.min(...b.reasons.map((reason) => reasonOrder.indexOf(reason)).filter((rank) => rank >= 0));
+  if (rankA !== rankB) {
+    return rankA - rankB;
+  }
+
+  const dueA = parseYmd(a.dueDate) ? getDateOnlyEpochDay(parseYmd(a.dueDate)) : Number.MAX_SAFE_INTEGER;
+  const dueB = parseYmd(b.dueDate) ? getDateOnlyEpochDay(parseYmd(b.dueDate)) : Number.MAX_SAFE_INTEGER;
+  if (dueA !== dueB) {
+    return dueA - dueB;
+  }
+
+  const createdA = parseSortableDateValue(a.createdAt) || 0;
+  const createdB = parseSortableDateValue(b.createdAt) || 0;
+  if (createdA !== createdB) {
+    return createdB - createdA;
+  }
+
+  return a.sortIndex - b.sortIndex;
+}
+
+function getDummyNotificationLevel(reasons) {
+  if (reasons.includes("overdue") || reasons.includes("urgent")) {
+    return "critical";
+  }
+
+  if (reasons.includes("due_today") || reasons.includes("followup_required")) {
+    return "high";
+  }
+
+  return "normal";
+}
+
+function buildDummyNotificationMessage(title, reasons) {
+  if (reasons.includes("overdue")) {
+    return `${title}、期限過ぎとるで。`;
+  }
+  if (reasons.includes("due_today")) {
+    return `${title}、今日が締切やで。`;
+  }
+  if (reasons.includes("urgent")) {
+    return `至急やで。${title}を確認してな。`;
+  }
+  if (reasons.includes("followup_required")) {
+    return `${title}、まだ確認したいことが残っとるで。`;
+  }
+  if (reasons.includes("due_tomorrow")) {
+    return `${title}、明日が締切やで。`;
+  }
+  if (reasons.includes("high_priority")) {
+    return `${title}、優先度高めやで。`;
+  }
+  return `${title}を確認してな。`;
 }
 
 function dummySyncCalendar(payload) {

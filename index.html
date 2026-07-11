@@ -5,47 +5,61 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260711-03">
-    <link rel="icon" href="./assets/icons/favicon.png?v=20260711-03" type="image/png">
-    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260711-03">
-    <link rel="stylesheet" href="./style.css?v=20260711-03">
+    <link rel="manifest" href="./manifest.json?v=20260711-04">
+    <link rel="icon" href="./assets/icons/favicon.png?v=20260711-04" type="image/png">
+    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260711-04">
+    <link rel="stylesheet" href="./style.css?v=20260711-04">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260711-03" alt="ぱるる">
+      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260711-04" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">Loading...</p>
     </div>
 
     <main class="app-shell">
       <section class="paruru">
-        <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260711-03" alt="ぱるる">
-        <p class="paruru-line">……メモしとく？</p>
+        <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260711-04" alt="&#12401;&#12427;&#12427;">
+        <p class="paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</p>
       </section>
 
       <section id="homeView" class="app-view is-active" data-view="home">
+        <section id="todayParuru" class="today-paruru" aria-live="polite">
+          <div class="today-paruru-header">
+            <div>
+              <p class="today-paruru-eyebrow">&#128049; &#20170;&#26085;&#12398;&#12401;&#12427;&#12427;</p>
+              <p id="todayParuruLine" class="today-paruru-line">&#12385;&#12423;&#12387;&#12392;&#35211;&#12390;&#12367;&#12427;&#12290;</p>
+            </div>
+            <button id="refreshNotificationsButton" class="icon-button" type="button" aria-label="&#20170;&#26085;&#12398;&#12401;&#12427;&#12427;&#12434;&#26356;&#26032;">&#8635;</button>
+          </div>
+          <div id="todayParuruList" class="today-paruru-list">
+            <p class="today-paruru-empty">&#35501;&#12415;&#36796;&#12415;&#20013;...</p>
+          </div>
+          <button id="todayParuruAllButton" class="today-paruru-all is-hidden" type="button">&#12377;&#12409;&#12390;&#35211;&#12427; &#8594;</button>
+        </section>
+
         <form id="inboxForm" class="inbox-form">
           <label class="field">
-            <span>思いついたことを書く</span>
-            <textarea id="memo" name="memo" rows="7" placeholder="牛乳買う" required></textarea>
+            <span>&#24605;&#12356;&#12388;&#12356;&#12383;&#12371;&#12392;&#12434;&#26360;&#12367;</span>
+            <textarea id="memo" name="memo" rows="7" placeholder="&#29275;&#20083;&#36023;&#12358;" required></textarea>
           </label>
 
           <label class="field">
-            <span>カテゴリ</span>
+            <span>&#12459;&#12486;&#12468;&#12522;</span>
             <select id="category" name="category">
-              <option value="未分類">未分類</option>
-              <option value="家">家</option>
-              <option value="仕事">仕事</option>
-              <option value="買い物">買い物</option>
-              <option value="学校">学校</option>
-              <option value="薬局">薬局</option>
-              <option value="開発">開発</option>
-              <option value="お金">お金</option>
+              <option value="&#26410;&#20998;&#39006;">&#26410;&#20998;&#39006;</option>
+              <option value="&#23478;">&#23478;</option>
+              <option value="&#20181;&#20107;">&#20181;&#20107;</option>
+              <option value="&#36023;&#12356;&#29289;">&#36023;&#12356;&#29289;</option>
+              <option value="&#23398;&#26657;">&#23398;&#26657;</option>
+              <option value="&#34220;&#23616;">&#34220;&#23616;</option>
+              <option value="&#38283;&#30330;">&#38283;&#30330;</option>
+              <option value="&#12362;&#37329;">&#12362;&#37329;</option>
             </select>
           </label>
 
           <fieldset class="priority-group">
-            <legend>優先度</legend>
+            <legend>&#20778;&#20808;&#24230;</legend>
             <label>
               <input type="radio" name="priority" value="Low">
               <span>Low</span>
@@ -60,25 +74,25 @@
             </label>
           </fieldset>
 
-          <button id="submitButton" type="submit">ぱるるに預ける</button>
+          <button id="submitButton" type="submit">&#12401;&#12427;&#12427;&#12395;&#38928;&#12369;&#12427;</button>
         </form>
 
         <section id="homeFollowup" class="followup-panel is-hidden" aria-live="polite">
-          <p class="followup-label">確認したいこと</p>
+          <p class="followup-label">&#30906;&#35469;&#12375;&#12383;&#12356;&#12371;&#12392;</p>
           <p id="homeFollowupQuestion" class="followup-question"></p>
           <div id="homeFollowupFields" class="followup-fields"></div>
           <div class="followup-actions">
-            <button id="homeFollowupLater" class="secondary-button" type="button">あとで</button>
-            <button id="homeFollowupSubmit" type="button">回答する</button>
+            <button id="homeFollowupLater" class="secondary-button" type="button">&#12354;&#12392;&#12391;</button>
+            <button id="homeFollowupSubmit" type="button">&#22238;&#31572;&#12377;&#12427;</button>
           </div>
         </section>
 
         <section id="homeCalendarSync" class="calendar-sync-panel is-hidden" aria-live="polite">
-          <p class="calendar-sync-label">カレンダーに登録しますか？</p>
+          <p class="calendar-sync-label">&#12459;&#12524;&#12531;&#12480;&#12540;&#12395;&#30331;&#37682;&#12375;&#12414;&#12377;&#12363;&#65311;</p>
           <div id="homeCalendarSyncFields" class="calendar-sync-fields"></div>
           <div class="calendar-sync-actions">
-            <button id="homeCalendarLater" class="secondary-button" type="button">登録しない</button>
-            <button id="homeCalendarSubmit" type="button">登録する</button>
+            <button id="homeCalendarLater" class="secondary-button" type="button">&#30331;&#37682;&#12375;&#12394;&#12356;</button>
+            <button id="homeCalendarSubmit" type="button">&#30331;&#37682;&#12377;&#12427;</button>
           </div>
         </section>
       </section>
@@ -86,40 +100,40 @@
       <section id="inboxView" class="app-view" data-view="inbox">
         <div class="view-header">
           <h1>Inbox</h1>
-          <button id="refreshInboxButton" class="icon-button" type="button" aria-label="Inboxを更新">↻</button>
+          <button id="refreshInboxButton" class="icon-button" type="button" aria-label="Inbox&#12434;&#26356;&#26032;">&#8635;</button>
         </div>
         <div id="inboxList" class="inbox-list" aria-live="polite"></div>
       </section>
 
       <section id="settingsView" class="app-view" data-view="settings">
         <div class="settings-placeholder">
-          <h1>設定</h1>
+          <h1>&#35373;&#23450;</h1>
           <form id="profileForm" class="settings-form">
             <label class="field">
-              <span>利用者ID</span>
+              <span>&#21033;&#29992;&#32773;ID</span>
               <input id="profileUserId" type="text" inputmode="latin" autocomplete="off">
             </label>
             <label class="field">
-              <span>利用者名</span>
+              <span>&#21033;&#29992;&#32773;&#21517;</span>
               <input id="profileDisplayName" type="text" autocomplete="name">
             </label>
             <label class="field">
-              <span>カレンダー接尾辞</span>
+              <span>&#12459;&#12524;&#12531;&#12480;&#12540;&#25509;&#23614;&#36766;</span>
               <input id="profileCalendarSuffix" type="text">
             </label>
             <label class="field">
-              <span>デフォルト登録先</span>
+              <span>&#12487;&#12501;&#12457;&#12523;&#12488;&#30331;&#37682;&#20808;</span>
               <select id="profileDefaultCalendar">
-                <option value="family">ファミリー</option>
-                <option value="personal">個人</option>
-                <option value="shared">共有</option>
+                <option value="family">&#12501;&#12449;&#12511;&#12522;&#12540;</option>
+                <option value="personal">&#20491;&#20154;</option>
+                <option value="shared">&#20849;&#26377;</option>
               </select>
             </label>
             <label class="field">
-              <span>端末ID</span>
+              <span>&#31471;&#26411;ID</span>
               <input id="profileDeviceId" type="text" readonly>
             </label>
-            <button type="submit">プロフィールを保存</button>
+            <button type="submit">&#12503;&#12525;&#12501;&#12451;&#12540;&#12523;&#12434;&#20445;&#23384;</button>
           </form>
           <p id="buildVersion" class="build-version">Build loading...</p>
         </div>
@@ -128,46 +142,46 @@
       <p id="message" class="message" role="status" aria-live="polite"></p>
     </main>
 
-    <nav class="bottom-nav" aria-label="メインナビゲーション">
-      <button class="nav-item is-active" type="button" data-target-view="home">ホーム</button>
+    <nav class="bottom-nav" aria-label="&#12513;&#12452;&#12531;&#12490;&#12499;&#12466;&#12540;&#12471;&#12519;&#12531;">
+      <button class="nav-item is-active" type="button" data-target-view="home">&#12507;&#12540;&#12512;</button>
       <button class="nav-item" type="button" data-target-view="inbox">Inbox</button>
-      <button class="nav-item" type="button" data-target-view="settings">設定</button>
+      <button class="nav-item" type="button" data-target-view="settings">&#35373;&#23450;</button>
     </nav>
 
     <dialog id="detailDialog" class="app-dialog">
       <form id="editForm" class="edit-form" method="dialog">
         <input id="editId" type="hidden">
         <div class="dialog-header">
-          <h2>詳細</h2>
-          <button class="ghost-button" type="button" data-close-dialog="detailDialog">閉じる</button>
+          <h2>&#35443;&#32048;</h2>
+          <button class="ghost-button" type="button" data-close-dialog="detailDialog">&#38281;&#12376;&#12427;</button>
         </div>
 
         <label class="field">
-          <span>タイトル</span>
+          <span>&#12479;&#12452;&#12488;&#12523;</span>
           <input id="editTitle" type="text" maxlength="60">
         </label>
 
         <label class="field">
-          <span>メモ</span>
+          <span>&#12513;&#12514;</span>
           <textarea id="editMemo" rows="6" required></textarea>
         </label>
 
         <label class="field">
-          <span>カテゴリ</span>
+          <span>&#12459;&#12486;&#12468;&#12522;</span>
           <select id="editCategory">
-            <option value="未分類">未分類</option>
-            <option value="家">家</option>
-            <option value="仕事">仕事</option>
-            <option value="買い物">買い物</option>
-            <option value="学校">学校</option>
-            <option value="薬局">薬局</option>
-            <option value="開発">開発</option>
-            <option value="お金">お金</option>
+            <option value="&#26410;&#20998;&#39006;">&#26410;&#20998;&#39006;</option>
+            <option value="&#23478;">&#23478;</option>
+            <option value="&#20181;&#20107;">&#20181;&#20107;</option>
+            <option value="&#36023;&#12356;&#29289;">&#36023;&#12356;&#29289;</option>
+            <option value="&#23398;&#26657;">&#23398;&#26657;</option>
+            <option value="&#34220;&#23616;">&#34220;&#23616;</option>
+            <option value="&#38283;&#30330;">&#38283;&#30330;</option>
+            <option value="&#12362;&#37329;">&#12362;&#37329;</option>
           </select>
         </label>
 
         <label class="field">
-          <span>優先度</span>
+          <span>&#20778;&#20808;&#24230;</span>
           <select id="editPriority">
             <option value="Low">Low</option>
             <option value="Normal">Normal</option>
@@ -178,43 +192,43 @@
         <p id="detailCalendarStatus" class="detail-calendar-status is-hidden"></p>
 
         <section id="detailFollowup" class="followup-panel is-hidden" aria-live="polite">
-          <p class="followup-label">確認したいこと</p>
+          <p class="followup-label">&#30906;&#35469;&#12375;&#12383;&#12356;&#12371;&#12392;</p>
           <p id="detailFollowupQuestion" class="followup-question"></p>
           <div id="detailFollowupFields" class="followup-fields"></div>
           <div class="followup-actions">
-            <button id="detailFollowupLater" class="secondary-button" type="button">あとで</button>
-            <button id="detailFollowupSubmit" type="button">回答する</button>
+            <button id="detailFollowupLater" class="secondary-button" type="button">&#12354;&#12392;&#12391;</button>
+            <button id="detailFollowupSubmit" type="button">&#22238;&#31572;&#12377;&#12427;</button>
           </div>
         </section>
 
         <section id="detailCalendarSync" class="calendar-sync-panel is-hidden" aria-live="polite">
-          <p class="calendar-sync-label">カレンダーに登録しますか？</p>
+          <p class="calendar-sync-label">&#12459;&#12524;&#12531;&#12480;&#12540;&#12395;&#30331;&#37682;&#12375;&#12414;&#12377;&#12363;&#65311;</p>
           <div id="detailCalendarSyncFields" class="calendar-sync-fields"></div>
           <div class="calendar-sync-actions">
-            <button id="detailCalendarLater" class="secondary-button" type="button">登録しない</button>
-            <button id="detailCalendarSubmit" type="button">登録する</button>
+            <button id="detailCalendarLater" class="secondary-button" type="button">&#30331;&#37682;&#12375;&#12394;&#12356;</button>
+            <button id="detailCalendarSubmit" type="button">&#30331;&#37682;&#12377;&#12427;</button>
           </div>
         </section>
 
         <div class="dialog-actions">
-          <button id="deleteButton" class="danger-button" type="button">削除</button>
-          <button id="doneButton" class="secondary-button" type="button">完了</button>
-          <button id="saveEditButton" type="submit">保存</button>
+          <button id="deleteButton" class="danger-button" type="button">&#21066;&#38500;</button>
+          <button id="doneButton" class="secondary-button" type="button">&#23436;&#20102;</button>
+          <button id="saveEditButton" type="submit">&#20445;&#23384;</button>
         </div>
       </form>
     </dialog>
 
     <dialog id="deleteDialog" class="app-dialog confirm-dialog">
       <div class="dialog-header">
-        <h2>削除</h2>
+        <h2>&#21066;&#38500;</h2>
       </div>
-      <p>このメモを消す？</p>
+      <p>&#12371;&#12398;&#12513;&#12514;&#12434;&#28040;&#12377;&#65311;</p>
       <div class="dialog-actions">
-        <button class="secondary-button" type="button" data-close-dialog="deleteDialog">やめる</button>
-        <button id="confirmDeleteButton" class="danger-button" type="button">削除</button>
+        <button class="secondary-button" type="button" data-close-dialog="deleteDialog">&#12420;&#12417;&#12427;</button>
+        <button id="confirmDeleteButton" class="danger-button" type="button">&#21066;&#38500;</button>
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260711-03" defer></script>
+    <script src="./app.js?v=20260711-04" defer></script>
   </body>
 </html>

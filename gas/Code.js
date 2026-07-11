@@ -53,6 +53,10 @@ function doGet(e) {
       });
     }
 
+    if (action === 'notificationCandidates') {
+      return notificationCandidates_(e.parameter || {});
+    }
+
     return json_({
       success: false,
       message: 'unknown action',
@@ -742,6 +746,325 @@ function listInboxItems_() {
       return sanitizeItemForClient_(item);
     })
     .reverse();
+}
+
+function notificationCandidates_(params) {
+  const targetDate = parseNotificationTargetDate_(params.date);
+  const limit = normalizeNotificationLimit_(params.limit);
+  const userId = String(params.userId || '').trim();
+  const items = readInboxItemsForEngine_();
+  const candidates = buildNotificationCandidates_(items, {
+    targetDate: targetDate,
+    userId: userId,
+    limit: limit,
+  });
+
+  return json_({
+    success: true,
+    targetDate: targetDate,
+    count: candidates.length,
+    items: candidates,
+  });
+}
+
+function readInboxItemsForEngine_() {
+  const sheet = getInboxSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return [];
+  }
+
+  const headers = getActualHeaders_(sheet);
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  return values
+    .filter(function(row) { return row[0]; })
+    .map(function(row) {
+      const item = {};
+      headers.forEach(function(header, index) {
+        if (!header) {
+          return;
+        }
+        const value = row[index];
+        item[header] = normalizeEngineCellValue_(header, value);
+      });
+      return item;
+    });
+}
+
+function buildNotificationCandidates_(items, options) {
+  const targetDate = options.targetDate;
+  const userId = String(options.userId || '').trim();
+  const limit = options.limit || 20;
+  const candidates = [];
+
+  items.forEach(function(item, index) {
+    if (userId && String(item.userId || '') !== userId) {
+      return;
+    }
+
+    if (!isNotificationCandidateSource_(item)) {
+      return;
+    }
+
+    const reasons = getNotificationReasons_(item, targetDate);
+    if (reasons.length === 0) {
+      return;
+    }
+
+    candidates.push(buildNotificationCandidate_(item, reasons, index));
+  });
+
+  return sortNotificationCandidates_(candidates).slice(0, limit);
+}
+
+function isNotificationCandidateSource_(item) {
+  const status = String(item.status || '').trim().toLowerCase();
+  if (status !== 'inbox') {
+    return false;
+  }
+
+  const type = String(item.type || '').trim().toLowerCase();
+  if (type === 'event' || type === 'shopping') {
+    return false;
+  }
+
+  if (status === 'completed' || status === 'deleted') {
+    return false;
+  }
+
+  return (
+    type === 'task' ||
+    type === 'reminder' ||
+    normalizeBooleanForSheet_(item.needsFollowup) ||
+    normalizePriority_(item.priority) === 'Urgent' ||
+    normalizePriority_(item.priority) === 'High'
+  );
+}
+
+function getNotificationReasons_(item, targetDate) {
+  const reasons = [];
+  const dueDate = normalizeDateOnlyString_(item.dueDate);
+  if (dueDate) {
+    const diffDays = diffDateOnlyDays_(dueDate, targetDate);
+    if (diffDays < 0) {
+      reasons.push('overdue');
+    } else if (diffDays === 0) {
+      reasons.push('due_today');
+    } else if (diffDays === 1) {
+      reasons.push('due_tomorrow');
+    }
+  }
+
+  if (normalizeBooleanForSheet_(item.needsFollowup)) {
+    reasons.push('followup_required');
+  }
+
+  const priority = normalizePriority_(item.priority);
+  if (priority === 'Urgent') {
+    reasons.push('urgent');
+  } else if (priority === 'High') {
+    reasons.push('high_priority');
+  }
+
+  return reasons;
+}
+
+function buildNotificationCandidate_(item, reasons, index) {
+  const title = String(item.title || item.memo || '無題').trim();
+  return {
+    id: item.id || '',
+    title: title,
+    type: item.type || '',
+    category: item.category || '',
+    priority: normalizePriority_(item.priority) || item.priority || '',
+    dueDate: normalizeDateOnlyString_(item.dueDate),
+    dueTime: normalizeTimeForCompare_(item.dueTime),
+    needsFollowup: normalizeBooleanForSheet_(item.needsFollowup),
+    reasons: reasons,
+    notificationLevel: getNotificationLevel_(reasons),
+    message: buildNotificationMessage_(title, reasons),
+    userId: item.userId || '',
+    userDisplayName: item.userDisplayName || '',
+    createdAt: item.createdAt || '',
+    updatedAt: item.updatedAt || '',
+    _sortIndex: index,
+  };
+}
+
+function sortNotificationCandidates_(items) {
+  const reasonOrder = {
+    overdue: 0,
+    due_today: 1,
+    urgent: 2,
+    followup_required: 3,
+    due_tomorrow: 4,
+    high_priority: 5,
+  };
+
+  return items.sort(function(a, b) {
+    const rankA = getNotificationReasonRank_(a.reasons, reasonOrder);
+    const rankB = getNotificationReasonRank_(b.reasons, reasonOrder);
+    if (rankA !== rankB) {
+      return rankA - rankB;
+    }
+
+    const dueA = dateOnlyToEpochDay_(a.dueDate);
+    const dueB = dateOnlyToEpochDay_(b.dueDate);
+    if (dueA !== dueB) {
+      return dueA - dueB;
+    }
+
+    const createdA = parseNotificationDateTime_(a.createdAt);
+    const createdB = parseNotificationDateTime_(b.createdAt);
+    if (createdA !== createdB) {
+      return createdB - createdA;
+    }
+
+    return a._sortIndex - b._sortIndex;
+  }).map(function(item) {
+    delete item._sortIndex;
+    return item;
+  });
+}
+
+function getNotificationReasonRank_(reasons, reasonOrder) {
+  return reasons.reduce(function(best, reason) {
+    return Math.min(best, reasonOrder[reason]);
+  }, 999);
+}
+
+function getNotificationLevel_(reasons) {
+  if (reasons.indexOf('overdue') !== -1 || reasons.indexOf('urgent') !== -1) {
+    return 'critical';
+  }
+
+  if (reasons.indexOf('due_today') !== -1 || reasons.indexOf('followup_required') !== -1) {
+    return 'high';
+  }
+
+  return 'normal';
+}
+
+function buildNotificationMessage_(title, reasons) {
+  if (reasons.indexOf('overdue') !== -1) {
+    return title + '、期限過ぎとるで。';
+  }
+
+  if (reasons.indexOf('due_today') !== -1) {
+    return title + '、今日が締切やで。';
+  }
+
+  if (reasons.indexOf('urgent') !== -1) {
+    return '至急やで。' + title + 'を確認してな。';
+  }
+
+  if (reasons.indexOf('followup_required') !== -1) {
+    return title + '、まだ確認したいことが残っとるで。';
+  }
+
+  if (reasons.indexOf('due_tomorrow') !== -1) {
+    return title + '、明日が締切やで。';
+  }
+
+  if (reasons.indexOf('high_priority') !== -1) {
+    return title + '、優先度高めやで。';
+  }
+
+  return title + 'を確認してな。';
+}
+
+function parseNotificationTargetDate_(value) {
+  if (!value) {
+    return todayTokyoDateString_();
+  }
+
+  const normalized = normalizeDateOnlyString_(value);
+  if (!normalized) {
+    throw new Error('date must be yyyy-MM-dd');
+  }
+
+  return normalized;
+}
+
+function normalizeNotificationLimit_(value) {
+  const numberValue = Number(value || 20);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    return 20;
+  }
+
+  return Math.min(Math.floor(numberValue), 50);
+}
+
+function normalizeEngineCellValue_(header, value) {
+  if (value instanceof Date) {
+    if (isDateOnlyHeader_(header)) {
+      return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy-MM-dd');
+    }
+
+    if (isTimeOnlyHeader_(header)) {
+      return Utilities.formatDate(value, 'Asia/Tokyo', 'HH:mm');
+    }
+
+    return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+  }
+
+  return value;
+}
+
+function isDateOnlyHeader_(header) {
+  return [
+    'dueDate',
+    'eventStart',
+    'eventEnd',
+  ].indexOf(header) !== -1;
+}
+
+function isTimeOnlyHeader_(header) {
+  return [
+    'dueTime',
+    'eventStartTime',
+    'eventEndTime',
+  ].indexOf(header) !== -1;
+}
+
+function normalizeDateOnlyString_(value) {
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? match[1] + '-' + match[2] + '-' + match[3] : '';
+}
+
+function todayTokyoDateString_() {
+  return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+}
+
+function diffDateOnlyDays_(leftDate, rightDate) {
+  return dateOnlyToEpochDay_(leftDate) - dateOnlyToEpochDay_(rightDate);
+}
+
+function dateOnlyToEpochDay_(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return Math.floor(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000);
+}
+
+function parseNotificationDateTime_(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (match) {
+    return new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4] || 0),
+      Number(match[5] || 0),
+      Number(match[6] || 0)
+    ).getTime();
+  }
+
+  const parsed = Date.parse(text);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function parseBody_(e) {
@@ -1617,6 +1940,122 @@ function migrateSyncedEventsToCompleted_() {
     targetCount: targetRows.length,
     updatedCount: targetRows.length,
   };
+}
+
+function testNotificationCandidates_() {
+  const targetDate = '2026-07-13';
+  const sampleItems = [
+    {
+      id: 'A',
+      status: 'inbox',
+      type: 'task',
+      title: '今日締切',
+      priority: 'Normal',
+      dueDate: '2026-07-13',
+      createdAt: '2026-07-10 09:00:00',
+      userId: 'father',
+      userDisplayName: '父',
+    },
+    {
+      id: 'B',
+      status: 'inbox',
+      type: 'task',
+      title: '昨日締切',
+      priority: 'Normal',
+      dueDate: '2026-07-12',
+      createdAt: '2026-07-10 10:00:00',
+      userId: 'father',
+      userDisplayName: '父',
+    },
+    {
+      id: 'C',
+      status: 'inbox',
+      type: 'task',
+      title: '明日締切',
+      priority: 'Normal',
+      dueDate: '2026-07-14',
+      createdAt: '2026-07-10 11:00:00',
+      userId: 'father',
+      userDisplayName: '父',
+    },
+    {
+      id: 'D',
+      status: 'inbox',
+      type: 'note',
+      title: '確認待ち',
+      priority: 'Normal',
+      needsFollowup: true,
+      createdAt: '2026-07-10 12:00:00',
+      userId: 'father',
+      userDisplayName: '父',
+    },
+    {
+      id: 'E',
+      status: 'inbox',
+      type: 'event',
+      title: '予定',
+      priority: 'Urgent',
+      dueDate: '2026-07-13',
+      createdAt: '2026-07-10 13:00:00',
+      userId: 'father',
+      userDisplayName: '父',
+    },
+    {
+      id: 'F',
+      status: 'completed',
+      type: 'task',
+      title: '完了済み',
+      priority: 'Urgent',
+      dueDate: '2026-07-13',
+      createdAt: '2026-07-10 14:00:00',
+      userId: 'father',
+      userDisplayName: '父',
+    },
+    {
+      id: 'G',
+      status: 'inbox',
+      type: 'reminder',
+      title: '至急確認',
+      priority: 'Urgent',
+      createdAt: '2026-07-10 15:00:00',
+      userId: 'father',
+      userDisplayName: '父',
+    },
+  ];
+  const result = buildNotificationCandidates_(sampleItems, {
+    targetDate: targetDate,
+    userId: 'father',
+    limit: 20,
+  });
+  const byId = result.reduce(function(map, item) {
+    map[item.id] = item;
+    return map;
+  }, {});
+
+  assertNotificationReason_(byId, 'A', 'due_today');
+  assertNotificationReason_(byId, 'B', 'overdue');
+  assertNotificationReason_(byId, 'C', 'due_tomorrow');
+  assertNotificationReason_(byId, 'D', 'followup_required');
+  if (byId.E) {
+    throw new Error('eventは通知候補から除外されるべきやで');
+  }
+  if (byId.F) {
+    throw new Error('completedは通知候補から除外されるべきやで');
+  }
+  assertNotificationReason_(byId, 'G', 'urgent');
+
+  console.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function assertNotificationReason_(itemsById, id, reason) {
+  if (!itemsById[id]) {
+    throw new Error(id + ' が通知候補に含まれてへんで');
+  }
+
+  if (itemsById[id].reasons.indexOf(reason) === -1) {
+    throw new Error(id + ' に ' + reason + ' が付いてへんで');
+  }
 }
 
 function testFamilyCalendarConnection() {
