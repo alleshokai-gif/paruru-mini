@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260711-09";
+const ASSET_VERSION = "v20260711-10";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -27,6 +27,8 @@ const PARURU_MESSAGES = {
     hasNotifications: "兄弟、今日は気にしとくことあるよ。",
     noNotifications: "今日は急ぎなし。珍しいね、兄弟。",
     error: "うまくいかんかった。もう一回だけ。",
+    notificationOne: "兄弟、ひとつ気にしといて。",
+    notificationMany: (count) => `今日は${count}つあるよ。見といてな。`,
   },
   state: {
     loading: "……ちょっと待って、兄弟。",
@@ -732,6 +734,7 @@ function renderInboxError() {
 
 function renderNotificationLoading() {
   setNotificationViewState("loading");
+  todayParuru.classList.remove("is-hidden");
   todayParuruLine.textContent = PARURU_MESSAGES.notification.loadingLine;
   todayParuruLine.classList.remove("is-hidden");
   todayParuruList.innerHTML = `<p class="today-paruru-empty">${escapeHtml(PARURU_MESSAGES.notification.loadingBody)}</p>`;
@@ -741,6 +744,7 @@ function renderNotificationLoading() {
 function renderNotificationError() {
   setNotificationViewState("error");
   setParuruSpeech("error");
+  todayParuru.classList.remove("is-hidden");
   todayParuruLine.classList.add("is-hidden");
   todayParuruLine.textContent = "";
   todayParuruList.innerHTML = `
@@ -757,15 +761,17 @@ function renderNotificationCandidates(items, totalCount) {
   if (visibleItems.length === 0) {
     setNotificationViewState("loaded-empty");
     setParuruSpeech("noNotifications");
+    todayParuru.classList.add("is-hidden");
     todayParuruLine.classList.add("is-hidden");
     todayParuruLine.textContent = "";
-    todayParuruList.innerHTML = `<p class="today-paruru-empty">${escapeHtml(PARURU_MESSAGES.notification.empty)}</p>`;
+    todayParuruList.innerHTML = "";
     todayParuruAllButton.classList.add("is-hidden");
     return;
   }
 
   setNotificationViewState("loaded-with-items");
-  setParuruSpeech("hasNotifications");
+  todayParuru.classList.remove("is-hidden");
+  setParuruSpeech("idle", buildNotificationSummarySpeech(totalCount || visibleItems.length));
   todayParuruLine.textContent = PARURU_MESSAGES.notification.loadedLine;
   todayParuruLine.classList.remove("is-hidden");
   todayParuruList.innerHTML = visibleItems.map(renderNotificationItem).join("") + renderNotificationMore(totalCount, visibleItems.length);
@@ -774,6 +780,14 @@ function renderNotificationCandidates(items, totalCount) {
 
 function setNotificationViewState(stateName) {
   todayParuru.dataset.state = stateName;
+}
+
+function buildNotificationSummarySpeech(count) {
+  const safeCount = Number.isFinite(Number(count)) ? Number(count) : 0;
+  if (safeCount <= 1) {
+    return PARURU_MESSAGES.speech.notificationOne;
+  }
+  return PARURU_MESSAGES.speech.notificationMany(safeCount);
 }
 
 function renderNotificationItem(item) {
