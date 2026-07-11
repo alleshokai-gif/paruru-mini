@@ -1,4 +1,5 @@
 ﻿const SHEET_NAME = '01_Inbox';
+const DEBUG = false;
 const HEADERS = [
   'id',
   'createdAt',
@@ -177,7 +178,7 @@ function createItemWithAI_(body) {
   }
 
   try {
-    Logger.log('[createWithAI] received body: ' + JSON.stringify(body));
+    debugLog_('[createWithAI] received action=createWithAI hasMemo=' + Boolean(memo) + ' userId=' + String(body.userId || ''));
     const analysis = enforceFollowupRules_(analyzeMemoWithAI_(memo), memo);
     const requestedPriority = normalizePriority_(body.priority);
     const now = nowTokyoString_();
@@ -216,7 +217,7 @@ function createItemWithAI_(body) {
     itemInput.calendarLastError = '';
 
     const savedItem = appendNewItem_(itemInput);
-    Logger.log('[createWithAI] final priority: ' + savedItem.priority);
+    debugLog_('[createWithAI] final priority: ' + savedItem.priority);
     const responseItem = Object.assign({}, analysis, itemInput, savedItem, {
       updatedAt: now,
     });
@@ -295,22 +296,22 @@ function syncCalendar_(body) {
   var target = null;
 
   try {
-    Logger.log('[syncCalendar] start id=' + id + ' target=' + String(body.calendarTarget || 'family'));
+    debugLog_('[syncCalendar] start id=' + id + ' target=' + String(body.calendarTarget || 'family'));
     lock.waitLock(10000);
     target = getItemById_(id);
     if (!target) {
-      Logger.log('[syncCalendar] item not found id=' + id);
+      debugLog_('[syncCalendar] item not found id=' + id);
       return json_({ success: false, status: 404, message: 'not found' });
     }
 
     if (String(target.item.type || '').toLowerCase() !== 'event') {
-      Logger.log('[syncCalendar] rejected non-event id=' + id + ' type=' + target.item.type);
+      debugLog_('[syncCalendar] rejected non-event id=' + id + ' type=' + target.item.type);
       return json_({ success: false, status: 400, message: 'calendar sync requires event item' });
     }
 
     if (target.item.calendarEventId) {
       const existingStatus = normalizeCalendarSyncStatus_(target.item.calendarSyncStatus);
-      Logger.log('[syncCalendar] existing eventId id=' + id + ' status=' + existingStatus);
+      debugLog_('[syncCalendar] existing eventId id=' + id + ' status=' + existingStatus);
       if (existingStatus === 'synced') {
         return json_({
           success: true,
@@ -342,10 +343,10 @@ function syncCalendar_(body) {
       'updatedAt',
     ]);
     const calendarConfig = getCalendarConfig_(calendarTarget);
-    Logger.log('[syncCalendar] calendar config loaded target=' + calendarTarget + ' hasId=' + Boolean(calendarConfig.calendarId));
+    debugLog_('[syncCalendar] calendar config loaded target=' + calendarTarget + ' hasId=' + Boolean(calendarConfig.calendarId));
     const calendar = getCalendarByConfig_(calendarConfig);
     const calendarName = calendar.getName();
-    Logger.log('[syncCalendar] calendar loaded name=' + calendarName);
+    debugLog_('[syncCalendar] calendar loaded name=' + calendarName);
     const startDate = String(body.startDate || target.item.eventStart || '').trim();
     const startTime = String(body.startTime || target.item.eventStartTime || '').trim();
     const endDate = String(body.endDate || target.item.eventEnd || startDate).trim();
@@ -396,7 +397,7 @@ function syncCalendar_(body) {
     }
 
     const calendarEventId = event && event.getId ? event.getId() : '';
-    Logger.log('[syncCalendar] event created id=' + id + ' hasEventId=' + Boolean(calendarEventId));
+    debugLog_('[syncCalendar] event created id=' + id + ' hasEventId=' + Boolean(calendarEventId));
     if (!calendarEventId) {
       throw new Error('calendarEventId was empty after event creation');
     }
@@ -418,7 +419,7 @@ function syncCalendar_(body) {
     };
     updateRowFields_(target.sheet, target.rowNumber, target.index, updates);
     SpreadsheetApp.flush();
-    Logger.log('[syncCalendar] spreadsheet updated id=' + id);
+    debugLog_('[syncCalendar] spreadsheet updated id=' + id);
 
     const savedTarget = getItemById_(id);
     const savedItem = savedTarget && savedTarget.item;
@@ -427,7 +428,7 @@ function syncCalendar_(body) {
       String(savedItem.calendarEventId || '').trim() &&
       String(savedItem.status || '').toLowerCase() === 'completed';
 
-    Logger.log('[syncCalendar] final check id=' + id + ' success=' + Boolean(savedOk) + ' status=' + (savedItem && savedItem.calendarSyncStatus));
+    debugLog_('[syncCalendar] final check id=' + id + ' success=' + Boolean(savedOk) + ' status=' + (savedItem && savedItem.calendarSyncStatus));
     if (!savedOk) {
       throw new Error('calendar sync was not persisted');
     }
@@ -438,7 +439,7 @@ function syncCalendar_(body) {
       message: 'calendar synced',
     });
   } catch (error) {
-    Logger.log('[syncCalendar] failed id=' + id + ' message=' + sanitizeCalendarError_(error));
+    debugLog_('[syncCalendar] failed id=' + id + ' message=' + sanitizeCalendarError_(error));
     if (target) {
       updateRowFields_(target.sheet, target.rowNumber, target.index, {
         calendarSyncStatus: 'failed',
@@ -1822,6 +1823,12 @@ function json_(payload) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function debugLog_(message) {
+  if (DEBUG) {
+    Logger.log(message);
+  }
+}
+
 function testOpenAIConnection() {
   const apiKey = PropertiesService
     .getScriptProperties()
@@ -2355,15 +2362,12 @@ function analyzeMemoWithAI_(memo) {
   const statusCode = response.getResponseCode();
   const responseText = response.getContentText();
 
-  console.log('HTTP Status: ' + statusCode);
+  debugLog_('[OpenAI] HTTP Status: ' + statusCode);
 
   if (statusCode < 200 || statusCode >= 300) {
-    console.error(responseText);
-
     throw new Error(
       'OpenAI APIエラー\n' +
-      'HTTP Status: ' + statusCode + '\n' +
-      responseText
+      'HTTP Status: ' + statusCode
     );
   }
 
@@ -2373,7 +2377,7 @@ function analyzeMemoWithAI_(memo) {
   try {
     return JSON.parse(outputText);
   } catch (error) {
-    console.error('AI出力: ' + outputText);
+    debugLog_('[OpenAI] JSON parse failed output length=' + outputText.length);
 
     throw new Error(
       'AIの返答をJSONとして読めんかったで: ' +

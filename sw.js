@@ -1,6 +1,7 @@
-const ASSET_VERSION = "v20260711-11";
+const ASSET_VERSION = "v20260711-12";
 const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
 const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
+const DEBUG = false;
 
 const APP_SHELL_RUNTIME_ASSETS = [
   "./",
@@ -24,7 +25,7 @@ const STATIC_IMAGE_ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  console.log("[Paruru SW] install", ASSET_VERSION);
+  debugLog("[Paruru SW] install", ASSET_VERSION);
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_IMAGE_ASSETS))
@@ -32,7 +33,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  console.log("[Paruru SW] activate", ASSET_VERSION);
+  debugLog("[Paruru SW] activate", ASSET_VERSION);
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.map((key) => {
@@ -49,7 +50,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
-    console.log("[Paruru SW] SKIP_WAITING message");
+    debugLog("[Paruru SW] SKIP_WAITING message");
     self.skipWaiting();
   }
 });
@@ -130,6 +131,12 @@ async function warmAppShellCache() {
       await cache.put(request, response.clone());
     }
   }));
+}
+
+function debugLog(...args) {
+  if (DEBUG) {
+    console.log(...args);
+  }
 }
 
 function getAppShellFallbackUrl() {

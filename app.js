@@ -1,7 +1,9 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260711-11";
+const APP_VERSION = "1.0.0";
+const ASSET_VERSION = "v20260711-12";
 const BUILD_VERSION = ASSET_VERSION;
+const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
@@ -247,10 +249,10 @@ setParuruState("loading");
 if ("serviceWorker" in navigator) {
   let refreshingForNewServiceWorker = false;
 
-  console.log("[Paruru] build version", BUILD_VERSION);
+  debugLog("[Paruru] build version", { appVersion: APP_VERSION, buildVersion: BUILD_VERSION });
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    console.log("[Paruru] controllerchange");
+    debugLog("[Paruru] controllerchange");
     if (refreshingForNewServiceWorker) {
       return;
     }
@@ -265,7 +267,7 @@ if ("serviceWorker" in navigator) {
         updateViaCache: "none",
       })
       .then((registration) => {
-        console.log("[Paruru] Service Worker registered", {
+        debugLog("[Paruru] Service Worker registered", {
           scope: registration.scope,
           updateViaCache: registration.updateViaCache,
         });
@@ -284,21 +286,20 @@ window.addEventListener("load", () => {
   renderProfileForm();
   setParuruState("normal");
   if (buildVersion) {
-    buildVersion.textContent = `Build ${BUILD_VERSION}`;
+    buildVersion.textContent = `PALURU Mini ${APP_VERSION} / Build ${BUILD_VERSION}`;
   }
   splash?.classList.add("is-hidden");
-  logOverflowElements();
   loadNotificationCandidates({ force: true });
 });
 
 function updateServiceWorker(registration) {
   if (registration.waiting) {
-    console.log("[Paruru] Service Worker waiting on load");
+    debugLog("[Paruru] Service Worker waiting on load");
     activateWaitingServiceWorker(registration.waiting);
   }
 
   registration.addEventListener("updatefound", () => {
-    console.log("[Paruru] Service Worker updatefound");
+    debugLog("[Paruru] Service Worker updatefound");
     const newWorker = registration.installing;
     logServiceWorkerState(registration);
     if (!newWorker) {
@@ -306,7 +307,7 @@ function updateServiceWorker(registration) {
     }
 
     newWorker.addEventListener("statechange", () => {
-      console.log("[Paruru] Service Worker installing state", newWorker.state);
+      debugLog("[Paruru] Service Worker installing state", newWorker.state);
       logServiceWorkerState(registration);
       if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
         activateWaitingServiceWorker(newWorker);
@@ -316,17 +317,23 @@ function updateServiceWorker(registration) {
 }
 
 function activateWaitingServiceWorker(worker) {
-  console.log("[Paruru] Service Worker skip waiting requested");
+  debugLog("[Paruru] Service Worker skip waiting requested");
   worker.postMessage({ type: "SKIP_WAITING" });
 }
 
 function logServiceWorkerState(registration) {
-  console.log("[Paruru] Service Worker state", {
+  debugLog("[Paruru] Service Worker state", {
     installing: registration.installing?.state || null,
     waiting: registration.waiting?.state || null,
     active: registration.active?.state || null,
     controlled: Boolean(navigator.serviceWorker.controller),
   });
+}
+
+function debugLog(...args) {
+  if (DEBUG) {
+    console.log(...args);
+  }
 }
 
 categoryInput.addEventListener("change", () => {
@@ -564,7 +571,14 @@ function buildCreateWithAIPayload(memo) {
     payload.priority = selectedPriority;
   }
 
-  console.log("[Paruru] createWithAI payload", payload);
+  debugLog("[Paruru] createWithAI payload", {
+    action: payload.action,
+    hasMemo: Boolean(payload.memo),
+    category: payload.category || "",
+    priority: payload.priority || "",
+    userId: payload.userId || "",
+    hasDeviceId: Boolean(payload.deviceId),
+  });
   return payload;
 }
 
@@ -605,7 +619,7 @@ async function loadNotificationCandidates(options = {}) {
       return items;
     })
     .catch((error) => {
-      console.log("[Paruru] notification candidates failed", error?.message || error);
+      debugLog("[Paruru] notification candidates failed", error?.message || error);
       notificationCandidatesState.inFlight = null;
       renderNotificationError();
       return [];
@@ -668,7 +682,7 @@ async function syncCalendar(payload) {
     return dummySyncCalendar(payload);
   }
 
-  console.log("[Paruru] syncCalendar payload", sanitizeCalendarPayloadForLog(payload));
+  debugLog("[Paruru] syncCalendar payload", sanitizeCalendarPayloadForLog(payload));
   const response = await fetch(GAS_WEB_APP_URL, {
     method: "POST",
     headers: {
@@ -715,7 +729,7 @@ async function deleteInboxItem(id) {
 async function parseApiResponse(response, options = {}) {
   const debugLabel = options.debugLabel || "";
   if (debugLabel) {
-    console.log(`[Paruru] ${debugLabel} HTTP status`, response.status);
+    debugLog(`[Paruru] ${debugLabel} HTTP status`, response.status);
   }
 
   if (!response.ok) {
@@ -724,7 +738,7 @@ async function parseApiResponse(response, options = {}) {
 
   const result = await response.json();
   if (debugLabel) {
-    console.log(`[Paruru] ${debugLabel} parsed response`, sanitizeApiResponseForLog(result));
+    debugLog(`[Paruru] ${debugLabel} parsed response`, sanitizeApiResponseForLog(result));
   }
 
   if (!result.success) {
@@ -1452,7 +1466,7 @@ async function submitCalendarSync(target) {
       ? await updateCalendar(payload)
       : await syncCalendar(payload);
     const successCheck = getCalendarSuccessCheck(result, mode);
-    console.log("[Paruru] calendar success check", successCheck);
+    debugLog("[Paruru] calendar success check", successCheck);
     if (!successCheck.ok) {
       throw new Error("Calendar sync response did not confirm synced event");
     }
@@ -1473,7 +1487,7 @@ async function submitCalendarSync(target) {
     showTemporaryParuruMessage(mode === "update" ? PARURU_MESSAGES.action.calendarUpdateSuccess : PARURU_MESSAGES.speech.calendarSynced, "success", "success");
     showMessage(successLine, "success");
   } catch (error) {
-    console.log("[Paruru] calendar sync failed", error?.message || error);
+    debugLog("[Paruru] calendar sync failed", error?.message || error);
     showMessage(PARURU_MESSAGES.action.calendarError, "error");
     setParuruState("error");
   } finally {
@@ -2327,16 +2341,3 @@ function dummyDelete(id) {
   saveDummyItems(loadDummyItems().filter((item) => item.id !== id));
   return Promise.resolve({ success: true, data: { id }, message: "deleted" });
 }
-
-function logOverflowElements() {
-  if (!location.hostname.includes("localhost") && location.protocol !== "file:") {
-    return;
-  }
-
-  const viewportWidth = document.documentElement.clientWidth;
-  [...document.querySelectorAll("*")]
-    .filter((element) => element.scrollWidth > viewportWidth)
-    .forEach((element) => console.log("overflow:", element, element.scrollWidth));
-}
-
-
