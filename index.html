@@ -5,24 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260711-05">
-    <link rel="icon" href="./assets/icons/favicon.png?v=20260711-05" type="image/png">
-    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260711-05">
-    <link rel="stylesheet" href="./style.css?v=20260711-05">
+    <link rel="manifest" href="./manifest.json?v=20260711-07">
+    <link rel="icon" href="./assets/icons/favicon.png?v=20260711-07" type="image/png">
+    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260711-07">
+    <link rel="stylesheet" href="./style.css?v=20260711-07">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260711-05" alt="&#12401;&#12427;&#12427;">
+      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260711-07" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">Loading...</p>
     </div>
 
     <main class="app-shell">
-      <section class="paruru">
-        <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260711-05" alt="&#12401;&#12427;&#12427;">
-        <p class="paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</p>
-      </section>
-
       <section id="homeView" class="app-view is-active" data-view="home">
         <section id="todayParuru" class="today-paruru" aria-live="polite">
           <div class="today-paruru-header">
@@ -36,6 +31,15 @@
             <p class="today-paruru-empty">&#35501;&#12415;&#36796;&#12415;&#20013;...</p>
           </div>
           <button id="todayParuruAllButton" class="today-paruru-all is-hidden" type="button">&#12377;&#12409;&#12390;&#35211;&#12427; &#8594;</button>
+        </section>
+
+        <section class="paruru-hero" aria-label="&#12401;&#12427;&#12427;&#20250;&#35441;">
+          <p class="paruru-speech paruru-speech-left">&#12394;&#12435;&#12363;&#12354;&#12427;&#65311;</p>
+          <div class="paruru-character">
+            <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260711-07" alt="&#12401;&#12427;&#12427;">
+            <p class="paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</p>
+          </div>
+          <p class="paruru-speech paruru-speech-right">&#20693;&#12364;&#35226;&#12360;&#12392;&#12367;&#12290;</p>
         </section>
 
         <form id="inboxForm" class="inbox-form">
@@ -229,6 +233,6 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260711-05" defer></script>
+    <script src="./app.js?v=20260711-07" defer></script>
   </body>
 </html>

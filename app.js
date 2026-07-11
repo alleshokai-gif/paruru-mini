@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260711-05";
+const ASSET_VERSION = "v20260711-07";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -14,51 +14,100 @@ const DEFAULT_PROFILE = {
   calendarSuffix: "（父）",
   defaultCalendar: "family",
 };
+
+const PARURU_MESSAGES = {
+  state: {
+    loading: "……ちょっと待って、兄弟。",
+    normal: "……メモしとく？",
+    sending: "ぱるるが整理中……急かさんといて。",
+    success: "はいはい、預かったよ。",
+    empty: "兄弟、何も書いてないよ。僕でも無理。",
+    error: "うまくいかんかった。もう一回だけ試してみて。",
+    inboxEmpty: "今日はまだ何も預かってないよ。珍しいね、兄弟。",
+    done: "直しといたよ。えらいえらい。",
+    deleteConfirm: "ほんまに消す？ 後で泣いても知らんよ。",
+    deleted: "消しといたよ。",
+  },
+  notification: {
+    loadingLine: "ちょっと見てくる。",
+    loadingBody: "読み込み中...",
+    empty: "今日は急ぎなし。珍しいね、兄弟。",
+    loadedLine: "また忘れてそうなの、拾っといたよ。",
+    error: "うまく読めんかった。もう一回だけ試してみて。",
+    fallback: "兄弟、これ確認しといて。",
+    more: (count) => `ほか${count}件`,
+  },
+  action: {
+    profileSaved: "保存しといたよ、兄弟。",
+    detailOpenFailed: "詳細を開けんかった。Inboxで見てな。",
+    followupSuccess: "直しといたよ。",
+    followupError: "うまくいかんかった。もう一回だけ試してみて。",
+    calendarInputInvalid: "日付とタイトル、もう一回見て。そこ大事やから。",
+    calendarCreateSuccess: "カレンダーに入れといたよ。あとは忘れても知らんけど。",
+    calendarUpdateSuccess: "直しといたよ。",
+    calendarError: "うまくいかんかった。もう一回だけ試してみて。",
+  },
+  calendarStatus: {
+    pending: "カレンダーにはまだ入れてないよ。",
+    synced: "カレンダーには入れといたよ。",
+    update_required: "カレンダーはまだ古いまま。サイネージにも反映されてないよ。",
+    failed: "カレンダー連携でつまずいた。もう一回見る？",
+  },
+  notificationMessage: {
+    overdue: (title) => `${title}、期限過ぎとるよ。僕のせいにはせんといてな。`,
+    due_today: (title) => `兄弟、${title}は今日まで。僕は覚えとったよ。`,
+    urgent: (title) => `至急やで。${title}、先に見といて。`,
+    followup_required: (title) => `${title}、まだ確認が残っとるよ。答えとく？`,
+    due_tomorrow: (title) => `${title}は明日まで。今日のうちにやっとく？`,
+    high_priority: (title) => `${title}、優先度高め。忘れたら僕が見てたって言うよ。`,
+    fallback: (title) => `${title}、確認しといてな。`,
+  },
+};
 const PARURU_STATES = {
   loading: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_sleepy.png`),
-    line: "……",
+    line: PARURU_MESSAGES.state.loading,
   },
   normal: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`),
-    line: "……メモしとく？",
+    line: PARURU_MESSAGES.state.normal,
   },
   sending: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`),
-    line: "ぱるるが整理中…",
+    line: PARURU_MESSAGES.state.sending,
   },
   success: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_smile.png`),
-    line: "はいはい、僕が覚えとく。",
+    line: PARURU_MESSAGES.state.success,
     messageType: "success",
   },
   empty: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`),
-    line: "えぇ……何も書いてないけど？",
+    line: PARURU_MESSAGES.state.empty,
     messageType: "error",
   },
   error: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`),
-    line: "送れなかった。あとでもう一回やって。",
+    line: PARURU_MESSAGES.state.error,
     messageType: "error",
   },
   inboxEmpty: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_sleepy.png`),
-    line: "今日はまだ何も預かってないよ。",
+    line: PARURU_MESSAGES.state.inboxEmpty,
   },
   done: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_smile.png`),
-    line: "えらいえらい。",
+    line: PARURU_MESSAGES.state.done,
     messageType: "success",
   },
   deleteConfirm: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`),
-    line: "ほんまに消す？",
+    line: PARURU_MESSAGES.state.deleteConfirm,
     messageType: "error",
   },
   deleted: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`),
-    line: "消しといたよ。",
+    line: PARURU_MESSAGES.state.deleted,
     messageType: "success",
   },
 };
@@ -399,7 +448,7 @@ profileForm.addEventListener("submit", (event) => {
   event.preventDefault();
   userProfile = saveUserProfileFromForm();
   renderProfileForm();
-  showMessage("プロフィールを保存したで。", "success");
+  showMessage(PARURU_MESSAGES.action.profileSaved, "success");
 });
 
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
@@ -657,9 +706,9 @@ function renderInboxError() {
 
 function renderNotificationLoading() {
   setNotificationViewState("loading");
-  todayParuruLine.textContent = "ちょっと見てくる。";
+  todayParuruLine.textContent = PARURU_MESSAGES.notification.loadingLine;
   todayParuruLine.classList.remove("is-hidden");
-  todayParuruList.innerHTML = `<p class="today-paruru-empty">読み込み中...</p>`;
+  todayParuruList.innerHTML = `<p class="today-paruru-empty">${escapeHtml(PARURU_MESSAGES.notification.loadingBody)}</p>`;
   todayParuruAllButton.classList.add("is-hidden");
 }
 
@@ -669,7 +718,7 @@ function renderNotificationError() {
   todayParuruLine.textContent = "";
   todayParuruList.innerHTML = `
     <div class="today-paruru-error">
-      <p>今日の確認を読み込めんかったで。</p>
+      <p>${escapeHtml(PARURU_MESSAGES.notification.error)}</p>
       <button class="secondary-button" type="button" data-notification-refresh>もう一回</button>
     </div>
   `;
@@ -682,13 +731,13 @@ function renderNotificationCandidates(items, totalCount) {
     setNotificationViewState("loaded-empty");
     todayParuruLine.classList.add("is-hidden");
     todayParuruLine.textContent = "";
-    todayParuruList.innerHTML = `<p class="today-paruru-empty">今日は特に急ぎないで。</p>`;
+    todayParuruList.innerHTML = `<p class="today-paruru-empty">${escapeHtml(PARURU_MESSAGES.notification.empty)}</p>`;
     todayParuruAllButton.classList.add("is-hidden");
     return;
   }
 
   setNotificationViewState("loaded-with-items");
-  todayParuruLine.textContent = "また忘れてるの、拾っといたで。";
+  todayParuruLine.textContent = PARURU_MESSAGES.notification.loadedLine;
   todayParuruLine.classList.remove("is-hidden");
   todayParuruList.innerHTML = visibleItems.map(renderNotificationItem).join("") + renderNotificationMore(totalCount, visibleItems.length);
   todayParuruAllButton.classList.remove("is-hidden");
@@ -707,7 +756,7 @@ function renderNotificationItem(item) {
         ${renderNotificationLevelBadge(level)}
         ${labels}
       </span>
-      <span class="today-paruru-message">${escapeHtml(item.message || item.title || "確認してな。")}</span>
+      <span class="today-paruru-message">${escapeHtml(item.message || item.title || PARURU_MESSAGES.notification.fallback)}</span>
     </button>
   `;
 }
@@ -718,7 +767,7 @@ function renderNotificationMore(totalCount, visibleCount) {
     return "";
   }
 
-  return `<p class="today-paruru-more">ほか${escapeHtml(rest)}件</p>`;
+  return `<p class="today-paruru-more">${escapeHtml(PARURU_MESSAGES.notification.more(rest))}</p>`;
 }
 
 function renderNotificationLevelBadge(level) {
@@ -902,10 +951,10 @@ function renderDetailCalendarStatus(item) {
   const status = normalizeCalendarSyncStatus(item.calendarSyncStatus);
   const chip = renderCalendarStatusChip(item);
   const messages = {
-    pending: "カレンダーにはまだ登録されていません。",
-    synced: "Googleカレンダーと同期済みです。",
-    update_required: "カレンダー未更新のため、サイネージにはまだ反映されていません。",
-    failed: item.calendarLastError || "カレンダー連携でエラーが起きています。",
+    pending: PARURU_MESSAGES.calendarStatus.pending,
+    synced: PARURU_MESSAGES.calendarStatus.synced,
+    update_required: PARURU_MESSAGES.calendarStatus.update_required,
+    failed: item.calendarLastError || PARURU_MESSAGES.calendarStatus.failed,
   };
 
   if (!chip && !messages[status]) {
@@ -927,7 +976,7 @@ async function openNotificationDetail(id) {
     try {
       inboxItems = await fetchInboxItems();
     } catch (error) {
-      showMessage("詳細を開けんかった。Inboxで確認してな。", "error");
+      showMessage(PARURU_MESSAGES.action.detailOpenFailed, "error");
       return;
     }
   }
@@ -1027,10 +1076,10 @@ async function submitFollowupAnswer(target) {
       await loadInbox({ quiet: true });
     }
     await loadNotificationCandidates({ force: true });
-    showParuruMessage("更新したで。", "success", "success");
+    showParuruMessage(PARURU_MESSAGES.action.followupSuccess, "success", "success");
   } catch (error) {
     setParuruState("error", { showStatus: true });
-    showMessage("更新できなかった。もう一回試して。", "error");
+    showMessage(PARURU_MESSAGES.action.followupError, "error");
   } finally {
     setFollowupSubmitting(target, false);
   }
@@ -1193,10 +1242,10 @@ async function submitFollowupDirectAnswer(target, answer) {
       await loadInbox({ quiet: true });
     }
     await loadNotificationCandidates({ force: true });
-    showParuruMessage("更新したで。", "success", "success");
+    showParuruMessage(PARURU_MESSAGES.action.followupSuccess, "success", "success");
   } catch (error) {
     setParuruState("error", { showStatus: true });
-    showMessage("更新できなかった。もう一回試して。", "error");
+    showMessage(PARURU_MESSAGES.action.followupError, "error");
   } finally {
     setFollowupSubmitting(target, false);
   }
@@ -1292,7 +1341,7 @@ async function submitCalendarSync(target) {
   const state = getCalendarSyncUi(target);
   const payload = buildCalendarSyncPayload(state);
   if (!payload) {
-    showMessage("日付とタイトルを確認してな。", "error");
+    showMessage(PARURU_MESSAGES.action.calendarInputInvalid, "error");
     return;
   }
 
@@ -1313,11 +1362,11 @@ async function submitCalendarSync(target) {
     }
     await loadNotificationCandidates({ force: true });
     const successLine = mode === "update"
-      ? "カレンダーを更新したで。"
-      : "ファミリーカレンダーに登録したで。予定はInboxから完了へ移したで。";
+      ? PARURU_MESSAGES.action.calendarUpdateSuccess
+      : PARURU_MESSAGES.action.calendarCreateSuccess;
     showParuruMessage(successLine, "success", "success");
   } catch (error) {
-    showMessage("カレンダー連携できなかった。内容を確認してもう一回試して。", "error");
+    showMessage(PARURU_MESSAGES.action.calendarError, "error");
     setParuruState("error");
   } finally {
     setCalendarSubmitting(target, false);
@@ -2003,24 +2052,24 @@ function getDummyNotificationLevel(reasons) {
 
 function buildDummyNotificationMessage(title, reasons) {
   if (reasons.includes("overdue")) {
-    return `${title}、期限過ぎとるで。`;
+    return PARURU_MESSAGES.notificationMessage.overdue(title);
   }
   if (reasons.includes("due_today")) {
-    return `${title}、今日が締切やで。`;
+    return PARURU_MESSAGES.notificationMessage.due_today(title);
   }
   if (reasons.includes("urgent")) {
-    return `至急やで。${title}を確認してな。`;
+    return PARURU_MESSAGES.notificationMessage.urgent(title);
   }
   if (reasons.includes("followup_required")) {
-    return `${title}、まだ確認したいことが残っとるで。`;
+    return PARURU_MESSAGES.notificationMessage.followup_required(title);
   }
   if (reasons.includes("due_tomorrow")) {
-    return `${title}、明日が締切やで。`;
+    return PARURU_MESSAGES.notificationMessage.due_tomorrow(title);
   }
   if (reasons.includes("high_priority")) {
-    return `${title}、優先度高めやで。`;
+    return PARURU_MESSAGES.notificationMessage.high_priority(title);
   }
-  return `${title}を確認してな。`;
+  return PARURU_MESSAGES.notificationMessage.fallback(title);
 }
 
 function dummySyncCalendar(payload) {

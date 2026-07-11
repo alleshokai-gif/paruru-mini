@@ -99,29 +99,6 @@ main,
   overflow-x: clip;
 }
 
-.paruru {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-  padding: 0 0 22px;
-  text-align: center;
-}
-
-.paruru-image {
-  width: min(180px, 42%);
-  max-height: 180px;
-  height: auto;
-  display: block;
-  object-fit: contain;
-}
-
-.paruru-line {
-  margin: 0;
-  color: var(--accent-dark);
-  font-size: 1.2rem;
-  font-weight: 700;
-}
-
 .inbox-form {
   display: grid;
   gap: 16px;
@@ -263,6 +240,114 @@ main,
 .today-paruru-error {
   display: grid;
   gap: 10px;
+}
+
+.paruru-hero {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) minmax(140px, 1.5fr) minmax(70px, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto 18px;
+  padding: 4px 0 2px;
+  overflow-x: clip;
+}
+
+.paruru-character {
+  display: grid;
+  justify-items: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.paruru-image {
+  width: min(174px, 100%);
+  max-height: 178px;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.paruru-line {
+  margin: 4px 0 0;
+  color: var(--accent-dark);
+  font-size: 0.92rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.paruru-speech {
+  position: relative;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(92, 107, 192, 0.2);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--accent-dark);
+  box-shadow: 0 8px 18px rgba(32, 34, 54, 0.08);
+  font-size: 0.88rem;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.paruru-speech::before,
+.paruru-speech::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform: translateY(-50%);
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+}
+
+.paruru-speech-left::before {
+  right: -9px;
+  border-left: 9px solid rgba(92, 107, 192, 0.2);
+}
+
+.paruru-speech-left::after {
+  right: -7px;
+  border-left: 8px solid #ffffff;
+}
+
+.paruru-speech-right::before {
+  left: -9px;
+  border-right: 9px solid rgba(92, 107, 192, 0.2);
+}
+
+.paruru-speech-right::after {
+  left: -7px;
+  border-right: 8px solid #ffffff;
+}
+
+.paruru-speech.is-vertical {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  justify-self: center;
+  min-height: 112px;
+  padding: 12px 8px;
+}
+
+@media (max-width: 380px) {
+  .paruru-hero {
+    grid-template-columns: minmax(62px, 0.9fr) minmax(132px, 1.45fr) minmax(62px, 0.9fr);
+    gap: 7px;
+  }
+
+  .paruru-speech {
+    padding: 9px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+  }
+
+  .paruru-line {
+    font-size: 0.84rem;
+  }
 }
 
 .app-view {

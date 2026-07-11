@@ -947,30 +947,30 @@ function getNotificationLevel_(reasons) {
 
 function buildNotificationMessage_(title, reasons) {
   if (reasons.indexOf('overdue') !== -1) {
-    return title + '、期限過ぎとるで。';
+    return title + '、期限過ぎとるよ。僕のせいにはせんといてな。';
   }
 
   if (reasons.indexOf('due_today') !== -1) {
-    return title + '、今日が締切やで。';
+    return '兄弟、' + title + 'は今日まで。僕は覚えとったよ。';
   }
 
   if (reasons.indexOf('urgent') !== -1) {
-    return '至急やで。' + title + 'を確認してな。';
+    return '至急やで。' + title + '、先に見といて。';
   }
 
   if (reasons.indexOf('followup_required') !== -1) {
-    return title + '、まだ確認したいことが残っとるで。';
+    return title + '、まだ確認が残っとるよ。答えとく？';
   }
 
   if (reasons.indexOf('due_tomorrow') !== -1) {
-    return title + '、明日が締切やで。';
+    return title + 'は明日まで。今日のうちにやっとく？';
   }
 
   if (reasons.indexOf('high_priority') !== -1) {
-    return title + '、優先度高めやで。';
+    return title + '、優先度高め。忘れたら僕が見てたって言うよ。';
   }
 
-  return title + 'を確認してな。';
+  return title + '、確認しといてな。';
 }
 
 function parseNotificationTargetDate_(value) {
