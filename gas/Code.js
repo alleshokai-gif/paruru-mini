@@ -295,30 +295,57 @@ function syncCalendar_(body) {
   var target = null;
 
   try {
+    Logger.log('[syncCalendar] start id=' + id + ' target=' + String(body.calendarTarget || 'family'));
     lock.waitLock(10000);
     target = getItemById_(id);
     if (!target) {
+      Logger.log('[syncCalendar] item not found id=' + id);
       return json_({ success: false, status: 404, message: 'not found' });
     }
 
     if (String(target.item.type || '').toLowerCase() !== 'event') {
+      Logger.log('[syncCalendar] rejected non-event id=' + id + ' type=' + target.item.type);
       return json_({ success: false, status: 400, message: 'calendar sync requires event item' });
     }
 
     if (target.item.calendarEventId) {
+      const existingStatus = normalizeCalendarSyncStatus_(target.item.calendarSyncStatus);
+      Logger.log('[syncCalendar] existing eventId id=' + id + ' status=' + existingStatus);
+      if (existingStatus === 'synced') {
+        return json_({
+          success: true,
+          item: buildCalendarResponseItem_(target.item),
+          message: 'calendar already synced',
+        });
+      }
+
       return json_({
-        success: true,
-        item: buildCalendarResponseItem_(target.item),
-        message: target.item.calendarSyncStatus === 'update_required'
-          ? 'calendar update required'
-          : 'calendar already synced',
+        success: false,
+        status: 409,
+        message: 'calendar event already exists but is not synced',
       });
     }
 
     const calendarTarget = normalizeCalendarTarget_(body.calendarTarget || target.item.defaultCalendar || 'family');
+    assertRequiredHeaders_(target.index, [
+      'calendarTitle',
+      'calendarSyncStatus',
+      'calendarId',
+      'calendarEventId',
+      'calendarName',
+      'calendarSyncedAt',
+      'calendarStart',
+      'calendarEnd',
+      'calendarAllDay',
+      'calendarLastError',
+      'status',
+      'updatedAt',
+    ]);
     const calendarConfig = getCalendarConfig_(calendarTarget);
+    Logger.log('[syncCalendar] calendar config loaded target=' + calendarTarget + ' hasId=' + Boolean(calendarConfig.calendarId));
     const calendar = getCalendarByConfig_(calendarConfig);
     const calendarName = calendar.getName();
+    Logger.log('[syncCalendar] calendar loaded name=' + calendarName);
     const startDate = String(body.startDate || target.item.eventStart || '').trim();
     const startTime = String(body.startTime || target.item.eventStartTime || '').trim();
     const endDate = String(body.endDate || target.item.eventEnd || startDate).trim();
@@ -368,12 +395,18 @@ function syncCalendar_(body) {
       calendarEnd = normalizedEndDate + ' ' + normalizedEndTime;
     }
 
+    const calendarEventId = event && event.getId ? event.getId() : '';
+    Logger.log('[syncCalendar] event created id=' + id + ' hasEventId=' + Boolean(calendarEventId));
+    if (!calendarEventId) {
+      throw new Error('calendarEventId was empty after event creation');
+    }
+
     const now = nowTokyoString_();
     const updates = {
       calendarTitle: calendarTitle,
       calendarSyncStatus: 'synced',
       calendarId: calendarConfig.calendarId,
-      calendarEventId: event.getId(),
+      calendarEventId: calendarEventId,
       calendarName: calendarName,
       calendarSyncedAt: now,
       calendarStart: calendarStart,
@@ -384,13 +417,28 @@ function syncCalendar_(body) {
       updatedAt: now,
     };
     updateRowFields_(target.sheet, target.rowNumber, target.index, updates);
+    SpreadsheetApp.flush();
+    Logger.log('[syncCalendar] spreadsheet updated id=' + id);
+
+    const savedTarget = getItemById_(id);
+    const savedItem = savedTarget && savedTarget.item;
+    const savedOk = savedItem &&
+      normalizeCalendarSyncStatus_(savedItem.calendarSyncStatus) === 'synced' &&
+      String(savedItem.calendarEventId || '').trim() &&
+      String(savedItem.status || '').toLowerCase() === 'completed';
+
+    Logger.log('[syncCalendar] final check id=' + id + ' success=' + Boolean(savedOk) + ' status=' + (savedItem && savedItem.calendarSyncStatus));
+    if (!savedOk) {
+      throw new Error('calendar sync was not persisted');
+    }
 
     return json_({
       success: true,
-      item: buildCalendarResponseItem_(Object.assign({}, target.item, updates)),
+      item: buildCalendarResponseItem_(savedItem),
       message: 'calendar synced',
     });
   } catch (error) {
+    Logger.log('[syncCalendar] failed id=' + id + ' message=' + sanitizeCalendarError_(error));
     if (target) {
       updateRowFields_(target.sheet, target.rowNumber, target.index, {
         calendarSyncStatus: 'failed',
@@ -721,6 +769,16 @@ function updateRowFields_(sheet, rowNumber, index, updates) {
       sheet.getRange(rowNumber, index[field] + 1).setValue(normalizeValueForSheet_(field, updates[field]));
     }
   });
+}
+
+function assertRequiredHeaders_(index, fields) {
+  const missing = fields.filter(function(field) {
+    return !Object.prototype.hasOwnProperty.call(index, field);
+  });
+
+  if (missing.length > 0) {
+    throw new Error('Spreadsheet headers missing: ' + missing.join(', '));
+  }
 }
 
 function listInboxItems_() {

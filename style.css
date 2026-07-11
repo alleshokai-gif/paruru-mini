@@ -494,6 +494,8 @@ button:disabled {
   width: 100%;
   margin: 16px 0 0;
   padding: 18px 16px;
+  scroll-margin-top: 24px;
+  scroll-margin-bottom: 112px;
   border: 1px solid rgba(92, 107, 192, 0.22);
   border-radius: 12px;
   background: #f9faff;

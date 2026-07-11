@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260711-10";
+const ASSET_VERSION = "v20260711-11";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -59,7 +59,7 @@ const PARURU_MESSAGES = {
     calendarInputInvalid: "日付とタイトル、もう一回見て。そこ大事やから。",
     calendarCreateSuccess: "カレンダーに入れといたよ。あとは忘れても知らんけど。",
     calendarUpdateSuccess: "直しといたよ。",
-    calendarError: "うまくいかんかった。もう一回だけ試してみて。",
+    calendarError: "カレンダー登録できんかった。もう一回試して。",
   },
   calendarStatus: {
     pending: "カレンダーにはまだ入れてないよ。",
@@ -668,6 +668,7 @@ async function syncCalendar(payload) {
     return dummySyncCalendar(payload);
   }
 
+  console.log("[Paruru] syncCalendar payload", sanitizeCalendarPayloadForLog(payload));
   const response = await fetch(GAS_WEB_APP_URL, {
     method: "POST",
     headers: {
@@ -676,7 +677,7 @@ async function syncCalendar(payload) {
     body: JSON.stringify({ action: "syncCalendar", ...payload }),
   });
 
-  return parseApiResponse(response);
+  return parseApiResponse(response, { debugLabel: "syncCalendar" });
 }
 
 async function updateCalendar(payload) {
@@ -711,12 +712,21 @@ async function deleteInboxItem(id) {
   return parseApiResponse(response);
 }
 
-async function parseApiResponse(response) {
+async function parseApiResponse(response, options = {}) {
+  const debugLabel = options.debugLabel || "";
+  if (debugLabel) {
+    console.log(`[Paruru] ${debugLabel} HTTP status`, response.status);
+  }
+
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
 
   const result = await response.json();
+  if (debugLabel) {
+    console.log(`[Paruru] ${debugLabel} parsed response`, sanitizeApiResponseForLog(result));
+  }
+
   if (!result.success) {
     throw new Error(result.message || "API failed");
   }
@@ -1066,11 +1076,47 @@ function setParuruSpeech(stateName = "idle", customLine = "") {
   paruruLine.textContent = line;
 }
 
+function resetParuruSpeechSoon(delay = 4500) {
+  window.clearTimeout(resetParuruSpeechSoon.timer);
+  resetParuruSpeechSoon.timer = window.setTimeout(() => {
+    if (activeView === "home" && !isSubmitting && !memoInput.value.trim()) {
+      setParuruSpeech("idle");
+    }
+  }, delay);
+}
+
 function showParuruMessage(line, type, imageState = "normal") {
   const state = PARURU_STATES[imageState] || PARURU_STATES.normal;
   paruruImage.src = state.image;
   setParuruSpeech("idle", line);
   showMessage(line, type || "");
+}
+
+function showTemporaryParuruMessage(line, type, imageState = "normal") {
+  showParuruMessage(line, type, imageState);
+  resetParuruSpeechSoon();
+}
+
+function revealPanelIfNeeded(panel) {
+  if (!panel || panel.classList.contains("is-hidden") || isElementMostlyVisible(panel)) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    panel.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  });
+}
+
+function isElementMostlyVisible(element) {
+  const rect = element.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const visibleTop = Math.max(rect.top, 0);
+  const visibleBottom = Math.min(rect.bottom, viewportHeight);
+  const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+  return visibleHeight >= Math.min(rect.height * 0.72, 160);
 }
 
 function showSuccessResult(result) {
@@ -1125,7 +1171,7 @@ async function submitFollowupAnswer(target) {
       await loadInbox({ quiet: true });
     }
     await loadNotificationCandidates({ force: true });
-    showParuruMessage(PARURU_MESSAGES.action.followupSuccess, "success", "success");
+    showTemporaryParuruMessage("よし、これで分かった。", "success", "success");
   } catch (error) {
     setParuruState("error", { showStatus: true });
     showMessage(PARURU_MESSAGES.action.followupError, "error");
@@ -1147,6 +1193,7 @@ function renderFollowupPanel(target, item) {
   state.fields.innerHTML = renderFollowupFields(state.panel.dataset.inputType);
   state.submit.classList.toggle("is-hidden", state.panel.dataset.inputType === "yesno");
   state.panel.classList.remove("is-hidden");
+  revealPanelIfNeeded(state.panel);
 }
 
 function hideFollowupPanel(target) {
@@ -1291,7 +1338,7 @@ async function submitFollowupDirectAnswer(target, answer) {
       await loadInbox({ quiet: true });
     }
     await loadNotificationCandidates({ force: true });
-    showParuruMessage(PARURU_MESSAGES.action.followupSuccess, "success", "success");
+    showTemporaryParuruMessage("よし、これで分かった。", "success", "success");
   } catch (error) {
     setParuruState("error", { showStatus: true });
     showMessage(PARURU_MESSAGES.action.followupError, "error");
@@ -1320,6 +1367,7 @@ function renderCalendarSyncPanel(target, item) {
   state.later.disabled = false;
   state.submit.textContent = mode === "update" ? "カレンダーを更新" : "登録する";
   state.panel.classList.remove("is-hidden");
+  revealPanelIfNeeded(state.panel);
 }
 
 function hideCalendarSyncPanel(target) {
@@ -1403,6 +1451,12 @@ async function submitCalendarSync(target) {
     const result = mode === "update"
       ? await updateCalendar(payload)
       : await syncCalendar(payload);
+    const successCheck = getCalendarSuccessCheck(result, mode);
+    console.log("[Paruru] calendar success check", successCheck);
+    if (!successCheck.ok) {
+      throw new Error("Calendar sync response did not confirm synced event");
+    }
+
     updateLocalItem(result.item);
     hideCalendarSyncPanel(target);
     if (target === "detail" && result.item) {
@@ -1416,9 +1470,10 @@ async function submitCalendarSync(target) {
     const successLine = mode === "update"
       ? PARURU_MESSAGES.action.calendarUpdateSuccess
       : PARURU_MESSAGES.action.calendarCreateSuccess;
-    showParuruMessage(mode === "update" ? PARURU_MESSAGES.action.calendarUpdateSuccess : PARURU_MESSAGES.speech.calendarSynced, "success", "success");
+    showTemporaryParuruMessage(mode === "update" ? PARURU_MESSAGES.action.calendarUpdateSuccess : PARURU_MESSAGES.speech.calendarSynced, "success", "success");
     showMessage(successLine, "success");
   } catch (error) {
+    console.log("[Paruru] calendar sync failed", error?.message || error);
     showMessage(PARURU_MESSAGES.action.calendarError, "error");
     setParuruState("error");
   } finally {
@@ -1466,6 +1521,60 @@ function buildCalendarSyncPayload(state) {
     userDisplayName: profile.displayName,
     calendarSuffix: profile.calendarSuffix,
     deviceId: profile.deviceId,
+  };
+}
+
+function getCalendarSuccessCheck(result, mode) {
+  const item = result?.item;
+  const conditions = {
+    ok: false,
+    responseSuccess: result?.success === true,
+    hasItem: Boolean(item),
+    synced: normalizeCalendarSyncStatus(item?.calendarSyncStatus) === "synced",
+    hasEventId: Boolean(String(item?.calendarEventId || "").trim()),
+    completed: mode !== "create" || String(item?.status || "").trim().toLowerCase() === "completed",
+  };
+  conditions.ok = conditions.responseSuccess &&
+    conditions.hasItem &&
+    conditions.synced &&
+    conditions.hasEventId &&
+    conditions.completed;
+  return conditions;
+}
+
+function sanitizeCalendarPayloadForLog(payload) {
+  return {
+    id: payload?.id || "",
+    calendarTarget: payload?.calendarTarget || "",
+    calendarTitle: payload?.calendarTitle || "",
+    startDate: payload?.startDate || "",
+    startTime: payload?.startTime || "",
+    endDate: payload?.endDate || "",
+    endTime: payload?.endTime || "",
+    allDay: Boolean(payload?.allDay),
+    userId: payload?.userId || "",
+    hasDeviceId: Boolean(payload?.deviceId),
+  };
+}
+
+function sanitizeApiResponseForLog(result) {
+  if (!result || typeof result !== "object") {
+    return result;
+  }
+
+  return {
+    success: result.success,
+    status: result.status,
+    message: result.message,
+    item: result.item ? {
+      id: result.item.id,
+      status: result.item.status,
+      type: result.item.type,
+      calendarSyncStatus: result.item.calendarSyncStatus,
+      hasCalendarEventId: Boolean(String(result.item.calendarEventId || "").trim()),
+      calendarName: result.item.calendarName,
+      calendarSyncedAt: result.item.calendarSyncedAt,
+    } : null,
   };
 }
 
