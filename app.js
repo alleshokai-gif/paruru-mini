@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260711-01";
+const ASSET_VERSION = "v20260711-02";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -144,6 +144,7 @@ const detailFollowupQuestion = document.querySelector("#detailFollowupQuestion")
 const detailFollowupFields = document.querySelector("#detailFollowupFields");
 const detailFollowupSubmit = document.querySelector("#detailFollowupSubmit");
 const detailFollowupLater = document.querySelector("#detailFollowupLater");
+const detailCalendarStatus = document.querySelector("#detailCalendarStatus");
 const homeCalendarSync = document.querySelector("#homeCalendarSync");
 const homeCalendarSyncFields = document.querySelector("#homeCalendarSyncFields");
 const homeCalendarSubmit = document.querySelector("#homeCalendarSubmit");
@@ -438,6 +439,7 @@ function buildCreateWithAIPayload(memo) {
     memo,
     userId: profile.userId,
     userDisplayName: profile.displayName,
+    calendarSuffix: profile.calendarSuffix,
     deviceId: profile.deviceId,
     visibility: "private",
   };
@@ -509,6 +511,22 @@ async function syncCalendar(payload) {
       "Content-Type": "text/plain;charset=utf-8",
     },
     body: JSON.stringify({ action: "syncCalendar", ...payload }),
+  });
+
+  return parseApiResponse(response);
+}
+
+async function updateCalendar(payload) {
+  if (!GAS_WEB_APP_URL) {
+    return dummyUpdateCalendar(payload);
+  }
+
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify({ action: "updateCalendar", ...payload }),
   });
 
   return parseApiResponse(response);
@@ -589,8 +607,17 @@ function renderTypeChip(type) {
 }
 
 function renderCalendarStatusChip(item) {
-  if (item.calendarSyncStatus === "synced" && item.calendarEventId) {
+  const status = normalizeCalendarSyncStatus(item.calendarSyncStatus);
+  if (status === "synced" && item.calendarEventId) {
     return `<span class="calendar-status-chip calendar-status-synced">カレンダー登録済み</span>`;
+  }
+
+  if (status === "update_required" && item.calendarEventId) {
+    return `<span class="calendar-status-chip calendar-status-update-required">カレンダー更新待ち</span>`;
+  }
+
+  if (status === "failed") {
+    return `<span class="calendar-status-chip calendar-status-failed">カレンダー連携エラー</span>`;
   }
 
   if (shouldShowCalendarCandidate(item)) {
@@ -713,6 +740,32 @@ function normalizePriority(priority) {
   return Object.prototype.hasOwnProperty.call(PRIORITY_ORDER, normalized) ? normalized : "Normal";
 }
 
+function normalizeCalendarSyncStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  const allowed = ["not_required", "pending", "synced", "failed", "update_required", "deleted"];
+  return allowed.includes(normalized) ? normalized : "";
+}
+
+function renderDetailCalendarStatus(item) {
+  const status = normalizeCalendarSyncStatus(item.calendarSyncStatus);
+  const chip = renderCalendarStatusChip(item);
+  const messages = {
+    pending: "カレンダーにはまだ登録されていません。",
+    synced: "Googleカレンダーと同期済みです。",
+    update_required: "カレンダー未更新のため、サイネージにはまだ反映されていません。",
+    failed: item.calendarLastError || "カレンダー連携でエラーが起きています。",
+  };
+
+  if (!chip && !messages[status]) {
+    detailCalendarStatus.classList.add("is-hidden");
+    detailCalendarStatus.innerHTML = "";
+    return;
+  }
+
+  detailCalendarStatus.innerHTML = `${chip}<span>${escapeHtml(messages[status] || "")}</span>`;
+  detailCalendarStatus.className = `detail-calendar-status detail-calendar-status-${escapeHtml(status || "none")}`;
+}
+
 function openDetail(id) {
   const item = inboxItems.find((entry) => entry.id === id);
   if (!item) {
@@ -725,6 +778,7 @@ function openDetail(id) {
   editMemo.value = item.memo || "";
   editCategory.value = item.category || "未分類";
   editPriority.value = item.priority || "Normal";
+  renderDetailCalendarStatus(item);
   renderFollowupPanel("detail", item);
   renderCalendarSyncPanel("detail", item);
   detailDialog.showModal();
@@ -984,12 +1038,15 @@ function renderCalendarSyncPanel(target, item) {
     return;
   }
 
+  const mode = getCalendarSyncMode(item);
   const defaults = buildCalendarDefaults(item);
   state.panel.dataset.itemId = item.id;
+  state.panel.dataset.mode = mode;
+  state.panel.querySelector(".calendar-sync-label").textContent = getCalendarSyncLabel(item, mode);
   state.fields.innerHTML = renderCalendarSyncFields(defaults);
   state.submit.disabled = false;
   state.later.disabled = false;
-  state.submit.textContent = "登録する";
+  state.submit.textContent = mode === "update" ? "カレンダーを更新" : "登録する";
   state.panel.classList.remove("is-hidden");
 }
 
@@ -997,6 +1054,7 @@ function hideCalendarSyncPanel(target) {
   const state = getCalendarSyncUi(target);
   state.panel.classList.add("is-hidden");
   state.panel.dataset.itemId = "";
+  state.panel.dataset.mode = "";
   state.fields.innerHTML = "";
 }
 
@@ -1069,18 +1127,22 @@ async function submitCalendarSync(target) {
 
   setCalendarSubmitting(target, true);
   try {
-    const result = await syncCalendar(payload);
+    const mode = state.panel.dataset.mode;
+    const result = mode === "update"
+      ? await updateCalendar(payload)
+      : await syncCalendar(payload);
     updateLocalItem(result.item);
     hideCalendarSyncPanel(target);
     if (target === "detail" && result.item) {
+      renderDetailCalendarStatus(result.item);
       renderCalendarSyncPanel("detail", result.item);
     }
     if (activeView === "inbox") {
       await loadInbox({ quiet: true });
     }
-    showParuruMessage("ファミリーカレンダーに登録したで。", "success", "success");
+    showParuruMessage(mode === "update" ? "カレンダーを更新したで。" : "ファミリーカレンダーに登録したで。", "success", "success");
   } catch (error) {
-    showMessage("カレンダー登録できなかった。内容を確認してもう一回試して。", "error");
+    showMessage("カレンダー連携できなかった。内容を確認してもう一回試して。", "error");
     setParuruState("error");
   } finally {
     setCalendarSubmitting(target, false);
@@ -1149,7 +1211,10 @@ function setCalendarSubmitting(target, submitting) {
   const state = getCalendarSyncUi(target);
   state.submit.disabled = submitting;
   state.later.disabled = submitting;
-  state.submit.textContent = submitting ? "登録中..." : "登録する";
+  const mode = state.panel.dataset.mode;
+  state.submit.textContent = submitting
+    ? "送信中..."
+    : mode === "update" ? "カレンダーを更新" : "登録する";
 }
 
 function shouldShowCalendarCandidate(item) {
@@ -1161,11 +1226,35 @@ function shouldShowCalendarCandidate(item) {
     return false;
   }
 
-  if (item.calendarSyncStatus === "synced" && item.calendarEventId) {
-    return false;
+  const status = normalizeCalendarSyncStatus(item.calendarSyncStatus);
+  if (status === "update_required" && item.calendarEventId) {
+    return true;
   }
 
-  return !item.calendarEventId;
+  if (status === "failed" && item.calendarEventId) {
+    return true;
+  }
+
+  return !item.calendarEventId && status !== "synced";
+}
+
+function getCalendarSyncMode(item) {
+  const status = normalizeCalendarSyncStatus(item.calendarSyncStatus);
+  return (status === "update_required" || status === "failed") && item.calendarEventId
+    ? "update"
+    : "create";
+}
+
+function getCalendarSyncLabel(item, mode) {
+  if (mode !== "update") {
+    return "カレンダーに登録しますか？";
+  }
+
+  if (normalizeCalendarSyncStatus(item.calendarSyncStatus) === "failed") {
+    return "カレンダー連携でエラーが出ています";
+  }
+
+  return "カレンダーの予定と内容が変わっています";
 }
 
 function buildCalendarDefaults(item) {
@@ -1196,6 +1285,30 @@ function buildCalendarTitle(title, suffix) {
   }
 
   return `${baseTitle}${normalizedSuffix}`;
+}
+
+function hasCalendarRelevantChanges(beforeItem, afterItem) {
+  if (!beforeItem?.calendarEventId) {
+    return false;
+  }
+
+  const status = normalizeCalendarSyncStatus(beforeItem.calendarSyncStatus);
+  if (status !== "synced" && status !== "update_required") {
+    return false;
+  }
+
+  const fields = ["title", "eventStart", "eventStartTime", "eventEnd", "eventEndTime", "userId", "calendarSuffix"];
+  return fields.some((field) => normalizeCalendarComparableValue(field, beforeItem[field]) !== normalizeCalendarComparableValue(field, afterItem[field])) ||
+    buildCalendarTitle(beforeItem.title || beforeItem.memo || "", beforeItem.calendarSuffix || getCurrentProfile().calendarSuffix) !==
+      buildCalendarTitle(afterItem.title || afterItem.memo || "", afterItem.calendarSuffix || getCurrentProfile().calendarSuffix);
+}
+
+function normalizeCalendarComparableValue(field, value) {
+  if (field === "eventStartTime" || field === "eventEndTime") {
+    return normalizeTimeInputValue(value);
+  }
+
+  return String(value || "").trim();
 }
 
 function normalizeTimeInputValue(value) {
@@ -1533,6 +1646,7 @@ function dummyCreate(payload) {
     eventStartTime,
     userId: payload.userId || "",
     userDisplayName: payload.userDisplayName || "",
+    calendarSuffix: payload.calendarSuffix || "",
     deviceId: payload.deviceId || "",
     visibility: payload.visibility || "private",
     calendarSyncStatus: type === "event" ? "pending" : "not_required",
@@ -1608,8 +1722,54 @@ function dummySyncCalendar(payload) {
   return Promise.resolve({ success: true, item: updatedItem, message: "calendar synced" });
 }
 
+function dummyUpdateCalendar(payload) {
+  let updatedItem = null;
+  const items = loadDummyItems().map((item) => {
+    if (item.id !== payload.id) {
+      return item;
+    }
+
+    if (!item.calendarEventId) {
+      updatedItem = item;
+      return item;
+    }
+
+    updatedItem = {
+      ...item,
+      calendarTitle: buildCalendarTitle(payload.calendarTitle, getCurrentProfile().calendarSuffix),
+      calendarSyncStatus: "synced",
+      calendarSyncedAt: new Date().toISOString(),
+      calendarStart: [payload.startDate, payload.startTime].filter(Boolean).join(" "),
+      calendarEnd: [payload.endDate, payload.endTime].filter(Boolean).join(" "),
+      calendarAllDay: payload.allDay,
+      calendarLastError: "",
+      updatedAt: new Date().toISOString(),
+    };
+    return updatedItem;
+  });
+  saveDummyItems(items);
+
+  if (!updatedItem) {
+    return Promise.resolve({ success: false, message: "not found" });
+  }
+
+  return Promise.resolve({ success: true, item: updatedItem, message: "calendar updated" });
+}
+
 function dummyUpdate(id, updates) {
-  const items = loadDummyItems().map((item) => item.id === id ? { ...item, ...updates } : item);
+  const items = loadDummyItems().map((item) => {
+    if (item.id !== id) {
+      return item;
+    }
+
+    const updatedItem = { ...item, ...updates };
+    if (hasCalendarRelevantChanges(item, updatedItem)) {
+      updatedItem.calendarSyncStatus = "update_required";
+      updatedItem.calendarTitle = buildCalendarTitle(updatedItem.title || updatedItem.memo || "", getCurrentProfile().calendarSuffix);
+      updatedItem.calendarLastError = "";
+    }
+    return updatedItem;
+  });
   saveDummyItems(items);
   return Promise.resolve({ success: true, data: { id }, message: "updated" });
 }

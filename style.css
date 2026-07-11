@@ -481,6 +481,16 @@ button:disabled {
   color: #8a5a00;
 }
 
+.calendar-status-update-required {
+  background: #fff3d8;
+  color: #8a5a00;
+}
+
+.calendar-status-failed {
+  background: #ffe9e7;
+  color: var(--danger);
+}
+
 .card-schedule,
 .card-followup-question,
 .card-summary,
@@ -552,6 +562,33 @@ button:disabled {
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.detail-calendar-status {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f9faff;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.detail-calendar-status.is-hidden {
+  display: none;
+}
+
+.detail-calendar-status-update_required {
+  background: #fff9eb;
+  color: #8a5a00;
+}
+
+.detail-calendar-status-failed {
+  background: #fff5f4;
+  color: var(--danger);
 }
 
 .empty-state,

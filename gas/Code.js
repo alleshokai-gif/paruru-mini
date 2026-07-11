@@ -26,6 +26,7 @@ const HEADERS = [
   'source',
   'userId',
   'userDisplayName',
+  'calendarSuffix',
   'deviceId',
   'visibility',
   'calendarTitle',
@@ -81,6 +82,10 @@ function doPost(e) {
       return syncCalendar_(body);
     }
 
+    if (action === 'updateCalendar') {
+      return updateCalendar_(body);
+    }
+
     if (action === 'update') {
       return updateItem_(body);
     }
@@ -132,6 +137,7 @@ function createItem_(body) {
     confidence: normalizeNumberForSheet_(body.confidence),
     userId: body.userId || '',
     userDisplayName: body.userDisplayName || '',
+    calendarSuffix: body.calendarSuffix || '',
     deviceId: body.deviceId || '',
     visibility: normalizeVisibility_(body.visibility),
     calendarTitle: body.calendarTitle || '',
@@ -189,6 +195,7 @@ function createItemWithAI_(body) {
       confidence: normalizeNumberForSheet_(analysis.confidence),
       userId: body.userId || '',
       userDisplayName: body.userDisplayName || '',
+      calendarSuffix: body.calendarSuffix || '',
       deviceId: body.deviceId || '',
       visibility: normalizeVisibility_(body.visibility),
     });
@@ -294,11 +301,13 @@ function syncCalendar_(body) {
       return json_({ success: false, status: 400, message: 'calendar sync requires event item' });
     }
 
-    if (target.item.calendarEventId && target.item.calendarSyncStatus === 'synced') {
+    if (target.item.calendarEventId) {
       return json_({
         success: true,
         item: buildCalendarResponseItem_(target.item),
-        message: 'calendar already synced',
+        message: target.item.calendarSyncStatus === 'update_required'
+          ? 'calendar update required'
+          : 'calendar already synced',
       });
     }
 
@@ -399,6 +408,129 @@ function syncCalendar_(body) {
   }
 }
 
+function updateCalendar_(body) {
+  const id = String(body.id || '').trim();
+  if (!id) {
+    return json_({ success: false, status: 400, message: 'id is required' });
+  }
+
+  const lock = LockService.getScriptLock();
+  var target = null;
+
+  try {
+    lock.waitLock(10000);
+    target = getItemById_(id);
+    if (!target) {
+      return json_({ success: false, status: 404, message: 'not found' });
+    }
+
+    if (!target.item.calendarEventId) {
+      return json_({ success: false, status: 400, message: 'calendarEventId is required' });
+    }
+
+    const syncStatus = normalizeCalendarSyncStatus_(target.item.calendarSyncStatus);
+    if (syncStatus !== 'synced' && syncStatus !== 'update_required') {
+      return json_({ success: false, status: 400, message: 'calendar item is not updateable' });
+    }
+
+    const calendarTarget = normalizeCalendarTarget_(body.calendarTarget || 'family');
+    const calendarConfig = getCalendarConfig_(calendarTarget);
+    const calendar = getCalendarByConfig_(calendarConfig);
+    const event = calendar.getEventById(target.item.calendarEventId);
+    if (!event) {
+      const missingMessage = '登録済み予定が見つかりません';
+      updateRowFields_(target.sheet, target.rowNumber, target.index, {
+        calendarSyncStatus: 'failed',
+        calendarLastError: missingMessage,
+        updatedAt: nowTokyoString_(),
+      });
+      return json_({ success: false, status: 404, message: missingMessage });
+    }
+
+    const startDate = String(body.startDate || target.item.eventStart || '').trim();
+    const startTime = String(body.startTime || target.item.eventStartTime || '').trim();
+    const endDate = String(body.endDate || target.item.eventEnd || startDate).trim();
+    const endTime = String(body.endTime || target.item.eventEndTime || '').trim();
+    const allDay = normalizeBooleanForSheet_(body.allDay);
+    if (!startDate) {
+      throw new Error('startDate is required');
+    }
+
+    const suffix = getCalendarSuffix_(body, target.item);
+    const baseTitle = String(body.calendarTitle || target.item.title || target.item.memo || '').trim();
+    const calendarTitle = buildCalendarTitle_(baseTitle, suffix);
+    if (!calendarTitle) {
+      throw new Error('calendarTitle is required');
+    }
+
+    var calendarStart;
+    var calendarEnd;
+    event.setTitle(calendarTitle);
+    event.setDescription(buildCalendarDescription_(id, body, target.item));
+
+    if (allDay) {
+      const start = parseDateOnly_(startDate);
+      const endDateOnly = parseDateOnly_(endDate || startDate);
+      if (endDateOnly.getTime() < start.getTime()) {
+        throw new Error('終了日は開始日以降にしてな');
+      }
+      event.setAllDayDates(start, addDays_(endDateOnly, 1));
+      calendarStart = startDate;
+      calendarEnd = endDate || startDate;
+    } else {
+      const startDateTime = parseTokyoDateTime_(startDate, startTime);
+      const normalizedEndDate = endDate || startDate;
+      const normalizedEndTime = endTime || addMinutesToTime_(startTime, 60);
+      const endDateTime = parseTokyoDateTime_(normalizedEndDate, normalizedEndTime);
+      if (endDateTime.getTime() <= startDateTime.getTime()) {
+        throw new Error('終了日時は開始日時より後にしてな');
+      }
+      event.setTime(startDateTime, endDateTime);
+      calendarStart = startDate + ' ' + startTime;
+      calendarEnd = normalizedEndDate + ' ' + normalizedEndTime;
+    }
+
+    const now = nowTokyoString_();
+    const updates = {
+      calendarTitle: calendarTitle,
+      calendarSyncStatus: 'synced',
+      calendarSyncedAt: now,
+      calendarStart: calendarStart,
+      calendarEnd: calendarEnd,
+      calendarAllDay: allDay,
+      calendarLastError: '',
+      updatedAt: now,
+    };
+    updateRowFields_(target.sheet, target.rowNumber, target.index, updates);
+
+    return json_({
+      success: true,
+      item: buildCalendarResponseItem_(Object.assign({}, target.item, updates)),
+      message: 'calendar updated',
+    });
+  } catch (error) {
+    if (target) {
+      updateRowFields_(target.sheet, target.rowNumber, target.index, {
+        calendarSyncStatus: 'failed',
+        calendarLastError: sanitizeCalendarError_(error),
+        updatedAt: nowTokyoString_(),
+      });
+    }
+
+    return json_({
+      success: false,
+      status: 400,
+      message: sanitizeCalendarError_(error),
+    });
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (releaseError) {
+      // Lock may not have been acquired if waitLock failed.
+    }
+  }
+}
+
 function appendNewItem_(item) {
   const memo = String(item.memo || '').trim();
   const now = nowTokyoString_();
@@ -430,6 +562,7 @@ function appendNewItem_(item) {
     source: item.source || 'PWA',
     userId: item.userId || '',
     userDisplayName: item.userDisplayName || '',
+    calendarSuffix: item.calendarSuffix || '',
     deviceId: item.deviceId || '',
     visibility: normalizeVisibility_(item.visibility),
     calendarTitle: item.calendarTitle || '',
@@ -466,6 +599,7 @@ function updateItem_(body) {
   if (!rowNumber) {
     return json_({ success: false, message: 'not found' });
   }
+  const beforeItem = getItemById_(id).item;
 
   const allowedFields = [
     'updatedAt',
@@ -492,6 +626,7 @@ function updateItem_(body) {
     'source',
     'userId',
     'userDisplayName',
+    'calendarSuffix',
     'deviceId',
     'visibility',
   ];
@@ -505,6 +640,19 @@ function updateItem_(body) {
       }
     }
   });
+  const afterItem = Object.assign({}, beforeItem);
+  allowedFields.forEach(function(field) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) {
+      afterItem[field] = normalizeValueForSheet_(field, body[field]);
+    }
+  });
+  if (hasCalendarRelevantChanges_(beforeItem, afterItem)) {
+    updateRowFields_(sheet, rowNumber, index, {
+      calendarTitle: buildCalendarTitle_(afterItem.title || afterItem.memo || '', getCalendarSuffix_({}, afterItem)),
+      calendarSyncStatus: 'update_required',
+      calendarLastError: '',
+    });
+  }
 
   return json_({
     success: true,
@@ -678,6 +826,58 @@ function findRowNumberById_(sheet, id, idColumnNumber) {
   return 0;
 }
 
+function hasCalendarRelevantChanges_(beforeItem, afterItem) {
+  if (!beforeItem || !afterItem) {
+    return false;
+  }
+
+  if (!beforeItem.calendarEventId) {
+    return false;
+  }
+
+  const syncStatus = normalizeCalendarSyncStatus_(beforeItem.calendarSyncStatus);
+  if (syncStatus !== 'synced' && syncStatus !== 'update_required') {
+    return false;
+  }
+
+  const relevantFields = [
+    'title',
+    'eventStart',
+    'eventStartTime',
+    'eventEnd',
+    'eventEndTime',
+    'userId',
+    'calendarSuffix',
+  ];
+
+  return relevantFields.some(function(field) {
+    return normalizeCalendarComparableValue_(field, beforeItem[field]) !==
+      normalizeCalendarComparableValue_(field, afterItem[field]);
+  }) ||
+    buildExpectedCalendarTitle_(beforeItem) !== buildExpectedCalendarTitle_(afterItem);
+}
+
+function normalizeCalendarComparableValue_(field, value) {
+  if (field === 'eventStartTime' || field === 'eventEndTime') {
+    return normalizeTimeForCompare_(value);
+  }
+
+  return String(value || '').trim();
+}
+
+function normalizeTimeForCompare_(value) {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) {
+    return '';
+  }
+
+  return String(Number(match[1])).padStart(2, '0') + ':' + match[2];
+}
+
+function buildExpectedCalendarTitle_(item) {
+  return buildCalendarTitle_(item.title || item.memo || '', getCalendarSuffix_({}, item));
+}
+
 function getInitialCalendarSyncStatus_(item) {
   const type = String(item.type || '').trim().toLowerCase();
   if (item.calendarSyncStatus) {
@@ -749,6 +949,11 @@ function getCalendarSuffix_(body, item) {
   const explicitSuffix = String(body.calendarSuffix || '').trim();
   if (explicitSuffix) {
     return explicitSuffix;
+  }
+
+  const storedSuffix = String(item.calendarSuffix || '').trim();
+  if (storedSuffix) {
+    return storedSuffix;
   }
 
   const displayName = String(body.userDisplayName || item.userDisplayName || '').trim();
