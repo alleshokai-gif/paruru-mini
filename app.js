@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260711-04";
+const ASSET_VERSION = "v20260711-05";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -656,13 +656,17 @@ function renderInboxError() {
 }
 
 function renderNotificationLoading() {
+  setNotificationViewState("loading");
   todayParuruLine.textContent = "ちょっと見てくる。";
+  todayParuruLine.classList.remove("is-hidden");
   todayParuruList.innerHTML = `<p class="today-paruru-empty">読み込み中...</p>`;
   todayParuruAllButton.classList.add("is-hidden");
 }
 
 function renderNotificationError() {
-  todayParuruLine.textContent = "今日の確認を読み込めんかったで。";
+  setNotificationViewState("error");
+  todayParuruLine.classList.add("is-hidden");
+  todayParuruLine.textContent = "";
   todayParuruList.innerHTML = `
     <div class="today-paruru-error">
       <p>今日の確認を読み込めんかったで。</p>
@@ -675,15 +679,23 @@ function renderNotificationError() {
 function renderNotificationCandidates(items, totalCount) {
   const visibleItems = items.slice(0, NOTIFICATION_DISPLAY_LIMIT);
   if (visibleItems.length === 0) {
-    todayParuruLine.textContent = "今日は特に急ぎないで。";
+    setNotificationViewState("loaded-empty");
+    todayParuruLine.classList.add("is-hidden");
+    todayParuruLine.textContent = "";
     todayParuruList.innerHTML = `<p class="today-paruru-empty">今日は特に急ぎないで。</p>`;
     todayParuruAllButton.classList.add("is-hidden");
     return;
   }
 
+  setNotificationViewState("loaded-with-items");
   todayParuruLine.textContent = "また忘れてるの、拾っといたで。";
+  todayParuruLine.classList.remove("is-hidden");
   todayParuruList.innerHTML = visibleItems.map(renderNotificationItem).join("") + renderNotificationMore(totalCount, visibleItems.length);
   todayParuruAllButton.classList.remove("is-hidden");
+}
+
+function setNotificationViewState(stateName) {
+  todayParuru.dataset.state = stateName;
 }
 
 function renderNotificationItem(item) {

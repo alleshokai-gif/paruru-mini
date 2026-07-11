@@ -1,4 +1,4 @@
-const ASSET_VERSION = "v20260711-04";
+const ASSET_VERSION = "v20260711-05";
 const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
 const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
 

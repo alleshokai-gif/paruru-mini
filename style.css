@@ -164,6 +164,10 @@ main,
   line-height: 1.5;
 }
 
+.today-paruru-line.is-hidden {
+  display: none;
+}
+
 .today-paruru-list {
   display: grid;
   gap: 8px;
