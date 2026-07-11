@@ -244,9 +244,9 @@ main,
 
 .paruru-hero {
   display: grid;
-  grid-template-columns: minmax(70px, 1fr) minmax(140px, 1.5fr) minmax(70px, 1fr);
+  grid-template-columns: minmax(105px, 0.9fr) minmax(0, 2.1fr);
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   width: 100%;
   max-width: 440px;
   margin: 0 auto 18px;
@@ -256,45 +256,50 @@ main,
 
 .paruru-character {
   display: grid;
-  justify-items: center;
+  justify-items: start;
   min-width: 0;
   text-align: center;
 }
 
 .paruru-image {
-  width: min(174px, 100%);
-  max-height: 178px;
+  width: min(138px, 100%);
+  max-height: 172px;
   height: auto;
   display: block;
   object-fit: contain;
 }
 
-.paruru-line {
-  margin: 4px 0 0;
-  color: var(--accent-dark);
-  font-size: 0.92rem;
-  font-weight: 900;
-  line-height: 1.35;
+.paruru-speech-column {
+  min-width: 0;
+  width: 100%;
 }
 
-.paruru-speech {
-  position: relative;
-  min-width: 0;
+.paruru-line {
   margin: 0;
-  padding: 10px 11px;
+  color: var(--accent-dark);
+  font-size: 0.98rem;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+.paruru-bubble {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-height: 74px;
+  margin: 0;
+  padding: 14px 16px;
   border: 1px solid rgba(92, 107, 192, 0.2);
-  border-radius: 14px;
+  border-radius: 16px;
   background: #ffffff;
   color: var(--accent-dark);
-  box-shadow: 0 8px 18px rgba(32, 34, 54, 0.08);
-  font-size: 0.88rem;
-  font-weight: 900;
-  line-height: 1.35;
+  box-shadow: 0 12px 26px rgba(68, 81, 150, 0.12);
+  box-sizing: border-box;
   overflow-wrap: anywhere;
 }
 
-.paruru-speech::before,
-.paruru-speech::after {
+.paruru-bubble::before,
+.paruru-bubble::after {
   content: "";
   position: absolute;
   top: 50%;
@@ -305,48 +310,50 @@ main,
   border-bottom: 8px solid transparent;
 }
 
-.paruru-speech-left::before {
-  right: -9px;
-  border-left: 9px solid rgba(92, 107, 192, 0.2);
-}
-
-.paruru-speech-left::after {
-  right: -7px;
-  border-left: 8px solid #ffffff;
-}
-
-.paruru-speech-right::before {
+.paruru-bubble::before {
   left: -9px;
   border-right: 9px solid rgba(92, 107, 192, 0.2);
 }
 
-.paruru-speech-right::after {
+.paruru-bubble::after {
   left: -7px;
   border-right: 8px solid #ffffff;
 }
 
-.paruru-speech.is-vertical {
-  writing-mode: vertical-rl;
-  text-orientation: upright;
-  justify-self: center;
-  min-height: 112px;
-  padding: 12px 8px;
-}
-
-@media (max-width: 380px) {
+@media (max-width: 360px) {
   .paruru-hero {
-    grid-template-columns: minmax(62px, 0.9fr) minmax(132px, 1.45fr) minmax(62px, 0.9fr);
-    gap: 7px;
+    grid-template-columns: minmax(88px, 0.8fr) minmax(0, 2.2fr);
+    gap: 10px;
   }
 
-  .paruru-speech {
-    padding: 9px 8px;
-    border-radius: 12px;
-    font-size: 0.8rem;
+  .paruru-image {
+    width: min(116px, 100%);
+  }
+
+  .paruru-bubble {
+    min-height: 66px;
+    padding: 12px 13px;
+    border-radius: 14px;
   }
 
   .paruru-line {
-    font-size: 0.84rem;
+    font-size: 0.92rem;
+  }
+}
+
+@media (max-width: 319px) {
+  .paruru-hero {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .paruru-character {
+    justify-items: center;
+  }
+
+  .paruru-bubble::before,
+  .paruru-bubble::after {
+    display: none;
   }
 }
 

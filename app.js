@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260711-07";
+const ASSET_VERSION = "v20260711-08";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -16,10 +16,22 @@ const DEFAULT_PROFILE = {
 };
 
 const PARURU_MESSAGES = {
+  speech: {
+    idle: "……メモしとく？",
+    typing: "はいはい、聞いとるよ。",
+    saving: "ちょっと待って。今まとめよる。",
+    saved: "はいはい、預かったよ。",
+    followup: "これ、もうひとつ聞いてええ？",
+    calendarPrompt: "予定っぽいね。カレンダー入れる？",
+    calendarSynced: "カレンダーに入れといたよ。",
+    hasNotifications: "兄弟、今日は気にしとくことあるよ。",
+    noNotifications: "今日は急ぎなし。珍しいね、兄弟。",
+    error: "うまくいかんかった。もう一回だけ。",
+  },
   state: {
     loading: "……ちょっと待って、兄弟。",
     normal: "……メモしとく？",
-    sending: "ぱるるが整理中……急かさんといて。",
+    sending: "ちょっと待って。今まとめよる。",
     success: "はいはい、預かったよ。",
     empty: "兄弟、何も書いてないよ。僕でも無理。",
     error: "うまくいかんかった。もう一回だけ試してみて。",
@@ -66,29 +78,35 @@ const PARURU_MESSAGES = {
 const PARURU_STATES = {
   loading: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_sleepy.png`),
+    speech: "idle",
     line: PARURU_MESSAGES.state.loading,
   },
   normal: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`),
-    line: PARURU_MESSAGES.state.normal,
+    speech: "idle",
+    line: PARURU_MESSAGES.speech.idle,
   },
   sending: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_normal.png`),
-    line: PARURU_MESSAGES.state.sending,
+    speech: "saving",
+    line: PARURU_MESSAGES.speech.saving,
   },
   success: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_smile.png`),
-    line: PARURU_MESSAGES.state.success,
+    speech: "saved",
+    line: PARURU_MESSAGES.speech.saved,
     messageType: "success",
   },
   empty: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`),
+    speech: "error",
     line: PARURU_MESSAGES.state.empty,
     messageType: "error",
   },
   error: {
     image: assetUrl(`${CHARACTER_BASE_PATH}/expressions/paruru_bust_angry.png`),
-    line: PARURU_MESSAGES.state.error,
+    speech: "error",
+    line: PARURU_MESSAGES.speech.error,
     messageType: "error",
   },
   inboxEmpty: {
@@ -171,7 +189,7 @@ const memoInput = document.querySelector("#memo");
 const categoryInput = document.querySelector("#category");
 const priorityInputs = document.querySelectorAll('input[name="priority"]');
 const paruruImage = document.querySelector("#paruruImage");
-const paruruLine = document.querySelector(".paruru-line");
+const paruruLine = document.querySelector("#paruruSpeech") || document.querySelector(".paruru-line");
 const submitButton = document.querySelector("#submitButton");
 const message = document.querySelector("#message");
 const splash = document.querySelector("#splash");
@@ -320,6 +338,14 @@ priorityInputs.forEach((input) => {
   input.addEventListener("change", () => {
     priorityExplicitlySelected = true;
   });
+});
+
+memoInput.addEventListener("input", () => {
+  if (activeView !== "home" || isSubmitting) {
+    return;
+  }
+
+  setParuruSpeech(memoInput.value.trim() ? "typing" : "idle");
 });
 
 form.addEventListener("submit", async (event) => {
@@ -714,6 +740,7 @@ function renderNotificationLoading() {
 
 function renderNotificationError() {
   setNotificationViewState("error");
+  setParuruSpeech("error");
   todayParuruLine.classList.add("is-hidden");
   todayParuruLine.textContent = "";
   todayParuruList.innerHTML = `
@@ -729,6 +756,7 @@ function renderNotificationCandidates(items, totalCount) {
   const visibleItems = items.slice(0, NOTIFICATION_DISPLAY_LIMIT);
   if (visibleItems.length === 0) {
     setNotificationViewState("loaded-empty");
+    setParuruSpeech("noNotifications");
     todayParuruLine.classList.add("is-hidden");
     todayParuruLine.textContent = "";
     todayParuruList.innerHTML = `<p class="today-paruru-empty">${escapeHtml(PARURU_MESSAGES.notification.empty)}</p>`;
@@ -737,6 +765,7 @@ function renderNotificationCandidates(items, totalCount) {
   }
 
   setNotificationViewState("loaded-with-items");
+  setParuruSpeech("hasNotifications");
   todayParuruLine.textContent = PARURU_MESSAGES.notification.loadedLine;
   todayParuruLine.classList.remove("is-hidden");
   todayParuruList.innerHTML = visibleItems.map(renderNotificationItem).join("") + renderNotificationMore(totalCount, visibleItems.length);
@@ -1011,17 +1040,22 @@ function setSending(isSending) {
 function setParuruState(stateName, options = {}) {
   const state = PARURU_STATES[stateName] || PARURU_STATES.normal;
   paruruImage.src = state.image;
-  paruruLine.textContent = state.line;
+  setParuruSpeech(state.speech, state.line);
 
   if (options.showStatus) {
     showMessage(state.line, state.messageType || "");
   }
 }
 
+function setParuruSpeech(stateName = "idle", customLine = "") {
+  const line = customLine || PARURU_MESSAGES.speech[stateName] || PARURU_MESSAGES.speech.idle;
+  paruruLine.textContent = line;
+}
+
 function showParuruMessage(line, type, imageState = "normal") {
   const state = PARURU_STATES[imageState] || PARURU_STATES.normal;
   paruruImage.src = state.image;
-  paruruLine.textContent = line;
+  setParuruSpeech("idle", line);
   showMessage(line, type || "");
 }
 
@@ -1031,6 +1065,7 @@ function showSuccessResult(result) {
   setParuruState("success", { showStatus: true });
 
   if (isFollowupNeeded(item) && followupQuestion) {
+    setParuruSpeech("followup");
     showMessage(`確認したいこと: ${followupQuestion}`, "success");
     renderFollowupPanel("home", item);
   } else {
@@ -1260,6 +1295,9 @@ function renderCalendarSyncPanel(target, item) {
 
   const mode = getCalendarSyncMode(item);
   const defaults = buildCalendarDefaults(item);
+  if (target === "home") {
+    setParuruSpeech("calendarPrompt");
+  }
   state.panel.dataset.itemId = item.id;
   state.panel.dataset.mode = mode;
   state.panel.querySelector(".calendar-sync-label").textContent = getCalendarSyncLabel(item, mode);
@@ -1364,7 +1402,8 @@ async function submitCalendarSync(target) {
     const successLine = mode === "update"
       ? PARURU_MESSAGES.action.calendarUpdateSuccess
       : PARURU_MESSAGES.action.calendarCreateSuccess;
-    showParuruMessage(successLine, "success", "success");
+    showParuruMessage(mode === "update" ? PARURU_MESSAGES.action.calendarUpdateSuccess : PARURU_MESSAGES.speech.calendarSynced, "success", "success");
+    showMessage(successLine, "success");
   } catch (error) {
     showMessage(PARURU_MESSAGES.action.calendarError, "error");
     setParuruState("error");
