@@ -1,6 +1,6 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const ASSET_VERSION = "v20260710-06";
+const ASSET_VERSION = "v20260710-07";
 const BUILD_VERSION = ASSET_VERSION;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
@@ -63,6 +63,22 @@ const CATEGORY_COLORS = {
   薬局: "#d15b7a",
   開発: "#3367a8",
   お金: "#b7791f",
+};
+
+const TYPE_LABELS = {
+  task: "タスク",
+  event: "予定",
+  shopping: "買い物",
+  note: "メモ",
+  idea: "アイデア",
+  reminder: "リマインド",
+};
+
+const PRIORITY_ORDER = {
+  Urgent: 0,
+  High: 1,
+  Normal: 2,
+  Low: 3,
 };
 
 const categoryRules = {
@@ -395,14 +411,14 @@ function buildCreateWithAIPayload(memo) {
 
 async function fetchInboxItems() {
   if (!GAS_WEB_APP_URL) {
-    return loadDummyItems().filter((item) => item.status !== "Done");
+    return sortInboxItems(loadDummyItems().filter(isInboxItem));
   }
 
   const url = new URL(GAS_WEB_APP_URL);
   url.searchParams.set("action", "list");
   const response = await fetch(url.toString());
   const result = await parseApiResponse(response);
-  return (result.data || []).filter((item) => item.status !== "Done");
+  return sortInboxItems((result.data || []).filter(isInboxItem));
 }
 
 async function updateInboxItem(id, updates) {
@@ -481,17 +497,146 @@ function renderInboxList(items) {
   }
 
   inboxList.innerHTML = items.map((item) => `
-    <article class="inbox-card" data-id="${escapeHtml(item.id)}">
+    <article class="inbox-card ${isFollowupNeeded(item) ? "has-followup" : ""}" data-id="${escapeHtml(item.id)}" data-type="${escapeHtml(normalizeType(item.type))}" data-category="${escapeHtml(item.category || "未分類")}" data-priority="${escapeHtml(normalizePriority(item.priority))}" data-followup="${isFollowupNeeded(item) ? "true" : "false"}" data-has-due="${item.dueDate ? "true" : "false"}" data-has-event="${item.eventStart ? "true" : "false"}">
       <div class="card-main">
         <h2>${escapeHtml(item.title || item.memo?.slice(0, 20) || "無題")}</h2>
-        <time>${formatDate(item.createdAt)}</time>
+        ${renderFollowupBadge(item)}
       </div>
       <div class="card-meta">
         <span class="category-chip" style="--category-color: ${getCategoryColor(item.category)}">${escapeHtml(item.category || "未分類")}</span>
-        <span class="priority-chip priority-${escapeHtml(item.priority || "Normal")}">${escapeHtml(item.priority || "Normal")}</span>
+        ${renderPriorityChip(item.priority)}
+        ${renderTypeChip(item.type)}
       </div>
+      ${renderScheduleLine(item)}
+      ${renderFollowupLine(item)}
+      ${renderAiSummary(item)}
+      <time class="card-created">登録: ${escapeHtml(formatCreatedAt(item.createdAt))}</time>
     </article>
   `).join("");
+}
+
+function renderPriorityChip(priority) {
+  const normalized = normalizePriority(priority);
+  return `<span class="priority-chip priority-${escapeHtml(normalized)}">${escapeHtml(normalized)}</span>`;
+}
+
+function renderTypeChip(type) {
+  const normalized = normalizeType(type);
+  const label = TYPE_LABELS[normalized] || "メモ";
+  return `<span class="type-chip type-${escapeHtml(normalized)}">${escapeHtml(label)}</span>`;
+}
+
+function renderFollowupBadge(item) {
+  if (!isFollowupNeeded(item)) {
+    return "";
+  }
+
+  return `<span class="followup-badge">確認待ち</span>`;
+}
+
+function renderScheduleLine(item) {
+  const type = normalizeType(item.type);
+  const statusLabel = getDueStatusLabel(item);
+
+  if (type === "task" && item.dueDate) {
+    const dueText = formatDateTimeLabel(item.dueDate, item.dueTime);
+    const status = statusLabel ? `<span class="date-status date-status-${escapeHtml(statusLabel.key)}">${escapeHtml(statusLabel.label)}</span>` : "";
+    return `<p class="card-schedule">${status}<span>締切: ${escapeHtml(dueText)}</span></p>`;
+  }
+
+  if (type === "event" && item.eventStart) {
+    const startText = formatDateTimeLabel(item.eventStart, item.eventStartTime);
+    const endText = item.eventEnd ? ` - ${formatDateTimeLabel(item.eventEnd, item.eventEndTime)}` : "";
+    return `<p class="card-schedule"><span>予定: ${escapeHtml(startText + endText)}</span></p>`;
+  }
+
+  if (type === "shopping") {
+    return `<p class="card-schedule subtle">買い物リスト</p>`;
+  }
+
+  return "";
+}
+
+function renderFollowupLine(item) {
+  if (!isFollowupNeeded(item) || !item.followupQuestion) {
+    return "";
+  }
+
+  return `<p class="card-followup-question">${escapeHtml(item.followupQuestion)}</p>`;
+}
+
+function renderAiSummary(item) {
+  if (!item.aiSummary) {
+    return "";
+  }
+
+  return `<p class="card-summary">${escapeHtml(item.aiSummary)}</p>`;
+}
+
+function sortInboxItems(items) {
+  return [...items].sort((a, b) => {
+    const aKey = getInboxSortKey(a);
+    const bKey = getInboxSortKey(b);
+
+    if (aKey.group !== bKey.group) {
+      return aKey.group - bKey.group;
+    }
+
+    if (aKey.dateValue !== bKey.dateValue) {
+      return aKey.group === 2 ? bKey.dateValue - aKey.dateValue : aKey.dateValue - bKey.dateValue;
+    }
+
+    if (aKey.priority !== bKey.priority) {
+      return aKey.priority - bKey.priority;
+    }
+
+    return bKey.createdAt - aKey.createdAt;
+  });
+}
+
+function getInboxSortKey(item) {
+  const type = normalizeType(item.type);
+  const priority = PRIORITY_ORDER[normalizePriority(item.priority)] ?? PRIORITY_ORDER.Normal;
+  const createdAt = parseCreatedAtValue(item.createdAt);
+
+  if (type === "task" && item.dueDate) {
+    return {
+      group: 0,
+      dateValue: parseLocalDateTimeValue(item.dueDate, item.dueTime),
+      priority,
+      createdAt,
+    };
+  }
+
+  if (type === "event" && item.eventStart) {
+    return {
+      group: 1,
+      dateValue: parseLocalDateTimeValue(item.eventStart, item.eventStartTime),
+      priority,
+      createdAt,
+    };
+  }
+
+  return {
+    group: 2,
+    dateValue: createdAt,
+    priority,
+    createdAt,
+  };
+}
+
+function isInboxItem(item) {
+  return String(item.status || "Inbox").toLowerCase() === "inbox";
+}
+
+function normalizeType(type) {
+  const normalized = String(type || "note").trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(TYPE_LABELS, normalized) ? normalized : "note";
+}
+
+function normalizePriority(priority) {
+  const normalized = String(priority || "Normal").trim();
+  return Object.prototype.hasOwnProperty.call(PRIORITY_ORDER, normalized) ? normalized : "Normal";
 }
 
 function openDetail(id) {
@@ -826,7 +971,7 @@ function getCategoryColor(category) {
   return CATEGORY_COLORS[category] || CATEGORY_COLORS.未分類;
 }
 
-function formatDate(value) {
+function formatCreatedAt(value) {
   if (!value) {
     return "";
   }
@@ -841,7 +986,114 @@ function formatDate(value) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Tokyo",
   }).format(date);
+}
+
+function formatDateTimeLabel(dateValue, timeValue = "") {
+  const dateParts = parseYmd(dateValue);
+  if (!dateParts) {
+    return [dateValue, timeValue].filter(Boolean).join(" ");
+  }
+
+  const today = getTodayTokyoParts();
+  const includeYear = dateParts.year !== today.year;
+  const dateLabel = includeYear
+    ? `${dateParts.year}年${dateParts.month}月${dateParts.day}日`
+    : `${dateParts.month}月${dateParts.day}日`;
+
+  return [dateLabel, normalizeTimeLabel(timeValue)].filter(Boolean).join(" ");
+}
+
+function getDueStatusLabel(item) {
+  const type = normalizeType(item.type);
+  if (type !== "task" || !item.dueDate) {
+    return null;
+  }
+
+  const due = parseYmd(item.dueDate);
+  if (!due) {
+    return null;
+  }
+
+  const today = getTodayTokyoParts();
+  const diffDays = getDateOnlyEpochDay(due) - getDateOnlyEpochDay(today);
+
+  if (diffDays < 0) {
+    return { key: "overdue", label: "期限切れ" };
+  }
+
+  if (diffDays === 0) {
+    return { key: "today", label: "今日" };
+  }
+
+  if (diffDays === 1) {
+    return { key: "tomorrow", label: "明日" };
+  }
+
+  return null;
+}
+
+function parseYmd(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  };
+}
+
+function normalizeTimeLabel(value) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!match) {
+    return String(value || "");
+  }
+
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function parseLocalDateTimeValue(dateValue, timeValue = "") {
+  const dateParts = parseYmd(dateValue);
+  if (!dateParts) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  const timeMatch = String(timeValue || "").match(/^(\d{1,2}):(\d{2})/);
+  const hour = timeMatch ? Number(timeMatch[1]) : 0;
+  const minute = timeMatch ? Number(timeMatch[2]) : 0;
+  return Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, hour, minute);
+}
+
+function parseCreatedAtValue(value) {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function getTodayTokyoParts() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  return {
+    year: Number(parts.find((part) => part.type === "year")?.value),
+    month: Number(parts.find((part) => part.type === "month")?.value),
+    day: Number(parts.find((part) => part.type === "day")?.value),
+  };
+}
+
+function getDateOnlyEpochDay(parts) {
+  return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000);
 }
 
 function escapeHtml(value) {
