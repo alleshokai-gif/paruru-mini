@@ -1,5 +1,16 @@
 # PALURU Mini
 
+## Home Agent Platform
+
+Home Agent Platform全体の正本文書は `../HomeSignage/docs/` に置く。PALURU Mini側ではv1.0の既存Inbox / AI解析 / Follow-upを維持し、GASの `action=homeAgent` でHome Agent層だけを追加する。
+
+- `../HomeSignage/docs/home-agent-architecture.md`
+- `../HomeSignage/docs/home-agent-first-slice.md`
+- `../HomeSignage/docs/home-agent-data-inventory.md`
+- `../HomeSignage/docs/home-agent-skill-catalog.md`
+- `../HomeSignage/docs/home-agent-agent-map.md`
+- `../HomeSignage/docs/home-agent-roadmap.md`
+
 ## 概要
 
 PALURU Miniは、雑なメモをAI秘書ぱるるへ預けるスマホ向けPWAです。

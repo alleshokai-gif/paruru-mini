@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260711-12">
-    <link rel="icon" href="./assets/icons/favicon.png?v=20260711-12" type="image/png">
-    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260711-12">
-    <link rel="stylesheet" href="./style.css?v=20260711-12">
+    <link rel="manifest" href="./manifest.json?v=20260711-13">
+    <link rel="icon" href="./assets/icons/favicon.png?v=20260711-13" type="image/png">
+    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260711-13">
+    <link rel="stylesheet" href="./style.css?v=20260711-13">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260711-12" alt="&#12401;&#12427;&#12427;">
+      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260711-13" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">Loading...</p>
     </div>
@@ -35,11 +35,19 @@
 
         <section class="paruru-hero" aria-label="&#12401;&#12427;&#12427;&#20250;&#35441;">
           <div class="paruru-character">
-            <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260711-12" alt="&#12401;&#12427;&#12427;">
+            <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260711-13" alt="&#12401;&#12427;&#12427;">
           </div>
           <div class="paruru-speech-column">
             <div id="paruruSpeech" class="paruru-bubble paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</div>
           </div>
+        </section>
+
+        <section id="homeAgentCard" class="home-agent-card is-hidden" aria-live="polite" aria-busy="false">
+          <div class="home-agent-header">
+            <p class="home-agent-eyebrow">&#12401;&#12427;&#12427;</p>
+            <button id="homeAgentRetryButton" class="secondary-button is-hidden" type="button">&#12418;&#12358;&#19968;&#22238;</button>
+          </div>
+          <div id="homeAgentContent" class="home-agent-content"></div>
         </section>
 
         <form id="inboxForm" class="inbox-form">
@@ -233,6 +241,6 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260711-12" defer></script>
+    <script src="./app.js?v=20260711-13" defer></script>
   </body>
 </html>

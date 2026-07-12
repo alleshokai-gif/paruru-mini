@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260711-12";
+const ASSET_VERSION = "v20260711-13";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -10,6 +10,24 @@ const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PROFILE_STORAGE_KEY = "paruru-mini-profile";
 const NOTIFICATION_CACHE_MS = 5000;
 const NOTIFICATION_DISPLAY_LIMIT = 5;
+const HOME_AGENT_QUESTION_PATTERNS = [
+  /[？?]\s*$/,
+  /教えて/,
+  /なに|何/,
+  /ある[？?]?/,
+  /いる[？?]?/,
+  /どう[？?]?/,
+  /予定/,
+  /給食/,
+  /傘/,
+  /持ち物/,
+  /出発/,
+];
+const HOME_AGENT_MEMO_PRIORITY_PATTERNS = [
+  /買う|購入|もらう|提出|送る|予約|登録|入れといて|入れて|メモ/,
+  /^\s*\d{1,2}月\d{1,2}日/,
+  /授業参観|面談|会議|歯医者|病院/,
+];
 const DEFAULT_PROFILE = {
   userId: "father",
   displayName: "父",
@@ -31,6 +49,7 @@ const PARURU_MESSAGES = {
     error: "うまくいかんかった。もう一回だけ。",
     notificationOne: "兄弟、ひとつ気にしといて。",
     notificationMany: (count) => `今日は${count}つあるよ。見といてな。`,
+    homeAgent: "家の中、見てきたよ。",
   },
   state: {
     loading: "……ちょっと待って、兄弟。",
@@ -62,6 +81,8 @@ const PARURU_MESSAGES = {
     calendarCreateSuccess: "カレンダーに入れといたよ。あとは忘れても知らんけど。",
     calendarUpdateSuccess: "直しといたよ。",
     calendarError: "カレンダー登録できんかった。もう一回試して。",
+    homeAgentLoading: "ぱるるが家の中を確認中…",
+    homeAgentError: "うまく見に行けんかった。もう一回試して。",
   },
   calendarStatus: {
     pending: "カレンダーにはまだ入れてないよ。",
@@ -243,6 +264,11 @@ const todayParuruLine = document.querySelector("#todayParuruLine");
 const todayParuruList = document.querySelector("#todayParuruList");
 const todayParuruAllButton = document.querySelector("#todayParuruAllButton");
 const refreshNotificationsButton = document.querySelector("#refreshNotificationsButton");
+const homeAgentCard = document.querySelector("#homeAgentCard");
+const homeAgentContent = document.querySelector("#homeAgentContent");
+const homeAgentRetryButton = document.querySelector("#homeAgentRetryButton");
+
+let lastHomeAgentMessage = "";
 
 setParuruState("loading");
 
@@ -371,6 +397,11 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (isLikelyHomeAgentQuery(memo)) {
+    await submitHomeAgentQuery(memo);
+    return;
+  }
+
   const payload = buildCreateWithAIPayload(memo);
 
   setSending(true);
@@ -478,6 +509,22 @@ todayParuruList.addEventListener("click", (event) => {
   openNotificationDetail(item.dataset.notificationId);
 });
 todayParuruAllButton.addEventListener("click", () => switchView("inbox"));
+homeAgentRetryButton.addEventListener("click", () => {
+  if (lastHomeAgentMessage) {
+    submitHomeAgentQuery(lastHomeAgentMessage);
+  }
+});
+homeAgentCard.addEventListener("click", (event) => {
+  const signageButton = event.target.closest("[data-home-agent-signage]");
+  if (signageButton) {
+    renderSignageConfirmation(signageButton.dataset.homeAgentSignage || "");
+    return;
+  }
+
+  if (event.target.closest("[data-home-agent-confirm-close]")) {
+    hideSignageConfirmation();
+  }
+});
 
 profileForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -548,6 +595,58 @@ async function saveMemo(payload) {
   });
 
   return parseApiResponse(response);
+}
+
+async function callHomeAgent(payload) {
+  if (!GAS_WEB_APP_URL) {
+    return dummyHomeAgent(payload);
+  }
+
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return parseApiResponse(response);
+}
+
+function buildHomeAgentPayload(messageText) {
+  const profile = getCurrentProfile();
+  return {
+    action: "homeAgent",
+    message: messageText,
+    userId: profile.userId,
+    deviceId: profile.deviceId,
+    conversationId: "",
+  };
+}
+
+async function submitHomeAgentQuery(messageText) {
+  const payload = buildHomeAgentPayload(messageText);
+  lastHomeAgentMessage = messageText;
+  setSending(true, PARURU_MESSAGES.action.homeAgentLoading);
+  setParuruSpeech("idle", "ちょっと家の中、見てくる。");
+  renderHomeAgentLoading();
+
+  try {
+    const response = await callHomeAgent(payload);
+    const result = normalizeHomeAgentResult(response);
+    memoInput.value = "";
+    renderHomeAgentResult(result);
+    setParuruSpeech("idle", getHomeAgentSpeech(result));
+    resetParuruSpeechSoon();
+    revealPanelIfNeeded(homeAgentCard);
+  } catch (error) {
+    renderHomeAgentError();
+    setParuruState("error");
+    showMessage(PARURU_MESSAGES.action.homeAgentError, "error");
+    revealPanelIfNeeded(homeAgentCard);
+  } finally {
+    setSending(false);
+  }
 }
 
 function buildCreateWithAIPayload(memo) {
@@ -1069,10 +1168,10 @@ function openDetail(id) {
   detailDialog.showModal();
 }
 
-function setSending(isSending) {
+function setSending(isSending, label = "ぱるるが整理中…") {
   isSubmitting = isSending;
   submitButton.disabled = isSending;
-  submitButton.textContent = isSending ? "ぱるるが整理中…" : "ぱるるに預ける";
+  submitButton.textContent = isSending ? label : "ぱるるに預ける";
 }
 
 function setParuruState(stateName, options = {}) {
@@ -1161,6 +1260,211 @@ function getSelectedPriority() {
 function showMessage(text, type) {
   message.textContent = text;
   message.className = type ? `message ${type}` : "message";
+}
+
+function isLikelyHomeAgentQuery(text) {
+  const value = String(text || "").trim();
+  if (!value) {
+    return false;
+  }
+
+  if (HOME_AGENT_MEMO_PRIORITY_PATTERNS.some((pattern) => pattern.test(value))) {
+    return false;
+  }
+
+  return HOME_AGENT_QUESTION_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function normalizeHomeAgentResult(response) {
+  const result = response?.result || response?.data || response?.item || {};
+  return {
+    ...result,
+    actionCandidates: result.actionCandidates || response?.actionCandidates || [],
+    warnings: result.warnings || response?.warnings || [],
+    signageMessage: result.signageMessage || response?.signageMessage || "",
+  };
+}
+
+function renderHomeAgentLoading() {
+  homeAgentCard.classList.remove("is-hidden");
+  homeAgentCard.setAttribute("aria-busy", "true");
+  homeAgentRetryButton.classList.add("is-hidden");
+  homeAgentContent.innerHTML = `<p class="home-agent-empty">家の中を確認中...</p>`;
+}
+
+function renderHomeAgentError() {
+  homeAgentCard.classList.remove("is-hidden");
+  homeAgentCard.setAttribute("aria-busy", "false");
+  homeAgentRetryButton.classList.remove("is-hidden");
+  homeAgentContent.innerHTML = `<p class="home-agent-error">${escapeHtml(PARURU_MESSAGES.action.homeAgentError)}</p>`;
+}
+
+function renderHomeAgentResult(result) {
+  homeAgentCard.classList.remove("is-hidden");
+  homeAgentCard.setAttribute("aria-busy", "false");
+  homeAgentRetryButton.classList.add("is-hidden");
+
+  const sections = [
+    renderHomeAgentSummary(result.summary),
+    renderHomeAgentListSection("予定", result.schedule),
+    renderHomeAgentValueSection("学校", result.school),
+    renderHomeAgentValueSection("給食", result.lunch),
+    renderHomeAgentValueSection("天気", result.weather),
+    renderHomeAgentListSection("持ち物", result.suggestedItems),
+    renderHomeAgentWarnings(result.warnings),
+    renderHomeAgentActions(result),
+  ].filter(Boolean);
+
+  homeAgentContent.innerHTML = sections.length > 0
+    ? sections.join("")
+    : `<p class="home-agent-empty">見られる情報はなかったよ。</p>`;
+}
+
+function renderHomeAgentSummary(summary) {
+  if (!String(summary || "").trim()) {
+    return "";
+  }
+  return `<p class="home-agent-summary">${escapeHtml(summary)}</p>`;
+}
+
+function renderHomeAgentListSection(title, value) {
+  const items = normalizeHomeAgentList(value);
+  if (items.length === 0) {
+    return "";
+  }
+
+  return `
+    <section class="home-agent-section">
+      <h2>${escapeHtml(title)}</h2>
+      <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </section>
+  `;
+}
+
+function renderHomeAgentValueSection(title, value) {
+  const items = normalizeHomeAgentList(value);
+  if (items.length === 0) {
+    return "";
+  }
+  return renderHomeAgentListSection(title, items);
+}
+
+function renderHomeAgentWarnings(warnings) {
+  const items = normalizeHomeAgentList(warnings);
+  if (items.length === 0) {
+    return "";
+  }
+
+  return `<p class="home-agent-warning">一部データを取得できませんでした。</p>`;
+}
+
+function renderHomeAgentActions(result) {
+  const candidate = findSignageActionCandidate(result.actionCandidates);
+  if (!candidate) {
+    return "";
+  }
+
+  const messageText = getSignageMessage(result, candidate);
+  return `
+    <div class="home-agent-actions">
+      <button type="button" data-home-agent-signage="${escapeHtml(messageText)}">サイネージで知らせる</button>
+    </div>
+  `;
+}
+
+function normalizeHomeAgentList(value) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(formatHomeAgentValue).filter(Boolean);
+  }
+
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .filter(([, entryValue]) => entryValue !== "" && entryValue !== null && typeof entryValue !== "undefined")
+      .map(([key, entryValue]) => `${key}: ${formatHomeAgentValue(entryValue)}`)
+      .filter(Boolean);
+  }
+
+  const text = String(value).trim();
+  return text ? [text] : [];
+}
+
+function formatHomeAgentValue(value) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return "";
+  }
+  if (typeof value === "object") {
+    if (value.title) {
+      return [value.title, value.startTime || value.time || "", value.location || ""].filter(Boolean).join(" ");
+    }
+    if (value.name) {
+      return [value.name, value.value || ""].filter(Boolean).join(": ");
+    }
+    return Object.entries(value)
+      .filter(([, entryValue]) => entryValue !== "" && entryValue !== null && typeof entryValue !== "undefined")
+      .map(([key, entryValue]) => `${key}: ${entryValue}`)
+      .join(" / ");
+  }
+  return String(value).trim();
+}
+
+function findSignageActionCandidate(candidates) {
+  if (!Array.isArray(candidates)) {
+    return null;
+  }
+  return candidates.find((candidate) => {
+    if (typeof candidate === "string") {
+      return candidate === "createSignageAlert";
+    }
+    return candidate?.type === "createSignageAlert"
+      || candidate?.action === "createSignageAlert"
+      || candidate?.skill === "createSignageAlert";
+  }) || null;
+}
+
+function getSignageMessage(result, candidate) {
+  if (typeof candidate === "object") {
+    return candidate.signageMessage
+      || candidate.message
+      || candidate.parameters?.message
+      || candidate.payload?.message
+      || result.signageMessage
+      || result.summary
+      || "";
+  }
+  return result.signageMessage || result.summary || "";
+}
+
+function renderSignageConfirmation(signageMessage) {
+  const existing = homeAgentContent.querySelector("[data-home-agent-confirm]");
+  if (existing) {
+    existing.remove();
+  }
+
+  homeAgentContent.insertAdjacentHTML("beforeend", `
+    <div class="home-agent-confirm" data-home-agent-confirm>
+      <p>この内容をサイネージで読み上げる？</p>
+      <p>${escapeHtml(signageMessage || "内容は未指定です。")}</p>
+      <div class="home-agent-confirm-actions">
+        <button class="secondary-button" type="button" data-home-agent-confirm-close>あとで</button>
+      </div>
+    </div>
+  `);
+  revealPanelIfNeeded(homeAgentCard);
+}
+
+function hideSignageConfirmation() {
+  homeAgentContent.querySelector("[data-home-agent-confirm]")?.remove();
+}
+
+function getHomeAgentSpeech(result) {
+  if (String(result?.summary || "").trim()) {
+    return PARURU_MESSAGES.speech.homeAgent;
+  }
+  return "見られる分だけ見といたよ。";
 }
 
 async function submitFollowupAnswer(target) {
@@ -2040,6 +2344,25 @@ function loadDummyItems() {
 
 function saveDummyItems(items) {
   localStorage.setItem(DUMMY_STORAGE_KEY, JSON.stringify(items));
+}
+
+function dummyHomeAgent(payload) {
+  const messageText = String(payload.message || "");
+  return Promise.resolve({
+    success: true,
+    result: {
+      summary: messageText.includes("給食")
+        ? "今日の給食は確認できる分だけ見といたよ。"
+        : "今日は予定と持ち物、ざっと見といたよ。",
+      schedule: [],
+      school: messageText.includes("給食") ? "あり" : "",
+      lunch: messageText.includes("給食") ? "サンプル給食" : "",
+      weather: messageText.includes("傘") ? { condition: "雨", temperature: "28℃", precipitation: "60%" } : "",
+      suggestedItems: messageText.includes("傘") ? ["傘"] : [],
+      warnings: [],
+      actionCandidates: [],
+    },
+  });
 }
 
 function dummyCreate(payload) {

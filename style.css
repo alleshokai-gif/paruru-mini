@@ -324,6 +324,122 @@ main,
   border-right: 8px solid #ffffff;
 }
 
+.home-agent-card {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 16px;
+  scroll-margin-top: 24px;
+  scroll-margin-bottom: 112px;
+  border: 1px solid rgba(92, 107, 192, 0.18);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(32, 34, 54, 0.07);
+}
+
+.home-agent-card.is-hidden,
+.home-agent-card .is-hidden {
+  display: none;
+}
+
+.home-agent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-agent-eyebrow {
+  margin: 0;
+  color: var(--accent-dark);
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.home-agent-content {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.home-agent-summary {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.home-agent-section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.home-agent-section h2 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.home-agent-section ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 1.1em;
+}
+
+.home-agent-section li,
+.home-agent-warning,
+.home-agent-error,
+.home-agent-empty {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.home-agent-warning {
+  color: var(--muted);
+}
+
+.home-agent-error {
+  color: var(--danger);
+}
+
+.home-agent-actions,
+.home-agent-confirm-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.home-agent-actions button,
+.home-agent-confirm-actions button {
+  min-height: 48px;
+}
+
+.home-agent-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(92, 107, 192, 0.18);
+  border-radius: 12px;
+  background: var(--accent-soft);
+}
+
+.home-agent-confirm p {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 360px) {
   .paruru-hero {
     grid-template-columns: minmax(88px, 0.8fr) minmax(0, 2.2fr);
