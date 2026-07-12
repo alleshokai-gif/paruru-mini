@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260711-13";
+const ASSET_VERSION = "v20260711-14";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -267,6 +267,7 @@ const refreshNotificationsButton = document.querySelector("#refreshNotifications
 const homeAgentCard = document.querySelector("#homeAgentCard");
 const homeAgentContent = document.querySelector("#homeAgentContent");
 const homeAgentRetryButton = document.querySelector("#homeAgentRetryButton");
+const homeAgentCloseButton = document.querySelector("#homeAgentCloseButton");
 
 let lastHomeAgentMessage = "";
 
@@ -514,6 +515,7 @@ homeAgentRetryButton.addEventListener("click", () => {
     submitHomeAgentQuery(lastHomeAgentMessage);
   }
 });
+homeAgentCloseButton.addEventListener("click", hideHomeAgentCard);
 homeAgentCard.addEventListener("click", (event) => {
   const signageButton = event.target.closest("[data-home-agent-signage]");
   if (signageButton) {
@@ -1299,6 +1301,13 @@ function renderHomeAgentError() {
   homeAgentContent.innerHTML = `<p class="home-agent-error">${escapeHtml(PARURU_MESSAGES.action.homeAgentError)}</p>`;
 }
 
+function hideHomeAgentCard() {
+  homeAgentCard.classList.add("is-hidden");
+  homeAgentCard.setAttribute("aria-busy", "false");
+  homeAgentContent.innerHTML = "";
+  homeAgentRetryButton.classList.add("is-hidden");
+}
+
 function renderHomeAgentResult(result) {
   homeAgentCard.classList.remove("is-hidden");
   homeAgentCard.setAttribute("aria-busy", "false");
@@ -1306,10 +1315,10 @@ function renderHomeAgentResult(result) {
 
   const sections = [
     renderHomeAgentSummary(result.summary),
-    renderHomeAgentListSection("予定", result.schedule),
-    renderHomeAgentValueSection("学校", result.school),
-    renderHomeAgentValueSection("給食", result.lunch),
-    renderHomeAgentValueSection("天気", result.weather),
+    renderHomeAgentScheduleSection(result.schedule),
+    renderHomeAgentSchoolSection(result.school),
+    renderHomeAgentLunchSection(result.lunch),
+    renderHomeAgentWeatherSection(result.weather),
     renderHomeAgentListSection("持ち物", result.suggestedItems),
     renderHomeAgentWarnings(result.warnings),
     renderHomeAgentActions(result),
@@ -1333,6 +1342,14 @@ function renderHomeAgentListSection(title, value) {
     return "";
   }
 
+  return renderHomeAgentSection(title, items);
+}
+
+function renderHomeAgentSection(title, items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return "";
+  }
+
   return `
     <section class="home-agent-section">
       <h2>${escapeHtml(title)}</h2>
@@ -1341,12 +1358,96 @@ function renderHomeAgentListSection(title, value) {
   `;
 }
 
-function renderHomeAgentValueSection(title, value) {
-  const items = normalizeHomeAgentList(value);
-  if (items.length === 0) {
+function renderHomeAgentScheduleSection(schedule) {
+  const items = normalizeHomeAgentList(schedule);
+  return renderHomeAgentSection("予定", items);
+}
+
+function renderHomeAgentSchoolSection(school) {
+  if (!school) {
     return "";
   }
-  return renderHomeAgentListSection(title, items);
+
+  if (typeof school === "string") {
+    const text = school.trim();
+    return text ? renderHomeAgentSection("学校", [text]) : "";
+  }
+
+  const items = [];
+  if (school.isSchoolDay === true) {
+    items.push("学校あり");
+  } else if (school.isSchoolDay === false) {
+    items.push("学校なし");
+  }
+
+  normalizeHomeAgentList(school.events).forEach((eventText) => {
+    if (eventText) {
+      items.push(eventText);
+    }
+  });
+
+  return renderHomeAgentSection("学校", items);
+}
+
+function renderHomeAgentLunchSection(lunch) {
+  if (!lunch) {
+    return "";
+  }
+
+  if (typeof lunch === "string") {
+    const text = lunch.trim();
+    return text ? renderHomeAgentSection("給食", [text]) : "";
+  }
+
+  const status = String(lunch.status || "").trim();
+  if (status === "available" && String(lunch.menu || "").trim()) {
+    return renderHomeAgentSection("給食", [String(lunch.menu).trim()]);
+  }
+  if (status === "no_lunch") {
+    return renderHomeAgentSection("給食", ["給食なし"]);
+  }
+  if (status === "no_data" || status === "data_missing") {
+    return renderHomeAgentSection("給食", ["給食データなし"]);
+  }
+
+  return "";
+}
+
+function renderHomeAgentWeatherSection(weather) {
+  if (!weather) {
+    return "";
+  }
+
+  if (typeof weather === "string") {
+    const text = weather.trim();
+    return text ? renderHomeAgentSection("天気", [text]) : "";
+  }
+
+  const items = [];
+  const weatherText = String(weather.weather || weather.condition || "").trim();
+  if (weatherText) {
+    items.push(weatherText);
+  }
+
+  const currentTemperature = formatHomeAgentTemperature(weather.currentTemperature ?? weather.temperature);
+  const minTemperature = formatHomeAgentTemperature(weather.minTemperature);
+  const maxTemperature = formatHomeAgentTemperature(weather.maxTemperature);
+  if (currentTemperature) {
+    items.push(currentTemperature);
+  } else if (minTemperature && maxTemperature) {
+    items.push(`${minTemperature}〜${maxTemperature}`);
+  } else if (maxTemperature) {
+    items.push(`最高${maxTemperature}`);
+  } else if (minTemperature) {
+    items.push(`最低${minTemperature}`);
+  }
+
+  const precipitation = formatHomeAgentPercent(weather.precipitationProbability ?? weather.precipitation);
+  if (precipitation) {
+    items.push(`降水確率${precipitation}`);
+  }
+
+  return renderHomeAgentSection("天気", items.slice(0, 3));
 }
 
 function renderHomeAgentWarnings(warnings) {
@@ -1381,13 +1482,6 @@ function normalizeHomeAgentList(value) {
     return value.map(formatHomeAgentValue).filter(Boolean);
   }
 
-  if (typeof value === "object") {
-    return Object.entries(value)
-      .filter(([, entryValue]) => entryValue !== "" && entryValue !== null && typeof entryValue !== "undefined")
-      .map(([key, entryValue]) => `${key}: ${formatHomeAgentValue(entryValue)}`)
-      .filter(Boolean);
-  }
-
   const text = String(value).trim();
   return text ? [text] : [];
 }
@@ -1398,17 +1492,43 @@ function formatHomeAgentValue(value) {
   }
   if (typeof value === "object") {
     if (value.title) {
-      return [value.title, value.startTime || value.time || "", value.location || ""].filter(Boolean).join(" ");
+      const timeText = extractHomeAgentTime(value.start || value.startTime || value.time || "");
+      return [timeText, value.title, value.location || ""].filter(Boolean).join(" ");
     }
     if (value.name) {
       return [value.name, value.value || ""].filter(Boolean).join(": ");
     }
-    return Object.entries(value)
-      .filter(([, entryValue]) => entryValue !== "" && entryValue !== null && typeof entryValue !== "undefined")
-      .map(([key, entryValue]) => `${key}: ${entryValue}`)
-      .join(" / ");
+    return "";
   }
   return String(value).trim();
+}
+
+function extractHomeAgentTime(value) {
+  const text = String(value || "");
+  const match = text.match(/(?:^|\s)(\d{1,2}:\d{2})/);
+  return match ? match[1] : "";
+}
+
+function formatHomeAgentTemperature(value) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return "";
+  }
+  const text = String(value).trim();
+  if (!text) {
+    return "";
+  }
+  return /℃$/.test(text) ? text : `${text}℃`;
+}
+
+function formatHomeAgentPercent(value) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return "";
+  }
+  const text = String(value).trim();
+  if (!text) {
+    return "";
+  }
+  return /%|％$/.test(text) ? text : `${text}％`;
 }
 
 function findSignageActionCandidate(candidates) {

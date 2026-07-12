@@ -53,6 +53,9 @@ function runHomeAgentRequest_(body) {
   const departure = skillResults.buildDepartureCheck && skillResults.buildDepartureCheck.data
     ? skillResults.buildDepartureCheck.data
     : {};
+  if (departure && departure.summary) {
+    departure.summary = localizeHomeAgentSummaryDate_(departure.summary, request.parameters.date, startedAt);
+  }
   const alertCandidate = createSignageAlertSkill_(request, {
     buildDepartureCheck: skillResults.buildDepartureCheck,
   });
@@ -88,7 +91,11 @@ function runHomeAgentRequest_(body) {
 
 function normalizeHomeAgentRequest_(body, now) {
   const parameters = Object.assign({}, body.parameters || {});
-  const date = normalizeHomeAgentDate_(parameters.date || body.date, now);
+  const message = String(body.message || body.memo || '').trim();
+  const explicitDate = parameters.date || body.date;
+  const date = explicitDate
+    ? normalizeHomeAgentDate_(explicitDate, now)
+    : resolveHomeAgentMessageDate_(message, now);
   parameters.date = date;
 
   return {
@@ -96,7 +103,7 @@ function normalizeHomeAgentRequest_(body, now) {
     conversationId: String(body.conversationId || ''),
     userId: String(body.userId || ''),
     deviceId: String(body.deviceId || ''),
-    message: String(body.message || body.memo || '').trim(),
+    message: message,
     intent: String(body.intent || '').trim(),
     parameters: parameters,
     context: Object.assign({}, body.context || {}),
@@ -227,7 +234,70 @@ function normalizeHomeAgentDate_(value, now) {
     return raw;
   }
 
+  const monthDay = raw.match(/^(\d{1,2})月(\d{1,2})日$/);
+  if (monthDay) {
+    const base = now || new Date();
+    const year = Number(Utilities.formatDate(base, HOME_AGENT_TIMEZONE, 'yyyy'));
+    return formatHomeAgentDate_(new Date(year, Number(monthDay[1]) - 1, Number(monthDay[2])));
+  }
+
   return Utilities.formatDate(now || new Date(), HOME_AGENT_TIMEZONE, 'yyyy-MM-dd');
+}
+
+function resolveHomeAgentMessageDate_(message, now) {
+  const text = String(message || '').trim();
+  const base = now || new Date();
+  const explicitIso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (explicitIso) {
+    return explicitIso[1] + '-' + explicitIso[2] + '-' + explicitIso[3];
+  }
+
+  const monthDay = text.match(/(\d{1,2})月(\d{1,2})日/);
+  if (monthDay) {
+    const year = Number(Utilities.formatDate(base, HOME_AGENT_TIMEZONE, 'yyyy'));
+    return formatHomeAgentDate_(new Date(year, Number(monthDay[1]) - 1, Number(monthDay[2])));
+  }
+
+  if (/あさって|明後日/.test(text)) {
+    return addHomeAgentDays_(base, 2);
+  }
+  if (/明日|あした|あす/.test(text)) {
+    return addHomeAgentDays_(base, 1);
+  }
+  if (/今日|本日/.test(text)) {
+    return addHomeAgentDays_(base, 0);
+  }
+  return addHomeAgentDays_(base, 0);
+}
+
+function addHomeAgentDays_(baseDate, days) {
+  const baseText = Utilities.formatDate(baseDate || new Date(), HOME_AGENT_TIMEZONE, 'yyyy-MM-dd');
+  const parts = baseText.split('-').map(Number);
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+  date.setDate(date.getDate() + Number(days || 0));
+  return formatHomeAgentDate_(date);
+}
+
+function localizeHomeAgentSummaryDate_(summary, targetDate, now) {
+  const text = String(summary || '');
+  const label = getHomeAgentDateLabel_(targetDate, now);
+  if (label === '今日') {
+    return text;
+  }
+  return text.replace(/^今日は/, label + 'は');
+}
+
+function getHomeAgentDateLabel_(targetDate, now) {
+  const today = addHomeAgentDays_(now || new Date(), 0);
+  const tomorrow = addHomeAgentDays_(now || new Date(), 1);
+  const dayAfterTomorrow = addHomeAgentDays_(now || new Date(), 2);
+  if (targetDate === today) return '今日';
+  if (targetDate === tomorrow) return '明日';
+  if (targetDate === dayAfterTomorrow) return 'あさって';
+
+  const parts = String(targetDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!parts) return '対象日';
+  return Number(parts[2]) + '月' + Number(parts[3]) + '日';
 }
 
 function parseHomeAgentDate_(value) {
@@ -254,6 +324,38 @@ function formatHomeAgentTime_(date) {
 function sameHomeAgentDate_(left, right) {
   if (!(left instanceof Date) || !(right instanceof Date)) return false;
   return formatHomeAgentDate_(left) === formatHomeAgentDate_(right);
+}
+
+function testHomeAgentRelativeDateParsing_() {
+  const base = new Date(2026, 6, 12, 9, 0, 0);
+  const cases = [
+    ['今日の予定と持ち物教えて', '2026-07-12'],
+    ['本日の予定教えて', '2026-07-12'],
+    ['明日の予定と持ち物教えて', '2026-07-13'],
+    ['あしたの予定教えて', '2026-07-13'],
+    ['あすの給食なに？', '2026-07-13'],
+    ['あさっての給食なに？', '2026-07-14'],
+    ['明後日の予定教えて', '2026-07-14'],
+    ['2026-07-20の予定教えて', '2026-07-20'],
+    ['7月20日の予定教えて', '2026-07-20'],
+  ];
+
+  cases.forEach(function(testCase) {
+    const actual = resolveHomeAgentMessageDate_(testCase[0], base);
+    if (actual !== testCase[1]) {
+      throw new Error(testCase[0] + ' expected ' + testCase[1] + ' but got ' + actual);
+    }
+  });
+
+  const explicit = normalizeHomeAgentRequest_({
+    message: '明日の予定教えて',
+    parameters: { date: '2026-07-20' },
+  }, base);
+  if (explicit.parameters.date !== '2026-07-20') {
+    throw new Error('parameters.date should override message date');
+  }
+
+  console.log('testHomeAgentRelativeDateParsing_ passed');
 }
 
 function testHomeAgentDailyDepartureCheck(date) {

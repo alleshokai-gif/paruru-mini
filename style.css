@@ -348,6 +348,7 @@ main,
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .home-agent-eyebrow {
@@ -357,10 +358,34 @@ main,
   font-weight: 900;
 }
 
+.home-agent-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.home-agent-close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid rgba(92, 107, 192, 0.18);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .home-agent-content {
   display: grid;
   gap: 12px;
   min-width: 0;
+  padding-bottom: 8px;
 }
 
 .home-agent-summary {
