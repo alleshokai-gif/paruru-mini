@@ -163,7 +163,23 @@ function getHomeSkillDefinition_(skillId) {
 }
 
 function getHomeSkillSequenceForIntent_(intent) {
-  if (intent === HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK) {
+  if (intent === HOME_AGENT_INTENT_PERSONAL_SCHEDULE) {
+    return ['getFamilySchedule'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_SCHOOL_STATUS) {
+    return ['getSchoolSummary'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_SCHOOL_LUNCH) {
+    return ['getSchoolLunch'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_WEATHER_CHECK) {
+    return ['getWeatherSummary'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_DEPARTURE_CHECK || intent === HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK) {
     return [
       'getFamilySchedule',
       'getSchoolSummary',

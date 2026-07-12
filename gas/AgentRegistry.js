@@ -1,5 +1,10 @@
 const HOME_AGENT_TIMEZONE = 'Asia/Tokyo';
 const HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK = 'daily_departure_check';
+const HOME_AGENT_INTENT_PERSONAL_SCHEDULE = 'personal_schedule';
+const HOME_AGENT_INTENT_SCHOOL_STATUS = 'school_status';
+const HOME_AGENT_INTENT_SCHOOL_LUNCH = 'school_lunch';
+const HOME_AGENT_INTENT_WEATHER_CHECK = 'weather_check';
+const HOME_AGENT_INTENT_DEPARTURE_CHECK = 'departure_check';
 
 const HOME_AGENT_AGENTS = {
   paruru: {
@@ -67,8 +72,17 @@ function getHomeAgentDefinition_(agentId) {
 }
 
 function getHomeAgentsForIntent_(intent) {
-  if (intent === HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK) {
+  if (intent === HOME_AGENT_INTENT_DEPARTURE_CHECK || intent === HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK) {
     return ['paruru', 'peno', 'shimao'];
+  }
+  if (intent === HOME_AGENT_INTENT_SCHOOL_STATUS || intent === HOME_AGENT_INTENT_SCHOOL_LUNCH) {
+    return ['paruru', 'peno'];
+  }
+  if (intent === HOME_AGENT_INTENT_WEATHER_CHECK) {
+    return ['paruru', 'shimao'];
+  }
+  if (intent === HOME_AGENT_INTENT_PERSONAL_SCHEDULE) {
+    return ['paruru'];
   }
 
   return ['paruru'];

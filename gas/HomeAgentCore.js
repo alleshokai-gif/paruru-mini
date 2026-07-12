@@ -13,7 +13,7 @@ function runHomeAgentRequest_(body) {
   const intent = request.intent || detectHomeAgentIntent_(request.message);
   request.intent = intent;
 
-  if (intent !== HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK) {
+  if (!isSupportedHomeAgentIntent_(intent)) {
     warnings.push('home_agent_intent_not_matched');
     return buildHomeAgentResponse_(request, {
       success: false,
@@ -50,15 +50,13 @@ function runHomeAgentRequest_(body) {
     }
   });
 
-  const departure = skillResults.buildDepartureCheck && skillResults.buildDepartureCheck.data
-    ? skillResults.buildDepartureCheck.data
-    : {};
-  if (departure && departure.summary) {
-    departure.summary = localizeHomeAgentSummaryDate_(departure.summary, request.parameters.date, startedAt);
+  const responseResult = buildHomeAgentResultForIntent_(request, skillResults, startedAt);
+  if (responseResult && responseResult.summary) {
+    responseResult.summary = localizeHomeAgentSummaryDate_(responseResult.summary, request.parameters.date, startedAt);
   }
-  const alertCandidate = createSignageAlertSkill_(request, {
-    buildDepartureCheck: skillResults.buildDepartureCheck,
-  });
+  const alertCandidate = shouldCreateHomeAgentSignageCandidate_(request)
+    ? createSignageAlertCandidateForIntent_(request, responseResult, skillResults)
+    : null;
   const actionCandidates = alertCandidate && alertCandidate.success && alertCandidate.data && alertCandidate.data.action
       && alertCandidate.data.action.parameters && alertCandidate.data.action.parameters.message
     ? [alertCandidate.data.action]
@@ -68,7 +66,7 @@ function runHomeAgentRequest_(body) {
   const audit = buildHomeAgentAudit_(request, {
     assignedAgents: assignedAgents,
     usedSkills: usedSkills,
-    success: Boolean(skillResults.buildDepartureCheck && skillResults.buildDepartureCheck.success),
+    success: hasSuccessfulHomeAgentResult_(skillResults),
     executedAt: formatHomeAgentDateTime_(finishedAt),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     warnings: warnings,
@@ -78,7 +76,7 @@ function runHomeAgentRequest_(body) {
     success: audit.success,
     assignedAgents: assignedAgents,
     usedSkills: usedSkills,
-    result: departure,
+    result: responseResult,
     skillResults: skillResults,
     actionCandidates: actionCandidates,
     requiresConfirmation: false,
@@ -102,6 +100,8 @@ function normalizeHomeAgentRequest_(body, now) {
     requestId: String(body.requestId || Utilities.getUuid()),
     conversationId: String(body.conversationId || ''),
     userId: String(body.userId || ''),
+    userDisplayName: String(body.userDisplayName || ''),
+    calendarSuffix: String(body.calendarSuffix || ''),
     deviceId: String(body.deviceId || ''),
     message: message,
     intent: String(body.intent || '').trim(),
@@ -117,28 +117,219 @@ function detectHomeAgentIntent_(message) {
   const text = String(message || '').trim();
   if (!text) return '';
 
-  const questionSignals = [
-    '？', '?', '教えて', 'なに', '何', 'ある', 'いる', '要る', 'チェック',
-    '予定', '持ち物', '出かけ', '出発', '傘', '給食', '学校',
-  ];
-  const dailySignals = [
-    '今日', '本日', '朝', '出発前', '出かける前', '登校', '予定', '持ち物',
-    '傘', '給食', '学校',
-  ];
   const memoLikeShopping = /買う$|買って$|買っとく$|購入$/.test(text);
-
   if (memoLikeShopping && text.indexOf('？') === -1 && text.indexOf('?') === -1 && text.indexOf('教えて') === -1) {
     return '';
   }
 
-  const hasQuestion = questionSignals.some(function(signal) {
-    return text.indexOf(signal) !== -1;
-  });
-  const hasDaily = dailySignals.some(function(signal) {
-    return text.indexOf(signal) !== -1;
-  });
+  if (/出発前|出かける前|登校前|持ち物まとめ|まとめて|全部|一通り|チェック/.test(text)) {
+    return HOME_AGENT_INTENT_DEPARTURE_CHECK;
+  }
+  if (/給食|献立/.test(text)) {
+    return HOME_AGENT_INTENT_SCHOOL_LUNCH;
+  }
+  if (/傘|天気|雨|気温|暑い|寒い|降水/.test(text)) {
+    return HOME_AGENT_INTENT_WEATHER_CHECK;
+  }
+  if (/学校|登校|休校|子ども|こども|子供|学校行事/.test(text)) {
+    return HOME_AGENT_INTENT_SCHOOL_STATUS;
+  }
+  if (/予定|なんかある|何かある|ある[？?]?/.test(text)) {
+    return HOME_AGENT_INTENT_PERSONAL_SCHEDULE;
+  }
 
-  return hasQuestion && hasDaily ? HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK : '';
+  return '';
+}
+
+function isSupportedHomeAgentIntent_(intent) {
+  return [
+    HOME_AGENT_INTENT_PERSONAL_SCHEDULE,
+    HOME_AGENT_INTENT_SCHOOL_STATUS,
+    HOME_AGENT_INTENT_SCHOOL_LUNCH,
+    HOME_AGENT_INTENT_WEATHER_CHECK,
+    HOME_AGENT_INTENT_DEPARTURE_CHECK,
+    HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK,
+  ].indexOf(intent) !== -1;
+}
+
+function buildHomeAgentResultForIntent_(request, skillResults, now) {
+  if (request.intent === HOME_AGENT_INTENT_PERSONAL_SCHEDULE) {
+    return buildHomeAgentPersonalScheduleResult_(request, skillResults.getFamilySchedule, now);
+  }
+  if (request.intent === HOME_AGENT_INTENT_SCHOOL_STATUS) {
+    return buildHomeAgentSchoolStatusResult_(request, skillResults.getSchoolSummary, now);
+  }
+  if (request.intent === HOME_AGENT_INTENT_SCHOOL_LUNCH) {
+    return buildHomeAgentSchoolLunchResult_(request, skillResults.getSchoolLunch, now);
+  }
+  if (request.intent === HOME_AGENT_INTENT_WEATHER_CHECK) {
+    return buildHomeAgentWeatherCheckResult_(request, skillResults.getWeatherSummary, now);
+  }
+
+  const departure = skillResults.buildDepartureCheck && skillResults.buildDepartureCheck.data
+    ? Object.assign({}, skillResults.buildDepartureCheck.data)
+    : {};
+  return departure;
+}
+
+function buildHomeAgentPersonalScheduleResult_(request, scheduleResult, now) {
+  const data = scheduleResult && scheduleResult.data ? scheduleResult.data : {};
+  const allEvents = Array.isArray(data.events) ? data.events : [];
+  const events = filterHomeAgentPersonalEvents_(request, allEvents);
+  const label = getHomeAgentDateLabel_(request.parameters.date, now);
+  return {
+    date: request.parameters.date,
+    summary: events.length
+      ? label + 'は予定が' + events.length + '件あるよ。'
+      : label + 'は予定なし。',
+    schedule: events,
+    signageMessage: buildHomeAgentScheduleMessage_(label, events),
+  };
+}
+
+function buildHomeAgentSchoolStatusResult_(request, schoolResult, now) {
+  const school = schoolResult && schoolResult.data ? schoolResult.data : {};
+  const label = getHomeAgentDateLabel_(request.parameters.date, now);
+  const events = Array.isArray(school.events) ? school.events.filter(Boolean) : [];
+  const schoolText = school.isSchoolDay === true
+    ? '学校あり'
+    : school.isSchoolDay === false
+      ? '学校なし'
+      : '学校予定は未確認';
+  return {
+    date: request.parameters.date,
+    summary: label + 'は' + schoolText + (events.length ? '。行事が' + events.length + '件。' : '。'),
+    school: {
+      isSchoolDay: school.isSchoolDay,
+      events: events,
+    },
+    signageMessage: [label + 'は' + schoolText].concat(events).join('。'),
+  };
+}
+
+function buildHomeAgentSchoolLunchResult_(request, lunchResult, now) {
+  const lunch = lunchResult && lunchResult.data ? lunchResult.data : {};
+  const label = getHomeAgentDateLabel_(request.parameters.date, now);
+  const lunchText = lunch.status === 'available' && lunch.menu
+    ? String(lunch.menu)
+    : lunch.status === 'no_lunch'
+      ? '給食なし'
+      : '給食データなし';
+  return {
+    date: request.parameters.date,
+    summary: label + 'の給食は' + lunchText + '。',
+    lunch: {
+      status: lunch.status || '',
+      menu: lunch.menu || '',
+    },
+    signageMessage: label + 'の給食は' + lunchText + '。',
+  };
+}
+
+function buildHomeAgentWeatherCheckResult_(request, weatherResult, now) {
+  const weather = weatherResult && weatherResult.data ? weatherResult.data : {};
+  const label = getHomeAgentDateLabel_(request.parameters.date, now);
+  const weatherText = String(weather.weather || weather.condition || extractHomeAgentWeatherLabel_(weather.weatherText) || '').trim();
+  const umbrellaText = weather.umbrellaRecommended ? '傘、持っとき。' : '傘は今のところ大丈夫そう。';
+  return {
+    date: request.parameters.date,
+    summary: label + 'の天気を見たよ。' + umbrellaText,
+    weather: {
+      weather: weatherText,
+      currentTemperature: weather.currentTemperature != null ? weather.currentTemperature : '',
+      maxTemperature: weather.maxTemperature != null ? weather.maxTemperature : '',
+      minTemperature: weather.minTemperature != null ? weather.minTemperature : '',
+      precipitationProbability: weather.precipitationProbability != null ? weather.precipitationProbability : '',
+      umbrellaRecommended: weather.umbrellaRecommended === true,
+    },
+    suggestedItems: weather.umbrellaRecommended ? ['傘'] : [],
+    signageMessage: label + 'の天気。' + umbrellaText,
+  };
+}
+
+function extractHomeAgentWeatherLabel_(weatherText) {
+  const text = String(weatherText || '');
+  const match = text.match(/(晴れ|曇り|くもり|雨|雪|雷)/);
+  return match ? match[1] : '';
+}
+
+function buildHomeAgentScheduleMessage_(label, events) {
+  if (!events.length) {
+    return label + 'は予定なし。';
+  }
+  return label + 'の予定は' + events.map(function(event) {
+    return String(event.title || '').trim();
+  }).filter(Boolean).join('、') + '。';
+}
+
+function filterHomeAgentPersonalEvents_(request, events) {
+  if (isHomeAgentBroadScheduleRequest_(request.message)) {
+    return events;
+  }
+
+  const suffix = getHomeAgentCalendarSuffix_(request);
+  if (!suffix) {
+    return [];
+  }
+
+  return events.filter(function(event) {
+    const title = String(event.title || '').trim();
+    if (!title) return false;
+    if (!title.endsWith(suffix)) return false;
+    if (/ゴミ|ごみ/.test(title)) return false;
+    return true;
+  });
+}
+
+function isHomeAgentBroadScheduleRequest_(message) {
+  return /家族|みんな|全員|子ども|こども|子供|学校/.test(String(message || ''));
+}
+
+function getHomeAgentCalendarSuffix_(request) {
+  if (request.calendarSuffix) {
+    return request.calendarSuffix;
+  }
+  if (request.userId === 'father') {
+    return '（父）';
+  }
+  return '';
+}
+
+function shouldCreateHomeAgentSignageCandidate_(request) {
+  return /サイネージで知らせ|家族に知らせ|朝流し|読み上げ/.test(String(request.message || ''));
+}
+
+function createSignageAlertCandidateForIntent_(request, result, skillResults) {
+  if (request.intent === HOME_AGENT_INTENT_DEPARTURE_CHECK || request.intent === HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK) {
+    return createSignageAlertSkill_(request, {
+      buildDepartureCheck: skillResults.buildDepartureCheck,
+    });
+  }
+
+  const message = String(result.signageMessage || result.summary || '').trim();
+  if (!message) {
+    return null;
+  }
+  return {
+    success: true,
+    data: {
+      action: {
+        skill: 'createSignageAlert',
+        agent: 'paruru',
+        requiresConfirmation: true,
+        parameters: {
+          message: message,
+          deviceId: request.deviceId || '',
+        },
+      },
+    },
+  };
+}
+
+function hasSuccessfulHomeAgentResult_(skillResults) {
+  return Object.keys(skillResults || {}).some(function(skillId) {
+    return skillResults[skillId] && skillResults[skillId].success === true;
+  });
 }
 
 function buildHomeAgentResponse_(request, options) {
@@ -358,10 +549,31 @@ function testHomeAgentRelativeDateParsing_() {
   console.log('testHomeAgentRelativeDateParsing_ passed');
 }
 
+function testHomeAgentIntentRouting_() {
+  const cases = [
+    ['明日の予定は？', HOME_AGENT_INTENT_PERSONAL_SCHEDULE],
+    ['今日なんかある？', HOME_AGENT_INTENT_PERSONAL_SCHEDULE],
+    ['子どもの学校どうなっとる？', HOME_AGENT_INTENT_SCHOOL_STATUS],
+    ['明日の給食なに？', HOME_AGENT_INTENT_SCHOOL_LUNCH],
+    ['明日傘いる？', HOME_AGENT_INTENT_WEATHER_CHECK],
+    ['天気どう？', HOME_AGENT_INTENT_WEATHER_CHECK],
+    ['明日の予定と持ち物まとめて', HOME_AGENT_INTENT_DEPARTURE_CHECK],
+  ];
+
+  cases.forEach(function(testCase) {
+    const actual = detectHomeAgentIntent_(testCase[0]);
+    if (actual !== testCase[1]) {
+      throw new Error(testCase[0] + ' expected ' + testCase[1] + ' but got ' + actual);
+    }
+  });
+
+  console.log('testHomeAgentIntentRouting_ passed');
+}
+
 function testHomeAgentDailyDepartureCheck(date) {
   const result = runHomeAgentRequest_({
     action: 'homeAgent',
-    message: '今日の予定と持ち物教えて',
+    message: '今日の予定と持ち物まとめて サイネージで知らせて',
     userId: 'father',
     deviceId: 'test-device',
     conversationId: 'test-conversation',
@@ -380,8 +592,8 @@ function testHomeAgentDailyDepartureCheck(date) {
     'buildDepartureCheck',
   ];
 
-  if (result.intent !== HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK) {
-    throw new Error('Intent判定がdaily_departure_checkになってへんで');
+  if (result.intent !== HOME_AGENT_INTENT_DEPARTURE_CHECK) {
+    throw new Error('Intent判定がdeparture_checkになってへんで');
   }
 
   ['paruru', 'peno', 'shimao'].forEach(function(agentId) {

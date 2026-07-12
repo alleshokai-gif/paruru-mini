@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260711-14";
+const ASSET_VERSION = "v20260711-15";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -621,6 +621,8 @@ function buildHomeAgentPayload(messageText) {
     action: "homeAgent",
     message: messageText,
     userId: profile.userId,
+    userDisplayName: profile.displayName,
+    calendarSuffix: profile.calendarSuffix,
     deviceId: profile.deviceId,
     conversationId: "",
   };
