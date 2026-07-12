@@ -71,6 +71,7 @@ function runHomeAgentRequest_(body) {
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     warnings: warnings,
   });
+  const userWarnings = buildHomeAgentUserWarnings_(warnings, errors);
 
   return buildHomeAgentResponse_(request, {
     success: audit.success,
@@ -80,7 +81,7 @@ function runHomeAgentRequest_(body) {
     skillResults: skillResults,
     actionCandidates: actionCandidates,
     requiresConfirmation: false,
-    warnings: warnings,
+    warnings: userWarnings,
     errors: errors,
     audit: audit,
     startedAt: startedAt,
@@ -217,7 +218,7 @@ function buildHomeAgentSchoolLunchResult_(request, lunchResult, now) {
       : '給食データなし';
   return {
     date: request.parameters.date,
-    summary: label + 'の給食は' + lunchText + '。',
+    summary: buildHomeAgentLunchSummary_(label, lunch),
     lunch: {
       status: lunch.status || '',
       menu: lunch.menu || '',
@@ -226,11 +227,36 @@ function buildHomeAgentSchoolLunchResult_(request, lunchResult, now) {
   };
 }
 
+function buildHomeAgentLunchSummary_(label, lunch) {
+  if (lunch.status === 'available' && lunch.menu) {
+    const menu = String(lunch.menu).trim();
+    const hints = [];
+    if (/鶏|チキン|からあげ|唐揚げ/.test(menu)) {
+      hints.push('鶏');
+    }
+    if (/クリーム|牛乳|乳|チーズ|グラタン|シチュー/.test(menu)) {
+      hints.push('クリーム');
+    }
+    if (/カレー/.test(menu)) {
+      hints.push('カレー味');
+    }
+    if (hints.length) {
+      return label + 'は' + menu + 'や。夜は' + uniqueHomeAgentValues_(hints).join('・') + 'あたりを避けると被りにくいで。';
+    }
+    return label + 'は' + menu + 'や。夕飯とかぶらんよう、軽く見とくとええよ。';
+  }
+  if (lunch.status === 'no_lunch') {
+    return label + 'は給食なし。昼の段取り、忘れんといてな。';
+  }
+  return label + 'の給食は確認できんかった。';
+}
+
 function buildHomeAgentWeatherCheckResult_(request, weatherResult, now) {
   const weather = weatherResult && weatherResult.data ? weatherResult.data : {};
   const label = getHomeAgentDateLabel_(request.parameters.date, now);
   const weatherText = String(weather.weather || weather.condition || extractHomeAgentWeatherLabel_(weather.weatherText) || '').trim();
-  const umbrellaText = weather.umbrellaRecommended ? '傘、持っとき。' : '傘は今のところ大丈夫そう。';
+  const umbrellaRecommended = shouldRecommendHomeAgentUmbrella_(weather);
+  const umbrellaText = umbrellaRecommended ? '傘、持っとき。' : '傘は今のところ大丈夫そう。';
   return {
     date: request.parameters.date,
     summary: label + 'の天気を見たよ。' + umbrellaText,
@@ -240,11 +266,51 @@ function buildHomeAgentWeatherCheckResult_(request, weatherResult, now) {
       maxTemperature: weather.maxTemperature != null ? weather.maxTemperature : '',
       minTemperature: weather.minTemperature != null ? weather.minTemperature : '',
       precipitationProbability: weather.precipitationProbability != null ? weather.precipitationProbability : '',
-      umbrellaRecommended: weather.umbrellaRecommended === true,
+      umbrellaRecommended: umbrellaRecommended,
     },
-    suggestedItems: weather.umbrellaRecommended ? ['傘'] : [],
+    suggestedItems: umbrellaRecommended ? ['傘'] : [],
     signageMessage: label + 'の天気。' + umbrellaText,
   };
+}
+
+function shouldRecommendHomeAgentUmbrella_(weather) {
+  const weatherText = String(weather.weather || weather.condition || weather.weatherText || '');
+  const precipitation = Number(weather.precipitationProbability);
+  if (/雨|雪|雷雨|⛈|🌧|❄/.test(weatherText)) {
+    return true;
+  }
+  if (!isNaN(precipitation) && precipitation >= 40) {
+    return true;
+  }
+  return false;
+}
+
+function buildHomeAgentUserWarnings_(warningCodes, errors) {
+  const out = [];
+  const codes = warningCodes || [];
+  const hasWeatherError = (errors || []).some(function(error) {
+    return error.skill === 'getWeatherSummary';
+  });
+  if (hasWeatherError || codes.some(function(code) {
+    return /weather_source_not_available|WEATHER_SOURCE_NOT_CONFIGURED/.test(code);
+  })) {
+    out.push('天気は確認できんかった。');
+  } else if (codes.some(function(code) {
+    return /weather_precipitation_probability_missing|weather_precipitation_unavailable/.test(code);
+  })) {
+    out.push('降水確率は確認できんかった。');
+  }
+  if (codes.some(function(code) {
+    return /weather_inconsistent_rain_probability/.test(code);
+  })) {
+    out.push('雨予報やけど降水確率データに食い違いがあるよ。');
+  }
+  if (codes.some(function(code) {
+    return /weather_forecast_date_mismatch/.test(code);
+  })) {
+    out.push('天気の対象日が少し怪しいかも。');
+  }
+  return uniqueHomeAgentValues_(out);
 }
 
 function extractHomeAgentWeatherLabel_(weatherText) {

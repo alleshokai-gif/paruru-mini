@@ -536,7 +536,7 @@ function readHomeAgentSignageStatusWeather_(sheet, request) {
   if (!rows.length) return null;
 
   const location = normalizeHomeAgentWeatherLocation_(request.parameters.location || request.location || 'home');
-  const row = getLatestHomeAgentRowObject_(rows);
+  const row = selectHomeAgentWeatherRow_(rows, request.parameters.date);
   const weatherText = String(pickHomeAgentValue_(row, location.headers) || '').trim();
   if (!weatherText) return null;
 
@@ -550,9 +550,15 @@ function readHomeAgentSignageStatusWeather_(sheet, request) {
   if (!updatedAtDate) {
     warnings.push('weather_status_updated_at_missing');
   }
-  if (!parsed.precipitationProbability && !/雨|傘|降水|☔|🌧|⛈/.test(weatherText)) {
+  if (parsed.precipitationProbability === '' && !/雨|雪|傘|降水|☔|🌧|⛈|❄/.test(weatherText)) {
     warnings.push('weather_precipitation_probability_missing');
   }
+  if (forecastDate !== request.parameters.date) {
+    warnings.push('weather_forecast_date_mismatch');
+  }
+  (parsed.warnings || []).forEach(function(warning) {
+    warnings.push(warning);
+  });
 
   const freshness = getHomeAgentWeatherFreshness_(updatedAtDate, request.parameters.date);
   if (freshness === 'stale') {
@@ -578,6 +584,26 @@ function readHomeAgentSignageStatusWeather_(sheet, request) {
     freshness: freshness,
     warnings: warnings,
   };
+}
+
+function selectHomeAgentWeatherRow_(rows, targetDate) {
+  for (var i = rows.length - 1; i >= 0; i--) {
+    const rowDate = normalizeHomeAgentWeatherRowDate_(rows[i]);
+    if (rowDate && rowDate === targetDate) {
+      return rows[i];
+    }
+  }
+  return getLatestHomeAgentRowObject_(rows);
+}
+
+function normalizeHomeAgentWeatherRowDate_(row) {
+  const value = pickHomeAgentValue_(row, ['date', 'date_str', 'forecastDate', 'forecast_date']);
+  const text = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+  const parsed = parseHomeAgentSheetDate_(value);
+  return parsed ? formatHomeAgentDate_(parsed) : '';
 }
 
 function normalizeHomeAgentWeatherLocation_(value) {
@@ -624,9 +650,16 @@ function parseHomeAgentSignageWeatherText_(text) {
   const raw = String(text || '');
   const currentMatch = raw.match(/(\-?\d+(?:\.\d+)?)\s*℃/);
   const rangeMatch = raw.match(/(\-?\d+)\s*[–〜~-]\s*(\-?\d+)\s*℃/);
-  const popMatch = raw.match(/(?:☔|雨|降水)\s*(\d{1,3})\s*%/);
-  const precipitationProbability = popMatch ? Math.min(100, Number(popMatch[1])) : '';
+  const popMatches = Array.from(raw.matchAll(/(?:☔|雨|降水|降水確率)?\s*(\d{1,3})\s*%/g));
+  const precipitationProbability = popMatches.length
+    ? Math.min(100, Math.max.apply(null, popMatches.map(function(match) { return Number(match[1]); })))
+    : '';
   const weather = inferHomeAgentWeatherLabel_(raw);
+  const warnings = [];
+  const rainy = /雨|雪|雷雨|🌧|⛈|❄/.test(weather || raw);
+  if (rainy && precipitationProbability !== '' && precipitationProbability < 40) {
+    warnings.push('weather_inconsistent_rain_probability');
+  }
 
   return {
     weather: weather,
@@ -634,9 +667,8 @@ function parseHomeAgentSignageWeatherText_(text) {
     minTemperature: rangeMatch ? Number(rangeMatch[1]) : '',
     maxTemperature: rangeMatch ? Number(rangeMatch[2]) : '',
     precipitationProbability: precipitationProbability,
-    umbrellaRecommended: precipitationProbability !== ''
-      ? precipitationProbability >= 30
-      : /傘いる|帰りだけ傘|雨|降水|☔|🌧|⛈/.test(raw),
+    umbrellaRecommended: rainy || (precipitationProbability !== '' && precipitationProbability >= 40),
+    warnings: warnings,
   };
 }
 
