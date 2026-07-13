@@ -752,18 +752,18 @@ function callSwitchbotTempLogHomeAgentApi_(action, payload, options) {
     };
   }
 
-  const body = Object.assign({}, payload || {}, { action: action });
-  if (options && options.write === true) {
-    const secret = getHomeAgentProperty_('PALURU_HOME_AGENT_SECRET', '');
-    if (!secret) {
-      return {
-        success: false,
-        errorCode: 'HOME_AGENT_SECRET_NOT_CONFIGURED',
-        message: 'Home Agent shared secret is not configured',
-      };
-    }
-    body.secret = secret;
+  const secret = getHomeAgentProperty_('PALURU_HOME_AGENT_SECRET', '');
+  if (!secret) {
+    return {
+      success: false,
+      errorCode: 'HOME_AGENT_SECRET_NOT_CONFIGURED',
+      message: 'Home Agent shared secret is not configured',
+    };
   }
+  const body = Object.assign({}, payload || {}, {
+    action: action,
+    secret: secret,
+  });
 
   try {
     const response = UrlFetchApp.fetch(url, {

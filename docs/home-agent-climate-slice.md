@@ -39,13 +39,13 @@ PALURU Mini does not keep a separate room master for climate control. It calls t
 PALURU Mini GAS:
 
 - `SWITCHBOT_TEMP_LOG_WEB_APP_URL`: switchbot-temp-log Web App URL
-- `PALURU_HOME_AGENT_SECRET`: shared secret for write operations
+- `PALURU_HOME_AGENT_SECRET`: shared secret for every Home Agent action request
 
 switchbot-temp-log GAS:
 
 - `PALURU_HOME_AGENT_SECRET`: same shared secret
 
-The secret is sent only from PALURU GAS to switchbot-temp-log GAS. It is not stored in the front end.
+The secret is sent only from PALURU GAS to switchbot-temp-log GAS. It is required for both read and write actions and is not stored in the front end.
 
 ## switchbot-temp-log Actions
 
@@ -56,12 +56,12 @@ Read-only actions:
 - `getRoomAutomationPause`
 - `buildPauseRoomAutomationProposal`
 
-Write actions requiring shared secret:
+Write actions also requiring confirmation:
 
 - `pauseRoomAutomation`
 - `resumeRoomAutomation`
 
-All responses are sanitized. Device IDs, tokens, spreadsheet IDs, and internal secrets are not returned.
+All action requests require `PALURU_HOME_AGENT_SECRET`. Responses are sanitized. Device IDs, tokens, spreadsheet IDs, and internal secrets are not returned.
 
 ## Intents
 
@@ -130,7 +130,8 @@ No push, Signage, or LINE notification is sent automatically.
 - No front-end direct call to switchbot-temp-log.
 - No shared secret in front-end JavaScript.
 - Read actions and write actions are separated.
-- Write actions require `confirmed=true` and shared secret.
+- Every action request requires the shared secret.
+- Write actions also require `confirmed=true`.
 - Actual aircon operations are not connected in this slice.
 - Safety-off behavior remains under switchbot-temp-log control.
 
