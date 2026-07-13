@@ -1,4 +1,4 @@
-﻿const SHEET_NAME = '01_Inbox';
+const SHEET_NAME = '01_Inbox';
 const DEBUG = false;
 const HEADERS = [
   'id',
@@ -81,6 +81,10 @@ function doPost(e) {
 
     if (action === 'homeAgent') {
       return homeAgent_(body);
+    }
+
+    if (action === 'homeAgentAction') {
+      return homeAgentAction_(body);
     }
 
     if (action === 'answerFollowup') {

@@ -1,4 +1,4 @@
-const ASSET_VERSION = "v20260711-16";
+const ASSET_VERSION = "v20260713-02";
 const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
 const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
 const DEBUG = false;
@@ -173,6 +173,7 @@ function shouldIgnoreSearch(request) {
   const url = new URL(request.url);
   return isAppShellRequest(request) && url.origin === self.location.origin;
 }
+
 
 
 

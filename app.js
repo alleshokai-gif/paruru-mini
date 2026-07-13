@@ -1,7 +1,7 @@
-﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260711-16";
+const ASSET_VERSION = "v20260713-02";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -22,6 +22,9 @@ const HOME_AGENT_QUESTION_PATTERNS = [
   /傘/,
   /持ち物/,
   /出発/,
+  /暑い|寒い|蒸し|蒸す|温度|湿度|部屋/,
+  /強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて/,
+  /自動制御|通常運転|一時停止/,
 ];
 const HOME_AGENT_MEMO_PRIORITY_PATTERNS = [
   /買う|購入|もらう|提出|送る|予約|登録|入れといて|入れて|メモ/,
@@ -270,6 +273,8 @@ const homeAgentRetryButton = document.querySelector("#homeAgentRetryButton");
 const homeAgentCloseButton = document.querySelector("#homeAgentCloseButton");
 
 let lastHomeAgentMessage = "";
+let homeAgentConversationContext = {};
+let pendingHomeAgentActionCandidate = null;
 
 setParuruState("loading");
 
@@ -517,9 +522,20 @@ homeAgentRetryButton.addEventListener("click", () => {
 });
 homeAgentCloseButton.addEventListener("click", hideHomeAgentCard);
 homeAgentCard.addEventListener("click", (event) => {
+  if (event.target.closest("[data-home-agent-action-execute]")) {
+    executePendingHomeAgentAction();
+    return;
+  }
+
   const signageButton = event.target.closest("[data-home-agent-signage]");
   if (signageButton) {
     renderSignageConfirmation(signageButton.dataset.homeAgentSignage || "");
+    return;
+  }
+
+  const actionButton = event.target.closest("[data-home-agent-action]");
+  if (actionButton) {
+    renderHomeAgentActionConfirmation(parseHomeAgentActionCandidate(actionButton.dataset.homeAgentAction || ""));
     return;
   }
 
@@ -615,6 +631,38 @@ async function callHomeAgent(payload) {
   return parseApiResponse(response);
 }
 
+async function executeHomeAgentAction(candidate) {
+  if (!GAS_WEB_APP_URL) {
+    return {
+      success: true,
+      result: {
+        activePause: candidate?.skill === "pauseRoomAutomation"
+          ? { expiresAt: candidate?.parameters?.expiresAt || "" }
+          : null,
+      },
+      message: "dummy home agent action",
+    };
+  }
+
+  const profile = getCurrentProfile();
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify({
+      action: "homeAgentAction",
+      candidate,
+      confirmed: true,
+      userId: profile.userId,
+      userDisplayName: profile.displayName,
+      deviceId: profile.deviceId,
+    }),
+  });
+
+  return parseApiResponse(response);
+}
+
 function buildHomeAgentPayload(messageText) {
   const profile = getCurrentProfile();
   return {
@@ -625,6 +673,7 @@ function buildHomeAgentPayload(messageText) {
     calendarSuffix: profile.calendarSuffix,
     deviceId: profile.deviceId,
     conversationId: "",
+    context: homeAgentConversationContext,
   };
 }
 
@@ -638,6 +687,9 @@ async function submitHomeAgentQuery(messageText) {
   try {
     const response = await callHomeAgent(payload);
     const result = normalizeHomeAgentResult(response);
+    if (result.conversationContext) {
+      homeAgentConversationContext = result.conversationContext;
+    }
     memoInput.value = "";
     renderHomeAgentResult(result);
     setParuruSpeech("idle", getHomeAgentSpeech(result));
@@ -1321,7 +1373,11 @@ function renderHomeAgentResult(result) {
     renderHomeAgentSchoolSection(result.school),
     renderHomeAgentLunchSection(result.lunch),
     renderHomeAgentWeatherSection(result.weather),
+    renderHomeAgentRoomClimateSection(result.roomClimate),
+    renderHomeAgentRoomAlertsSection(result.roomClimateAlerts),
+    renderHomeAgentProposalSection(result.proposal),
     renderHomeAgentListSection("持ち物", result.suggestedItems),
+    renderHomeAgentListSection("通知候補", result.notificationCandidates),
     renderHomeAgentWarnings(result.warnings),
     renderHomeAgentActions(result),
   ].filter(Boolean);
@@ -1452,6 +1508,50 @@ function renderHomeAgentWeatherSection(weather) {
   return renderHomeAgentSection("天気", items.slice(0, 3));
 }
 
+function renderHomeAgentRoomClimateSection(climate) {
+  if (!climate) {
+    return "";
+  }
+  const items = [];
+  if (climate.displayName) items.push(`部屋: ${climate.displayName}`);
+  if (climate.temperature !== "" && climate.temperature != null) items.push(`温度: ${climate.temperature}℃`);
+  if (climate.humidity !== "" && climate.humidity != null) items.push(`湿度: ${climate.humidity}％`);
+  if (climate.measuredAt) items.push(`取得: ${climate.measuredAt}`);
+  if (climate.comfortLabel) items.push(`ひとこと: ${climate.comfortLabel}`);
+  if (climate.currentAirconState && (climate.currentAirconState.power || climate.currentAirconState.mode)) {
+    const aircon = climate.currentAirconState;
+    items.push(`エアコン: ${[aircon.power, aircon.mode, aircon.temperature ? `${aircon.temperature}℃` : ""].filter(Boolean).join(" ")}`);
+  }
+  if (climate.activePause) {
+    items.push(`自動制御: 一時停止中${climate.activePause.expiresAt ? ` (${climate.activePause.expiresAt}まで)` : ""}`);
+  }
+  return renderHomeAgentSection("部屋の状態", items);
+}
+
+function renderHomeAgentRoomAlertsSection(alerts) {
+  const items = normalizeHomeAgentList(alerts);
+  return renderHomeAgentSection("気になる部屋", items);
+}
+
+function renderHomeAgentProposalSection(proposal) {
+  if (!proposal) {
+    return "";
+  }
+  const items = [];
+  if (proposal.displayName) items.push(`対象: ${proposal.displayName}`);
+  if (proposal.action === "set_aircon") {
+    const mode = proposal.mode === "heat" ? "暖房" : proposal.mode === "dry" ? "除湿" : "冷房";
+    items.push(`${proposal.durationMinutes || 120}分だけ${mode}${proposal.temperature ? `${proposal.temperature}℃` : ""}`);
+    items.push("終わったら通常運転へ戻す候補");
+  } else if (proposal.action === "pause_room_automation") {
+    items.push(`自動制御を${proposal.expiresAt || "一時的に"}まで止める候補`);
+  } else if (proposal.action === "resume_room_automation") {
+    items.push("通常運転へ戻す候補");
+  }
+  items.push("確認するまで操作しないよ。");
+  return renderHomeAgentSection("操作候補", items);
+}
+
 function renderHomeAgentWarnings(warnings) {
   const items = normalizeHomeAgentList(warnings);
   if (items.length === 0) {
@@ -1467,17 +1567,33 @@ function renderHomeAgentWarnings(warnings) {
 }
 
 function renderHomeAgentActions(result) {
+  const actionCandidates = Array.isArray(result.actionCandidates) ? result.actionCandidates : [];
+  const nonSignageCandidates = actionCandidates.filter((candidate) => !isSignageActionCandidate(candidate));
   const candidate = findSignageActionCandidate(result.actionCandidates);
-  if (!candidate) {
+  if (!candidate && nonSignageCandidates.length === 0) {
     return "";
   }
 
-  const messageText = getSignageMessage(result, candidate);
-  return `
-    <div class="home-agent-actions">
-      <button type="button" data-home-agent-signage="${escapeHtml(messageText)}">サイネージで知らせる</button>
-    </div>
-  `;
+  const buttons = [];
+  if (candidate) {
+    const messageText = getSignageMessage(result, candidate);
+    buttons.push(`<button type="button" data-home-agent-signage="${escapeHtml(messageText)}">サイネージで知らせる</button>`);
+  }
+  nonSignageCandidates.forEach((actionCandidate) => {
+    const encoded = encodeURIComponent(JSON.stringify(actionCandidate));
+    buttons.push(`<button type="button" data-home-agent-action="${escapeHtml(encoded)}">${escapeHtml(getHomeAgentActionLabel(actionCandidate))}</button>`);
+  });
+  buttons.push(`<button class="secondary-button" type="button" data-home-agent-confirm-close>そのまま</button>`);
+  return `<div class="home-agent-actions">${buttons.join("")}</div>`;
+}
+
+function parseHomeAgentActionCandidate(encoded) {
+  try {
+    return JSON.parse(decodeURIComponent(encoded || ""));
+  } catch (error) {
+    debugLog("[Paruru] invalid Home Agent action candidate", error?.message || error);
+    return null;
+  }
 }
 
 function normalizeHomeAgentList(value) {
@@ -1498,6 +1614,9 @@ function formatHomeAgentValue(value) {
     return "";
   }
   if (typeof value === "object") {
+    if (value.message) {
+      return String(value.message).trim();
+    }
     if (value.title) {
       const timeText = extractHomeAgentTime(value.start || value.startTime || value.time || "");
       return [timeText, value.title, value.location || ""].filter(Boolean).join(" ");
@@ -1543,13 +1662,25 @@ function findSignageActionCandidate(candidates) {
     return null;
   }
   return candidates.find((candidate) => {
-    if (typeof candidate === "string") {
-      return candidate === "createSignageAlert";
-    }
-    return candidate?.type === "createSignageAlert"
-      || candidate?.action === "createSignageAlert"
-      || candidate?.skill === "createSignageAlert";
+    return isSignageActionCandidate(candidate);
   }) || null;
+}
+
+function isSignageActionCandidate(candidate) {
+  if (typeof candidate === "string") {
+    return candidate === "createSignageAlert";
+  }
+  return candidate?.type === "createSignageAlert"
+    || candidate?.action === "createSignageAlert"
+    || candidate?.skill === "createSignageAlert";
+}
+
+function getHomeAgentActionLabel(candidate) {
+  const skill = candidate?.skill || candidate?.action || "";
+  if (skill === "setAirconOverride") return "この設定にする";
+  if (skill === "pauseRoomAutomation") return "自動制御だけ止める";
+  if (skill === "resumeRoomAutomation") return "通常運転に戻す";
+  return "候補を確認する";
 }
 
 function getSignageMessage(result, candidate) {
@@ -1583,8 +1714,90 @@ function renderSignageConfirmation(signageMessage) {
   revealPanelIfNeeded(homeAgentCard);
 }
 
+function renderHomeAgentActionConfirmation(actionCandidate) {
+  const existing = homeAgentContent.querySelector("[data-home-agent-confirm]");
+  if (existing) {
+    existing.remove();
+  }
+
+  pendingHomeAgentActionCandidate = actionCandidate;
+  const actionLabel = getHomeAgentActionLabel(actionCandidate);
+  const skill = actionCandidate?.skill || actionCandidate?.action || "";
+  const canExecute = skill === "pauseRoomAutomation" || skill === "resumeRoomAutomation";
+  const message = skill === "setAirconOverride"
+    ? "この版ではエアコン温度変更はまだ未接続。候補だけ見せとるよ。"
+    : "確認したらswitchbot-temp-logへ送るよ。";
+  const executeButton = canExecute
+    ? `<button type="button" data-home-agent-action-execute>${escapeHtml(actionLabel)}</button>`
+    : "";
+
+  homeAgentContent.insertAdjacentHTML("beforeend", `
+    <div class="home-agent-confirm" data-home-agent-confirm>
+      <p>${escapeHtml(actionLabel || "この候補")}を実行する？</p>
+      <p>${escapeHtml(message)}</p>
+      <div class="home-agent-confirm-actions">
+        <button class="secondary-button" type="button" data-home-agent-confirm-close>そのまま</button>
+        ${executeButton}
+      </div>
+    </div>
+  `);
+  revealPanelIfNeeded(homeAgentCard);
+}
+
 function hideSignageConfirmation() {
   homeAgentContent.querySelector("[data-home-agent-confirm]")?.remove();
+  pendingHomeAgentActionCandidate = null;
+}
+
+async function executePendingHomeAgentAction() {
+  if (!pendingHomeAgentActionCandidate) {
+    return;
+  }
+
+  const confirmPanel = homeAgentContent.querySelector("[data-home-agent-confirm]");
+  const executeButton = confirmPanel?.querySelector("[data-home-agent-action-execute]");
+  if (executeButton) {
+    executeButton.disabled = true;
+    executeButton.textContent = "ちょっと待って。";
+  }
+
+  try {
+    const response = await executeHomeAgentAction(pendingHomeAgentActionCandidate);
+    if (!response.success) {
+      throw new Error(response.message || response.error?.message || "home agent action failed");
+    }
+    const result = response.result || {};
+    const skill = pendingHomeAgentActionCandidate.skill || pendingHomeAgentActionCandidate.action || "";
+    const successMessage = skill === "pauseRoomAutomation"
+      ? formatHomeAgentPauseSuccess(result)
+      : "通常運転に戻したよ。";
+    pendingHomeAgentActionCandidate = null;
+    confirmPanel?.remove();
+    homeAgentContent.insertAdjacentHTML("beforeend", `
+      <section class="home-agent-section home-agent-action-result">
+        <p>${escapeHtml(successMessage)}</p>
+      </section>
+    `);
+    setParuruSpeech("idle", "直しといたよ。");
+    revealPanelIfNeeded(homeAgentCard);
+  } catch (error) {
+    debugLog("[Paruru] Home Agent action failed", error?.message || error);
+    if (confirmPanel && !confirmPanel.querySelector(".home-agent-error")) {
+      confirmPanel.insertAdjacentHTML("beforeend", `<p class="home-agent-error">うまくいかんかった。もう一回だけ試して。</p>`);
+    }
+    if (executeButton) {
+      executeButton.disabled = false;
+      executeButton.textContent = getHomeAgentActionLabel(pendingHomeAgentActionCandidate);
+    }
+  }
+}
+
+function formatHomeAgentPauseSuccess(result) {
+  const pause = result.activePause || result.pause || {};
+  if (pause.expiresAt) {
+    return `自動制御は${pause.expiresAt}まで止めといたよ。`;
+  }
+  return "自動制御を一時停止したよ。";
 }
 
 function getHomeAgentSpeech(result) {

@@ -5,6 +5,11 @@ const HOME_AGENT_INTENT_SCHOOL_STATUS = 'school_status';
 const HOME_AGENT_INTENT_SCHOOL_LUNCH = 'school_lunch';
 const HOME_AGENT_INTENT_WEATHER_CHECK = 'weather_check';
 const HOME_AGENT_INTENT_DEPARTURE_CHECK = 'departure_check';
+const HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK = 'room_climate_check';
+const HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK = 'room_climate_alert_check';
+const HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST = 'aircon_override_request';
+const HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION = 'pause_room_automation';
+const HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION = 'resume_room_automation';
 
 const HOME_AGENT_AGENTS = {
   paruru: {
@@ -32,6 +37,14 @@ const HOME_AGENT_AGENTS = {
     role: '家庭環境・空調・外部天気補助担当',
     allowedSkills: [
       'getWeatherSummary',
+      'getRoomClimate',
+      'getAllRoomClimateAlerts',
+      'getAirconStatus',
+      'getRoomAutomationPause',
+      'buildAirconAdjustmentProposal',
+      'buildPauseRoomAutomationProposal',
+      'pauseRoomAutomation',
+      'resumeRoomAutomation',
     ],
   },
   popio: {
@@ -79,6 +92,15 @@ function getHomeAgentsForIntent_(intent) {
     return ['paruru', 'peno'];
   }
   if (intent === HOME_AGENT_INTENT_WEATHER_CHECK) {
+    return ['paruru', 'shimao'];
+  }
+  if ([
+    HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK,
+    HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK,
+    HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST,
+    HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION,
+    HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION,
+  ].indexOf(intent) !== -1) {
     return ['paruru', 'shimao'];
   }
   if (intent === HOME_AGENT_INTENT_PERSONAL_SCHEDULE) {

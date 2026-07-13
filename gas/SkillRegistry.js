@@ -149,6 +149,102 @@ const HOME_AGENT_SKILLS = {
     source: 'Signage Alert API candidate only',
     handler: 'createSignageAlertSkill_',
   },
+  getRoomClimate: {
+    id: 'getRoomClimate',
+    name: '部屋の温湿度取得',
+    ownerAgent: 'shimao',
+    description: 'Room Registryと最新温湿度ログから指定部屋の状態を読む',
+    inputSchema: { type: 'object', required: ['roomId'], properties: { roomId: { type: 'string' } } },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: false,
+    source: 'switchbot-temp-log Web App / Log / ROOM_CONFIG',
+    handler: 'getRoomClimateSkill_',
+  },
+  getAllRoomClimateAlerts: {
+    id: 'getAllRoomClimateAlerts',
+    name: '全室温湿度アラート取得',
+    ownerAgent: 'shimao',
+    description: '問題がある部屋だけを抽出する',
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: false,
+    source: 'switchbot-temp-log Web App / Log / ROOM_CONFIG',
+    handler: 'getAllRoomClimateAlertsSkill_',
+  },
+  getAirconStatus: {
+    id: 'getAirconStatus',
+    name: 'エアコン状態取得',
+    ownerAgent: 'shimao',
+    description: 'Aircon_State相当の最新状態を読む',
+    inputSchema: { type: 'object', required: ['roomId'], properties: { roomId: { type: 'string' } } },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: false,
+    source: 'switchbot-temp-log Web App / Aircon_State / ROOM_CONFIG',
+    handler: 'getAirconStatusSkill_',
+  },
+  getRoomAutomationPause: {
+    id: 'getRoomAutomationPause',
+    name: '部屋の自動制御pause取得',
+    ownerAgent: 'shimao',
+    description: '部屋別の一時停止状態を読む',
+    inputSchema: { type: 'object', required: ['roomId'], properties: { roomId: { type: 'string' } } },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: false,
+    source: 'Automation Pause sheet',
+    handler: 'getRoomAutomationPauseSkill_',
+  },
+  buildAirconAdjustmentProposal: {
+    id: 'buildAirconAdjustmentProposal',
+    name: '空調一時差し込み提案',
+    ownerAgent: 'shimao',
+    description: '確認前のエアコン調整候補だけを作る',
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: true,
+    source: 'Room Climate / Aircon State',
+    handler: 'buildAirconAdjustmentProposalSkill_',
+  },
+  buildPauseRoomAutomationProposal: {
+    id: 'buildPauseRoomAutomationProposal',
+    name: '部屋自動制御pause提案',
+    ownerAgent: 'shimao',
+    description: '確認前のpause候補だけを作る',
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: true,
+    source: 'Automation Pause',
+    handler: 'buildPauseRoomAutomationProposalSkill_',
+  },
+  pauseRoomAutomation: {
+    id: 'pauseRoomAutomation',
+    name: '部屋自動制御pause',
+    ownerAgent: 'shimao',
+    description: 'v0.1では確認済み実装が無い限り実行しない',
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    readOnly: false,
+    requiresConfirmation: true,
+    source: 'Not connected in this slice',
+    handler: 'pauseRoomAutomationSkill_',
+  },
+  resumeRoomAutomation: {
+    id: 'resumeRoomAutomation',
+    name: '部屋自動制御resume',
+    ownerAgent: 'shimao',
+    description: 'v0.1では確認済み実装が無い限り実行しない',
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    readOnly: false,
+    requiresConfirmation: true,
+    source: 'Not connected in this slice',
+    handler: 'resumeRoomAutomationSkill_',
+  },
 };
 
 function getHomeSkillRegistry_() {
@@ -187,6 +283,26 @@ function getHomeSkillSequenceForIntent_(intent) {
       'getWeatherSummary',
       'buildDepartureCheck',
     ];
+  }
+
+  if (intent === HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK) {
+    return ['getRoomClimate'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK) {
+    return ['getAllRoomClimateAlerts'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST) {
+    return ['getRoomClimate', 'getAirconStatus', 'getRoomAutomationPause', 'buildAirconAdjustmentProposal'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION) {
+    return ['getRoomClimate', 'getRoomAutomationPause', 'buildPauseRoomAutomationProposal'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION) {
+    return ['getRoomClimate', 'getRoomAutomationPause'];
   }
 
   return [];

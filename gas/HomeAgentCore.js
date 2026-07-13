@@ -2,6 +2,60 @@ function homeAgent_(body) {
   return json_(runHomeAgentRequest_(body || {}));
 }
 
+function homeAgentAction_(body) {
+  return json_(runHomeAgentAction_(body || {}));
+}
+
+function runHomeAgentAction_(body) {
+  const candidate = body.candidate || {};
+  const skill = String(body.skill || candidate.skill || candidate.action || '').trim();
+  const parameters = Object.assign({}, candidate.parameters || {}, body.parameters || {});
+  const request = normalizeHomeAgentRequest_({
+    message: String(body.message || ''),
+    userId: body.userId || '',
+    userDisplayName: body.userDisplayName || '',
+    deviceId: body.deviceId || '',
+    parameters: parameters,
+  }, new Date());
+
+  if (body.confirmed !== true) {
+    return {
+      success: false,
+      message: 'confirmation required',
+      error: { code: 'CONFIRMATION_REQUIRED' },
+    };
+  }
+
+  let result;
+  if (skill === 'pauseRoomAutomation') {
+    result = pauseRoomAutomationSkill_(request);
+  } else if (skill === 'resumeRoomAutomation') {
+    result = resumeRoomAutomationSkill_(request);
+  } else if (skill === 'setAirconOverride') {
+    return {
+      success: false,
+      message: 'aircon operation is not connected',
+      error: { code: 'AIRCON_OPERATION_NOT_CONNECTED' },
+    };
+  } else {
+    return {
+      success: false,
+      message: 'unsupported action',
+      error: { code: 'UNSUPPORTED_HOME_AGENT_ACTION' },
+    };
+  }
+
+  return {
+    success: result && result.success === true,
+    message: result && result.success === true ? 'home agent action executed' : 'home agent action failed',
+    skill: skill,
+    result: result && result.data ? result.data : {},
+    skillResult: result,
+    warnings: result && result.warnings ? result.warnings : [],
+    error: result && result.error ? result.error : null,
+  };
+}
+
 function runHomeAgentRequest_(body) {
   const startedAt = new Date();
   const request = normalizeHomeAgentRequest_(body, startedAt);
@@ -57,10 +111,12 @@ function runHomeAgentRequest_(body) {
   const alertCandidate = shouldCreateHomeAgentSignageCandidate_(request)
     ? createSignageAlertCandidateForIntent_(request, responseResult, skillResults)
     : null;
-  const actionCandidates = alertCandidate && alertCandidate.success && alertCandidate.data && alertCandidate.data.action
+  const resultActionCandidates = Array.isArray(responseResult.actionCandidates) ? responseResult.actionCandidates : [];
+  const signageCandidates = alertCandidate && alertCandidate.success && alertCandidate.data && alertCandidate.data.action
       && alertCandidate.data.action.parameters && alertCandidate.data.action.parameters.message
     ? [alertCandidate.data.action]
     : [];
+  const actionCandidates = resultActionCandidates.concat(signageCandidates);
 
   const finishedAt = new Date();
   const audit = buildHomeAgentAudit_(request, {
@@ -96,6 +152,10 @@ function normalizeHomeAgentRequest_(body, now) {
     ? normalizeHomeAgentDate_(explicitDate, now)
     : resolveHomeAgentMessageDate_(message, now);
   parameters.date = date;
+  parameters.roomId = String(parameters.roomId || body.roomId || detectHomeAgentRoomId_(message) || '').trim();
+  if (!parameters.roomId && body.context && body.context.lastRoomId && isHomeAgentImplicitRoomRequest_(message)) {
+    parameters.roomId = String(body.context.lastRoomId || '').trim();
+  }
 
   return {
     requestId: String(body.requestId || Utilities.getUuid()),
@@ -126,6 +186,20 @@ function detectHomeAgentIntent_(message) {
   if (/出発前|出かける前|登校前|持ち物まとめ|まとめて|全部|一通り|チェック/.test(text)) {
     return HOME_AGENT_INTENT_DEPARTURE_CHECK;
   }
+  if (/自動制御.*(止め|停止|一時停止)|通常運転.*戻|一時停止.*やめ/.test(text)) {
+    return /戻|やめ|解除|再開/.test(text)
+      ? HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION
+      : HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION;
+  }
+  if (/強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて/.test(text)) {
+    return HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST;
+  }
+  if (/暑い部屋|寒い部屋|蒸してる部屋|家の中大丈夫|部屋.*大丈夫/.test(text)) {
+    return HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK;
+  }
+  if (/暑い|寒い|蒸し|蒸す|温度|湿度|部屋/.test(text)) {
+    return HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK;
+  }
   if (/給食|献立/.test(text)) {
     return HOME_AGENT_INTENT_SCHOOL_LUNCH;
   }
@@ -150,6 +224,11 @@ function isSupportedHomeAgentIntent_(intent) {
     HOME_AGENT_INTENT_WEATHER_CHECK,
     HOME_AGENT_INTENT_DEPARTURE_CHECK,
     HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK,
+    HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK,
+    HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK,
+    HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST,
+    HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION,
+    HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION,
   ].indexOf(intent) !== -1;
 }
 
@@ -165,6 +244,21 @@ function buildHomeAgentResultForIntent_(request, skillResults, now) {
   }
   if (request.intent === HOME_AGENT_INTENT_WEATHER_CHECK) {
     return buildHomeAgentWeatherCheckResult_(request, skillResults.getWeatherSummary, now);
+  }
+  if (request.intent === HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK) {
+    return buildHomeAgentRoomClimateResult_(request, skillResults.getRoomClimate);
+  }
+  if (request.intent === HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK) {
+    return buildHomeAgentRoomClimateAlertResult_(request, skillResults.getAllRoomClimateAlerts);
+  }
+  if (request.intent === HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST) {
+    return buildHomeAgentAirconProposalResult_(request, skillResults);
+  }
+  if (request.intent === HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION) {
+    return buildHomeAgentPauseProposalResult_(request, skillResults);
+  }
+  if (request.intent === HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION) {
+    return buildHomeAgentResumeRoomAutomationResult_(request, skillResults);
   }
 
   const departure = skillResults.buildDepartureCheck && skillResults.buildDepartureCheck.data
@@ -273,6 +367,102 @@ function buildHomeAgentWeatherCheckResult_(request, weatherResult, now) {
   };
 }
 
+function buildHomeAgentRoomClimateResult_(request, climateResult) {
+  const climate = climateResult && climateResult.data ? climateResult.data : {};
+  if (!request.parameters.roomId) {
+    return {
+      summary: 'どの部屋か教えて。僕も家全部を勝手には見んよ。',
+      warnings: ['部屋が特定できんかった。'],
+    };
+  }
+  const comfort = climate.comfortLabel || '状態は控えめに見とる';
+  return {
+    summary: climate.displayName
+      ? climate.displayName + 'は' + formatHomeAgentClimateNumbers_(climate) + 'や。' + comfort + '。'
+      : '部屋の温湿度は確認できんかった。',
+    roomClimate: climate,
+    conversationContext: {
+      lastIntent: request.intent,
+      lastRoomId: climate.roomId || request.parameters.roomId,
+      lastClimateSnapshot: climate,
+      capturedAt: formatHomeAgentDateTime_(new Date()),
+    },
+  };
+}
+
+function buildHomeAgentRoomClimateAlertResult_(request, alertsResult) {
+  const data = alertsResult && alertsResult.data ? alertsResult.data : {};
+  const alerts = Array.isArray(data.alerts) ? data.alerts.slice(0, 3) : [];
+  return {
+    summary: alerts.length
+      ? 'いま気になるんは' + alerts.length + '部屋や。'
+      : 'いま大きく気になる部屋はなさそう。',
+    roomClimateAlerts: alerts,
+    notificationCandidates: Array.isArray(data.notificationCandidates) ? data.notificationCandidates : [],
+  };
+}
+
+function buildHomeAgentAirconProposalResult_(request, skillResults) {
+  const climate = readHomeAgentSkillData_(skillResults.getRoomClimate, {});
+  const proposal = readHomeAgentSkillData_(skillResults.buildAirconAdjustmentProposal, {});
+  return {
+    summary: proposal.summary || '操作候補は作れんかった。部屋と今の状態をもう一回見る？',
+    roomClimate: climate,
+    proposal: proposal.proposal || null,
+    actionCandidates: proposal.actionCandidate ? [proposal.actionCandidate] : [],
+    conversationContext: {
+      lastIntent: request.intent,
+      lastRoomId: climate.roomId || request.parameters.roomId,
+      lastClimateSnapshot: climate,
+      lastProposal: proposal.proposal || null,
+      capturedAt: formatHomeAgentDateTime_(new Date()),
+    },
+  };
+}
+
+function buildHomeAgentPauseProposalResult_(request, skillResults) {
+  const climate = readHomeAgentSkillData_(skillResults.getRoomClimate, {});
+  const proposal = readHomeAgentSkillData_(skillResults.buildPauseRoomAutomationProposal, {});
+  return {
+    summary: proposal.summary || '一時停止の候補は作れんかった。',
+    roomClimate: climate,
+    proposal: proposal.proposal || null,
+    actionCandidates: proposal.actionCandidate ? [proposal.actionCandidate] : [],
+  };
+}
+
+function buildHomeAgentResumeRoomAutomationResult_(request, skillResults) {
+  const climate = readHomeAgentSkillData_(skillResults.getRoomClimate, {});
+  const pause = readHomeAgentSkillData_(skillResults.getRoomAutomationPause, {});
+  const roomName = climate.displayName || request.parameters.roomId || 'その部屋';
+  return {
+    summary: pause.activePause
+      ? roomName + 'は一時停止中や。通常運転に戻す候補だけ出しとく。'
+      : roomName + 'は一時停止してないみたいやで。',
+    roomClimate: climate,
+    proposal: pause.activePause ? {
+      action: 'resume_room_automation',
+      roomId: climate.roomId || request.parameters.roomId,
+      requiresConfirmation: true,
+    } : null,
+    actionCandidates: pause.activePause ? [{
+      skill: 'resumeRoomAutomation',
+      agent: 'shimao',
+      requiresConfirmation: true,
+      parameters: {
+        roomId: climate.roomId || request.parameters.roomId,
+      },
+    }] : [],
+  };
+}
+
+function formatHomeAgentClimateNumbers_(climate) {
+  const parts = [];
+  if (climate.temperature !== '' && climate.temperature != null) parts.push(climate.temperature + '℃');
+  if (climate.humidity !== '' && climate.humidity != null) parts.push('湿度' + climate.humidity + '％');
+  return parts.length ? parts.join('、') : '温湿度は不明';
+}
+
 function shouldRecommendHomeAgentUmbrella_(weather) {
   const weatherText = String(weather.weather || weather.condition || weather.weatherText || '');
   const precipitation = Number(weather.precipitationProbability);
@@ -309,6 +499,26 @@ function buildHomeAgentUserWarnings_(warningCodes, errors) {
     return /weather_forecast_date_mismatch/.test(code);
   })) {
     out.push('天気の対象日が少し怪しいかも。');
+  }
+  if (codes.some(function(code) {
+    return /room_climate_stale/.test(code);
+  })) {
+    out.push('センサー情報が古いけん、操作候補は控えたよ。');
+  }
+  if (codes.some(function(code) {
+    return /aircon_state_unknown/.test(code);
+  })) {
+    out.push('エアコン状態がはっきり読めんかった。');
+  }
+  if (codes.some(function(code) {
+    return /room_not_specified|ROOM_NOT_SPECIFIED/.test(code);
+  })) {
+    out.push('部屋が特定できんかった。');
+  }
+  if ((errors || []).some(function(error) {
+    return /getRoomClimate|getAllRoomClimateAlerts/.test(error.skill || '');
+  })) {
+    out.push('部屋の温湿度は確認できんかった。');
   }
   return uniqueHomeAgentValues_(out);
 }
@@ -359,6 +569,29 @@ function getHomeAgentCalendarSuffix_(request) {
     return '（父）';
   }
   return '';
+}
+
+function detectHomeAgentRoomId_(message) {
+  const text = String(message || '');
+  const aliases = [
+    ['living', /リビング|ldk|LDK/],
+    ['bedroom', /寝室/],
+    ['kids_room', /子供部屋|子ども部屋|こども部屋|子供|子ども|こども/],
+    ['study', /書斎/],
+    ['entrance', /玄関/],
+    ['attic', /天井裏/],
+    ['outside', /外気|外/],
+  ];
+  for (var i = 0; i < aliases.length; i++) {
+    if (aliases[i][1].test(text)) {
+      return aliases[i][0];
+    }
+  }
+  return '';
+}
+
+function isHomeAgentImplicitRoomRequest_(message) {
+  return /強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて|通常運転|一時停止|止めて/.test(String(message || ''));
 }
 
 function shouldCreateHomeAgentSignageCandidate_(request) {
@@ -624,6 +857,11 @@ function testHomeAgentIntentRouting_() {
     ['明日傘いる？', HOME_AGENT_INTENT_WEATHER_CHECK],
     ['天気どう？', HOME_AGENT_INTENT_WEATHER_CHECK],
     ['明日の予定と持ち物まとめて', HOME_AGENT_INTENT_DEPARTURE_CHECK],
+    ['寝室暑い？', HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK],
+    ['暑い部屋ある？', HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK],
+    ['寝室ちょっと強めて', HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST],
+    ['寝室の自動制御を朝6時まで止めて', HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION],
+    ['寝室を通常運転に戻して', HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION],
   ];
 
   cases.forEach(function(testCase) {
