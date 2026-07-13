@@ -672,11 +672,13 @@ function buildPauseRoomAutomationProposalSkill_(request, previousResults) {
     }, { source: 'proposal', freshness: 'current', warnings: ['room_not_specified'] });
   }
   const expiresAt = inferHomeAgentPauseExpiresAt_(request.message);
+  const durationMinutes = inferHomeAgentPauseDurationMinutes_(request.message);
   const response = callSwitchbotTempLogHomeAgentApi_('buildPauseRoomAutomationProposal', {
     roomId: roomId,
     userId: request.userId || '',
     expiresAt: expiresAt,
-    reason: 'home_agent_pause_request',
+    durationMinutes: durationMinutes,
+    reason: 'user_requested_pause',
   }, { write: false });
 
   if (!response.success) {
@@ -712,6 +714,7 @@ function pauseRoomAutomationSkill_(request) {
     userId: request.userId || '',
     confirmed: true,
     expiresAt: request.parameters.expiresAt || '',
+    durationMinutes: request.parameters.durationMinutes || '',
     reason: request.parameters.reason || 'home_agent_pause_request',
   }, { write: true });
 
@@ -775,19 +778,30 @@ function callSwitchbotTempLogHomeAgentApi_(action, payload, options) {
     const status = response.getResponseCode();
     const parsed = JSON.parse(response.getContentText() || '{}');
     if (status < 200 || status >= 300) {
+      logHomeAgentSwitchbotApiFailure_(action, 'SWITCHBOT_TEMP_LOG_HTTP_' + status, 'switchbot-temp-log HTTP request failed');
       return {
         success: false,
         errorCode: 'SWITCHBOT_TEMP_LOG_HTTP_' + status,
         message: 'switchbot-temp-log HTTP request failed',
       };
     }
+    if (!parsed.success) {
+      logHomeAgentSwitchbotApiFailure_(action, parsed.errorCode || 'SWITCHBOT_TEMP_LOG_ERROR', parsed.message || 'switchbot-temp-log action failed');
+    }
     return parsed;
   } catch (error) {
+    logHomeAgentSwitchbotApiFailure_(action, 'SWITCHBOT_TEMP_LOG_REQUEST_FAILED', error && error.message ? error.message : 'switchbot-temp-log request failed');
     return {
       success: false,
       errorCode: 'SWITCHBOT_TEMP_LOG_REQUEST_FAILED',
       message: error && error.message ? error.message : 'switchbot-temp-log request failed',
     };
+  }
+}
+
+function logHomeAgentSwitchbotApiFailure_(action, errorCode, message) {
+  if (typeof Logger !== 'undefined') {
+    Logger.log('[HomeAgent switchbot-temp-log] action=%s errorCode=%s message=%s', String(action || ''), String(errorCode || ''), String(message || ''));
   }
 }
 function readHomeAgentSignageStatusWeather_(sheet, request) {
@@ -1003,25 +1017,39 @@ function chooseHomeAgentAirconTargetTemperature_(message, mode, currentTemp) {
 
 function inferHomeAgentProposalDurationMinutes_(message) {
   const text = String(message || '');
-  const hour = text.match(/(\d{1,2})\s*時間/);
-  if (hour) return Math.min(360, Math.max(30, Number(hour[1]) * 60));
+  const hour = text.match(new RegExp('(\\d{1,2})\\s*(?:\\u6642\\u9593|hours?|h)', 'i'));
+  if (hour) return Math.min(480, Math.max(1, Number(hour[1]) * 60));
+  const minute = text.match(new RegExp('(\\d{1,3})\\s*(?:\\u5206|minutes?|min|m)', 'i'));
+  if (minute) return Math.min(480, Math.max(1, Number(minute[1])));
   return 120;
 }
 
 function inferHomeAgentPauseExpiresAt_(message) {
   const text = String(message || '');
   const now = new Date();
-  const match = text.match(/朝?(\d{1,2})時/);
-  if (match) {
+  const duration = inferHomeAgentPauseDurationMinutes_(text);
+  if (duration) {
+    return formatHomeAgentDateTime_(new Date(now.getTime() + duration * 60 * 1000));
+  }
+
+  const untilHour = text.match(new RegExp('(?:\\u671d|\\u5348\\u524d|am)?\\s*(\\d{1,2})\\s*(?:\\u6642|:00)\\s*(?:\\u307e\\u3067|until)', 'i'));
+  if (untilHour) {
     const date = new Date(now.getTime());
-    date.setHours(Number(match[1]), 0, 0, 0);
+    date.setHours(Number(untilHour[1]), 0, 0, 0);
     if (date.getTime() <= now.getTime()) date.setDate(date.getDate() + 1);
     return formatHomeAgentDateTime_(date);
   }
-  const fallback = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-  return formatHomeAgentDateTime_(fallback);
+  return '';
 }
 
+function inferHomeAgentPauseDurationMinutes_(message) {
+  const text = String(message || '');
+  const hour = text.match(new RegExp('(\\d{1,2})\\s*(?:\\u6642\\u9593|hours?|h)', 'i'));
+  if (hour) return Number(hour[1]) * 60;
+  const minute = text.match(new RegExp('(\\d{1,3})\\s*(?:\\u5206|minutes?|min|m)', 'i'));
+  if (minute) return Number(minute[1]);
+  return 0;
+}
 function inferHomeAgentAirconProposalReason_(message, climate) {
   const text = String(message || '');
   if (/寒|暖|温/.test(text)) return 'user_feels_cold';
