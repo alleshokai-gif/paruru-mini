@@ -126,7 +126,7 @@ function createItem_(body) {
     });
   }
 
-  const item = appendNewItem_({
+  const itemInput = validateAnalyzedItem_({
     title: body.title || memo.slice(0, 20),
     memo: memo,
     category: body.category || '未分類',
@@ -166,6 +166,8 @@ function createItem_(body) {
     createdAt: nowTokyoString_(),
     updatedAt: nowTokyoString_(),
   });
+  itemInput.calendarSyncStatus = getInitialCalendarSyncStatus_(itemInput);
+  const item = appendNewItem_(itemInput);
 
   return json_({
     success: true,
@@ -695,17 +697,23 @@ function updateItem_(body) {
   if (!Object.prototype.hasOwnProperty.call(body, 'updatedAt')) {
     body.updatedAt = nowTokyoString_();
   }
-  allowedFields.forEach(function(field) {
-    if (Object.prototype.hasOwnProperty.call(body, field)) {
-      if (Object.prototype.hasOwnProperty.call(index, field)) {
-        sheet.getRange(rowNumber, index[field] + 1).setValue(normalizeValueForSheet_(field, body[field]));
-      }
-    }
-  });
   const afterItem = Object.assign({}, beforeItem);
   allowedFields.forEach(function(field) {
     if (Object.prototype.hasOwnProperty.call(body, field)) {
       afterItem[field] = normalizeValueForSheet_(field, body[field]);
+    }
+  });
+  const validatedItem = validateAnalyzedItem_(afterItem);
+  ['needsFollowup', 'followupQuestion', 'followupInputType'].forEach(function(field) {
+    if (Object.prototype.hasOwnProperty.call(index, field)) {
+      afterItem[field] = validatedItem[field];
+    }
+  });
+  allowedFields.forEach(function(field) {
+    if (Object.prototype.hasOwnProperty.call(body, field) || field === 'needsFollowup' || field === 'followupQuestion' || field === 'followupInputType') {
+      if (Object.prototype.hasOwnProperty.call(index, field)) {
+        sheet.getRange(rowNumber, index[field] + 1).setValue(normalizeValueForSheet_(field, afterItem[field]));
+      }
     }
   });
   if (hasCalendarRelevantChanges_(beforeItem, afterItem)) {
@@ -719,6 +727,7 @@ function updateItem_(body) {
   return json_({
     success: true,
     data: { id: id },
+    item: sanitizeItemForClient_(afterItem),
     message: 'updated',
   });
 }
@@ -761,7 +770,7 @@ function getItemById_(id) {
       return;
     }
     const value = row[position];
-    item[header] = value instanceof Date ? value.toISOString() : value;
+    item[header] = normalizeEngineCellValue_(header, value);
   });
 
   return {
@@ -808,7 +817,7 @@ function listInboxItems_() {
           return;
         }
         const value = row[index];
-        item[header] = value instanceof Date ? value.toISOString() : value;
+        item[header] = normalizeEngineCellValue_(header, value);
       });
       return sanitizeItemForClient_(item);
     })
@@ -869,10 +878,6 @@ function buildNotificationCandidates_(items, options) {
       return;
     }
 
-    if (!isNotificationCandidateSource_(item)) {
-      return;
-    }
-
     const reasons = getNotificationReasons_(item, targetDate);
     if (reasons.length === 0) {
       return;
@@ -886,40 +891,37 @@ function buildNotificationCandidates_(items, options) {
 
 function isNotificationCandidateSource_(item) {
   const status = String(item.status || '').trim().toLowerCase();
-  if (status !== 'inbox') {
+  if (isClosedStatus_(status)) {
     return false;
   }
 
-  const type = String(item.type || '').trim().toLowerCase();
-  if (type === 'event' || type === 'shopping') {
-    return false;
-  }
-
-  if (status === 'completed' || status === 'deleted') {
-    return false;
-  }
-
-  return (
-    type === 'task' ||
-    type === 'reminder' ||
-    normalizeBooleanForSheet_(item.needsFollowup) ||
-    normalizePriority_(item.priority) === 'Urgent' ||
-    normalizePriority_(item.priority) === 'High'
-  );
+  return status === 'inbox' || status === '';
 }
 
 function getNotificationReasons_(item, targetDate) {
   const reasons = [];
+  if (!shouldShowInToday_(item, targetDate)) {
+    return reasons;
+  }
+
+  const type = String(item.type || '').trim().toLowerCase();
+  const eventStart = normalizeDateOnlyString_(item.eventStart);
+  if (type === 'event' && eventStart === targetDate) {
+    reasons.push(normalizeTimeForCompare_(item.eventStartTime) ? 'event_today_timed' : 'event_today');
+  }
+
   const dueDate = normalizeDateOnlyString_(item.dueDate);
   if (dueDate) {
     const diffDays = diffDateOnlyDays_(dueDate, targetDate);
     if (diffDays < 0) {
       reasons.push('overdue');
     } else if (diffDays === 0) {
-      reasons.push('due_today');
-    } else if (diffDays === 1) {
-      reasons.push('due_tomorrow');
+      reasons.push(normalizeTimeForCompare_(item.dueTime) ? 'due_today_timed' : 'due_today');
     }
+  }
+
+  if (getReminderDateOnly_(item) === targetDate) {
+    reasons.push('reminder_today');
   }
 
   if (normalizeBooleanForSheet_(item.needsFollowup)) {
@@ -946,6 +948,11 @@ function buildNotificationCandidate_(item, reasons, index) {
     priority: normalizePriority_(item.priority) || item.priority || '',
     dueDate: normalizeDateOnlyString_(item.dueDate),
     dueTime: normalizeTimeForCompare_(item.dueTime),
+    eventStart: normalizeDateOnlyString_(item.eventStart),
+    eventStartTime: normalizeTimeForCompare_(item.eventStartTime),
+    eventEnd: normalizeDateOnlyString_(item.eventEnd),
+    eventEndTime: normalizeTimeForCompare_(item.eventEndTime),
+    remindAt: item.remindAt || '',
     needsFollowup: normalizeBooleanForSheet_(item.needsFollowup),
     reasons: reasons,
     notificationLevel: getNotificationLevel_(reasons),
@@ -961,11 +968,14 @@ function buildNotificationCandidate_(item, reasons, index) {
 function sortNotificationCandidates_(items) {
   const reasonOrder = {
     overdue: 0,
-    due_today: 1,
-    urgent: 2,
-    followup_required: 3,
-    due_tomorrow: 4,
-    high_priority: 5,
+    event_today_timed: 1,
+    due_today_timed: 2,
+    due_today: 3,
+    reminder_today: 4,
+    event_today: 5,
+    urgent: 6,
+    followup_required: 7,
+    high_priority: 8,
   };
 
   return items.sort(function(a, b) {
@@ -975,10 +985,10 @@ function sortNotificationCandidates_(items) {
       return rankA - rankB;
     }
 
-    const dueA = dateOnlyToEpochDay_(a.dueDate);
-    const dueB = dateOnlyToEpochDay_(b.dueDate);
-    if (dueA !== dueB) {
-      return dueA - dueB;
+    const timeA = getCandidateTimeSortValue_(a);
+    const timeB = getCandidateTimeSortValue_(b);
+    if (timeA !== timeB) {
+      return timeA - timeB;
     }
 
     const createdA = parseNotificationDateTime_(a.createdAt);
@@ -1005,7 +1015,11 @@ function getNotificationLevel_(reasons) {
     return 'critical';
   }
 
-  if (reasons.indexOf('due_today') !== -1 || reasons.indexOf('followup_required') !== -1) {
+  if (
+    reasons.indexOf('due_today') !== -1 ||
+    reasons.indexOf('due_today_timed') !== -1 ||
+    reasons.indexOf('followup_required') !== -1
+  ) {
     return 'high';
   }
 
@@ -1040,6 +1054,96 @@ function buildNotificationMessage_(title, reasons) {
   return title + '、確認しといてな。';
 }
 
+function shouldShowInToday_(item, targetDate) {
+  if (!isNotificationCandidateSource_(item)) {
+    return false;
+  }
+
+  if (normalizeDateOnlyString_(item.eventStart) === targetDate) {
+    return true;
+  }
+
+  const dueDate = normalizeDateOnlyString_(item.dueDate);
+  if (dueDate && diffDateOnlyDays_(dueDate, targetDate) <= 0) {
+    return true;
+  }
+
+  if (getReminderDateOnly_(item) === targetDate) {
+    return true;
+  }
+
+  return normalizeBooleanForSheet_(item.needsFollowup);
+}
+
+function isClosedStatus_(status) {
+  return ['done', 'completed', 'complete', 'cancelled', 'canceled', 'deleted'].indexOf(String(status || '').trim().toLowerCase()) !== -1;
+}
+
+function getReminderDateOnly_(item) {
+  const reminderDate = normalizeDateOnlyString_(item.reminderDate);
+  if (reminderDate) {
+    return reminderDate;
+  }
+
+  const match = String(item.remindAt || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? match[1] + '-' + match[2] + '-' + match[3] : '';
+}
+
+function getReminderTimeOnly_(item) {
+  const reminderTime = normalizeTimeForCompare_(item.reminderTime);
+  if (reminderTime) {
+    return reminderTime;
+  }
+
+  const match = String(item.remindAt || '').trim().match(/(?:T| )(\d{1,2}):(\d{2})/);
+  return match ? match[1].padStart(2, '0') + ':' + match[2] : '';
+}
+
+function getCandidateTimeSortValue_(candidate) {
+  const time = candidate.eventStartTime || candidate.dueTime || getReminderTimeOnly_(candidate);
+  const match = String(time || '').match(/^(\d{1,2}):(\d{2})/);
+  if (!match) {
+    return 9999;
+  }
+
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function formatDateJa_(dateValue) {
+  const normalized = normalizeDateOnlyString_(dateValue);
+  if (!normalized) {
+    return '';
+  }
+
+  const parts = normalized.split('-');
+  return Number(parts[1]) + '/' + Number(parts[2]);
+}
+
+function formatTimeJa_(timeValue) {
+  return normalizeTimeForCompare_(timeValue);
+}
+
+function formatItemDateTime_(item) {
+  const type = String(item.type || '').trim().toLowerCase();
+  if (type === 'event' && normalizeDateOnlyString_(item.eventStart)) {
+    const start = [formatDateJa_(item.eventStart), formatTimeJa_(item.eventStartTime)].filter(Boolean).join(' ');
+    const end = normalizeDateOnlyString_(item.eventEnd)
+      ? [formatDateJa_(item.eventEnd), formatTimeJa_(item.eventEndTime)].filter(Boolean).join(' ')
+      : '';
+    return end ? start + '〜' + end : start;
+  }
+
+  if (type === 'task' && normalizeDateOnlyString_(item.dueDate)) {
+    return [formatDateJa_(item.dueDate), formatTimeJa_(item.dueTime)].filter(Boolean).join(' ');
+  }
+
+  if (type === 'reminder') {
+    return [formatDateJa_(getReminderDateOnly_(item)), formatTimeJa_(getReminderTimeOnly_(item))].filter(Boolean).join(' ');
+  }
+
+  return '';
+}
+
 function parseNotificationTargetDate_(value) {
   if (!value) {
     return todayTokyoDateString_();
@@ -1065,11 +1169,11 @@ function normalizeNotificationLimit_(value) {
 function normalizeEngineCellValue_(header, value) {
   if (value instanceof Date) {
     if (isDateOnlyHeader_(header)) {
-      return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy-MM-dd');
+      return normalizeDateForSheet_(value);
     }
 
     if (isTimeOnlyHeader_(header)) {
-      return Utilities.formatDate(value, 'Asia/Tokyo', 'HH:mm');
+      return normalizeTimeForSheet_(value);
     }
 
     return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
@@ -1494,6 +1598,14 @@ function normalizeValueForSheet_(field, value) {
     return normalizeTagsForSheet_(value);
   }
 
+  if (isDateOnlyHeader_(field)) {
+    return normalizeDateForSheet_(value);
+  }
+
+  if (isTimeOnlyHeader_(field)) {
+    return normalizeTimeForSheet_(value);
+  }
+
   if (field === 'needsFollowup') {
     return normalizeBooleanForSheet_(value);
   }
@@ -1524,6 +1636,44 @@ function normalizeValueForSheet_(field, value) {
   return value;
 }
 
+function normalizeDateForSheet_(value) {
+  if (value instanceof Date) {
+    const year = Number(Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy'));
+    if (year <= 1900) {
+      return '';
+    }
+    return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy-MM-dd');
+  }
+
+  const text = String(value || '').trim();
+  const direct = normalizeDateOnlyString_(text);
+  if (direct) {
+    return direct;
+  }
+
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})[T ]/);
+  if (match && Number(match[1]) > 1900) {
+    return match[1] + '-' + match[2] + '-' + match[3];
+  }
+
+  return '';
+}
+
+function normalizeTimeForSheet_(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, 'Asia/Tokyo', 'HH:mm');
+  }
+
+  const text = String(value || '').trim();
+  const direct = normalizeTimeForCompare_(text);
+  if (direct) {
+    return direct;
+  }
+
+  const match = text.match(/(?:T| )(\d{1,2}):(\d{2})/);
+  return match ? match[1].padStart(2, '0') + ':' + match[2] : '';
+}
+
 function normalizePriority_(value) {
   const normalized = String(value || '').trim().toLowerCase();
   const priorities = {
@@ -1552,6 +1702,54 @@ function getFollowupInputTypeForItem_(item) {
   }
 
   return normalizeFollowupInputType_(item.followupInputType, item.followupQuestion);
+}
+
+function validateAnalyzedItem_(item) {
+  const validated = Object.assign({}, item);
+  const type = String(validated.type || '').trim().toLowerCase();
+
+  validated.dueDate = normalizeDateForSheet_(validated.dueDate);
+  validated.dueTime = normalizeTimeForSheet_(validated.dueTime);
+  validated.eventStart = normalizeDateForSheet_(validated.eventStart);
+  validated.eventStartTime = normalizeTimeForSheet_(validated.eventStartTime);
+  validated.eventEnd = normalizeDateForSheet_(validated.eventEnd);
+  validated.eventEndTime = normalizeTimeForSheet_(validated.eventEndTime);
+
+  if (type === 'task') {
+    if (!validated.dueDate) {
+      validated.needsFollowup = true;
+      validated.followupQuestion = validated.followupQuestion || 'いつまでにやる？';
+      validated.followupInputType = 'date';
+    } else if (!validated.followupQuestion) {
+      validated.needsFollowup = normalizeBooleanForSheet_(validated.needsFollowup);
+      validated.followupInputType = getFollowupInputTypeForItem_(validated);
+    }
+  } else if (type === 'event') {
+    if (validated.eventStart) {
+      validated.needsFollowup = false;
+      validated.followupQuestion = '';
+      validated.followupInputType = '';
+    } else {
+      validated.needsFollowup = true;
+      validated.followupQuestion = validated.followupQuestion || 'いつの予定？';
+      validated.followupInputType = 'date';
+    }
+  } else if (type === 'reminder') {
+    if (validated.remindAt || getReminderDateOnly_(validated)) {
+      validated.needsFollowup = false;
+      validated.followupQuestion = '';
+      validated.followupInputType = '';
+    } else {
+      validated.needsFollowup = true;
+      validated.followupQuestion = validated.followupQuestion || 'いつ通知する？';
+      validated.followupInputType = 'datetime';
+    }
+  } else {
+    validated.needsFollowup = normalizeBooleanForSheet_(validated.needsFollowup);
+    validated.followupInputType = getFollowupInputTypeForItem_(validated);
+  }
+
+  return validated;
 }
 
 function inferFollowupInputType_(question) {
@@ -1615,7 +1813,7 @@ function enforceFollowupRules_(analysis, memo) {
 
   normalizedAnalysis.followupInputType = getFollowupInputTypeForItem_(normalizedAnalysis);
 
-  return normalizedAnalysis;
+  return validateAnalyzedItem_(normalizedAnalysis);
 }
 
 function isImportantWorkTaskMemo_(memo) {
@@ -2391,5 +2589,59 @@ function analyzeMemoWithAI_(memo) {
       'AIの返答をJSONとして読めんかったで: ' +
       error.message
     );
+  }
+}
+
+function testPaluruTodayTopRules() {
+  const targetDate = '2026-07-15';
+  const cases = [
+    ['today event', shouldShowInToday_({ status: 'inbox', type: 'event', eventStart: targetDate }, targetDate)],
+    ['today due task', shouldShowInToday_({ status: 'inbox', type: 'task', dueDate: targetDate }, targetDate)],
+    ['overdue task', shouldShowInToday_({ status: 'inbox', type: 'task', dueDate: '2026-07-14' }, targetDate)],
+    ['today reminder', shouldShowInToday_({ status: 'inbox', type: 'reminder', remindAt: targetDate + ' 08:00:00' }, targetDate)],
+    ['followup', shouldShowInToday_({ status: 'inbox', type: 'note', needsFollowup: true }, targetDate)],
+    ['done excluded', !shouldShowInToday_({ status: 'Done', type: 'event', eventStart: targetDate }, targetDate)],
+  ];
+
+  assertPaluruTestCases_(cases);
+  return cases;
+}
+
+function testPaluruFollowupRules() {
+  const task = validateAnalyzedItem_({ type: 'task', dueDate: '' });
+  const eventWithStart = validateAnalyzedItem_({ type: 'event', eventStart: '2026-07-15' });
+  const eventWithoutStart = validateAnalyzedItem_({ type: 'event', eventStart: '' });
+  const reminderWithoutDate = validateAnalyzedItem_({ type: 'reminder', remindAt: '' });
+  const cases = [
+    ['task missing due needs followup', task.needsFollowup === true && task.followupInputType === 'date'],
+    ['event with start no followup', eventWithStart.needsFollowup === false],
+    ['event missing start needs followup', eventWithoutStart.needsFollowup === true],
+    ['reminder missing date needs followup', reminderWithoutDate.needsFollowup === true],
+  ];
+
+  assertPaluruTestCases_(cases);
+  return cases;
+}
+
+function testPaluruDateTimeFormatting() {
+  const cases = [
+    ['1899 date suppressed', normalizeDateForSheet_('1899-12-30T05:02:40.000Z') === ''],
+    ['time only extracted', normalizeTimeForSheet_('1899-12-30T05:02:40.000Z') === '05:02'],
+    ['empty event end omitted', formatItemDateTime_({ type: 'event', eventStart: '2026-07-15', eventStartTime: '13:25', eventEnd: '', eventEndTime: '' }) === '7/15 13:25'],
+    ['event end omitted without eventEnd date', formatItemDateTime_({ type: 'event', eventStart: '2026-07-15', eventStartTime: '13:25', eventEnd: '', eventEndTime: '14:00' }) === '7/15 13:25'],
+  ];
+
+  assertPaluruTestCases_(cases);
+  return cases;
+}
+
+function assertPaluruTestCases_(cases) {
+  const failed = cases.filter(function(testCase) {
+    return !testCase[1];
+  });
+  if (failed.length > 0) {
+    throw new Error('PALURU test failed: ' + failed.map(function(testCase) {
+      return testCase[0];
+    }).join(', '));
   }
 }

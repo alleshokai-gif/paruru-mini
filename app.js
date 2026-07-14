@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260714-01";
+const ASSET_VERSION = "v20260715-01";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -72,7 +72,7 @@ const PARURU_MESSAGES = {
     loadingLine: "ちょっと見てくる。",
     loadingBody: "読み込み中...",
     empty: "今日は急ぎなし。珍しいね、兄弟。",
-    loadedLine: "また忘れてそうなの、拾っといたよ。",
+    loadedLine: "今日の予定とやること、まとめといたよ。",
     error: "うまく読めんかった。もう一回だけ試してみて。",
     fallback: "兄弟、これ確認しといて。",
     more: (count) => `ほか${count}件`,
@@ -236,6 +236,16 @@ const editTitle = document.querySelector("#editTitle");
 const editMemo = document.querySelector("#editMemo");
 const editCategory = document.querySelector("#editCategory");
 const editPriority = document.querySelector("#editPriority");
+const editType = document.querySelector("#editType");
+const editStatus = document.querySelector("#editStatus");
+const editDueDate = document.querySelector("#editDueDate");
+const editDueTime = document.querySelector("#editDueTime");
+const editEventStart = document.querySelector("#editEventStart");
+const editEventStartTime = document.querySelector("#editEventStartTime");
+const editEventEnd = document.querySelector("#editEventEnd");
+const editEventEndTime = document.querySelector("#editEventEndTime");
+const editReminderDate = document.querySelector("#editReminderDate");
+const editReminderTime = document.querySelector("#editReminderTime");
 const doneButton = document.querySelector("#doneButton");
 const deleteButton = document.querySelector("#deleteButton");
 const confirmDeleteButton = document.querySelector("#confirmDeleteButton");
@@ -463,10 +473,20 @@ editForm.addEventListener("submit", async (event) => {
     memo,
     category: editCategory.value,
     priority: editPriority.value,
+    type: editType.value,
+    status: editStatus.value,
+    dueDate: normalizeDateInputValue(editDueDate.value),
+    dueTime: normalizeTimeLabel(editDueTime.value),
+    eventStart: normalizeDateInputValue(editEventStart.value),
+    eventStartTime: normalizeTimeLabel(editEventStartTime.value),
+    eventEnd: normalizeDateInputValue(editEventEnd.value),
+    eventEndTime: normalizeTimeLabel(editEventEndTime.value),
+    remindAt: buildReminderAtValue(editReminderDate.value, editReminderTime.value),
   });
 
   detailDialog.close();
   await loadInbox({ quiet: true });
+  await loadNotificationCandidates({ force: true });
   setParuruState("success", { showStatus: true });
 });
 
@@ -989,9 +1009,45 @@ function renderNotificationItem(item) {
         ${renderNotificationLevelBadge(level)}
         ${labels}
       </span>
-      <span class="today-paruru-message">${escapeHtml(item.message || item.title || PARURU_MESSAGES.notification.fallback)}</span>
+      <span class="today-paruru-message">${escapeHtml(buildTodayDisplayLine(item))}</span>
     </button>
   `;
+}
+
+function buildTodayDisplayLine(item) {
+  const title = item.title || item.memo?.slice(0, 20) || PARURU_MESSAGES.notification.fallback;
+  const reasons = item.reasons || [];
+
+  if (reasons.includes("overdue")) {
+    return `期限切れ ${title}`;
+  }
+
+  if (reasons.includes("event_today_timed")) {
+    return `${formatTimeJa(item.eventStartTime)} ${title}`.trim();
+  }
+
+  if (reasons.includes("event_today")) {
+    return `今日 ${title}`;
+  }
+
+  if (reasons.includes("due_today_timed")) {
+    return `${formatTimeJa(item.dueTime)}まで ${title}`.trim();
+  }
+
+  if (reasons.includes("due_today")) {
+    return `今日中 ${title}`;
+  }
+
+  if (reasons.includes("reminder_today")) {
+    const reminderTime = formatTimeJa(getReminderTimeValue(item));
+    return `${reminderTime || "今日"} ${title}`.trim();
+  }
+
+  if (reasons.includes("followup_required")) {
+    return `要確認 ${title}`;
+  }
+
+  return item.message || title;
 }
 
 function renderNotificationMore(totalCount, visibleCount) {
@@ -1015,8 +1071,11 @@ function renderNotificationLevelBadge(level) {
 function renderNotificationReasonLabel(reason) {
   const labels = {
     overdue: "期限切れ",
+    event_today_timed: "予定",
+    event_today: "予定",
     due_today: "今日締切",
-    due_tomorrow: "明日締切",
+    due_today_timed: "今日締切",
+    reminder_today: "通知",
     followup_required: "確認待ち",
     urgent: "至急",
     high_priority: "High",
@@ -1100,15 +1159,17 @@ function renderScheduleLine(item) {
   const statusLabel = getDueStatusLabel(item);
 
   if (type === "task" && item.dueDate) {
-    const dueText = formatDateTimeLabel(item.dueDate, item.dueTime);
+    const dueText = formatItemDateTime(item);
     const status = statusLabel ? `<span class="date-status date-status-${escapeHtml(statusLabel.key)}">${escapeHtml(statusLabel.label)}</span>` : "";
     return `<p class="card-schedule">${status}<span>締切: ${escapeHtml(dueText)}</span></p>`;
   }
 
   if (type === "event" && item.eventStart) {
-    const startText = formatDateTimeLabel(item.eventStart, item.eventStartTime);
-    const endText = item.eventEnd ? ` - ${formatDateTimeLabel(item.eventEnd, item.eventEndTime)}` : "";
-    return `<p class="card-schedule"><span>予定: ${escapeHtml(startText + endText)}</span></p>`;
+    return `<p class="card-schedule"><span>予定: ${escapeHtml(formatItemDateTime(item))}</span></p>`;
+  }
+
+  if (type === "reminder" && getReminderDateValue(item)) {
+    return `<p class="card-schedule"><span>通知: ${escapeHtml(formatItemDateTime(item))}</span></p>`;
   }
 
   if (type === "shopping") {
@@ -1229,6 +1290,16 @@ function openDetail(id) {
   editMemo.value = item.memo || "";
   editCategory.value = item.category || "未分類";
   editPriority.value = item.priority || "Normal";
+  editType.value = normalizeType(item.type);
+  editStatus.value = normalizeEditableStatus(item.status);
+  editDueDate.value = normalizeDateInputValue(item.dueDate);
+  editDueTime.value = normalizeTimeLabel(item.dueTime);
+  editEventStart.value = normalizeDateInputValue(item.eventStart);
+  editEventStartTime.value = normalizeTimeLabel(item.eventStartTime);
+  editEventEnd.value = normalizeDateInputValue(item.eventEnd);
+  editEventEndTime.value = normalizeTimeLabel(item.eventEndTime);
+  editReminderDate.value = getReminderDateValue(item);
+  editReminderTime.value = getReminderTimeValue(item);
   renderDetailCalendarStatus(item);
   renderFollowupPanel("detail", item);
   renderCalendarSyncPanel("detail", item);
@@ -2632,9 +2703,11 @@ function formatCreatedAt(value) {
 }
 
 function formatDateTimeLabel(dateValue, timeValue = "") {
-  const dateParts = parseYmd(dateValue);
+  const safeDate = normalizeDateInputValue(dateValue);
+  const safeTime = normalizeTimeLabel(timeValue);
+  const dateParts = parseYmd(safeDate);
   if (!dateParts) {
-    return [dateValue, timeValue].filter(Boolean).join(" ");
+    return safeTime;
   }
 
   const today = getTodayTokyoParts();
@@ -2643,7 +2716,51 @@ function formatDateTimeLabel(dateValue, timeValue = "") {
     ? `${dateParts.year}年${dateParts.month}月${dateParts.day}日`
     : `${dateParts.month}月${dateParts.day}日`;
 
-  return [dateLabel, normalizeTimeLabel(timeValue)].filter(Boolean).join(" ");
+  return [dateLabel, safeTime].filter(Boolean).join(" ");
+}
+
+function formatDateJa(dateValue) {
+  const safeDate = normalizeDateInputValue(dateValue);
+  const dateParts = parseYmd(safeDate);
+  if (!dateParts) {
+    return "";
+  }
+
+  return `${dateParts.month}/${dateParts.day}`;
+}
+
+function formatTimeJa(timeValue) {
+  return normalizeTimeLabel(timeValue);
+}
+
+function formatItemDateTime(item) {
+  const type = normalizeType(item.type);
+  if (type === "event") {
+    const start = formatDateTimeLabel(item.eventStart, item.eventStartTime);
+    if (!start) {
+      return "";
+    }
+
+    const endDate = normalizeDateInputValue(item.eventEnd);
+    if (!endDate) {
+      return start;
+    }
+
+    const endTime = normalizeTimeLabel(item.eventEndTime);
+    const sameDay = endDate && endDate === normalizeDateInputValue(item.eventStart);
+    const end = sameDay ? endTime : formatDateTimeLabel(endDate, endTime);
+    return end ? `${start}〜${end}` : start;
+  }
+
+  if (type === "task") {
+    return formatDateTimeLabel(item.dueDate, item.dueTime);
+  }
+
+  if (type === "reminder") {
+    return formatDateTimeLabel(getReminderDateValue(item), getReminderTimeValue(item));
+  }
+
+  return "";
 }
 
 function getDueStatusLabel(item) {
@@ -2689,12 +2806,51 @@ function parseYmd(value) {
 }
 
 function normalizeTimeLabel(value) {
-  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  const match = String(value || "").match(/(?:^|T| )(\d{1,2}):(\d{2})/);
   if (!match) {
-    return String(value || "");
+    return "";
   }
 
   return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function normalizeDateInputValue(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match || Number(match[1]) <= 1900) {
+    return "";
+  }
+
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function getReminderDateValue(item) {
+  return normalizeDateInputValue(item.reminderDate || item.remindAt);
+}
+
+function getReminderTimeValue(item) {
+  return normalizeTimeLabel(item.reminderTime || item.remindAt);
+}
+
+function buildReminderAtValue(dateValue, timeValue) {
+  const date = normalizeDateInputValue(dateValue);
+  const time = normalizeTimeLabel(timeValue);
+  if (!date) {
+    return "";
+  }
+
+  return time ? `${date} ${time}:00` : date;
+}
+
+function normalizeEditableStatus(status) {
+  const normalized = String(status || "inbox").trim().toLowerCase();
+  if (["done", "completed", "complete"].includes(normalized)) {
+    return "Done";
+  }
+  if (["cancelled", "canceled", "deleted"].includes(normalized)) {
+    return "cancelled";
+  }
+  return "inbox";
 }
 
 function parseLocalDateTimeValue(dateValue, timeValue = "") {
@@ -2757,6 +2913,44 @@ function getTodayTokyoParts() {
 
 function getDateOnlyEpochDay(parts) {
   return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000);
+}
+
+function epochDayToYmd(epochDay) {
+  const date = new Date(epochDay * 86400000);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function shouldShowInToday(item, targetParts) {
+  if (!isInboxItem(item)) {
+    return false;
+  }
+
+  const today = getDateOnlyEpochDay(targetParts);
+  const todayYmd = epochDayToYmd(today);
+  if (normalizeDateInputValue(item.eventStart) === todayYmd) {
+    return true;
+  }
+
+  const dueParts = parseYmd(normalizeDateInputValue(item.dueDate));
+  if (dueParts && getDateOnlyEpochDay(dueParts) <= today) {
+    return true;
+  }
+
+  if (getReminderDateValue(item) === todayYmd) {
+    return true;
+  }
+
+  return isFollowupNeeded(item);
+}
+
+function getCandidateTimeSortValue(candidate) {
+  const time = normalizeTimeLabel(candidate.eventStartTime || candidate.dueTime || getReminderTimeValue(candidate));
+  const match = time.match(/^(\d{2}):(\d{2})$/);
+  if (!match) {
+    return 9999;
+  }
+
+  return Number(match[1]) * 60 + Number(match[2]);
 }
 
 function escapeHtml(value) {
@@ -2882,16 +3076,7 @@ function dummyNotificationCandidates(userId) {
 }
 
 function isDummyNotificationSource(item) {
-  const type = normalizeType(item.type);
-  if (!isInboxItem(item) || type === "event" || type === "shopping") {
-    return false;
-  }
-
-  return type === "task" ||
-    type === "reminder" ||
-    isFollowupNeeded(item) ||
-    normalizePriority(item.priority) === "High" ||
-    normalizePriority(item.priority) === "Urgent";
+  return shouldShowInToday(item, getTodayTokyoParts());
 }
 
 function buildDummyNotificationCandidate(item, index, targetDay) {
@@ -2903,8 +3088,13 @@ function buildDummyNotificationCandidate(item, index, targetDay) {
     type: item.type || "",
     category: item.category || "",
     priority: normalizePriority(item.priority),
-    dueDate: item.dueDate || "",
-    dueTime: item.dueTime || "",
+    dueDate: normalizeDateInputValue(item.dueDate),
+    dueTime: normalizeTimeLabel(item.dueTime),
+    eventStart: normalizeDateInputValue(item.eventStart),
+    eventStartTime: normalizeTimeLabel(item.eventStartTime),
+    eventEnd: normalizeDateInputValue(item.eventEnd),
+    eventEndTime: normalizeTimeLabel(item.eventEndTime),
+    remindAt: item.remindAt || "",
     needsFollowup: isFollowupNeeded(item),
     reasons,
     notificationLevel: getDummyNotificationLevel(reasons),
@@ -2918,16 +3108,24 @@ function buildDummyNotificationCandidate(item, index, targetDay) {
 
 function getDummyNotificationReasons(item, targetDay) {
   const reasons = [];
+  const targetDate = epochDayToYmd(targetDay);
+  const type = normalizeType(item.type);
+  if (type === "event" && normalizeDateInputValue(item.eventStart) === targetDate) {
+    reasons.push(normalizeTimeLabel(item.eventStartTime) ? "event_today_timed" : "event_today");
+  }
+
   const due = parseYmd(item.dueDate);
   if (due) {
     const diff = getDateOnlyEpochDay(due) - targetDay;
     if (diff < 0) {
       reasons.push("overdue");
     } else if (diff === 0) {
-      reasons.push("due_today");
-    } else if (diff === 1) {
-      reasons.push("due_tomorrow");
+      reasons.push(normalizeTimeLabel(item.dueTime) ? "due_today_timed" : "due_today");
     }
+  }
+
+  if (getReminderDateValue(item) === targetDate) {
+    reasons.push("reminder_today");
   }
 
   if (isFollowupNeeded(item)) {
@@ -2945,17 +3143,17 @@ function getDummyNotificationReasons(item, targetDay) {
 }
 
 function sortDummyNotificationCandidates(a, b) {
-  const reasonOrder = ["overdue", "due_today", "urgent", "followup_required", "due_tomorrow", "high_priority"];
+  const reasonOrder = ["overdue", "event_today_timed", "due_today_timed", "due_today", "reminder_today", "event_today", "urgent", "followup_required", "high_priority"];
   const rankA = Math.min(...a.reasons.map((reason) => reasonOrder.indexOf(reason)).filter((rank) => rank >= 0));
   const rankB = Math.min(...b.reasons.map((reason) => reasonOrder.indexOf(reason)).filter((rank) => rank >= 0));
   if (rankA !== rankB) {
     return rankA - rankB;
   }
 
-  const dueA = parseYmd(a.dueDate) ? getDateOnlyEpochDay(parseYmd(a.dueDate)) : Number.MAX_SAFE_INTEGER;
-  const dueB = parseYmd(b.dueDate) ? getDateOnlyEpochDay(parseYmd(b.dueDate)) : Number.MAX_SAFE_INTEGER;
-  if (dueA !== dueB) {
-    return dueA - dueB;
+  const timeA = getCandidateTimeSortValue(a);
+  const timeB = getCandidateTimeSortValue(b);
+  if (timeA !== timeB) {
+    return timeA - timeB;
   }
 
   const createdA = parseSortableDateValue(a.createdAt) || 0;
@@ -2983,8 +3181,17 @@ function buildDummyNotificationMessage(title, reasons) {
   if (reasons.includes("overdue")) {
     return PARURU_MESSAGES.notificationMessage.overdue(title);
   }
+  if (reasons.includes("event_today_timed") || reasons.includes("event_today")) {
+    return title;
+  }
   if (reasons.includes("due_today")) {
     return PARURU_MESSAGES.notificationMessage.due_today(title);
+  }
+  if (reasons.includes("due_today_timed")) {
+    return PARURU_MESSAGES.notificationMessage.due_today(title);
+  }
+  if (reasons.includes("reminder_today")) {
+    return title;
   }
   if (reasons.includes("urgent")) {
     return PARURU_MESSAGES.notificationMessage.urgent(title);
@@ -3078,7 +3285,7 @@ function dummyUpdate(id, updates) {
       return item;
     }
 
-    const updatedItem = { ...item, ...updates };
+    const updatedItem = validateLocalItem({ ...item, ...updates, updatedAt: new Date().toISOString() });
     if (hasCalendarRelevantChanges(item, updatedItem)) {
       updatedItem.calendarSyncStatus = "update_required";
       updatedItem.calendarTitle = buildCalendarTitle(updatedItem.title || updatedItem.memo || "", getCurrentProfile().calendarSuffix);
@@ -3088,6 +3295,39 @@ function dummyUpdate(id, updates) {
   });
   saveDummyItems(items);
   return Promise.resolve({ success: true, data: { id }, message: "updated" });
+}
+
+function validateLocalItem(item) {
+  const validated = {
+    ...item,
+    dueDate: normalizeDateInputValue(item.dueDate),
+    dueTime: normalizeTimeLabel(item.dueTime),
+    eventStart: normalizeDateInputValue(item.eventStart),
+    eventStartTime: normalizeTimeLabel(item.eventStartTime),
+    eventEnd: normalizeDateInputValue(item.eventEnd),
+    eventEndTime: normalizeTimeLabel(item.eventEndTime),
+  };
+  const type = normalizeType(validated.type);
+
+  if (type === "task" && !validated.dueDate) {
+    validated.needsFollowup = true;
+    validated.followupQuestion = validated.followupQuestion || "いつまでにやる？";
+    validated.followupInputType = "date";
+  } else if (type === "event" && validated.eventStart) {
+    validated.needsFollowup = false;
+    validated.followupQuestion = "";
+    validated.followupInputType = "";
+  } else if (type === "event" && !validated.eventStart) {
+    validated.needsFollowup = true;
+    validated.followupQuestion = validated.followupQuestion || "いつの予定？";
+    validated.followupInputType = "date";
+  } else if (type === "reminder" && !getReminderDateValue(validated)) {
+    validated.needsFollowup = true;
+    validated.followupQuestion = validated.followupQuestion || "いつ通知する？";
+    validated.followupInputType = "datetime";
+  }
+
+  return validated;
 }
 
 function dummyDelete(id) {
