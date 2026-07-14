@@ -7,6 +7,9 @@ const HOME_AGENT_INTENT_WEATHER_CHECK = 'weather_check';
 const HOME_AGENT_INTENT_DEPARTURE_CHECK = 'departure_check';
 const HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK = 'room_climate_check';
 const HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK = 'room_climate_alert_check';
+const HOME_AGENT_INTENT_ROOM_CLIMATE_OVERVIEW = 'room_climate_overview';
+const HOME_AGENT_INTENT_ADAPTIVE_CLIMATE_CHECK = 'adaptive_climate_check';
+const HOME_AGENT_INTENT_AIRCON_COMFORT_ADJUSTMENT = 'aircon_comfort_adjustment';
 const HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST = 'aircon_override_request';
 const HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION = 'pause_room_automation';
 const HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION = 'resume_room_automation';
@@ -38,9 +41,13 @@ const HOME_AGENT_AGENTS = {
     allowedSkills: [
       'getWeatherSummary',
       'getRoomClimate',
+      'getRoomClimateTrend',
+      'roomClimateOverview',
       'getAllRoomClimateAlerts',
       'getAirconStatus',
       'getRoomAutomationPause',
+      'buildAdaptiveClimateProposal',
+      'buildManualComfortAdjustmentProposal',
       'buildAirconAdjustmentProposal',
       'buildPauseRoomAutomationProposal',
       'pauseRoomAutomation',
@@ -97,6 +104,9 @@ function getHomeAgentsForIntent_(intent) {
   if ([
     HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK,
     HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK,
+    HOME_AGENT_INTENT_ROOM_CLIMATE_OVERVIEW,
+    HOME_AGENT_INTENT_ADAPTIVE_CLIMATE_CHECK,
+    HOME_AGENT_INTENT_AIRCON_COMFORT_ADJUSTMENT,
     HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST,
     HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION,
     HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION,

@@ -161,6 +161,30 @@ const HOME_AGENT_SKILLS = {
     source: 'switchbot-temp-log Web App / Log / ROOM_CONFIG',
     handler: 'getRoomClimateSkill_',
   },
+  getRoomClimateTrend: {
+    id: 'getRoomClimateTrend',
+    name: '部屋温度傾向取得',
+    ownerAgent: 'shimao',
+    description: 'switchbot-temp-logから直近ログの温度傾向を取得する',
+    inputSchema: { type: 'object', required: ['roomId'], properties: { roomId: { type: 'string' }, windowMinutes: { type: 'number' } } },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: false,
+    source: 'switchbot-temp-log Web App / Log',
+    handler: 'getRoomClimateTrendSkill_',
+  },
+  roomClimateOverview: {
+    id: 'roomClimateOverview',
+    name: '家全体の温湿度概要',
+    ownerAgent: 'shimao',
+    description: 'switchbot-temp-logから問題部屋優先の温湿度概要を取得する',
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: false,
+    source: 'switchbot-temp-log Web App / Log / ROOM_CONFIG',
+    handler: 'roomClimateOverviewSkill_',
+  },
   getAllRoomClimateAlerts: {
     id: 'getAllRoomClimateAlerts',
     name: '全室温湿度アラート取得',
@@ -208,6 +232,30 @@ const HOME_AGENT_SKILLS = {
     requiresConfirmation: true,
     source: 'Room Climate / Aircon State',
     handler: 'buildAirconAdjustmentProposalSkill_',
+  },
+  buildAdaptiveClimateProposal: {
+    id: 'buildAdaptiveClimateProposal',
+    name: 'Adaptive空調補正提案',
+    ownerAgent: 'shimao',
+    description: '温度差と傾向から設定温度補正候補を作る。実操作はしない',
+    inputSchema: { type: 'object', required: ['roomId'], properties: { roomId: { type: 'string' } } },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: false,
+    source: 'switchbot-temp-log Web App / Adaptive Climate',
+    handler: 'buildAdaptiveClimateProposalSkill_',
+  },
+  buildManualComfortAdjustmentProposal: {
+    id: 'buildManualComfortAdjustmentProposal',
+    name: '体感空調補正提案',
+    ownerAgent: 'shimao',
+    description: '暑い・寒い・強めて等の体感入力から一時補正候補を作る。実操作はしない',
+    inputSchema: { type: 'object', required: ['roomId', 'message'], properties: { roomId: { type: 'string' }, message: { type: 'string' } } },
+    outputSchema: { type: 'object' },
+    readOnly: true,
+    requiresConfirmation: false,
+    source: 'switchbot-temp-log Web App / Adaptive Climate',
+    handler: 'buildManualComfortAdjustmentProposalSkill_',
   },
   buildPauseRoomAutomationProposal: {
     id: 'buildPauseRoomAutomationProposal',
@@ -289,8 +337,20 @@ function getHomeSkillSequenceForIntent_(intent) {
     return ['getRoomClimate'];
   }
 
+  if (intent === HOME_AGENT_INTENT_ROOM_CLIMATE_OVERVIEW) {
+    return ['roomClimateOverview'];
+  }
+
   if (intent === HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK) {
     return ['getAllRoomClimateAlerts'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_ADAPTIVE_CLIMATE_CHECK) {
+    return ['getRoomClimate', 'getRoomClimateTrend', 'getRoomAutomationPause', 'buildAdaptiveClimateProposal'];
+  }
+
+  if (intent === HOME_AGENT_INTENT_AIRCON_COMFORT_ADJUSTMENT) {
+    return ['getRoomClimate', 'getRoomClimateTrend', 'buildManualComfortAdjustmentProposal'];
   }
 
   if (intent === HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST) {

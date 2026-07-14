@@ -1,4 +1,4 @@
-function homeAgent_(body) {
+﻿function homeAgent_(body) {
   return json_(runHomeAgentRequest_(body || {}));
 }
 
@@ -191,7 +191,15 @@ function detectHomeAgentIntent_(message) {
       ? HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION
       : HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION;
   }
-  if (/強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて/.test(text)) {
+  if (/家の温度どう|家の中暑くない|部屋大丈夫|家の中どんな感じ|家の中.*大丈夫/.test(text)) {
+    return HOME_AGENT_INTENT_ROOM_CLIMATE_OVERVIEW;
+  }
+  if (/冷房効いとる|設定温度まで下がりそう|ちゃんと冷え|ぬるい/.test(text)) {
+    return HOME_AGENT_INTENT_ADAPTIVE_CLIMATE_CHECK;
+  }
+  if (/ちょっと暑い|少し暑い|ちょっと寒い|少し寒い|少し強めて|ちょっと強めて|少し弱めて|ちょっと弱めて|1度下げて|1度上げて|一度下げて|一度上げて/.test(text)) {
+    return HOME_AGENT_INTENT_AIRCON_COMFORT_ADJUSTMENT;
+  }  if (/強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて/.test(text)) {
     return HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST;
   }
   if (/暑い部屋|寒い部屋|蒸してる部屋|家の中大丈夫|部屋.*大丈夫/.test(text)) {
@@ -226,6 +234,9 @@ function isSupportedHomeAgentIntent_(intent) {
     HOME_AGENT_INTENT_DAILY_DEPARTURE_CHECK,
     HOME_AGENT_INTENT_ROOM_CLIMATE_CHECK,
     HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK,
+    HOME_AGENT_INTENT_ROOM_CLIMATE_OVERVIEW,
+    HOME_AGENT_INTENT_ADAPTIVE_CLIMATE_CHECK,
+    HOME_AGENT_INTENT_AIRCON_COMFORT_ADJUSTMENT,
     HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST,
     HOME_AGENT_INTENT_PAUSE_ROOM_AUTOMATION,
     HOME_AGENT_INTENT_RESUME_ROOM_AUTOMATION,
@@ -250,6 +261,15 @@ function buildHomeAgentResultForIntent_(request, skillResults, now) {
   }
   if (request.intent === HOME_AGENT_INTENT_ROOM_CLIMATE_ALERT_CHECK) {
     return buildHomeAgentRoomClimateAlertResult_(request, skillResults.getAllRoomClimateAlerts);
+  }
+  if (request.intent === HOME_AGENT_INTENT_ROOM_CLIMATE_OVERVIEW) {
+    return buildHomeAgentRoomClimateOverviewResult_(request, skillResults.roomClimateOverview);
+  }
+  if (request.intent === HOME_AGENT_INTENT_ADAPTIVE_CLIMATE_CHECK) {
+    return buildHomeAgentAdaptiveClimateResult_(request, skillResults);
+  }
+  if (request.intent === HOME_AGENT_INTENT_AIRCON_COMFORT_ADJUSTMENT) {
+    return buildHomeAgentManualComfortResult_(request, skillResults);
   }
   if (request.intent === HOME_AGENT_INTENT_AIRCON_OVERRIDE_REQUEST) {
     return buildHomeAgentAirconProposalResult_(request, skillResults);
@@ -383,7 +403,7 @@ function buildHomeAgentRoomClimateResult_(request, climateResult) {
     roomClimate: climate,
     conversationContext: {
       lastIntent: request.intent,
-      lastRoomId: climate.roomId || request.parameters.roomId,
+      lastRoomId: climate.displayName || climate.roomId || request.parameters.roomId,
       lastClimateSnapshot: climate,
       capturedAt: formatHomeAgentDateTime_(new Date()),
     },
@@ -399,6 +419,66 @@ function buildHomeAgentRoomClimateAlertResult_(request, alertsResult) {
       : 'いま大きく気になる部屋はなさそう。',
     roomClimateAlerts: alerts,
     notificationCandidates: Array.isArray(data.notificationCandidates) ? data.notificationCandidates : [],
+  };
+}
+
+function buildHomeAgentRoomClimateOverviewResult_(request, overviewResult) {
+  const overview = overviewResult && overviewResult.data ? overviewResult.data : {};
+  const rooms = Array.isArray(overview.rooms) ? overview.rooms.slice(0, 3) : [];
+  return {
+    summary: overview.summary || (rooms.length ? '家の中を見たよ。' : '家の温度データを確認できんかった。'),
+    roomClimateOverview: {
+      checkedAt: overview.checkedAt || '',
+      rooms: rooms,
+      totalRoomsChecked: overview.totalRoomsChecked || 0,
+    },
+    conversationContext: {
+      lastIntent: request.intent,
+      lastRoomId: rooms.length === 1 ? (rooms[0].displayName || rooms[0].roomId) : (request.parameters.roomId || ''),
+      capturedAt: formatHomeAgentDateTime_(new Date()),
+    },
+  };
+}
+
+function buildHomeAgentAdaptiveClimateResult_(request, skillResults) {
+  const climate = readHomeAgentSkillData_(skillResults.getRoomClimate, {});
+  const trend = readHomeAgentSkillData_(skillResults.getRoomClimateTrend, {});
+  const proposal = readHomeAgentSkillData_(skillResults.buildAdaptiveClimateProposal, {});
+  return {
+    summary: proposal.summary || '冷え方を確認したけど、提案までは作れんかった。',
+    roomClimate: climate,
+    climateTrend: trend,
+    proposal: proposal.proposal || null,
+    actionCandidates: proposal.actionCandidate ? [proposal.actionCandidate] : [],
+    conversationContext: {
+      lastIntent: request.intent,
+      lastRoomId: climate.displayName || climate.roomId || request.parameters.roomId,
+      lastClimateSnapshot: climate,
+      lastClimateTrend: trend,
+      lastProposal: proposal.proposal || null,
+      capturedAt: formatHomeAgentDateTime_(new Date()),
+    },
+  };
+}
+
+function buildHomeAgentManualComfortResult_(request, skillResults) {
+  const climate = readHomeAgentSkillData_(skillResults.getRoomClimate, {});
+  const trend = readHomeAgentSkillData_(skillResults.getRoomClimateTrend, {});
+  const proposal = readHomeAgentSkillData_(skillResults.buildManualComfortAdjustmentProposal, {});
+  return {
+    summary: proposal.summary || '体感入力は受け取ったけど、温度変更の提案は作れんかった。',
+    roomClimate: climate,
+    climateTrend: trend,
+    proposal: proposal.proposal || null,
+    actionCandidates: proposal.actionCandidate ? [proposal.actionCandidate] : [],
+    conversationContext: {
+      lastIntent: request.intent,
+      lastRoomId: climate.displayName || climate.roomId || request.parameters.roomId || request.context.lastRoomId || '',
+      lastClimateSnapshot: climate,
+      lastClimateTrend: trend,
+      lastProposal: proposal.proposal || null,
+      capturedAt: formatHomeAgentDateTime_(new Date()),
+    },
   };
 }
 
@@ -591,7 +671,7 @@ function detectHomeAgentRoomId_(message) {
 }
 
 function isHomeAgentImplicitRoomRequest_(message) {
-  return /強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて|通常運転|一時停止|止めて/.test(String(message || ''));
+  return /強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて|通常運転|一時停止|止めて|ちょっと暑い|少し暑い|暑い|ぬるい|ちょっと寒い|少し寒い|寒い|1度下げて|1度上げて|一度下げて|一度上げて/.test(String(message || ''));
 }
 
 function shouldCreateHomeAgentSignageCandidate_(request) {

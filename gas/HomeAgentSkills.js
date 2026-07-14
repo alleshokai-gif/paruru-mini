@@ -611,6 +611,201 @@ function getRoomAutomationPauseSkill_(request) {
   });
 }
 
+function getRoomClimateTrendSkill_(request) {
+  const roomId = String(request.parameters.roomId || '').trim();
+  if (!roomId) {
+    return homeAgentSkillError_('getRoomClimateTrend', 'shimao', 'ROOM_NOT_SPECIFIED', 'Room is required');
+  }
+
+  const response = callSwitchbotTempLogHomeAgentApi_('getRoomClimateTrend', {
+    roomId: roomId,
+    windowMinutes: request.parameters.windowMinutes || 30,
+    userId: request.userId || '',
+  }, { write: false });
+
+  if (!response.success) {
+    return homeAgentSkillError_('getRoomClimateTrend', 'shimao', response.errorCode || 'SWITCHBOT_TEMP_LOG_ERROR', response.message || 'Room climate trend request failed');
+  }
+
+  const data = response.data || {};
+  return homeAgentSkillResult_('getRoomClimateTrend', 'shimao', data, {
+    source: 'switchbot-temp-log',
+    freshness: data.freshness || 'unknown',
+    warnings: data.warnings || [],
+  });
+}
+
+function roomClimateOverviewSkill_(request) {
+  const response = callSwitchbotTempLogHomeAgentApi_('roomClimateOverview', {
+    windowMinutes: request.parameters.windowMinutes || 30,
+    userId: request.userId || '',
+  }, { write: false });
+
+  if (!response.success) {
+    return homeAgentSkillError_('roomClimateOverview', 'shimao', response.errorCode || 'SWITCHBOT_TEMP_LOG_ERROR', response.message || 'Room climate overview request failed');
+  }
+
+  const data = response.data || {};
+  return homeAgentSkillResult_('roomClimateOverview', 'shimao', data, {
+    source: 'switchbot-temp-log',
+    freshness: 'current',
+    warnings: data.warnings || [],
+  });
+}
+
+function buildAdaptiveClimateProposalSkill_(request, previousResults) {
+  const climate = readHomeAgentSkillData_(previousResults.getRoomClimate, {});
+  const trend = readHomeAgentSkillData_(previousResults.getRoomClimateTrend, null);
+  const pause = readHomeAgentSkillData_(previousResults.getRoomAutomationPause, {});
+  const roomId = climate.roomId || String(request.parameters.roomId || '').trim();
+  if (!roomId) {
+    return homeAgentSkillResult_('buildAdaptiveClimateProposal', 'shimao', {
+      summary: 'どの部屋を見るか分からんかった。部屋名を入れてな。',
+    }, { source: 'proposal', freshness: 'current', warnings: ['room_not_specified'] });
+  }
+
+  const response = callSwitchbotTempLogHomeAgentApi_('buildAdaptiveClimateProposal', {
+    roomId: roomId,
+    durationMinutes: inferHomeAgentProposalDurationMinutes_(request.message) || 60,
+    windowMinutes: request.parameters.windowMinutes || 30,
+    currentClimate: climate,
+    trend: trend,
+    airconState: climate.currentAirconState || {},
+    activePause: pause.activePause || null,
+    userId: request.userId || '',
+  }, { write: false });
+
+  if (!response.success) {
+    return homeAgentSkillError_('buildAdaptiveClimateProposal', 'shimao', response.errorCode || 'SWITCHBOT_TEMP_LOG_ERROR', response.message || 'Adaptive climate proposal request failed');
+  }
+
+  const raw = response.data || {};
+  const proposal = buildHomeAgentAirconProposalFromAdaptive_(raw, climate, 'adaptive');
+  return homeAgentSkillResult_('buildAdaptiveClimateProposal', 'shimao', {
+    summary: buildHomeAgentAdaptiveSummary_(raw, climate, 'adaptive'),
+    proposal: proposal,
+    actionCandidate: proposal && proposal.requiresConfirmation ? {
+      skill: 'setAirconOverride',
+      agent: 'shimao',
+      requiresConfirmation: true,
+      parameters: proposal,
+    } : null,
+  }, {
+    source: 'switchbot-temp-log',
+    freshness: raw.dataFreshness || 'unknown',
+    warnings: filterHomeAgentUserClimateWarnings_(raw.warnings || []),
+  });
+}
+
+function buildManualComfortAdjustmentProposalSkill_(request, previousResults) {
+  const climate = readHomeAgentSkillData_(previousResults.getRoomClimate, {});
+  const trend = readHomeAgentSkillData_(previousResults.getRoomClimateTrend, null);
+  const roomId = climate.roomId || String(request.parameters.roomId || request.context.lastRoomId || '').trim();
+  if (!roomId) {
+    return homeAgentSkillResult_('buildManualComfortAdjustmentProposal', 'shimao', {
+      summary: 'どの部屋を調整するか分からんかった。先に「寝室の温度は？」みたいに聞いてな。',
+    }, { source: 'proposal', freshness: 'current', warnings: ['room_not_specified'] });
+  }
+
+  const response = callSwitchbotTempLogHomeAgentApi_('buildManualComfortAdjustmentProposal', {
+    roomId: roomId,
+    contextRoomId: request.context.lastRoomId || '',
+    message: request.message,
+    durationMinutes: inferHomeAgentProposalDurationMinutes_(request.message) || 120,
+    currentClimate: climate,
+    trend: trend,
+    airconState: climate.currentAirconState || {},
+    userId: request.userId || '',
+  }, { write: false });
+
+  if (!response.success) {
+    return homeAgentSkillError_('buildManualComfortAdjustmentProposal', 'shimao', response.errorCode || 'SWITCHBOT_TEMP_LOG_ERROR', response.message || 'Manual comfort proposal request failed');
+  }
+
+  const raw = response.data || {};
+  const proposal = buildHomeAgentAirconProposalFromAdaptive_(raw, climate, 'manual_comfort');
+  return homeAgentSkillResult_('buildManualComfortAdjustmentProposal', 'shimao', {
+    summary: buildHomeAgentAdaptiveSummary_(raw, climate, 'manual_comfort'),
+    proposal: proposal,
+    actionCandidate: proposal && proposal.requiresConfirmation ? {
+      skill: 'setAirconOverride',
+      agent: 'shimao',
+      requiresConfirmation: true,
+      parameters: proposal,
+    } : null,
+  }, {
+    source: 'switchbot-temp-log',
+    freshness: raw.dataFreshness || 'unknown',
+    warnings: filterHomeAgentUserClimateWarnings_(raw.warnings || []),
+  });
+}
+
+function buildHomeAgentAirconProposalFromAdaptive_(raw, climate, adjustmentType) {
+  if (!raw || raw.success === false) return null;
+  const proposedSetTemp = normalizeHomeAgentNumber_(raw.proposedSetTemp !== undefined ? raw.proposedSetTemp : raw.effectiveSetTemp);
+  const currentSetTemp = normalizeHomeAgentNumber_(raw.currentSetTemp);
+  const baseRuleSetTemp = normalizeHomeAgentNumber_(raw.baseRuleSetTemp !== undefined ? raw.baseRuleSetTemp : raw.baseSetTemp);
+  return {
+    action: 'set_aircon',
+    adjustmentType: adjustmentType,
+    roomId: raw.roomId || climate.roomId || '',
+    displayName: raw.displayName || climate.displayName || raw.roomId || '',
+    mode: raw.mode || '',
+    targetRoomTemp: normalizeHomeAgentNumber_(raw.targetRoomTemp),
+    baseRuleSetTemp: baseRuleSetTemp,
+    currentSetTemp: currentSetTemp,
+    proposedSetTemp: proposedSetTemp,
+    temperature: proposedSetTemp,
+    currentRoomTemp: normalizeHomeAgentNumber_(raw.currentRoomTemp),
+    humidity: climate.humidity !== undefined ? climate.humidity : '',
+    trend: raw.trend || '',
+    trendRate: raw.trendRate !== undefined ? raw.trendRate : '',
+    adaptiveOffset: raw.adaptiveOffset || 0,
+    manualComfortOffset: raw.manualComfortOffset || 0,
+    durationMinutes: raw.actionCandidate && raw.actionCandidate.parameters ? raw.actionCandidate.parameters.durationMinutes : 120,
+    restorePolicy: 'resume_automation',
+    reason: raw.reason || '',
+    message: raw.message || '',
+    requiresConfirmation: raw.requiresConfirmation === true,
+    connected: false,
+  };
+}
+
+function buildHomeAgentAdaptiveSummary_(raw, climate, adjustmentType) {
+  const roomName = raw.displayName || climate.displayName || 'その部屋';
+  if (!raw || raw.success === false) return roomName + 'の提案を作れんかった。';
+  if (raw.reason === 'current_set_temp_unknown' || raw.reason === 'base_state_unknown') {
+    return roomName + 'の現在の設定温度を確認できんかったけん、温度変更の提案は出さんよ。';
+  }
+  if (raw.reason === 'stale_sensor') {
+    return roomName + 'のセンサー情報が古いけん、温度変更の提案は出さんよ。';
+  }
+  if (raw.reason === 'automation_paused') {
+    return roomName + 'は自動制御を一時停止中やけん、今は補正を重ねんよ。';
+  }
+  if (raw.requiresConfirmation !== true) {
+    return raw.message || roomName + 'はいま様子見でよさそうやで。';
+  }
+  const modeText = raw.mode === 'heat' ? '暖房' : raw.mode === 'dry' ? '除湿' : '冷房';
+  const currentTempText = raw.currentRoomTemp !== '' && raw.currentRoomTemp != null ? roomName + 'は' + raw.currentRoomTemp + '℃。' : '';
+  const trendText = raw.trendRate !== '' && raw.trendRate != null ? '温度傾向は' + raw.trend + '（' + raw.trendRate + '℃/10分）。' : '';
+  const baseText = raw.currentSetTemp !== '' && raw.currentSetTemp != null ? 'いま' + modeText + raw.currentSetTemp + '℃やけん、' : modeText + '設定を確認して、';
+  const duration = raw.actionCandidate && raw.actionCandidate.parameters ? raw.actionCandidate.parameters.durationMinutes : (adjustmentType === 'adaptive' ? 60 : 120);
+  return currentTempText + trendText + baseText + duration + '分だけ' + raw.proposedSetTemp + '℃にする案はありやな。';
+}
+
+function filterHomeAgentUserClimateWarnings_(warnings) {
+  const allowed = {
+    stale_sensor: true,
+    current_set_temp_unknown: true,
+    insufficient_samples: true,
+    automation_paused: true,
+  };
+  return (warnings || []).filter(function(warning) {
+    return allowed[String(warning || '')] === true;
+  });
+}
+
 function buildAirconAdjustmentProposalSkill_(request, previousResults) {
   const climate = readHomeAgentSkillData_(previousResults.getRoomClimate, {});
   if (!climate.roomId) {

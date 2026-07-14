@@ -1,7 +1,7 @@
-const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
+﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260713-02";
+const ASSET_VERSION = "v20260714-01";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -25,7 +25,9 @@ const HOME_AGENT_QUESTION_PATTERNS = [
   /暑い|寒い|蒸し|蒸す|温度|湿度|部屋/,
   /強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて/,
   /自動制御|通常運転|一時停止/,
-];
+  /家の温度どう|家の中暑くない|部屋大丈夫|家の中どんな感じ/,
+  /冷房効いとる|設定温度まで下がりそう|ちゃんと冷え|ぬるい/,
+  /ちょっと暑い|少し暑い|ちょっと寒い|少し寒い|1度下げて|1度上げて|一度下げて|一度上げて/,];
 const HOME_AGENT_MEMO_PRIORITY_PATTERNS = [
   /買う|購入|もらう|提出|送る|予約|登録|入れといて|入れて|メモ/,
   /^\s*\d{1,2}月\d{1,2}日/,
@@ -522,6 +524,15 @@ homeAgentRetryButton.addEventListener("click", () => {
 });
 homeAgentCloseButton.addEventListener("click", hideHomeAgentCard);
 homeAgentCard.addEventListener("click", (event) => {
+  if (event.target.closest("[data-home-agent-action-unconnected]")) {
+    const confirmPanel = homeAgentContent.querySelector("[data-home-agent-confirm]");
+    if (confirmPanel && !confirmPanel.querySelector(".home-agent-info")) {
+      confirmPanel.insertAdjacentHTML("beforeend", `<p class="home-agent-info">実操作はまだ準備中やで。</p>`);
+    }
+    setParuruSpeech("idle", "実操作はまだ準備中やで。");
+    return;
+  }
+
   if (event.target.closest("[data-home-agent-action-execute]")) {
     executePendingHomeAgentAction();
     return;
@@ -1374,6 +1385,8 @@ function renderHomeAgentResult(result) {
     renderHomeAgentLunchSection(result.lunch),
     renderHomeAgentWeatherSection(result.weather),
     renderHomeAgentRoomClimateSection(result.roomClimate),
+    renderHomeAgentClimateTrendSection(result.climateTrend),
+    renderHomeAgentClimateOverviewSection(result.roomClimateOverview),
     renderHomeAgentRoomAlertsSection(result.roomClimateAlerts),
     renderHomeAgentProposalSection(result.proposal),
     renderHomeAgentListSection("持ち物", result.suggestedItems),
@@ -1533,6 +1546,35 @@ function renderHomeAgentRoomAlertsSection(alerts) {
   return renderHomeAgentSection("気になる部屋", items);
 }
 
+function renderHomeAgentClimateTrendSection(trend) {
+  if (!trend) {
+    return "";
+  }
+  const items = [];
+  if (trend.sampleCount !== undefined) items.push(`サンプル: ${trend.sampleCount}件`);
+  if (trend.latestTemperature !== "" && trend.latestTemperature != null) items.push(`最新: ${formatHomeAgentTemperature(trend.latestTemperature)}`);
+  if (trend.delta !== "" && trend.delta != null) items.push(`変化: ${trend.delta}℃`);
+  if (trend.trend) items.push(`傾向: ${formatHomeAgentTrendLabel(trend.trend)}${trend.trendRate !== "" && trend.trendRate != null ? ` (${trend.trendRate}℃/10分)` : ""}`);
+  if (trend.measuredFrom || trend.measuredTo) items.push(`${trend.measuredFrom || ""} - ${trend.measuredTo || ""}`);
+  return renderHomeAgentSection("温度傾向", items.slice(0, 5));
+}
+
+function renderHomeAgentClimateOverviewSection(overview) {
+  if (!overview || !Array.isArray(overview.rooms) || overview.rooms.length === 0) {
+    return "";
+  }
+  const items = overview.rooms.slice(0, 3).map((room) => {
+    const parts = [
+      room.displayName || room.roomId || "部屋",
+      formatHomeAgentTemperature(room.temperature),
+      formatHomeAgentPercent(room.humidity),
+      room.state ? formatHomeAgentClimateStateLabel(room.state) : "",
+      room.trend ? formatHomeAgentTrendLabel(room.trend) : "",
+    ].filter(Boolean);
+    return parts.join(" / ");
+  });
+  return renderHomeAgentSection("家の温度", items);
+}
 function renderHomeAgentProposalSection(proposal) {
   if (!proposal) {
     return "";
@@ -1541,9 +1583,15 @@ function renderHomeAgentProposalSection(proposal) {
   if (proposal.displayName) items.push(`対象: ${proposal.displayName}`);
   if (proposal.action === "set_aircon") {
     const mode = proposal.mode === "heat" ? "暖房" : proposal.mode === "dry" ? "除湿" : "冷房";
-    items.push(`${proposal.durationMinutes || 120}分だけ${mode}${proposal.temperature ? `${proposal.temperature}℃` : ""}`);
-    items.push("終わったら通常運転へ戻す候補");
-  } else if (proposal.action === "pause_room_automation") {
+    if (proposal.currentRoomTemp !== "" && proposal.currentRoomTemp != null) items.push(`現在室温: ${formatHomeAgentTemperature(proposal.currentRoomTemp)}`);
+    if (proposal.humidity !== "" && proposal.humidity != null) items.push(`湿度: ${formatHomeAgentPercent(proposal.humidity)}`);
+    if (proposal.trend) items.push(`傾向: ${formatHomeAgentTrendLabel(proposal.trend)}${proposal.trendRate !== "" && proposal.trendRate != null ? ` (${proposal.trendRate}℃/10分)` : ""}`);
+    if (proposal.currentSetTemp !== "" && proposal.currentSetTemp != null) items.push(`現在設定: ${mode}${formatHomeAgentTemperature(proposal.currentSetTemp)}`);
+    if (proposal.proposedSetTemp !== "" && proposal.proposedSetTemp != null) items.push(`提案設定: ${mode}${formatHomeAgentTemperature(proposal.proposedSetTemp)}`);
+    if (proposal.durationMinutes) items.push(`継続時間: ${proposal.durationMinutes}分`);
+    if (proposal.reason) items.push(`理由: ${formatHomeAgentProposalReason(proposal.reason)}`);
+    items.push("終了後は通常の自動制御へ戻す想定やで。");
+    items.push("この版では実操作も一時停止保存もまだしない。");  } else if (proposal.action === "pause_room_automation") {
     items.push(`自動制御を${proposal.expiresAt || "一時的に"}まで止める候補`);
   } else if (proposal.action === "resume_room_automation") {
     items.push("通常運転へ戻す候補");
@@ -1657,6 +1705,46 @@ function formatHomeAgentPercent(value) {
   return /%|％$/.test(text) ? text : `${text}％`;
 }
 
+function formatHomeAgentTrendLabel(value) {
+  const key = String(value || "").trim();
+  if (key === "rising") return "上昇中";
+  if (key === "falling") return "下降中";
+  if (key === "stable") return "横ばい";
+  if (key === "unknown") return "不明";
+  return key;
+}
+
+function formatHomeAgentClimateStateLabel(value) {
+  const key = String(value || "").trim();
+  const labels = {
+    hot: "暑め",
+    slightly_hot: "少し暑め",
+    cold: "寒め",
+    slightly_cold: "少し寒め",
+    humid: "湿度高め",
+    dry: "乾燥気味",
+    stale: "センサー古め",
+    comfortable: "快適",
+  };
+  return labels[key] || key;
+}
+
+function formatHomeAgentProposalReason(value) {
+  const key = String(value || "").trim();
+  const labels = {
+    above_target_and_rising: "目標より高く、まだ上がり気味",
+    above_target_and_not_improving: "目標より高く、下がりきっていない",
+    below_target_and_falling: "目標より低く、まだ下がり気味",
+    hot: "暑いという体感",
+    cold: "寒いという体感",
+    stronger: "強めたいという指定",
+    weaker: "弱めたいという指定",
+    explicit_down: "1度下げる指定",
+    explicit_up: "1度上げる指定",
+  };
+  return labels[key] || key;
+}
+
 function findSignageActionCandidate(candidates) {
   if (!Array.isArray(candidates)) {
     return null;
@@ -1725,9 +1813,11 @@ function renderHomeAgentActionConfirmation(actionCandidate) {
   const skill = actionCandidate?.skill || actionCandidate?.action || "";
   const canExecute = skill === "pauseRoomAutomation" || skill === "resumeRoomAutomation";
   const message = skill === "setAirconOverride"
-    ? "この版ではエアコン温度変更はまだ未接続。候補だけ見せとるよ。"
+    ? "この版ではエアコン温度変更はまだ未接続。押しても実操作もpause保存もしないよ。"
     : "確認したらswitchbot-temp-logへ送るよ。";
-  const executeButton = canExecute
+  const executeButton = skill === "setAirconOverride"
+    ? `<button type="button" data-home-agent-action-unconnected>${escapeHtml(actionLabel)}</button>`
+    : canExecute
     ? `<button type="button" data-home-agent-action-execute>${escapeHtml(actionLabel)}</button>`
     : "";
 
