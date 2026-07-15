@@ -632,7 +632,7 @@ function appendNewItem_(item) {
     calendarTitle: item.calendarTitle || '',
     calendarSyncStatus: item.calendarSyncStatus || getInitialCalendarSyncStatus_(item),
     calendarId: item.calendarId || '',
-    calendarEventId: item.calendarEventId || '',
+    _calendarEventId: item.calendarEventId || '',
     calendarName: item.calendarName || '',
     calendarSyncedAt: item.calendarSyncedAt || '',
     calendarStart: item.calendarStart || '',
@@ -647,6 +647,12 @@ function appendNewItem_(item) {
     return header ? savedItem[header] : '';
   });
   sheet.appendRow(row);
+  const rowNumber = sheet.getLastRow();
+  actualHeaders.forEach(function(header, position) {
+    if (shouldStoreAsText_(header)) {
+      setSheetValueForField_(sheet, rowNumber, position + 1, header, savedItem[header]);
+    }
+  });
 
   return savedItem;
 }
@@ -712,7 +718,7 @@ function updateItem_(body) {
   allowedFields.forEach(function(field) {
     if (Object.prototype.hasOwnProperty.call(body, field) || field === 'needsFollowup' || field === 'followupQuestion' || field === 'followupInputType') {
       if (Object.prototype.hasOwnProperty.call(index, field)) {
-        sheet.getRange(rowNumber, index[field] + 1).setValue(normalizeValueForSheet_(field, afterItem[field]));
+        setSheetValueForField_(sheet, rowNumber, index[field] + 1, field, afterItem[field]);
       }
     }
   });
@@ -784,9 +790,25 @@ function getItemById_(id) {
 function updateRowFields_(sheet, rowNumber, index, updates) {
   Object.keys(updates).forEach(function(field) {
     if (Object.prototype.hasOwnProperty.call(index, field)) {
-      sheet.getRange(rowNumber, index[field] + 1).setValue(normalizeValueForSheet_(field, updates[field]));
+      setSheetValueForField_(sheet, rowNumber, index[field] + 1, field, updates[field]);
     }
   });
+}
+
+function setSheetValueForField_(sheet, rowNumber, columnNumber, field, value) {
+  const range = sheet.getRange(rowNumber, columnNumber);
+  const normalized = normalizeValueForSheet_(field, value);
+  if (shouldStoreAsText_(field)) {
+    range.setNumberFormat('@');
+    range.setValue(String(normalized || ''));
+    return;
+  }
+
+  range.setValue(normalized);
+}
+
+function shouldStoreAsText_(field) {
+  return isDateOnlyHeader_(field) || isTimeOnlyHeader_(field) || field === 'remindAt' || field === 'calendarStart' || field === 'calendarEnd';
 }
 
 function assertRequiredHeaders_(index, fields) {
@@ -828,18 +850,38 @@ function notificationCandidates_(params) {
   const targetDate = parseNotificationTargetDate_(params.date);
   const limit = normalizeNotificationLimit_(params.limit);
   const userId = String(params.userId || '').trim();
+  const settings = buildTodayCalendarSettings_(params);
   const items = readInboxItemsForEngine_();
-  const candidates = buildNotificationCandidates_(items, {
+  const warnings = [];
+  const paluruCandidates = buildNotificationCandidates_(items, {
     targetDate: targetDate,
     userId: userId,
-    limit: limit,
+    limit: 50,
   });
+  let calendarCandidates = [];
+
+  try {
+    calendarCandidates = getTodayCalendarEvents_(targetDate, settings)
+      .filter(function(event) {
+        return isCalendarEventVisible_(event, settings);
+      })
+      .map(function(event, index) {
+        return buildCalendarNotificationCandidate_(event, index);
+      });
+  } catch (error) {
+    warnings.push('calendar_events_unavailable');
+    debugLog_('[notificationCandidates] calendar read failed: ' + sanitizeCalendarError_(error));
+  }
+
+  const candidates = mergeTodayCandidates_(paluruCandidates, calendarCandidates)
+    .slice(0, limit);
 
   return json_({
     success: true,
     targetDate: targetDate,
     count: candidates.length,
     items: candidates,
+    warnings: warnings,
   });
 }
 
@@ -941,11 +983,16 @@ function getNotificationReasons_(item, targetDate) {
 function buildNotificationCandidate_(item, reasons, index) {
   const title = String(item.title || item.memo || '無題').trim();
   return {
+    sourceType: 'paluru',
+    sourceId: item.id || '',
     id: item.id || '',
     title: title,
+    cleanTitle: title,
     type: item.type || '',
     category: item.category || '',
     priority: normalizePriority_(item.priority) || item.priority || '',
+    memberKey: item.userId || '',
+    memberLabel: item.userDisplayName || '',
     dueDate: normalizeDateOnlyString_(item.dueDate),
     dueTime: normalizeTimeForCompare_(item.dueTime),
     eventStart: normalizeDateOnlyString_(item.eventStart),
@@ -953,6 +1000,12 @@ function buildNotificationCandidate_(item, reasons, index) {
     eventEnd: normalizeDateOnlyString_(item.eventEnd),
     eventEndTime: normalizeTimeForCompare_(item.eventEndTime),
     remindAt: item.remindAt || '',
+    startAt: buildCandidateDateTimeValue_(item.eventStart, item.eventStartTime),
+    endAt: buildCandidateDateTimeValue_(item.eventEnd, item.eventEndTime),
+    allDay: !normalizeTimeForCompare_(item.eventStartTime),
+    actionable: String(item.type || '').trim().toLowerCase() === 'event',
+    requiresUserAction: normalizeBooleanForSheet_(item.needsFollowup),
+    calendarEventId: item.calendarEventId || '',
     needsFollowup: normalizeBooleanForSheet_(item.needsFollowup),
     reasons: reasons,
     notificationLevel: getNotificationLevel_(reasons),
@@ -969,10 +1022,12 @@ function sortNotificationCandidates_(items) {
   const reasonOrder = {
     overdue: 0,
     event_today_timed: 1,
+    calendar_event_today_timed: 1,
     due_today_timed: 2,
     due_today: 3,
     reminder_today: 4,
     event_today: 5,
+    calendar_event_today: 5,
     urgent: 6,
     followup_required: 7,
     high_priority: 8,
@@ -1000,6 +1055,7 @@ function sortNotificationCandidates_(items) {
     return a._sortIndex - b._sortIndex;
   }).map(function(item) {
     delete item._sortIndex;
+    delete item._calendarEventId;
     return item;
   });
 }
@@ -1024,6 +1080,267 @@ function getNotificationLevel_(reasons) {
   }
 
   return 'normal';
+}
+
+function buildTodayCalendarSettings_(params) {
+  const selected = String(params.selectedMemberKeys || 'father,family')
+    .split(',')
+    .map(function(value) { return String(value || '').trim(); })
+    .filter(Boolean);
+  return {
+    userId: String(params.userId || 'father').trim() || 'father',
+    selectedMemberKeys: selected.length > 0 ? selected : ['father', 'family'],
+    includeUnknown: String(params.includeUnknown || '').toLowerCase() === 'true',
+  };
+}
+
+function getTodayCalendarEvents_(targetDate, settings) {
+  const config = getCalendarConfig_('family');
+  const calendar = getCalendarByConfig_(config);
+  const start = parseDateOnly_(targetDate);
+  const end = new Date(start.getTime());
+  end.setDate(end.getDate() + 1);
+  const events = calendar.getEvents(start, end);
+  return events
+    .map(function(event) {
+      return buildCalendarEventModel_(event, targetDate, settings);
+    })
+    .filter(function(event) {
+      return event !== null;
+    });
+}
+
+function buildCalendarEventModel_(event, targetDate) {
+  const rawTitle = event.getTitle ? event.getTitle() : '';
+  const member = parseCalendarMemberTag_(rawTitle);
+  const allDay = event.isAllDayEvent && event.isAllDayEvent();
+  const start = event.getStartTime();
+  const end = event.getEndTime();
+
+  if (!calendarEventOverlapsTargetDate_(start, end, allDay, targetDate)) {
+    return null;
+  }
+
+  const startDate = Utilities.formatDate(start, 'Asia/Tokyo', 'yyyy-MM-dd');
+  const endDate = Utilities.formatDate(end, 'Asia/Tokyo', 'yyyy-MM-dd');
+  const startTime = allDay ? '' : Utilities.formatDate(start, 'Asia/Tokyo', 'HH:mm');
+  const endTime = allDay ? '' : Utilities.formatDate(end, 'Asia/Tokyo', 'HH:mm');
+  return {
+    sourceType: 'google_calendar',
+    sourceId: digestCalendarEventId_(event.getId ? event.getId() : rawTitle + startDate + startTime),
+    id: 'gcal:' + digestCalendarEventId_(event.getId ? event.getId() : rawTitle + startDate + startTime),
+    _calendarEventId: event.getId ? event.getId() : '',
+    title: member.cleanTitle,
+    cleanTitle: member.cleanTitle,
+    rawTitle: rawTitle,
+    type: 'event',
+    memberKey: member.memberKey,
+    memberLabel: member.memberLabel,
+    matched: member.matched,
+    eventStart: startDate,
+    eventStartTime: startTime,
+    eventEnd: endDate,
+    eventEndTime: endTime,
+    startAt: buildCandidateDateTimeValue_(startDate, startTime),
+    endAt: buildCandidateDateTimeValue_(endDate, endTime),
+    allDay: allDay,
+    actionable: false,
+    requiresUserAction: isCalendarEventNotificationCandidate_({
+      title: member.cleanTitle,
+      memberKey: member.memberKey,
+      eventStart: startDate,
+      eventStartTime: startTime,
+    }),
+    reasons: [startTime ? 'calendar_event_today_timed' : 'calendar_event_today'],
+    notificationLevel: 'normal',
+    message: member.cleanTitle,
+    createdAt: '',
+    updatedAt: '',
+    _sortIndex: 10000 + dateTimeSortKey_(startDate, startTime),
+  };
+}
+
+function calendarEventOverlapsTargetDate_(start, end, allDay, targetDate) {
+  const targetStart = parseDateOnly_(targetDate);
+  const targetEnd = new Date(targetStart.getTime());
+  targetEnd.setDate(targetEnd.getDate() + 1);
+  if (allDay) {
+    const startDate = Utilities.formatDate(start, 'Asia/Tokyo', 'yyyy-MM-dd');
+    const endDate = Utilities.formatDate(end, 'Asia/Tokyo', 'yyyy-MM-dd');
+    return dateOnlyToEpochDay_(startDate) <= dateOnlyToEpochDay_(targetDate) &&
+      dateOnlyToEpochDay_(targetDate) < dateOnlyToEpochDay_(endDate);
+  }
+
+  return start.getTime() < targetEnd.getTime() && end.getTime() > targetStart.getTime();
+}
+
+function parseCalendarMemberTag_(title) {
+  const text = String(title || '').trim();
+  const memberMap = getCalendarMemberMap_();
+  const prefixMatch = text.match(/^[（(]\s*([^）)]+?)\s*[）)]\s*(.*)$/);
+  const suffixMatch = text.match(/^(.*?)\s*[（(]\s*([^）)]+?)\s*[）)]$/);
+  const tokenText = prefixMatch ? prefixMatch[1] : (suffixMatch ? suffixMatch[2] : '');
+  const cleanTitle = prefixMatch ? prefixMatch[2] : (suffixMatch ? suffixMatch[1] : text);
+  if (!tokenText) {
+    return {
+      memberKey: 'unknown',
+      memberLabel: memberMap.unknown.label,
+      cleanTitle: text,
+      matched: false,
+    };
+  }
+
+  const token = normalizeCalendarMemberToken_(tokenText);
+  const member = memberMap[token] || memberMap.unknown;
+  return {
+    memberKey: member.key,
+    memberLabel: member.label,
+    cleanTitle: String(cleanTitle || '').trim() || text,
+    matched: member.key !== 'unknown',
+  };
+}
+
+function normalizeCalendarMemberToken_(value) {
+  const token = String(value || '').trim();
+  const aliases = {
+    '父': 'father',
+    '父ちゃん': 'father',
+    '母': 'mother',
+    '母ちゃん': 'mother',
+    '長男': 'son1',
+    '長女': 'daughter1',
+    '次男': 'son2',
+    '次女': 'daughter2',
+    '家族': 'family',
+    '全員': 'family',
+  };
+  return aliases[token] || token;
+}
+
+function getCalendarMemberMap_() {
+  return {
+    father: { key: 'father', label: '父' },
+    mother: { key: 'mother', label: '母' },
+    son1: { key: 'son1', label: '長男' },
+    daughter1: { key: 'daughter1', label: '長女' },
+    son2: { key: 'son2', label: '次男' },
+    daughter2: { key: 'daughter2', label: '次女' },
+    family: { key: 'family', label: '家族' },
+    unknown: { key: 'unknown', label: '未分類' },
+  };
+}
+
+function isCalendarEventVisible_(event, settings) {
+  if (event.memberKey === 'unknown') {
+    return Boolean(settings.includeUnknown);
+  }
+
+  return settings.selectedMemberKeys.indexOf(event.memberKey) !== -1;
+}
+
+function isCalendarEventNotificationCandidate_(event) {
+  const title = String(event.title || '').trim();
+  const actionKeywords = [
+    'お迎え',
+    '迎え',
+    '送迎',
+    '通院',
+    '病院',
+    '学校行事',
+    '保護者会',
+    '授業参観',
+    '予定変更',
+  ];
+  if (event.memberKey === 'family') {
+    return true;
+  }
+
+  return actionKeywords.some(function(keyword) {
+    return title.indexOf(keyword) !== -1;
+  });
+}
+
+function buildCalendarNotificationCandidate_(event, index) {
+  const candidate = Object.assign({}, event);
+  candidate._sortIndex = 10000 + index;
+  return candidate;
+}
+
+function mergeTodayCandidates_(paluruCandidates, calendarCandidates) {
+  const calendarByEventId = {};
+  calendarCandidates.forEach(function(candidate) {
+    if (candidate._calendarEventId) {
+      calendarByEventId[candidate._calendarEventId] = candidate;
+    }
+  });
+
+  const filteredPaluru = paluruCandidates.filter(function(candidate) {
+    if (!candidate._calendarEventId) {
+      return true;
+    }
+    return !calendarByEventId[candidate._calendarEventId];
+  });
+
+  const merged = filteredPaluru.slice();
+  calendarCandidates.forEach(function(candidate) {
+    const duplicate = merged.some(function(existing) {
+      return areTodayCandidatesProbablySame_(existing, candidate);
+    });
+    if (!duplicate) {
+      merged.push(candidate);
+    }
+  });
+
+  return sortNotificationCandidates_(merged);
+}
+
+function areTodayCandidatesProbablySame_(left, right) {
+  if (left._calendarEventId && right._calendarEventId && left._calendarEventId === right._calendarEventId) {
+    return true;
+  }
+
+  const leftTitle = normalizeCandidateTitle_(left.cleanTitle || left.title);
+  const rightTitle = normalizeCandidateTitle_(right.cleanTitle || right.title);
+  if (!leftTitle || leftTitle !== rightTitle) {
+    return false;
+  }
+
+  return normalizeDateOnlyString_(left.eventStart) === normalizeDateOnlyString_(right.eventStart) &&
+    normalizeTimeForCompare_(left.eventStartTime) === normalizeTimeForCompare_(right.eventStartTime);
+}
+
+function normalizeCandidateTitle_(title) {
+  return String(title || '')
+    .replace(/^[（(]\s*[^）)]+?\s*[）)]\s*/, '')
+    .replace(/\s*[（(]\s*[^）)]+?\s*[）)]$/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function buildCandidateDateTimeValue_(dateValue, timeValue) {
+  const date = normalizeDateOnlyString_(dateValue);
+  if (!date) {
+    return '';
+  }
+  const time = normalizeTimeForCompare_(timeValue);
+  return time ? date + ' ' + time : date;
+}
+
+function dateTimeSortKey_(dateValue, timeValue) {
+  return dateOnlyToEpochDay_(dateValue) * 1440 + getTimeSortMinutes_(timeValue);
+}
+
+function getTimeSortMinutes_(timeValue) {
+  const match = String(timeValue || '').match(/^(\d{1,2}):(\d{2})/);
+  if (!match) {
+    return 9999;
+  }
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function digestCalendarEventId_(value) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(value || ''), Utilities.Charset.UTF_8);
+  return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/g, '').slice(0, 16);
 }
 
 function buildNotificationMessage_(title, reasons) {
@@ -1361,12 +1678,7 @@ function normalizeCalendarComparableValue_(field, value) {
 }
 
 function normalizeTimeForCompare_(value) {
-  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})/);
-  if (!match) {
-    return '';
-  }
-
-  return String(Number(match[1])).padStart(2, '0') + ':' + match[2];
+  return normalizeTimeInput_(value);
 }
 
 function buildExpectedCalendarTitle_(item) {
@@ -1665,13 +1977,69 @@ function normalizeTimeForSheet_(value) {
   }
 
   const text = String(value || '').trim();
-  const direct = normalizeTimeForCompare_(text);
+  const direct = normalizeTimeInput_(text);
   if (direct) {
     return direct;
   }
 
   const match = text.match(/(?:T| )(\d{1,2}):(\d{2})/);
   return match ? match[1].padStart(2, '0') + ':' + match[2] : '';
+}
+
+function normalizeTimeInput_(value) {
+  const text = normalizeAsciiDigits_(String(value || '').trim())
+    .replace(/[：]/g, ':')
+    .replace(/\s+/g, ' ');
+  if (!text) {
+    return '';
+  }
+
+  const isoMatch = text.match(/(?:T| )(\d{1,2}):(\d{2})/);
+  if (isoMatch) {
+    return normalizeHourMinute_(isoMatch[1], isoMatch[2], /pm/i.test(text), /am/i.test(text));
+  }
+
+  const colonMatch = text.match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i);
+  if (colonMatch) {
+    return normalizeHourMinute_(colonMatch[1], colonMatch[2], /^pm$/i.test(colonMatch[3] || ''), /^am$/i.test(colonMatch[3] || ''));
+  }
+
+  const jpMatch = text.match(/^(?:午(前|後)\s*)?(\d{1,2})\s*(?:時|じ)\s*(\d{1,2})?\s*(?:分)?/);
+  if (jpMatch) {
+    return normalizeHourMinute_(jpMatch[2], jpMatch[3] || '00', jpMatch[1] === '後', jpMatch[1] === '前');
+  }
+
+  const digitsMatch = text.match(/^(\d{3,4})$/);
+  if (digitsMatch) {
+    const digits = digitsMatch[1].padStart(4, '0');
+    return normalizeHourMinute_(digits.slice(0, 2), digits.slice(2, 4), false, false);
+  }
+
+  return '';
+}
+
+function normalizeAsciiDigits_(value) {
+  return String(value || '').replace(/[０-９]/g, function(ch) {
+    return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+  });
+}
+
+function normalizeHourMinute_(hourValue, minuteValue, isPm, isAm) {
+  let hour = Number(hourValue);
+  const minute = Number(minuteValue);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute < 0 || minute > 59) {
+    return '';
+  }
+  if (isPm && hour >= 1 && hour <= 11) {
+    hour += 12;
+  }
+  if (isAm && hour === 12) {
+    hour = 0;
+  }
+  if (hour < 0 || hour > 23) {
+    return '';
+  }
+  return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
 }
 
 function normalizePriority_(value) {
@@ -2627,8 +2995,34 @@ function testPaluruDateTimeFormatting() {
   const cases = [
     ['1899 date suppressed', normalizeDateForSheet_('1899-12-30T05:02:40.000Z') === ''],
     ['time only extracted', normalizeTimeForSheet_('1899-12-30T05:02:40.000Z') === '05:02'],
+    ['1325 normalized', normalizeTimeInput_('1325') === '13:25'],
+    ['930 normalized', normalizeTimeInput_('930') === '09:30'],
+    ['full width digits normalized', normalizeTimeInput_('１３２５') === '13:25'],
+    ['jp time normalized', normalizeTimeInput_('13時25分') === '13:25'],
+    ['pm time normalized', normalizeTimeInput_('1:25 PM') === '13:25'],
     ['empty event end omitted', formatItemDateTime_({ type: 'event', eventStart: '2026-07-15', eventStartTime: '13:25', eventEnd: '', eventEndTime: '' }) === '7/15 13:25'],
     ['event end omitted without eventEnd date', formatItemDateTime_({ type: 'event', eventStart: '2026-07-15', eventStartTime: '13:25', eventEnd: '', eventEndTime: '14:00' }) === '7/15 13:25'],
+  ];
+
+  assertPaluruTestCases_(cases);
+  return cases;
+}
+
+function testPaluruCalendarMemberTagRules() {
+  const father = parseCalendarMemberTag_('（父）会議');
+  const fatherSuffix = parseCalendarMemberTag_('薬局（父）');
+  const daughter = parseCalendarMemberTag_('(次女) 授業参観');
+  const unknown = parseCalendarMemberTag_('タグなし予定');
+  const settings = buildTodayCalendarSettings_({});
+  const cases = [
+    ['father tag parsed', father.memberKey === 'father' && father.cleanTitle === '会議'],
+    ['father suffix tag parsed', fatherSuffix.memberKey === 'father' && fatherSuffix.cleanTitle === '薬局'],
+    ['half width tag parsed', daughter.memberKey === 'daughter2' && daughter.cleanTitle === '授業参観'],
+    ['unknown tag parsed', unknown.memberKey === 'unknown' && unknown.cleanTitle === 'タグなし予定'],
+    ['default visible father', isCalendarEventVisible_({ memberKey: 'father' }, settings) === true],
+    ['default visible family', isCalendarEventVisible_({ memberKey: 'family' }, settings) === true],
+    ['default hidden unknown', isCalendarEventVisible_({ memberKey: 'unknown' }, settings) === false],
+    ['pickup needs user action', isCalendarEventNotificationCandidate_({ title: 'りおたんのお迎え', memberKey: 'daughter2' }) === true],
   ];
 
   assertPaluruTestCases_(cases);

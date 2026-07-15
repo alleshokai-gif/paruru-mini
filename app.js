@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260715-01";
+const ASSET_VERSION = "v20260715-02";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -38,6 +38,8 @@ const DEFAULT_PROFILE = {
   displayName: "父",
   calendarSuffix: "（父）",
   defaultCalendar: "family",
+  selectedCalendarMemberKeys: ["father", "family"],
+  includeUnknownCalendarEvents: false,
 };
 
 const PARURU_MESSAGES = {
@@ -274,6 +276,8 @@ const profileDisplayName = document.querySelector("#profileDisplayName");
 const profileCalendarSuffix = document.querySelector("#profileCalendarSuffix");
 const profileDefaultCalendar = document.querySelector("#profileDefaultCalendar");
 const profileDeviceId = document.querySelector("#profileDeviceId");
+const profileCalendarMembers = document.querySelector("#profileCalendarMembers");
+const profileIncludeUnknownCalendarEvents = document.querySelector("#profileIncludeUnknownCalendarEvents");
 const todayParuru = document.querySelector("#todayParuru");
 const todayParuruLine = document.querySelector("#todayParuruLine");
 const todayParuruList = document.querySelector("#todayParuruList");
@@ -826,6 +830,8 @@ async function fetchNotificationCandidates() {
   if (profile.userId) {
     url.searchParams.set("userId", profile.userId);
   }
+  url.searchParams.set("selectedMemberKeys", normalizeCalendarMemberSelection(profile.selectedCalendarMemberKeys).join(","));
+  url.searchParams.set("includeUnknown", profile.includeUnknownCalendarEvents ? "true" : "false");
 
   const response = await fetch(url.toString(), { cache: "no-store" });
   return parseApiResponse(response);
@@ -1023,11 +1029,19 @@ function buildTodayDisplayLine(item) {
   }
 
   if (reasons.includes("event_today_timed")) {
-    return `${formatTimeJa(item.eventStartTime)} ${title}`.trim();
+    return `${formatTimeJa(item.eventStartTime)} ${formatMemberPrefix(item)}${title}`.trim();
   }
 
   if (reasons.includes("event_today")) {
-    return `今日 ${title}`;
+    return `今日 ${formatMemberPrefix(item)}${title}`;
+  }
+
+  if (reasons.includes("calendar_event_today_timed")) {
+    return `${formatTimeJa(item.eventStartTime)} ${formatMemberPrefix(item)}${item.cleanTitle || title}`.trim();
+  }
+
+  if (reasons.includes("calendar_event_today")) {
+    return `今日 ${formatMemberPrefix(item)}${item.cleanTitle || title}`;
   }
 
   if (reasons.includes("due_today_timed")) {
@@ -1048,6 +1062,14 @@ function buildTodayDisplayLine(item) {
   }
 
   return item.message || title;
+}
+
+function formatMemberPrefix(item) {
+  const label = String(item.memberLabel || "").trim();
+  if (!label || label === "未分類") {
+    return "";
+  }
+  return `${label}・`;
 }
 
 function renderNotificationMore(totalCount, visibleCount) {
@@ -1073,6 +1095,8 @@ function renderNotificationReasonLabel(reason) {
     overdue: "期限切れ",
     event_today_timed: "予定",
     event_today: "予定",
+    calendar_event_today_timed: "予定",
+    calendar_event_today: "予定",
     due_today: "今日締切",
     due_today_timed: "今日締切",
     reminder_today: "通知",
@@ -1263,6 +1287,12 @@ function renderDetailCalendarStatus(item) {
 
 async function openNotificationDetail(id) {
   if (!id) {
+    return;
+  }
+
+  const candidate = notificationCandidatesState.items.find((item) => item.id === id);
+  if (candidate?.sourceType === "google_calendar") {
+    showTemporaryParuruMessage("カレンダー予定は表示だけやで。変更はGoogleカレンダー側でお願いな。", "");
     return;
   }
 
@@ -2517,12 +2547,59 @@ function normalizeCalendarComparableValue(field, value) {
 }
 
 function normalizeTimeInputValue(value) {
-  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
-  if (!match) {
+  const text = normalizeAsciiDigits(String(value || "").trim())
+    .replace(/[：]/g, ":")
+    .replace(/\s+/g, " ");
+  if (!text) {
     return "";
   }
 
-  return `${match[1].padStart(2, "0")}:${match[2]}`;
+  const isoMatch = text.match(/(?:T| )(\d{1,2}):(\d{2})/);
+  if (isoMatch) {
+    return normalizeHourMinute(isoMatch[1], isoMatch[2], /pm/i.test(text), /am/i.test(text));
+  }
+
+  const colonMatch = text.match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i);
+  if (colonMatch) {
+    return normalizeHourMinute(colonMatch[1], colonMatch[2], /^pm$/i.test(colonMatch[3] || ""), /^am$/i.test(colonMatch[3] || ""));
+  }
+
+  const jpMatch = text.match(/^(?:午(前|後)\s*)?(\d{1,2})\s*(?:時|じ)\s*(\d{1,2})?\s*(?:分)?/);
+  if (jpMatch) {
+    return normalizeHourMinute(jpMatch[2], jpMatch[3] || "00", jpMatch[1] === "後", jpMatch[1] === "前");
+  }
+
+  const digitsMatch = text.match(/^(\d{3,4})$/);
+  if (digitsMatch) {
+    const digits = digitsMatch[1].padStart(4, "0");
+    return normalizeHourMinute(digits.slice(0, 2), digits.slice(2, 4), false, false);
+  }
+
+  return "";
+}
+
+function normalizeAsciiDigits(value) {
+  return String(value || "").replace(/[０-９]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)
+  );
+}
+
+function normalizeHourMinute(hourValue, minuteValue, isPm, isAm) {
+  let hour = Number(hourValue);
+  const minute = Number(minuteValue);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute < 0 || minute > 59) {
+    return "";
+  }
+  if (isPm && hour >= 1 && hour <= 11) {
+    hour += 12;
+  }
+  if (isAm && hour === 12) {
+    hour = 0;
+  }
+  if (hour < 0 || hour > 23) {
+    return "";
+  }
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function addMinutesToDateTime(dateValue, timeValue, minutesToAdd) {
@@ -2615,6 +2692,8 @@ function loadUserProfile() {
     ...stored,
     deviceId: stored.deviceId || createDeviceId(),
   };
+  profile.selectedCalendarMemberKeys = normalizeCalendarMemberSelection(profile.selectedCalendarMemberKeys);
+  profile.includeUnknownCalendarEvents = Boolean(profile.includeUnknownCalendarEvents);
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   return profile;
 }
@@ -2642,6 +2721,7 @@ function renderProfileForm() {
   profileCalendarSuffix.value = profile.calendarSuffix || "";
   profileDefaultCalendar.value = profile.defaultCalendar || DEFAULT_PROFILE.defaultCalendar;
   profileDeviceId.value = profile.deviceId || "";
+  renderCalendarMemberSelection(profile);
 }
 
 function saveUserProfileFromForm() {
@@ -2651,10 +2731,43 @@ function saveUserProfileFromForm() {
     displayName: profileDisplayName.value.trim() || DEFAULT_PROFILE.displayName,
     calendarSuffix: profileCalendarSuffix.value.trim(),
     defaultCalendar: normalizeCalendarTarget(profileDefaultCalendar.value),
+    selectedCalendarMemberKeys: readCalendarMemberSelectionFromForm(),
+    includeUnknownCalendarEvents: Boolean(profileIncludeUnknownCalendarEvents?.checked),
     deviceId: current.deviceId || createDeviceId(),
   };
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   return profile;
+}
+
+function normalizeCalendarMemberSelection(value) {
+  const allowed = ["father", "mother", "son1", "daughter1", "son2", "daughter2", "family"];
+  const source = Array.isArray(value) ? value : String(value || "").split(",");
+  const selected = source
+    .map((entry) => String(entry || "").trim())
+    .filter((entry) => allowed.includes(entry));
+  return selected.length > 0 ? [...new Set(selected)] : [...DEFAULT_PROFILE.selectedCalendarMemberKeys];
+}
+
+function renderCalendarMemberSelection(profile) {
+  if (!profileCalendarMembers) {
+    return;
+  }
+  const selected = normalizeCalendarMemberSelection(profile.selectedCalendarMemberKeys);
+  profileCalendarMembers.querySelectorAll("input[type='checkbox']").forEach((input) => {
+    input.checked = selected.includes(input.value);
+  });
+  if (profileIncludeUnknownCalendarEvents) {
+    profileIncludeUnknownCalendarEvents.checked = Boolean(profile.includeUnknownCalendarEvents);
+  }
+}
+
+function readCalendarMemberSelectionFromForm() {
+  if (!profileCalendarMembers) {
+    return [...DEFAULT_PROFILE.selectedCalendarMemberKeys];
+  }
+  const selected = [...profileCalendarMembers.querySelectorAll("input[type='checkbox']:checked")]
+    .map((input) => input.value);
+  return normalizeCalendarMemberSelection(selected);
 }
 
 function normalizeUserId(value) {
@@ -2806,12 +2919,7 @@ function parseYmd(value) {
 }
 
 function normalizeTimeLabel(value) {
-  const match = String(value || "").match(/(?:^|T| )(\d{1,2}):(\d{2})/);
-  if (!match) {
-    return "";
-  }
-
-  return `${match[1].padStart(2, "0")}:${match[2]}`;
+  return normalizeTimeInputValue(value);
 }
 
 function normalizeDateInputValue(value) {
@@ -3143,7 +3251,7 @@ function getDummyNotificationReasons(item, targetDay) {
 }
 
 function sortDummyNotificationCandidates(a, b) {
-  const reasonOrder = ["overdue", "event_today_timed", "due_today_timed", "due_today", "reminder_today", "event_today", "urgent", "followup_required", "high_priority"];
+  const reasonOrder = ["overdue", "event_today_timed", "calendar_event_today_timed", "due_today_timed", "due_today", "reminder_today", "event_today", "calendar_event_today", "urgent", "followup_required", "high_priority"];
   const rankA = Math.min(...a.reasons.map((reason) => reasonOrder.indexOf(reason)).filter((rank) => rank >= 0));
   const rankB = Math.min(...b.reasons.map((reason) => reasonOrder.indexOf(reason)).filter((rank) => rank >= 0));
   if (rankA !== rankB) {
