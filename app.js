@@ -1669,8 +1669,8 @@ function renderHomeAgentClimateOverviewSection(overview) {
       room.displayName || room.roomId || "部屋",
       formatHomeAgentTemperature(room.temperature),
       formatHomeAgentPercent(room.humidity),
-      room.state ? formatHomeAgentClimateStateLabel(room.state) : "",
-      room.trend ? formatHomeAgentTrendLabel(room.trend) : "",
+      room.stateLabel || (room.state ? formatHomeAgentClimateStateLabel(room.state) : ""),
+      room.actionComment || "",
     ].filter(Boolean);
     return parts.join(" / ");
   });
@@ -1811,7 +1811,7 @@ function formatHomeAgentTrendLabel(value) {
   if (key === "rising") return "上昇中";
   if (key === "falling") return "下降中";
   if (key === "stable") return "横ばい";
-  if (key === "unknown") return "不明";
+  if (key === "unknown") return "温度の動きはまだデータ不足";
   return key;
 }
 
@@ -1826,8 +1826,10 @@ function formatHomeAgentClimateStateLabel(value) {
     dry: "乾燥気味",
     stale: "センサー古め",
     comfortable: "快適",
+    unknown: "データ不足",
+    too_hot: "かなり暑い",
   };
-  return labels[key] || key;
+  return labels[key] || "状態は確認中";
 }
 
 function formatHomeAgentProposalReason(value) {
