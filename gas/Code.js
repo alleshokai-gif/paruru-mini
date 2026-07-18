@@ -79,6 +79,10 @@ function doPost(e) {
       return createItemWithAI_(body);
     }
 
+    if (action === 'agentChat') {
+      return agentChat_(body);
+    }
+
     if (action === 'homeAgent') {
       return homeAgent_(body);
     }

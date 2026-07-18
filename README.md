@@ -122,6 +122,19 @@ Script Property:
 - JSON Schemaによる構造化出力
 - ユーザーが明示指定したカテゴリ・優先度はAI結果より優先する
 
+## PALURU Agent Gateway
+
+PALURU Mini GASは、POST `action=agentChat`をPALURU Agentへサーバー間転送する。PWAはAgent URLや認証tokenを保持せず、Mini GASがScript Propertiesから取得する。
+
+Script Properties:
+
+- `PALURU_AGENT_URL`
+- `PALURU_AGENT_TOKEN`
+
+`agentChat`は`message`、UUID形式の`sessionId`と`clientRequestId`を必須とする。`userId`、`userDisplayName`、`deviceId`は会話contextであり認証には使用しない。Agentの内部requestId、生エラー、Tool生データ、URL、tokenはPWAへ返さない。
+
+現時点ではMini GASからAgentへ接続するGatewayのみ実装済み。PWA UI接続、既存`createWithAI`の置換、永続Memoryは未実装。
+
 ## Spreadsheet
 
 - Spreadsheet名: `Paruru_DB`
