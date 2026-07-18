@@ -258,6 +258,10 @@ main,
   gap: 10px;
 }
 
+.today-paruru-inline-warning {
+  margin-top: 4px;
+}
+
 .paruru-hero {
   display: grid;
   grid-template-columns: minmax(105px, 0.9fr) minmax(0, 2.1fr);

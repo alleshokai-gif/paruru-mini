@@ -11,6 +11,11 @@ const documentHandlers = {};
 const windowHandlers = {};
 const requests = [];
 const scheduled = [];
+const clearedTimers = [];
+let fetchImpl = async (url) => {
+  requests.push(String(url));
+  return { ok: true, status: 200, json: async () => ({ success: true, items: [], count: 0, warnings: [] }) };
+};
 
 function classList() {
   const values = new Set();
@@ -29,6 +34,7 @@ function element(selector) {
     classList: classList(),
     addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; },
     closest() { return null; }, setAttribute() {}, getAttribute() { return ''; },
+    insertAdjacentHTML(position, html) { this.innerHTML += html; },
     focus() {}, reset() {}, showModal() {}, close() {}, scrollIntoView() {},
     getBoundingClientRect() { return { top: 0, bottom: 100, height: 100 }; },
   };
@@ -51,7 +57,7 @@ const context = {
     innerHeight: 800,
     addEventListener: (type, handler) => { windowHandlers[type] = handler; },
     setTimeout: (handler, delay) => { scheduled.push({ handler, delay }); return scheduled.length; },
-    clearTimeout() {},
+    clearTimeout: (id) => { clearedTimers.push(id); },
   },
   document: {
     visibilityState: 'hidden',
@@ -62,10 +68,7 @@ const context = {
   },
   requestAnimationFrame: (handler) => handler(),
   FormData: function() { return { get: () => 'Normal' }; },
-  fetch: async (url) => {
-    requests.push(String(url));
-    return { ok: true, status: 200, json: async () => ({ success: true, items: [], count: 0, warnings: [] }) };
-  },
+  fetch: (...args) => fetchImpl(...args),
 };
 vm.createContext(context);
 new vm.Script(appSource, { filename: 'app.js' }).runInContext(context);
@@ -80,6 +83,10 @@ function allDay(id, start, exclusiveEnd) {
   return { id, sourceType: 'google_calendar', allDay: true, eventStart: start, eventEnd: exclusiveEnd, startAt: start, endAt: exclusiveEnd, reasons: ['calendar_event_today'] };
 }
 function result(items) { return { success: true, items, count: items.length, warnings: [] }; }
+function response(body) { return { ok: true, status: 200, json: async () => body }; }
+function useAlwaysTomorrowProfile() {
+  vm.runInContext('userProfile = {...DEFAULT_PROFILE, tomorrowScheduleStartTime: "00:00"}', context);
+}
 
 const tests = [];
 function test(name, fn) { tests.push({ name, fn }); }
@@ -137,6 +144,38 @@ test('all-day exclusive end and multi-day end are respected; missing end stays w
   assert(output.warnings.includes('calendar_end_missing'), 'missing-end warning absent');
 });
 
+test('multi-day and all-day occurrences returned by both days are shown once in today', () => {
+  const now = at('2026-07-18T20:00:00+09:00');
+  const plan = call('getRollingCalendarRequestPlan', now, '18:00');
+  const multi = { ...timed('gcal:multi', '2026-07-18 10:00', '2026-07-19 10:00'), sourceId: 'stable-multi' };
+  const wholeDay = { ...allDay('gcal:all', '2026-07-18', '2026-07-20'), sourceId: 'stable-all' };
+  const output = call('buildRollingNotificationResult', result([multi, wholeDay]), result([multi, wholeDay]), plan, now);
+  assert(output.items.filter((item) => item.sourceId === 'stable-multi').length === 1, 'multi-day event duplicated');
+  assert(output.items.filter((item) => item.sourceId === 'stable-all').length === 1, 'all-day event duplicated');
+  assert(output.items.every((item) => item.rollingDay === 'today'), 'continued event was not kept in today');
+});
+
+test('different recurring instances sharing a stable ID remain separate', () => {
+  const now = at('2026-07-18T20:00:00+09:00');
+  const plan = call('getRollingCalendarRequestPlan', now, '18:00');
+  const current = { ...timed('series', '2026-07-18 19:00', '2026-07-19 10:00'), sourceId: 'recurring-series' };
+  const next = { ...timed('series', '2026-07-19 19:00', '2026-07-19 20:00'), sourceId: 'recurring-series' };
+  const output = call('buildRollingNotificationResult', result([current]), result([current, next]), plan, now);
+  assert(output.items.filter((item) => item.sourceId === 'recurring-series').length === 2, 'separate recurrence instance was collapsed');
+  assert(output.items.some((item) => item.rollingDay === 'today') && output.items.some((item) => item.rollingDay === 'tomorrow'), 'recurrence groups wrong');
+});
+
+test('fallback composite key deduplicates only sufficiently identified occurrences', () => {
+  const now = at('2026-07-18T20:00:00+09:00');
+  const plan = call('getRollingCalendarRequestPlan', now, '18:00');
+  const identified = { ...timed('', '2026-07-18 19:00', '2026-07-19 10:00'), id: '', title: 'safe fallback' };
+  const incompleteToday = { id: '', sourceType: 'google_calendar', allDay: false, title: 'incomplete' };
+  const incompleteTomorrow = { id: '', sourceType: 'google_calendar', allDay: false, title: 'incomplete' };
+  const output = call('buildRollingNotificationResult', result([identified, incompleteToday]), result([identified, incompleteTomorrow]), plan, now);
+  assert(output.items.filter((item) => item.title === 'safe fallback').length === 1, 'safe fallback occurrence duplicated');
+  assert(output.items.filter((item) => item.title === 'incomplete').length === 2, 'insufficient fallback data collapsed unrelated events');
+});
+
 test('calendar groups order all-day first and omit empty today heading', () => {
   const now = at('2026-07-18T20:00:00+09:00');
   const plan = call('getRollingCalendarRequestPlan', now, '18:00');
@@ -175,15 +214,72 @@ test('nearest boundary is event end, then threshold, then midnight', () => {
 
 test('boundary scheduler uses one-shot timeout for the nearest boundary', () => {
   scheduled.length = 0;
+  clearedTimers.length = 0;
   vm.runInContext('notificationBoundaryTimerEnabled = true', context);
   const realNow = Date.now();
   const plan = call('getRollingCalendarRequestPlan', realNow, '18:00');
   const end = call('addRollingDays', plan.today, 1) + ' 00:00';
   call('scheduleNotificationBoundary', [timed('boundary', end, end)]);
   assert(scheduled.length === 1 && scheduled[0].delay > 0, 'one-shot boundary timer was not scheduled');
+  call('scheduleNotificationBoundary', [timed('boundary', end, end)]);
+  assert(scheduled.length === 2 && clearedTimers.includes(1), 'existing timer was not cleared before rescheduling');
+  const exactNow = at('2026-07-18T17:30:00+09:00');
+  const next = call('getNextNotificationBoundaryAt', [timed('ended', '2026-07-18 17:00', '2026-07-18 17:30')], exactNow, '18:00');
+  assert(next > exactNow, 'reached boundary was scheduled again');
+});
+
+test('two-day requests start in parallel', async () => {
+  useAlwaysTomorrowProfile();
+  const starters = [];
+  const resolvers = [];
+  fetchImpl = (url) => new Promise((resolve) => {
+    starters.push(new URL(String(url)).searchParams.get('date'));
+    resolvers.push(() => resolve(response(result([]))));
+  });
+  const pending = call('fetchNotificationCandidates');
+  await Promise.resolve();
+  assert(starters.length === 2, 'today and tomorrow did not start in parallel');
+  resolvers.forEach((resolve) => resolve());
+  await pending;
+});
+
+test('tomorrow failure keeps today result and adds a safe warning', async () => {
+  useAlwaysTomorrowProfile();
+  const plan = call('getRollingCalendarRequestPlan', Date.now(), '00:00');
+  fetchImpl = async (url) => {
+    const date = new URL(String(url)).searchParams.get('date');
+    if (date === plan.tomorrow) throw new Error('mock tomorrow failure');
+    return response(result([{ id: 'today-task', sourceType: 'paluru', title: 'today' }]));
+  };
+  const output = await call('fetchNotificationCandidates');
+  assert(output.items.some((item) => item.id === 'today-task'), 'today result was discarded');
+  assert(output.warnings.includes('tomorrow_notifications_unavailable'), 'partial warning absent');
+});
+
+test('today failure preserves previous display and retry UI', async () => {
+  useAlwaysTomorrowProfile();
+  vm.runInContext(`notificationCandidatesState = {
+    lastFetchedAt: 1,
+    inFlight: null,
+    items: [{id:'previous-task',sourceType:'paluru',title:'previous',reasons:[],notificationLevel:'normal'}],
+    totalCount: 1,
+    includeTomorrow: true,
+    warnings: []
+  }`, context);
+  element('#todayParuruList').innerHTML = 'previous-marker';
+  fetchImpl = async () => { throw new Error('mock today failure'); };
+  const items = await call('loadNotificationCandidates', { force: true });
+  assert(items.length === 1 && items[0].id === 'previous-task', 'previous state was cleared');
+  assert(element('#todayParuruList').innerHTML.includes('previous-task'), 'previous card was not restored');
+  assert(element('#todayParuruList').innerHTML.includes('data-notification-refresh'), 'retry UI missing');
 });
 
 test('visibility resume forces a refetch and request dates never exceed today plus tomorrow', async () => {
+  requests.length = 0;
+  fetchImpl = async (url) => {
+    requests.push(String(url));
+    return response(result([]));
+  };
   assert(typeof documentHandlers.visibilitychange === 'function', 'visibilitychange handler absent');
   context.document.visibilityState = 'visible';
   documentHandlers.visibilitychange();

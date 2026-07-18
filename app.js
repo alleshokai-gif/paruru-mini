@@ -230,6 +230,7 @@ let notificationCandidatesState = {
   items: [],
   totalCount: 0,
   includeTomorrow: false,
+  warnings: [],
 };
 let notificationBoundaryTimerId = null;
 let notificationBoundaryTimerEnabled = false;
@@ -959,11 +960,13 @@ async function loadNotificationCandidates(options = {}) {
       notificationCandidatesState.totalCount,
       notificationCandidatesState.includeTomorrow
     );
+    renderNotificationWarnings(notificationCandidatesState.warnings);
     scheduleNotificationBoundary(notificationCandidatesState.items);
     return notificationCandidatesState.items;
   }
 
-  renderNotificationLoading();
+  const hasPreviousItems = notificationCandidatesState.items.length > 0;
+  if (!hasPreviousItems) renderNotificationLoading();
   notificationCandidatesState.inFlight = fetchNotificationCandidates()
     .then((result) => {
       const items = result.items || [];
@@ -973,14 +976,27 @@ async function loadNotificationCandidates(options = {}) {
         items,
         totalCount: result.count || items.length,
         includeTomorrow: Boolean(result.includeTomorrow),
+        warnings: Array.isArray(result.warnings) ? result.warnings : [],
       };
       renderNotificationCandidates(items, notificationCandidatesState.totalCount, notificationCandidatesState.includeTomorrow);
+      renderNotificationWarnings(notificationCandidatesState.warnings);
       scheduleNotificationBoundary(items);
       return items;
     })
     .catch((error) => {
       debugLog("[Paruru] notification candidates failed", error?.message || error);
       notificationCandidatesState.inFlight = null;
+      if (notificationCandidatesState.items.length > 0) {
+        notificationCandidatesState.warnings = ["notification_refresh_failed"];
+        renderNotificationCandidates(
+          notificationCandidatesState.items,
+          notificationCandidatesState.totalCount,
+          notificationCandidatesState.includeTomorrow
+        );
+        renderNotificationWarnings(notificationCandidatesState.warnings);
+        scheduleNotificationBoundary(notificationCandidatesState.items);
+        return notificationCandidatesState.items;
+      }
       renderNotificationError();
       return [];
     });
@@ -1004,8 +1020,17 @@ async function fetchNotificationCandidates() {
   const tomorrowRequest = plan.includeTomorrow
     ? fetchNotificationCandidatesForDate(profile, plan.tomorrow)
     : Promise.resolve(null);
-  const [todayResult, tomorrowResult] = await Promise.all([todayRequest, tomorrowRequest]);
-  return buildRollingNotificationResult(todayResult, tomorrowResult, plan, Date.now());
+  const [todayOutcome, tomorrowOutcome] = await Promise.allSettled([todayRequest, tomorrowRequest]);
+  if (todayOutcome.status === "rejected") throw todayOutcome.reason;
+  const tomorrowFailed = tomorrowOutcome.status === "rejected";
+  const result = buildRollingNotificationResult(
+    todayOutcome.value,
+    tomorrowFailed ? null : tomorrowOutcome.value,
+    plan,
+    Date.now()
+  );
+  if (tomorrowFailed) result.warnings.push("tomorrow_notifications_unavailable");
+  return result;
 }
 
 async function fetchNotificationCandidatesForDate(profile, targetDate) {
@@ -1030,12 +1055,17 @@ function buildRollingNotificationResult(todayResult, tomorrowResult, plan, nowMs
     .filter(isGoogleCalendarCandidate)
     .map((item) => ({ ...item, rollingDisplayDate: plan.today, rollingDay: "today" }))
     .filter((item) => isRollingCalendarCandidateVisible(item, plan.today, nowMs)));
-  const tomorrowCalendarItems = plan.includeTomorrow && Array.isArray(tomorrowResult?.items)
+  const tomorrowCalendarItemsRaw = plan.includeTomorrow && Array.isArray(tomorrowResult?.items)
     ? sortRollingCalendarItems(tomorrowResult.items
       .filter(isGoogleCalendarCandidate)
       .map((item) => ({ ...item, rollingDisplayDate: plan.tomorrow, rollingDay: "tomorrow" }))
       .filter((item) => isRollingCalendarCandidateVisible(item, plan.tomorrow, nowMs)))
     : [];
+  const todayCalendarKeys = new Set(todayCalendarItems.map(buildCalendarOccurrenceKey));
+  const tomorrowCalendarItems = tomorrowCalendarItemsRaw.filter((item) => {
+    const key = buildCalendarOccurrenceKey(item);
+    return !key || !todayCalendarKeys.has(key);
+  });
   const items = [...nonCalendarItems, ...todayCalendarItems, ...tomorrowCalendarItems];
   const warnings = [
     ...(Array.isArray(todayResult?.warnings) ? todayResult.warnings : []),
@@ -1055,6 +1085,18 @@ function buildRollingNotificationResult(todayResult, tomorrowResult, plan, nowMs
 
 function isGoogleCalendarCandidate(item) {
   return String(item?.sourceType || "") === "google_calendar";
+}
+
+function buildCalendarOccurrenceKey(item) {
+  if (!isGoogleCalendarCandidate(item)) return "";
+  const stableId = String(item.sourceId || item.id || "").trim();
+  const start = String(item.startAt || buildRollingDateTime(item.eventStart, item.eventStartTime) || "").trim();
+  const end = String(item.endAt || buildRollingDateTime(item.eventEnd, item.eventEndTime) || item.eventEnd || "").trim();
+  if (stableId && start) return `id:${stableId}|start:${start}|end:${end}`;
+  const title = String(item.rawTitle || item.cleanTitle || item.title || "").trim();
+  const member = String(item.memberKey || "").trim();
+  if (!start || !end || !title) return "";
+  return `fallback:${start}|${end}|${title}|${member}|${Boolean(item.allDay)}`;
 }
 
 function isRollingCalendarCandidateVisible(item, displayDate, nowMs) {
@@ -1220,6 +1262,23 @@ function renderNotificationError() {
     </div>
   `;
   todayParuruAllButton.classList.add("is-hidden");
+}
+
+function renderNotificationWarnings(warnings) {
+  const values = Array.isArray(warnings) ? warnings : [];
+  let text = "";
+  if (values.includes("tomorrow_notifications_unavailable")) {
+    text = "明日の予定だけ取得できんかった。今日の分は表示しとるで。";
+  } else if (values.includes("notification_refresh_failed")) {
+    text = "更新できんかったので、直前の内容を表示しとるで。";
+  }
+  if (!text) return;
+  todayParuruList.insertAdjacentHTML("beforeend", `
+    <div class="today-paruru-error today-paruru-inline-warning">
+      <p>${escapeHtml(text)}</p>
+      <button class="secondary-button" type="button" data-notification-refresh>もう一回</button>
+    </div>
+  `);
 }
 
 function renderNotificationCandidates(items, totalCount, includeTomorrow = false) {
@@ -3230,8 +3289,11 @@ function tokyoLocalDateTimeToEpoch(dateValue, hour, minute) {
 }
 
 function scheduleNotificationBoundary(items) {
+  if (notificationBoundaryTimerId !== null) {
+    window.clearTimeout(notificationBoundaryTimerId);
+    notificationBoundaryTimerId = null;
+  }
   if (!notificationBoundaryTimerEnabled) return;
-  if (notificationBoundaryTimerId !== null) window.clearTimeout(notificationBoundaryTimerId);
   const nowMs = Date.now();
   const boundaryAt = getNextNotificationBoundaryAt(items, nowMs, getTomorrowScheduleStartTime());
   if (!Number.isFinite(boundaryAt)) return;
