@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260718-01";
+const ASSET_VERSION = "v20260718-02";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -39,6 +39,12 @@ const AGENT_CHAT_HOME_STATE_PATTERNS = [
   /家の温度どう|家の中暑くない|部屋大丈夫|家の中どんな感じ/,
   /冷房効いとる|設定温度まで下がりそう|ちゃんと冷え|ぬるい/,
 ];
+const LEGACY_HOME_AGENT_PRIORITY_PATTERNS = [
+  /給食|傘|持ち物|出発/,
+  /強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて/,
+  /自動制御|通常運転|一時停止/,
+];
+const EXPLICIT_AGENT_MEMO_REQUEST_PATTERN = /(?:覚え(?:て|といて|ておいて)|メモ(?:して|しといて|っといて)|記録(?:して|しといて|っといて)|控え(?:て|といて)|保存(?:して|しといて)|残し(?:て|といて))\s*[。．.!！…]*$/;
 const DEFAULT_PROFILE = {
   userId: "father",
   displayName: "父",
@@ -425,6 +431,16 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (isLegacyHomeAgentPriorityQuery(memo)) {
+    await submitHomeAgentQuery(memo);
+    return;
+  }
+
+  if (isExplicitAgentMemoRequest(memo)) {
+    await submitAgentChatQuery(memo, { purpose: "memo" });
+    return;
+  }
+
   if (isLikelyAgentChatQuery(memo)) {
     await submitAgentChatQuery(memo);
     return;
@@ -794,6 +810,7 @@ function buildAgentChatPayload(messageText, options = {}) {
 async function submitAgentChatQuery(messageText, options = {}) {
   const request = options.request || {
     type: "agentChat",
+    purpose: options.purpose || "home-state",
     ...buildAgentChatPayload(messageText),
   };
   const payload = {
@@ -815,6 +832,16 @@ async function submitAgentChatQuery(messageText, options = {}) {
     memoInput.value = "";
     pendingHomeAgentRetry = null;
     renderAgentChatReply(result.reply);
+    if (result.followup) {
+      renderFollowupPanel("home", {
+        id: result.followup.itemId,
+        needsFollowup: true,
+        followupQuestion: result.followup.question,
+        followupInputType: result.followup.inputType,
+      });
+    } else if (request.purpose === "memo") {
+      hideFollowupPanel("home");
+    }
     setParuruSpeech("homeAgent");
     resetParuruSpeechSoon();
     revealPanelIfNeeded(homeAgentCard);
@@ -839,7 +866,23 @@ function validateAgentChatResponse(response, request) {
   ) {
     throw new Error("Invalid Agent Gateway response");
   }
-  return { reply };
+  const result = { reply };
+  if (Object.prototype.hasOwnProperty.call(response, "followup")) {
+    result.followup = validateAgentFollowup(response.followup);
+  }
+  return result;
+}
+
+function validateAgentFollowup(followup) {
+  const itemId = String(followup?.itemId || "").trim();
+  const question = String(followup?.question || "").trim();
+  const inputType = String(followup?.inputType || "").trim();
+  const allowedTypes = new Set(["date", "datetime", "time", "text", "yesno"]);
+  if (followup?.required !== true || !isUuid(itemId) || !question
+      || Array.from(question).length > 300 || !allowedTypes.has(inputType)) {
+    throw new Error("Invalid Agent Gateway followup");
+  }
+  return { required: true, itemId, question, inputType };
 }
 
 function buildCreateWithAIPayload(memo) {
@@ -1551,6 +1594,15 @@ function isLikelyAgentChatQuery(text) {
     return false;
   }
   return AGENT_CHAT_HOME_STATE_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function isExplicitAgentMemoRequest(text) {
+  return EXPLICIT_AGENT_MEMO_REQUEST_PATTERN.test(String(text || "").trim());
+}
+
+function isLegacyHomeAgentPriorityQuery(text) {
+  const value = String(text || "").trim();
+  return Boolean(value) && LEGACY_HOME_AGENT_PRIORITY_PATTERNS.some((pattern) => pattern.test(value));
 }
 
 function normalizeHomeAgentResult(response) {

@@ -262,3 +262,9 @@ PALURU_OS専用のPOST action `createWithAIInternal` を追加しました。公
 冪等性のため、`01_Inbox` のヘッダー行末尾へ `clientRequestId` 列を手動で追加する必要があります。コードは列を自動追加しません。既存17件のセルは空欄のままでよく、同じUUIDが存在する場合はAI解析と保存を再実行せず `duplicate=true` で既存itemを返します。ヘッダー未追加時は `CONFIGURATION_ERROR` で安全に拒否します。
 
 Miniの `agentChat` Gatewayは、既存のuser contextを省略可能な `actor` としてPALURU Agentへ転送します。成功応答の公開契約は従来どおりで、actor、Secret、Agent内部情報は返しません。PWAのルーティングと `createWithAI` は今回変更していません。
+
+## EVA-03D Follow-up Bridge（ローカル実装）
+
+Mini GatewayはPALURU Agentのoptional `followup` を `required`、`itemId`、`question`、`inputType` のallowlistへ整形してPWAへ返します。PWAは新しいUIを作らず、既存の `renderFollowupPanel` と `answerFollowup` を再利用して同じInbox行を更新します。回答時に `createWithAI` や `agentChat` を再実行しません。
+
+明示的な文末保存依頼（「覚えといて」「メモして」「記録しといて」等）は `agentChat` へ送り、通常の短いメモは従来どおり `createWithAI` へ送ります。Climateは `agentChat`、給食・家電操作等は既存Home Agentを優先します。PWA buildは `v20260718-02` です。

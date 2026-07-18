@@ -104,13 +104,37 @@ function buildAgentChatSuccess_(response, input) {
     throw createAgentGatewayError_('AGENT_ERROR');
   }
 
-  return {
+  const result = {
     success: true,
     reply: reply,
     sessionId: input.sessionId,
     clientRequestId: input.clientRequestId,
     toolExecutions: sanitizeToolExecutions_(data.toolExecutions),
     usage: sanitizeAgentUsage_(data.usage),
+  };
+  if (Object.prototype.hasOwnProperty.call(data, 'followup')) {
+    result.followup = sanitizeAgentFollowup_(data.followup);
+  }
+  return result;
+}
+
+function sanitizeAgentFollowup_(followup) {
+  if (!followup || Array.isArray(followup) || typeof followup !== 'object') {
+    throw createAgentGatewayError_('AGENT_ERROR');
+  }
+  const itemId = String(followup.itemId || '').trim();
+  const question = String(followup.question || '').trim();
+  const inputType = String(followup.inputType || '').trim();
+  const allowedTypes = { date: true, datetime: true, time: true, text: true, yesno: true };
+  if (followup.required !== true || !isUuid_(itemId) || !question
+      || Array.from(question).length > 300 || !allowedTypes[inputType]) {
+    throw createAgentGatewayError_('AGENT_ERROR');
+  }
+  return {
+    required: true,
+    itemId: itemId,
+    question: question,
+    inputType: inputType,
   };
 }
 

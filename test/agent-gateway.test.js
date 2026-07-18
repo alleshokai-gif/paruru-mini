@@ -88,6 +88,44 @@ test('climate tool response is sanitized', () => {
   const result = post(valid());
   assert(result.toolExecutions[0].durationMs === 9451, 'tool audit missing');
   assert(!JSON.stringify(result).includes('28.3') && !JSON.stringify(result).includes('internal-agent-request-id'), 'internal data leaked');
+  assert(!Object.prototype.hasOwnProperty.call(result, 'followup'), 'climate response contract changed');
+});
+
+test('structured followup is allowlisted for PWA', () => {
+  configure();
+  const response = agentResponse('覚えたで。締切はいつ？', [{ tool: 'create_memo', status: 'success', durationMs: 20 }]);
+  response.data.followup = {
+    required: true,
+    itemId: '77777777-7777-4777-8777-777777777777',
+    question: '締切はいつ？',
+    inputType: 'date',
+    actor: { userId: 'father' },
+    source: 'paluru-agent',
+    rawToolResult: { secret: secretToken }
+  };
+  mockFetch(200, response);
+  const result = post(valid());
+  assert(JSON.stringify(result.followup) === JSON.stringify({ required: true, itemId: '77777777-7777-4777-8777-777777777777', question: '締切はいつ？', inputType: 'date' }), 'followup allowlist failed');
+  assert(!JSON.stringify(result).includes(secretToken) && !JSON.stringify(result).includes('rawToolResult'), 'followup leaked internal fields');
+});
+
+test('malformed followup is rejected safely', () => {
+  configure();
+  const cases = [
+    { required: true, itemId: 'bad', question: 'いつ？', inputType: 'date' },
+    { required: true, itemId: '77777777-7777-4777-8777-777777777777', question: '', inputType: 'date' },
+    { required: true, itemId: '77777777-7777-4777-8777-777777777777', question: 'いつ？', inputType: 'html' }
+  ];
+  cases.forEach((followup) => {
+    const response = agentResponse('reply'); response.data.followup = followup; mockFetch(200, response);
+    assert(post(valid()).error.code === 'AGENT_ERROR', 'malformed followup accepted');
+  });
+});
+
+test('tool-free response remains without followup field', () => {
+  configure(); mockFetch(200, agentResponse('こんにちは。'));
+  const result = post(valid());
+  assert(!Object.prototype.hasOwnProperty.call(result, 'followup'), 'tool-free response contract changed');
 });
 
 test('missing URL and token', () => {

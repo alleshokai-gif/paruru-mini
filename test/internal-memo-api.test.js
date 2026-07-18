@@ -27,7 +27,8 @@ const context = {
   createItemWithAIResult_: (input, memo, options) => {
     aiCalls += 1;
     if (options.source !== 'paluru-agent' || options.clientRequestId !== input.clientRequestId) throw new Error('trusted options missing');
-    const item = { id: 'item-' + aiCalls, title: '牛乳を買う', category: '買い物', type: 'shopping', needsFollowup: false, followupQuestion: '', followupInputType: '' };
+    const needsFollowup = input.memo === 'FOLLOWUP_MEMO';
+    const item = { id: 'item-' + aiCalls, title: '牛乳を買う', category: '買い物', type: 'shopping', needsFollowup, followupQuestion: needsFollowup ? '締切はいつ？' : '', followupInputType: needsFollowup ? 'date' : '' };
     rows.push(headers.map((header) => header === 'clientRequestId' ? input.clientRequestId : item[header]));
     return item;
   },
@@ -56,6 +57,14 @@ test('missing or wrong token short-circuits sheet and AI', () => {
   const wrong = context.createItemWithAIInternal_(valid({ internalToken: 'wrong' }));
   assert(missing.error.code === 'UNAUTHORIZED' && wrong.error.code === 'UNAUTHORIZED', 'auth error wrong');
   assert(sheetCalls === beforeSheet && aiCalls === beforeAi, 'auth did not short-circuit');
+});
+test('followup fields and duplicate item identity are preserved', () => {
+  const id = '77777777-7777-4777-8777-777777777777';
+  const first = context.createItemWithAIInternal_(valid({ memo: 'FOLLOWUP_MEMO', clientRequestId: id }));
+  const beforeAi = aiCalls;
+  const second = context.createItemWithAIInternal_(valid({ memo: 'FOLLOWUP_MEMO', clientRequestId: id }));
+  assert(first.item.needsFollowup === true && first.item.followupQuestion === '締切はいつ？' && first.item.followupInputType === 'date', 'followup sanitize failed');
+  assert(second.duplicate === true && second.item.id === first.item.id && aiCalls === beforeAi, 'duplicate changed item or reran AI');
 });
 test('invalid memo and UUID are rejected before AI', () => {
   const beforeAi = aiCalls;
