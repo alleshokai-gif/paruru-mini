@@ -2339,7 +2339,64 @@ function buildFollowupUpdates_(item, analysis, context) {
     updates.tags = normalizeTagsForSheet_(analysis.tags);
   }
 
+  if (analysis.needsFollowup === true && String(analysis.followupQuestion || '').trim()) {
+    updates.needsFollowup = true;
+    updates.followupQuestion = String(analysis.followupQuestion).trim();
+    updates.followupInputType = normalizeFollowupInputType_(
+      analysis.followupInputType,
+      updates.followupQuestion
+    );
+  }
+
+  const finalItem = Object.assign({}, item, analysis, updates);
+  const validatedFinalItem = validateAnalyzedItem_(finalItem);
+  updates.needsFollowup = normalizeBooleanForSheet_(validatedFinalItem.needsFollowup);
+  updates.followupQuestion = updates.needsFollowup ? String(validatedFinalItem.followupQuestion || '') : '';
+  updates.followupInputType = updates.needsFollowup
+    ? getFollowupInputTypeForItem_(validatedFinalItem)
+    : '';
+
+  const resolvedSummary = buildResolvedFollowupSummary_(Object.assign({}, finalItem, updates));
+  if (resolvedSummary) updates.aiSummary = resolvedSummary;
+
   return updates;
+}
+
+function buildResolvedFollowupSummary_(item) {
+  const type = String(item.type || '').trim().toLowerCase();
+  const subject = buildFollowupSummarySubject_(item);
+  if (!subject) return '';
+
+  if (type === 'task' && normalizeDateOnlyString_(item.dueDate)) {
+    const due = formatFollowupDateTimeSummary_(item.dueDate, item.dueTime);
+    return subject + '。締切は' + due + 'です。';
+  }
+  if (type === 'event' && normalizeDateOnlyString_(item.eventStart)) {
+    const start = formatFollowupDateTimeSummary_(item.eventStart, item.eventStartTime);
+    return subject + '。予定は' + start + 'です。';
+  }
+  if (type === 'reminder' && getReminderDateOnly_(item)) {
+    const reminder = formatFollowupDateTimeSummary_(getReminderDateOnly_(item), getReminderTimeOnly_(item));
+    return subject + '。通知は' + reminder + 'です。';
+  }
+  return '';
+}
+
+function buildFollowupSummarySubject_(item) {
+  return String(item.title || item.memo || '')
+    .replace(/[。．.!！]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+}
+
+function formatFollowupDateTimeSummary_(dateValue, timeValue) {
+  const normalizedDate = normalizeDateOnlyString_(dateValue);
+  if (!normalizedDate) return '';
+  const parts = normalizedDate.split('-');
+  const dateText = Number(parts[1]) + '月' + Number(parts[2]) + '日';
+  const normalizedTime = normalizeTimeForSheet_(timeValue);
+  return normalizedTime ? dateText + ' ' + normalizedTime : dateText;
 }
 
 function applyDirectFollowupAnswer_(updates, item, context) {

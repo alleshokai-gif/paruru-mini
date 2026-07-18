@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260718-02";
+const ASSET_VERSION = "v20260718-03";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -838,6 +838,7 @@ async function submitAgentChatQuery(messageText, options = {}) {
         needsFollowup: true,
         followupQuestion: result.followup.question,
         followupInputType: result.followup.inputType,
+        followupOrigin: "agentChat",
       });
     } else if (request.purpose === "memo") {
       hideFollowupPanel("home");
@@ -2178,8 +2179,7 @@ async function submitFollowupAnswer(target) {
   setFollowupSubmitting(target, true);
   try {
     const result = await answerFollowup(payload);
-    clearFollowupInputs(state);
-    hideFollowupPanel(target);
+    completeFollowupUiAfterSuccess(target, state);
     updateLocalItem(result.item);
     if (target === "detail" && result.item) {
       renderFollowupPanel("detail", result.item);
@@ -2206,6 +2206,7 @@ function renderFollowupPanel(target, item) {
 
   state.panel.dataset.itemId = item.id;
   state.panel.dataset.inputType = normalizeFollowupInputType(item.followupInputType, item.followupQuestion);
+  state.panel.dataset.origin = item.followupOrigin === "agentChat" ? "agentChat" : "";
   state.question.textContent = item.followupQuestion;
   state.fields.innerHTML = renderFollowupFields(state.panel.dataset.inputType);
   state.submit.classList.toggle("is-hidden", state.panel.dataset.inputType === "yesno");
@@ -2218,7 +2219,14 @@ function hideFollowupPanel(target) {
   state.panel.classList.add("is-hidden");
   state.panel.dataset.itemId = "";
   state.panel.dataset.inputType = "";
+  state.panel.dataset.origin = "";
   clearFollowupInputs(state);
+}
+
+function completeFollowupUiAfterSuccess(target, state) {
+  const shouldCloseAgentCard = target === "home" && state.panel.dataset.origin === "agentChat";
+  hideFollowupPanel(target);
+  if (shouldCloseAgentCard) hideHomeAgentCard();
 }
 
 function setFollowupSubmitting(target, isSubmittingAnswer) {
@@ -2348,8 +2356,7 @@ async function submitFollowupDirectAnswer(target, answer) {
       answer,
       followupInputType: "yesno",
     });
-    clearFollowupInputs(state);
-    hideFollowupPanel(target);
+    completeFollowupUiAfterSuccess(target, state);
     updateLocalItem(result.item);
     if (activeView === "inbox") {
       await loadInbox({ quiet: true });

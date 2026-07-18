@@ -159,6 +159,7 @@ test('A climate question routes only to agentChat and renders reply', async () =
   const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
   assert(JSON.stringify(actions) === JSON.stringify(['agentChat']), 'wrong climate route: ' + actions.join(','));
   assert(harness.elements.get('#homeAgentContent').innerHTML.includes('書斎は28.9℃'), 'reply not rendered');
+  assert(!harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'non-followup Agent reply was auto-closed');
 });
 
 test('B normal memo stays on createWithAI', async () => {
@@ -228,6 +229,8 @@ test('B4 Agent followup renders existing UI and answer updates same item', async
   assert(answer.id === itemId, 'answerFollowup used another item');
   assert(actions.filter((action) => action === 'agentChat').length === 1, 'followup answer reran Agent create');
   assert(!actions.includes('createWithAI'), 'followup answer created a new memo');
+  assert(panel.classList.contains('is-hidden') && panel.dataset.itemId === '', 'pending followup was not cleared');
+  assert(harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'Agent message card remained after success');
 });
 
 test('B5 malformed followup keeps input and uses existing retry path', async () => {
@@ -249,6 +252,27 @@ test('B6 answerFollowup failure keeps the existing answer and row target', async
   await harness.run('submitFollowupAnswer("home")');
   assert(answerInput.value === '来週', 'failed followup cleared the answer');
   assert(harness.elements.get('#homeFollowup').dataset.itemId === itemId, 'failed followup lost the row target');
+  assert(!harness.elements.get('#homeFollowup').classList.contains('is-hidden'), 'failed followup panel closed');
+  assert(!harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'failed followup closed Agent message');
+});
+
+test('B7 existing createWithAI followup closes panel but not unrelated Home Agent card', async () => {
+  const harness = createHarness();
+  const itemId = '88888888-8888-4888-8888-888888888888';
+  harness.run(`renderFollowupPanel("home", ${JSON.stringify({ id: itemId, needsFollowup: true, followupQuestion: '締切はいつ？', followupInputType: 'date' })})`);
+  harness.elements.get('#homeAgentCard').classList.remove('is-hidden');
+  const fields = harness.elements.get('#homeFollowupFields');
+  fields.querySelector = (selector) => selector === '[data-followup-answer-text]' ? { value: '明日' } : null;
+  await harness.run('submitFollowupAnswer("home")');
+  assert(harness.elements.get('#homeFollowup').classList.contains('is-hidden'), 'legacy followup panel remained');
+  assert(!harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'unrelated Home Agent answer was closed');
+});
+
+test('B8 manual close button behavior remains', () => {
+  const harness = createHarness();
+  harness.elements.get('#homeAgentCard').classList.remove('is-hidden');
+  harness.handlers.get('#homeAgentCloseButton:click')();
+  assert(harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'manual close stopped working');
 });
 
 test('C Agent error keeps input and enables retry without fallback', async () => {
@@ -328,10 +352,10 @@ test('H existing feature routes remain present', () => {
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260718-02';
+  const expected = 'v20260718-03';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260718-02'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260718-03'), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');

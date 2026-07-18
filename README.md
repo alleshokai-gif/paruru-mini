@@ -267,4 +267,10 @@ Miniの `agentChat` Gatewayは、既存のuser contextを省略可能な `actor`
 
 Mini GatewayはPALURU Agentのoptional `followup` を `required`、`itemId`、`question`、`inputType` のallowlistへ整形してPWAへ返します。PWAは新しいUIを作らず、既存の `renderFollowupPanel` と `answerFollowup` を再利用して同じInbox行を更新します。回答時に `createWithAI` や `agentChat` を再実行しません。
 
-明示的な文末保存依頼（「覚えといて」「メモして」「記録しといて」等）は `agentChat` へ送り、通常の短いメモは従来どおり `createWithAI` へ送ります。Climateは `agentChat`、給食・家電操作等は既存Home Agentを優先します。PWA buildは `v20260718-02` です。
+明示的な文末保存依頼（「覚えといて」「メモして」「記録しといて」等）は `agentChat` へ送り、通常の短いメモは従来どおり `createWithAI` へ送ります。Climateは `agentChat`、給食・家電操作等は既存Home Agentを優先します。PWA buildは `v20260718-03` です。
+
+### Follow-up回答後の表示整合性
+
+Inboxカードの説明文は `aiSummary` を表示します。`answerFollowup` でtask期限、event開始日時、reminder通知日時が確定した場合は、追加AIを呼ばず、保存後itemのtype・title/memo・確定日時から `aiSummary` を再構築します。`aiComment` はカード表示元ではないため変更しません。
+
+Agent由来Follow-upの回答成功時は、既存 `hideFollowupPanel` と `hideHomeAgentCard` を使って入力、pending itemId、Follow-upパネル、Agentメッセージを終了します。失敗時はどれも残します。既存createWithAI Follow-upはパネルを閉じますが、無関係なHome Agent通常回答は閉じません。
