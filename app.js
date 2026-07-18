@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260718-03";
+const ASSET_VERSION = "v20260718-04";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -11,6 +11,8 @@ const PROFILE_STORAGE_KEY = "paruru-mini-profile";
 const AGENT_CHAT_SESSION_STORAGE_KEY = "paruru-mini-agent-chat-session-v1";
 const NOTIFICATION_CACHE_MS = 5000;
 const NOTIFICATION_DISPLAY_LIMIT = 5;
+const TOKYO_TIME_ZONE = "Asia/Tokyo";
+const DEFAULT_TOMORROW_SCHEDULE_START_TIME = "18:00";
 const HOME_AGENT_QUESTION_PATTERNS = [
   /[？?]\s*$/,
   /教えて/,
@@ -52,6 +54,7 @@ const DEFAULT_PROFILE = {
   defaultCalendar: "family",
   selectedCalendarMemberKeys: ["father", "family"],
   includeUnknownCalendarEvents: false,
+  tomorrowScheduleStartTime: DEFAULT_TOMORROW_SCHEDULE_START_TIME,
 };
 
 const PARURU_MESSAGES = {
@@ -226,7 +229,10 @@ let notificationCandidatesState = {
   inFlight: null,
   items: [],
   totalCount: 0,
+  includeTomorrow: false,
 };
+let notificationBoundaryTimerId = null;
+let notificationBoundaryTimerEnabled = false;
 
 const form = document.querySelector("#inboxForm");
 const memoInput = document.querySelector("#memo");
@@ -290,6 +296,7 @@ const profileDefaultCalendar = document.querySelector("#profileDefaultCalendar")
 const profileDeviceId = document.querySelector("#profileDeviceId");
 const profileCalendarMembers = document.querySelector("#profileCalendarMembers");
 const profileIncludeUnknownCalendarEvents = document.querySelector("#profileIncludeUnknownCalendarEvents");
+const profileTomorrowScheduleStartTime = document.querySelector("#profileTomorrowScheduleStartTime");
 const todayParuru = document.querySelector("#todayParuru");
 const todayParuruLine = document.querySelector("#todayParuruLine");
 const todayParuruList = document.querySelector("#todayParuruList");
@@ -342,6 +349,7 @@ if ("serviceWorker" in navigator) {
 }
 
 window.addEventListener("load", () => {
+  notificationBoundaryTimerEnabled = true;
   userProfile = loadUserProfile();
   renderProfileForm();
   setParuruState("normal");
@@ -351,6 +359,14 @@ window.addEventListener("load", () => {
   splash?.classList.add("is-hidden");
   loadNotificationCandidates({ force: true });
 });
+
+if (typeof document.addEventListener === "function") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      loadNotificationCandidates({ force: true });
+    }
+  });
+}
 
 function updateServiceWorker(registration) {
   if (registration.waiting) {
@@ -613,11 +629,12 @@ homeAgentCard.addEventListener("click", (event) => {
   }
 });
 
-profileForm.addEventListener("submit", (event) => {
+profileForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   userProfile = saveUserProfileFromForm();
   renderProfileForm();
   showMessage(PARURU_MESSAGES.action.profileSaved, "success");
+  await loadNotificationCandidates({ force: true });
 });
 
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
@@ -937,7 +954,12 @@ async function loadNotificationCandidates(options = {}) {
   }
 
   if (!options.force && now - notificationCandidatesState.lastFetchedAt < NOTIFICATION_CACHE_MS) {
-    renderNotificationCandidates(notificationCandidatesState.items, notificationCandidatesState.totalCount);
+    renderNotificationCandidates(
+      notificationCandidatesState.items,
+      notificationCandidatesState.totalCount,
+      notificationCandidatesState.includeTomorrow
+    );
+    scheduleNotificationBoundary(notificationCandidatesState.items);
     return notificationCandidatesState.items;
   }
 
@@ -950,8 +972,10 @@ async function loadNotificationCandidates(options = {}) {
         inFlight: null,
         items,
         totalCount: result.count || items.length,
+        includeTomorrow: Boolean(result.includeTomorrow),
       };
-      renderNotificationCandidates(items, notificationCandidatesState.totalCount);
+      renderNotificationCandidates(items, notificationCandidatesState.totalCount, notificationCandidatesState.includeTomorrow);
+      scheduleNotificationBoundary(items);
       return items;
     })
     .catch((error) => {
@@ -966,13 +990,29 @@ async function loadNotificationCandidates(options = {}) {
 
 async function fetchNotificationCandidates() {
   const profile = getCurrentProfile();
+  const plan = getRollingCalendarRequestPlan(Date.now(), getTomorrowScheduleStartTime(profile));
   if (!GAS_WEB_APP_URL) {
-    return dummyNotificationCandidates(profile.userId);
+    return buildRollingNotificationResult(
+      await dummyNotificationCandidates(profile.userId),
+      null,
+      plan,
+      Date.now()
+    );
   }
 
+  const todayRequest = fetchNotificationCandidatesForDate(profile, plan.today);
+  const tomorrowRequest = plan.includeTomorrow
+    ? fetchNotificationCandidatesForDate(profile, plan.tomorrow)
+    : Promise.resolve(null);
+  const [todayResult, tomorrowResult] = await Promise.all([todayRequest, tomorrowRequest]);
+  return buildRollingNotificationResult(todayResult, tomorrowResult, plan, Date.now());
+}
+
+async function fetchNotificationCandidatesForDate(profile, targetDate) {
   const url = new URL(GAS_WEB_APP_URL);
   url.searchParams.set("action", "notificationCandidates");
-  url.searchParams.set("limit", "10");
+  url.searchParams.set("limit", "50");
+  url.searchParams.set("date", targetDate);
   if (profile.userId) {
     url.searchParams.set("userId", profile.userId);
   }
@@ -981,6 +1021,70 @@ async function fetchNotificationCandidates() {
 
   const response = await fetch(url.toString(), { cache: "no-store" });
   return parseApiResponse(response);
+}
+
+function buildRollingNotificationResult(todayResult, tomorrowResult, plan, nowMs) {
+  const todayItems = Array.isArray(todayResult?.items) ? todayResult.items : [];
+  const nonCalendarItems = todayItems.filter((item) => !isGoogleCalendarCandidate(item));
+  const todayCalendarItems = sortRollingCalendarItems(todayItems
+    .filter(isGoogleCalendarCandidate)
+    .map((item) => ({ ...item, rollingDisplayDate: plan.today, rollingDay: "today" }))
+    .filter((item) => isRollingCalendarCandidateVisible(item, plan.today, nowMs)));
+  const tomorrowCalendarItems = plan.includeTomorrow && Array.isArray(tomorrowResult?.items)
+    ? sortRollingCalendarItems(tomorrowResult.items
+      .filter(isGoogleCalendarCandidate)
+      .map((item) => ({ ...item, rollingDisplayDate: plan.tomorrow, rollingDay: "tomorrow" }))
+      .filter((item) => isRollingCalendarCandidateVisible(item, plan.tomorrow, nowMs)))
+    : [];
+  const items = [...nonCalendarItems, ...todayCalendarItems, ...tomorrowCalendarItems];
+  const warnings = [
+    ...(Array.isArray(todayResult?.warnings) ? todayResult.warnings : []),
+    ...(Array.isArray(tomorrowResult?.warnings) ? tomorrowResult.warnings : []),
+  ];
+  if ([...todayCalendarItems, ...tomorrowCalendarItems].some((item) => item.rollingWarning === "calendar_end_missing")) {
+    warnings.push("calendar_end_missing");
+  }
+  return {
+    success: true,
+    items,
+    count: items.length,
+    includeTomorrow: plan.includeTomorrow,
+    warnings: [...new Set(warnings)],
+  };
+}
+
+function isGoogleCalendarCandidate(item) {
+  return String(item?.sourceType || "") === "google_calendar";
+}
+
+function isRollingCalendarCandidateVisible(item, displayDate, nowMs) {
+  if (!isGoogleCalendarCandidate(item)) return true;
+  if (item.allDay === true) {
+    const exclusiveEndDate = normalizeRollingDate(item.eventEnd || item.endAt);
+    if (!exclusiveEndDate) {
+      item.rollingWarning = "calendar_end_missing";
+      return true;
+    }
+    return displayDate < exclusiveEndDate;
+  }
+  const endMs = parseTokyoCandidateDateTime(item.endAt || buildRollingDateTime(item.eventEnd, item.eventEndTime));
+  if (endMs === null) {
+    item.rollingWarning = "calendar_end_missing";
+    return true;
+  }
+  return endMs > nowMs;
+}
+
+function sortRollingCalendarItems(items) {
+  return [...items].sort((left, right) => {
+    if (Boolean(left.allDay) !== Boolean(right.allDay)) return left.allDay ? -1 : 1;
+    const leftStart = parseTokyoCandidateDateTime(left.startAt || buildRollingDateTime(left.eventStart, left.eventStartTime));
+    const rightStart = parseTokyoCandidateDateTime(right.startAt || buildRollingDateTime(right.eventStart, right.eventStartTime));
+    if (leftStart === null && rightStart === null) return 0;
+    if (leftStart === null) return 1;
+    if (rightStart === null) return -1;
+    return leftStart - rightStart;
+  });
 }
 
 async function updateInboxItem(id, updates) {
@@ -1118,8 +1222,8 @@ function renderNotificationError() {
   todayParuruAllButton.classList.add("is-hidden");
 }
 
-function renderNotificationCandidates(items, totalCount) {
-  const visibleItems = items.slice(0, NOTIFICATION_DISPLAY_LIMIT);
+function renderNotificationCandidates(items, totalCount, includeTomorrow = false) {
+  const visibleItems = selectRollingNotificationItems(items, NOTIFICATION_DISPLAY_LIMIT, includeTomorrow);
   if (visibleItems.length === 0) {
     setNotificationViewState("loaded-empty");
     setParuruSpeech("noNotifications");
@@ -1136,8 +1240,40 @@ function renderNotificationCandidates(items, totalCount) {
   setParuruSpeech("idle", buildNotificationSummarySpeech(totalCount || visibleItems.length));
   todayParuruLine.textContent = PARURU_MESSAGES.notification.loadedLine;
   todayParuruLine.classList.remove("is-hidden");
-  todayParuruList.innerHTML = visibleItems.map(renderNotificationItem).join("") + renderNotificationMore(totalCount, visibleItems.length);
+  todayParuruList.innerHTML = renderRollingNotificationItems(visibleItems, includeTomorrow) + renderNotificationMore(totalCount, visibleItems.length);
   todayParuruAllButton.classList.remove("is-hidden");
+}
+
+function selectRollingNotificationItems(items, limit, includeTomorrow) {
+  const source = Array.isArray(items) ? items : [];
+  if (!includeTomorrow || source.length <= limit) return source.slice(0, limit);
+  const reserved = [];
+  const todayItem = source.find((item) => item.rollingDay === "today");
+  const tomorrowItem = source.find((item) => item.rollingDay === "tomorrow");
+  if (todayItem) reserved.push(todayItem);
+  if (tomorrowItem) reserved.push(tomorrowItem);
+  const remaining = source.filter((item) => !reserved.includes(item));
+  return [...remaining.slice(0, Math.max(0, limit - reserved.length)), ...reserved];
+}
+
+function renderRollingNotificationItems(items, includeTomorrow) {
+  const nonCalendar = items.filter((item) => !isGoogleCalendarCandidate(item));
+  const todayCalendar = items.filter((item) => item.rollingDay === "today");
+  const tomorrowCalendar = items.filter((item) => item.rollingDay === "tomorrow");
+  let html = nonCalendar.map(renderNotificationItem).join("");
+  if (!includeTomorrow) {
+    return html + todayCalendar.map(renderNotificationItem).join("");
+  }
+  if (todayCalendar.length > 0) html += renderCalendarGroup("今日の残り", todayCalendar);
+  if (tomorrowCalendar.length > 0) html += renderCalendarGroup("明日の予定", tomorrowCalendar);
+  return html;
+}
+
+function renderCalendarGroup(label, items) {
+  return `<section class="today-paruru-group" aria-label="${escapeHtml(label)}">
+    <h3 class="today-paruru-group-title">${escapeHtml(label)}</h3>
+    ${items.map(renderNotificationItem).join("")}
+  </section>`;
 }
 
 function setNotificationViewState(stateName) {
@@ -2860,6 +2996,16 @@ function getCurrentProfile() {
   return userProfile;
 }
 
+function getTomorrowScheduleStartTime(profile = getCurrentProfile()) {
+  return normalizeClockTime(profile?.tomorrowScheduleStartTime) || DEFAULT_TOMORROW_SCHEDULE_START_TIME;
+}
+
+function normalizeClockTime(value) {
+  const match = String(value || "").trim().match(/^(\d{2}):(\d{2})$/);
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return "";
+  return `${match[1]}:${match[2]}`;
+}
+
 function loadUserProfile() {
   const stored = readStoredProfile();
   const profile = {
@@ -2869,6 +3015,7 @@ function loadUserProfile() {
   };
   profile.selectedCalendarMemberKeys = normalizeCalendarMemberSelection(profile.selectedCalendarMemberKeys);
   profile.includeUnknownCalendarEvents = Boolean(profile.includeUnknownCalendarEvents);
+  profile.tomorrowScheduleStartTime = getTomorrowScheduleStartTime(profile);
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   return profile;
 }
@@ -2935,6 +3082,9 @@ function renderProfileForm() {
   profileCalendarSuffix.value = profile.calendarSuffix || "";
   profileDefaultCalendar.value = profile.defaultCalendar || DEFAULT_PROFILE.defaultCalendar;
   profileDeviceId.value = profile.deviceId || "";
+  if (profileTomorrowScheduleStartTime) {
+    profileTomorrowScheduleStartTime.value = getTomorrowScheduleStartTime(profile);
+  }
   renderCalendarMemberSelection(profile);
 }
 
@@ -2947,6 +3097,7 @@ function saveUserProfileFromForm() {
     defaultCalendar: normalizeCalendarTarget(profileDefaultCalendar.value),
     selectedCalendarMemberKeys: readCalendarMemberSelectionFromForm(),
     includeUnknownCalendarEvents: Boolean(profileIncludeUnknownCalendarEvents?.checked),
+    tomorrowScheduleStartTime: normalizeClockTime(profileTomorrowScheduleStartTime?.value) || DEFAULT_TOMORROW_SCHEDULE_START_TIME,
     deviceId: current.deviceId || createDeviceId(),
   };
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
@@ -2986,6 +3137,108 @@ function readCalendarMemberSelectionFromForm() {
 
 function normalizeUserId(value) {
   return String(value || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+function getRollingCalendarRequestPlan(nowMs, startTime) {
+  const parts = getTokyoDateTimeParts(nowMs);
+  const today = `${parts.year}-${padTwo(parts.month)}-${padTwo(parts.day)}`;
+  const tomorrow = addRollingDays(today, 1);
+  const threshold = normalizeClockTime(startTime) || DEFAULT_TOMORROW_SCHEDULE_START_TIME;
+  const currentTime = `${padTwo(parts.hour)}:${padTwo(parts.minute)}`;
+  return { today, tomorrow, includeTomorrow: currentTime >= threshold };
+}
+
+function getTokyoDateTimeParts(epochMs) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TOKYO_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const values = {};
+  formatter.formatToParts(new Date(epochMs)).forEach((part) => {
+    if (part.type !== "literal") values[part.type] = Number(part.value);
+  });
+  return values;
+}
+
+function addRollingDays(dateValue, days) {
+  const normalized = normalizeRollingDate(dateValue);
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  return `${date.getUTCFullYear()}-${padTwo(date.getUTCMonth() + 1)}-${padTwo(date.getUTCDate())}`;
+}
+
+function normalizeRollingDate(value) {
+  const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+}
+
+function buildRollingDateTime(dateValue, timeValue) {
+  const date = normalizeRollingDate(dateValue);
+  const time = normalizeClockTime(String(timeValue || "").slice(0, 5));
+  return date && time ? `${date} ${time}` : "";
+}
+
+function parseTokyoCandidateDateTime(value) {
+  const text = String(value || "").trim();
+  const localMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (localMatch) {
+    return Date.UTC(
+      Number(localMatch[1]),
+      Number(localMatch[2]) - 1,
+      Number(localMatch[3]),
+      Number(localMatch[4]) - 9,
+      Number(localMatch[5]),
+      Number(localMatch[6] || 0)
+    );
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function padTwo(value) {
+  return String(value).padStart(2, "0");
+}
+
+function getNextNotificationBoundaryAt(items, nowMs, startTime) {
+  const plan = getRollingCalendarRequestPlan(nowMs, startTime);
+  const thresholdParts = (normalizeClockTime(startTime) || DEFAULT_TOMORROW_SCHEDULE_START_TIME).split(":").map(Number);
+  const boundaries = [tokyoLocalDateTimeToEpoch(addRollingDays(plan.today, 1), 0, 0)];
+  const threshold = tokyoLocalDateTimeToEpoch(plan.today, thresholdParts[0], thresholdParts[1]);
+  if (threshold > nowMs) boundaries.push(threshold);
+  (Array.isArray(items) ? items : []).filter(isGoogleCalendarCandidate).forEach((item) => {
+    if (item.allDay === true) return;
+    const endMs = parseTokyoCandidateDateTime(item.endAt || buildRollingDateTime(item.eventEnd, item.eventEndTime));
+    if (endMs !== null && endMs > nowMs) boundaries.push(endMs);
+  });
+  return Math.min(...boundaries.filter((value) => Number.isFinite(value) && value > nowMs));
+}
+
+function tokyoLocalDateTimeToEpoch(dateValue, hour, minute) {
+  const match = normalizeRollingDate(dateValue).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return NaN;
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(hour) - 9, Number(minute));
+}
+
+function scheduleNotificationBoundary(items) {
+  if (!notificationBoundaryTimerEnabled) return;
+  if (notificationBoundaryTimerId !== null) window.clearTimeout(notificationBoundaryTimerId);
+  const nowMs = Date.now();
+  const boundaryAt = getNextNotificationBoundaryAt(items, nowMs, getTomorrowScheduleStartTime());
+  if (!Number.isFinite(boundaryAt)) return;
+  notificationBoundaryTimerId = window.setTimeout(() => {
+    notificationBoundaryTimerId = null;
+    loadNotificationCandidates({ force: true });
+  }, Math.max(1, boundaryAt - nowMs + 25));
 }
 
 function normalizeCalendarTarget(value) {

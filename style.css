@@ -155,6 +155,18 @@ main,
   min-width: 0;
 }
 
+.today-paruru-group {
+  display: grid;
+  gap: 8px;
+}
+
+.today-paruru-group-title {
+  margin: 4px 2px 0;
+  color: #4f5675;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .today-paruru-item {
   display: grid;
   gap: 6px;
