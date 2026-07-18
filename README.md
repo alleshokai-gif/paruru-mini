@@ -133,7 +133,9 @@ Script Properties:
 
 `agentChat`は`message`、UUID形式の`sessionId`と`clientRequestId`を必須とする。`userId`、`userDisplayName`、`deviceId`は会話contextであり認証には使用しない。Agentの内部requestId、生エラー、Tool生データ、URL、tokenはPWAへ返さない。
 
-現時点ではMini GASからAgentへ接続するGatewayのみ実装済み。PWA UI接続、既存`createWithAI`の置換、永続Memoryは未実装。
+家の温湿度など現在状態に関する入力は、PWAから`agentChat`へ送る。会話用`sessionId`はversion付きlocalStorageキーで端末ごとに保持し、新規送信ごとに`clientRequestId`を生成する。同一送信の再試行では同じ`clientRequestId`を再利用する。通常メモは従来どおり`createWithAI`へ送り、給食・予定など旧Home Agentの対象は既存`homeAgent`を維持する。
+
+`sessionId`、`clientRequestId`、プロフィール情報は認証情報ではない。PWA UIはAgent URLやtokenを保持しない。永続会話Memoryは未実装。
 
 ## Spreadsheet
 

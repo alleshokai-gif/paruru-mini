@@ -1,13 +1,14 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260715-02";
+const ASSET_VERSION = "v20260718-01";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
 const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PROFILE_STORAGE_KEY = "paruru-mini-profile";
+const AGENT_CHAT_SESSION_STORAGE_KEY = "paruru-mini-agent-chat-session-v1";
 const NOTIFICATION_CACHE_MS = 5000;
 const NOTIFICATION_DISPLAY_LIMIT = 5;
 const HOME_AGENT_QUESTION_PATTERNS = [
@@ -32,6 +33,11 @@ const HOME_AGENT_MEMO_PRIORITY_PATTERNS = [
   /買う|購入|もらう|提出|送る|予約|登録|入れといて|入れて|メモ/,
   /^\s*\d{1,2}月\d{1,2}日/,
   /授業参観|面談|会議|歯医者|病院/,
+];
+const AGENT_CHAT_HOME_STATE_PATTERNS = [
+  /暑い|寒い|蒸し|蒸す|温度|湿度|室温/,
+  /家の温度どう|家の中暑くない|部屋大丈夫|家の中どんな感じ/,
+  /冷房効いとる|設定温度まで下がりそう|ちゃんと冷え|ぬるい/,
 ];
 const DEFAULT_PROFILE = {
   userId: "father",
@@ -288,9 +294,9 @@ const homeAgentContent = document.querySelector("#homeAgentContent");
 const homeAgentRetryButton = document.querySelector("#homeAgentRetryButton");
 const homeAgentCloseButton = document.querySelector("#homeAgentCloseButton");
 
-let lastHomeAgentMessage = "";
 let homeAgentConversationContext = {};
 let pendingHomeAgentActionCandidate = null;
+let pendingHomeAgentRetry = null;
 
 setParuruState("loading");
 
@@ -419,6 +425,11 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (isLikelyAgentChatQuery(memo)) {
+    await submitAgentChatQuery(memo);
+    return;
+  }
+
   if (isLikelyHomeAgentQuery(memo)) {
     await submitHomeAgentQuery(memo);
     return;
@@ -542,8 +553,15 @@ todayParuruList.addEventListener("click", (event) => {
 });
 todayParuruAllButton.addEventListener("click", () => switchView("inbox"));
 homeAgentRetryButton.addEventListener("click", () => {
-  if (lastHomeAgentMessage) {
-    submitHomeAgentQuery(lastHomeAgentMessage);
+  if (isSubmitting || !pendingHomeAgentRetry) {
+    return;
+  }
+  if (pendingHomeAgentRetry.type === "agentChat") {
+    submitAgentChatQuery(pendingHomeAgentRetry.message, { request: pendingHomeAgentRetry });
+    return;
+  }
+  if (pendingHomeAgentRetry.type === "homeAgent") {
+    submitHomeAgentQuery(pendingHomeAgentRetry.message);
   }
 });
 homeAgentCloseButton.addEventListener("click", hideHomeAgentCard);
@@ -666,6 +684,23 @@ async function callHomeAgent(payload) {
   return parseApiResponse(response);
 }
 
+async function callAgentChat(payload) {
+  if (!GAS_WEB_APP_URL) {
+    throw new Error("PALURU Mini Gateway is unavailable");
+  }
+
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const result = await parseApiResponse(response);
+  return validateAgentChatResponse(result, payload);
+}
+
 async function executeHomeAgentAction(candidate) {
   if (!GAS_WEB_APP_URL) {
     return {
@@ -714,7 +749,7 @@ function buildHomeAgentPayload(messageText) {
 
 async function submitHomeAgentQuery(messageText) {
   const payload = buildHomeAgentPayload(messageText);
-  lastHomeAgentMessage = messageText;
+  pendingHomeAgentRetry = { type: "homeAgent", message: messageText };
   setSending(true, PARURU_MESSAGES.action.homeAgentLoading);
   setParuruSpeech("idle", "ちょっと家の中、見てくる。");
   renderHomeAgentLoading();
@@ -726,6 +761,7 @@ async function submitHomeAgentQuery(messageText) {
       homeAgentConversationContext = result.conversationContext;
     }
     memoInput.value = "";
+    pendingHomeAgentRetry = null;
     renderHomeAgentResult(result);
     setParuruSpeech("idle", getHomeAgentSpeech(result));
     resetParuruSpeechSoon();
@@ -738,6 +774,72 @@ async function submitHomeAgentQuery(messageText) {
   } finally {
     setSending(false);
   }
+}
+
+function buildAgentChatPayload(messageText, options = {}) {
+  const profile = getCurrentProfile();
+  const sessionId = options.sessionId || getOrCreateAgentChatSessionId();
+  const clientRequestId = options.clientRequestId || createUuid();
+  return {
+    action: "agentChat",
+    message: String(messageText || "").trim(),
+    sessionId,
+    clientRequestId,
+    userId: profile.userId,
+    userDisplayName: profile.displayName,
+    deviceId: profile.deviceId,
+  };
+}
+
+async function submitAgentChatQuery(messageText, options = {}) {
+  const request = options.request || {
+    type: "agentChat",
+    ...buildAgentChatPayload(messageText),
+  };
+  const payload = {
+    action: request.action,
+    message: request.message,
+    sessionId: request.sessionId,
+    clientRequestId: request.clientRequestId,
+    userId: request.userId,
+    userDisplayName: request.userDisplayName,
+    deviceId: request.deviceId,
+  };
+  pendingHomeAgentRetry = request;
+  setSending(true, PARURU_MESSAGES.action.homeAgentLoading);
+  setParuruSpeech("idle", "ぱるるが家の様子を見てる…");
+  renderHomeAgentLoading();
+
+  try {
+    const result = await callAgentChat(payload);
+    memoInput.value = "";
+    pendingHomeAgentRetry = null;
+    renderAgentChatReply(result.reply);
+    setParuruSpeech("homeAgent");
+    resetParuruSpeechSoon();
+    revealPanelIfNeeded(homeAgentCard);
+  } catch (error) {
+    renderHomeAgentError();
+    setParuruState("error");
+    showMessage(PARURU_MESSAGES.action.homeAgentError, "error");
+    revealPanelIfNeeded(homeAgentCard);
+  } finally {
+    setSending(false);
+  }
+}
+
+function validateAgentChatResponse(response, request) {
+  const reply = String(response && response.reply || "").trim();
+  if (
+    !response ||
+    response.success !== true ||
+    !reply ||
+    response.sessionId !== request.sessionId ||
+    response.clientRequestId !== request.clientRequestId
+  ) {
+    throw new Error("Invalid Agent Gateway response");
+  }
+  return { reply };
 }
 
 function buildCreateWithAIPayload(memo) {
@@ -1443,6 +1545,14 @@ function isLikelyHomeAgentQuery(text) {
   return HOME_AGENT_QUESTION_PATTERNS.some((pattern) => pattern.test(value));
 }
 
+function isLikelyAgentChatQuery(text) {
+  const value = String(text || "").trim();
+  if (!value || HOME_AGENT_MEMO_PRIORITY_PATTERNS.some((pattern) => pattern.test(value))) {
+    return false;
+  }
+  return AGENT_CHAT_HOME_STATE_PATTERNS.some((pattern) => pattern.test(value));
+}
+
 function normalizeHomeAgentResult(response) {
   const result = response?.result || response?.data || response?.item || {};
   return {
@@ -1457,7 +1567,7 @@ function renderHomeAgentLoading() {
   homeAgentCard.classList.remove("is-hidden");
   homeAgentCard.setAttribute("aria-busy", "true");
   homeAgentRetryButton.classList.add("is-hidden");
-  homeAgentContent.innerHTML = `<p class="home-agent-empty">家の中を確認中...</p>`;
+  homeAgentContent.innerHTML = `<p class="home-agent-empty">ぱるるが家の様子を見てる…</p>`;
 }
 
 function renderHomeAgentError() {
@@ -1499,6 +1609,10 @@ function renderHomeAgentResult(result) {
   homeAgentContent.innerHTML = sections.length > 0
     ? sections.join("")
     : `<p class="home-agent-empty">見られる情報はなかったよ。</p>`;
+}
+
+function renderAgentChatReply(reply) {
+  renderHomeAgentResult({ summary: reply });
 }
 
 function renderHomeAgentSummary(summary) {
@@ -2714,6 +2828,45 @@ function createDeviceId() {
   }
 
   return `device-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getOrCreateAgentChatSessionId() {
+  const stored = String(localStorage.getItem(AGENT_CHAT_SESSION_STORAGE_KEY) || "").trim();
+  if (isUuid(stored)) {
+    return stored;
+  }
+  const sessionId = createUuid();
+  localStorage.setItem(AGENT_CHAT_SESSION_STORAGE_KEY, sessionId);
+  return sessionId;
+}
+
+function createUuid() {
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0"));
+  return [
+    hex.slice(0, 4).join(""),
+    hex.slice(4, 6).join(""),
+    hex.slice(6, 8).join(""),
+    hex.slice(8, 10).join(""),
+    hex.slice(10, 16).join(""),
+  ].join("-");
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
 
 function renderProfileForm() {
