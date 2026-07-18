@@ -76,6 +76,7 @@ test('tool-free response', () => {
     assert(url === secretUrl && sent.authToken === secretToken, 'server credentials not used');
     assert(options.contentType === 'text/plain;charset=utf-8', 'wrong content type');
     assert(!('userId' in sent) && sent.action === 'agent.chat', 'wrong upstream contract');
+    assert(sent.actor.userId === 'father' && sent.actor.deviceId === 'device', 'actor not forwarded');
   });
   const result = post(valid({ userId: 'father', userDisplayName: '父', deviceId: 'device' }));
   assert(result.success && result.reply && result.toolExecutions.length === 0, 'tool-free response failed');

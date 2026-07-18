@@ -30,6 +30,14 @@ function validateAgentChatInput_(body) {
     message: message,
     sessionId: sessionId,
     clientRequestId: clientRequestId,
+    actor: {
+      userId: String(body.userId || '').trim().slice(0, 100),
+      userDisplayName: String(body.userDisplayName || '').trim().slice(0, 100),
+      deviceId: String(body.deviceId || '').trim().slice(0, 200),
+      visibility: String(body.visibility || 'private').trim(),
+      category: String(body.category || '').trim(),
+      priority: String(body.priority || '').trim(),
+    },
   };
 }
 
@@ -59,6 +67,7 @@ function callPaluruAgent_(config, input) {
         message: input.message,
         sessionId: input.sessionId,
         clientRequestId: input.clientRequestId,
+        actor: input.actor,
         authToken: config.token,
       }),
       muteHttpExceptions: true,

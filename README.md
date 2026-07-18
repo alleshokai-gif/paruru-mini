@@ -254,3 +254,11 @@ Script Properties:
 - 「はいはい。僕が覚えとく。」
 - 「別に心配してるわけじゃないし。」
 - 「また忘れてる。」
+
+## EVA-03C 内部メモAPI（ローカル実装）
+
+PALURU_OS専用のPOST action `createWithAIInternal` を追加しました。公開 `createWithAI` の入出力は変更せず、AI解析・決定的Follow-up補正・保存処理は同じ共通関数を利用します。認証にはScript Property `PALURU_INBOX_API_TOKEN` を使い、ブラウザ入力、応答、ログへ値を出しません。
+
+冪等性のため、`01_Inbox` のヘッダー行末尾へ `clientRequestId` 列を手動で追加する必要があります。コードは列を自動追加しません。既存17件のセルは空欄のままでよく、同じUUIDが存在する場合はAI解析と保存を再実行せず `duplicate=true` で既存itemを返します。ヘッダー未追加時は `CONFIGURATION_ERROR` で安全に拒否します。
+
+Miniの `agentChat` Gatewayは、既存のuser contextを省略可能な `actor` としてPALURU Agentへ転送します。成功応答の公開契約は従来どおりで、actor、Secret、Agent内部情報は返しません。PWAのルーティングと `createWithAI` は今回変更していません。

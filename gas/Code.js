@@ -79,6 +79,10 @@ function doPost(e) {
       return createItemWithAI_(body);
     }
 
+    if (action === 'createWithAIInternal') {
+      return createItemWithAIInternal_(body);
+    }
+
     if (action === 'agentChat') {
       return agentChat_(body);
     }
@@ -192,7 +196,21 @@ function createItemWithAI_(body) {
   }
 
   try {
-    debugLog_('[createWithAI] received action=createWithAI hasMemo=' + Boolean(memo) + ' userId=' + String(body.userId || ''));
+    return json_({
+      success: true,
+      item: createItemWithAIResult_(body, memo),
+    });
+  } catch (error) {
+    return json_({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+function createItemWithAIResult_(body, memo, options) {
+  const trustedOptions = options || {};
+  debugLog_('[createWithAI] received action=createWithAI hasMemo=' + Boolean(memo));
     const analysis = enforceFollowupRules_(analyzeMemoWithAI_(memo), memo);
     const requestedPriority = normalizePriority_(body.priority);
     const now = nowTokyoString_();
@@ -201,7 +219,7 @@ function createItemWithAI_(body) {
       category: body.category || analysis.category,
       priority: requestedPriority || analysis.priority,
       status: 'inbox',
-      source: 'ai',
+      source: trustedOptions.source || 'ai',
       createdAt: now,
       updatedAt: now,
       aiComment: analysis.aiComment || '',
@@ -217,6 +235,7 @@ function createItemWithAI_(body) {
       calendarSuffix: body.calendarSuffix || '',
       deviceId: body.deviceId || '',
       visibility: normalizeVisibility_(body.visibility),
+      clientRequestId: trustedOptions.clientRequestId || '',
     });
 
     itemInput.calendarTitle = body.calendarTitle || '';
@@ -236,16 +255,7 @@ function createItemWithAI_(body) {
       updatedAt: now,
     });
 
-    return json_({
-      success: true,
-      item: responseItem,
-    });
-  } catch (error) {
-    return json_({
-      success: false,
-      message: error.message,
-    });
-  }
+    return responseItem;
 }
 
 function answerFollowup_(body) {
@@ -633,6 +643,7 @@ function appendNewItem_(item) {
     calendarSuffix: item.calendarSuffix || '',
     deviceId: item.deviceId || '',
     visibility: normalizeVisibility_(item.visibility),
+    clientRequestId: item.clientRequestId || '',
     calendarTitle: item.calendarTitle || '',
     calendarSyncStatus: item.calendarSyncStatus || getInitialCalendarSyncStatus_(item),
     calendarId: item.calendarId || '',
@@ -812,7 +823,7 @@ function setSheetValueForField_(sheet, rowNumber, columnNumber, field, value) {
 }
 
 function shouldStoreAsText_(field) {
-  return isDateOnlyHeader_(field) || isTimeOnlyHeader_(field) || field === 'remindAt' || field === 'calendarStart' || field === 'calendarEnd';
+  return isDateOnlyHeader_(field) || isTimeOnlyHeader_(field) || field === 'remindAt' || field === 'calendarStart' || field === 'calendarEnd' || field === 'clientRequestId';
 }
 
 function assertRequiredHeaders_(index, fields) {
