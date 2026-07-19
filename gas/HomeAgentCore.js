@@ -7,53 +7,23 @@ function homeAgentAction_(body) {
 }
 
 function runHomeAgentAction_(body) {
-  const candidate = body.candidate || {};
-  const skill = String(body.skill || candidate.skill || candidate.action || '').trim();
-  const parameters = Object.assign({}, candidate.parameters || {}, body.parameters || {});
-  const request = normalizeHomeAgentRequest_({
-    message: String(body.message || ''),
-    userId: body.userId || '',
-    userDisplayName: body.userDisplayName || '',
-    deviceId: body.deviceId || '',
-    parameters: parameters,
-  }, new Date());
-
-  if (body.confirmed !== true) {
-    return {
-      success: false,
-      message: 'confirmation required',
-      error: { code: 'CONFIRMATION_REQUIRED' },
-    };
-  }
-
-  let result;
-  if (skill === 'pauseRoomAutomation') {
-    result = pauseRoomAutomationSkill_(request);
-  } else if (skill === 'resumeRoomAutomation') {
-    result = resumeRoomAutomationSkill_(request);
-  } else if (skill === 'setAirconOverride') {
+  const legacyCandidate = body && body.candidate || {};
+  const legacySkill = String(body && body.skill || legacyCandidate.skill || legacyCandidate.action || '').trim();
+  if (legacySkill === 'setAirconOverride') {
     return {
       success: false,
       message: 'aircon operation is not connected',
       error: { code: 'AIRCON_OPERATION_NOT_CONNECTED' },
     };
-  } else {
+  }
+  if (legacySkill) {
     return {
       success: false,
-      message: 'unsupported action',
-      error: { code: 'UNSUPPORTED_HOME_AGENT_ACTION' },
+      message: 'confirmation is invalid',
+      error: { code: 'INVALID_CONFIRMATION' },
     };
   }
-
-  return {
-    success: result && result.success === true,
-    message: result && result.success === true ? 'home agent action executed' : 'home agent action failed',
-    skill: skill,
-    result: result && result.data ? result.data : {},
-    skillResult: result,
-    warnings: result && result.warnings ? result.warnings : [],
-    error: result && result.error ? result.error : null,
-  };
+  return executeHomeAgentActionConfirmation_(body || {});
 }
 
 function runHomeAgentRequest_(body) {
@@ -116,7 +86,16 @@ function runHomeAgentRequest_(body) {
       && alertCandidate.data.action.parameters && alertCandidate.data.action.parameters.message
     ? [alertCandidate.data.action]
     : [];
-  const actionCandidates = resultActionCandidates.concat(signageCandidates);
+  const actionCandidates = secureHomeAgentActionCandidates_(
+    resultActionCandidates.concat(signageCandidates),
+    request,
+    body && body.pairingToken
+  );
+  if (responseResult && Array.isArray(responseResult.actionCandidates)) {
+    responseResult.actionCandidates = actionCandidates.filter(function(candidate) {
+      return !(candidate && (candidate.skill === 'createSignageAlert' || candidate.action === 'createSignageAlert'));
+    });
+  }
 
   const finishedAt = new Date();
   const audit = buildHomeAgentAudit_(request, {
@@ -159,6 +138,7 @@ function normalizeHomeAgentRequest_(body, now) {
 
   return {
     requestId: String(body.requestId || Utilities.getUuid()),
+    clientRequestId: String(body.clientRequestId || '').trim(),
     conversationId: String(body.conversationId || ''),
     userId: String(body.userId || ''),
     userDisplayName: String(body.userDisplayName || ''),
@@ -531,6 +511,7 @@ function buildHomeAgentResumeRoomAutomationResult_(request, skillResults) {
       requiresConfirmation: true,
       parameters: {
         roomId: climate.roomId || request.parameters.roomId,
+        resumeTarget: String(pause.activePause.pauseId || ''),
       },
     }] : [],
   };

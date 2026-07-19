@@ -96,15 +96,17 @@ PALURU Mini skills now wrap switchbot-temp-log:
 ## Pause Lifecycle
 
 1. User asks to stop automation.
-2. Home Agent returns a pause proposal.
-3. Front end shows a confirmation panel.
-4. User confirms.
-5. Front end calls PALURU `action=homeAgentAction`.
-6. PALURU GAS calls switchbot-temp-log `pauseRoomAutomation` with shared secret.
+2. PALURU GAS validates the kill switch, paired device and server-side room allowlist.
+3. PALURU GAS stores the bound operation and returns a five-minute `confirmationId` without returning mutable operation parameters.
+4. Front end shows a confirmation panel.
+5. User confirms; the PWA sends only the confirmation identifiers plus its pairing credential, not skill/room/duration/`confirmed=true`.
+6. PALURU GAS consumes the confirmation atomically with `LockService`, revalidates state and input, then calls switchbot-temp-log `pauseRoomAutomation` with the server-side shared secret.
 7. switchbot-temp-log writes `Aircon_Override`.
-8. PALURU shows the active pause.
+8. PALURU stores the sanitized result in bounded, expiring internal Script Properties for idempotent retries and shows the active pause.
 
 Resume follows the same confirmation path and calls `resumeRoomAutomation`.
+
+The public Web App remains anonymous. Device pairing is a bearer-token mitigation, not human identity authentication. Missing configuration fails closed, and `PALURU_HOME_AGENT_ACTIONS_ENABLED` is the operational kill switch.
 
 ## Freshness
 

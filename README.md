@@ -17,6 +17,30 @@
 
 Agent経由でClimate実測回答、Calendar実予定回答、Inbox保存、構造化Follow-up中継を利用できます。既存Inbox、通知、Calendar登録、`createWithAI`、`answerFollowup`、旧Home Agentは後方互換のため残しています。
 
+## 旧Home Agent操作入口のP0保護
+
+`homeAgent`の読み取り処理は従来どおり利用できます。`homeAgentAction`の`pauseRoomAutomation`／`resumeRoomAutomation`だけは、次の3条件をすべて満たす場合に限って実行します。
+
+1. `PALURU_HOME_AGENT_ACTIONS_ENABLED` が明示的に `true`
+2. 端末別pairing tokenが `PALURU_HOME_AGENT_DEVICE_TOKEN_HASHES` のSHA-256ハッシュと一致
+3. サーバー発行・5分有効・一回限りの`confirmationId`が有効
+
+追加Script Properties（値はリポジトリへ記録しない）：
+
+| Property | 形式 | 用途 |
+|---|---|---|
+| `PALURU_HOME_AGENT_ACTIONS_ENABLED` | `true`のときだけ有効 | 操作kill switch。未設定・その他の値はfail closed |
+| `PALURU_HOME_AGENT_DEVICE_TOKEN_HASHES` | `deviceId`をキー、端末tokenのSHA-256 lowercase hexを値にしたJSON object | 匿名PWA端末のpairing確認 |
+| `PALURU_HOME_AGENT_ALLOWED_ROOM_IDS` | 許可する論理roomIdのJSON array | クライアントからの任意room指定を拒否 |
+
+pairing tokenは端末ごとに十分長いランダム値（32文字以上）を所有者が生成し、PWA設定画面へ一度入力します。生tokenはその端末の`localStorage`だけに保存し、コードやScript Propertiesには置きません。サーバーにはSHA-256ハッシュだけを設定します。rotation時は先にkill switchを無効化し、新tokenを端末へ設定してから対応するハッシュを置換し、確認後にkill switchを有効化します。端末紛失時は該当`deviceId`のハッシュを削除します。
+
+PWAはMini GAS Web App URLをフロントの定数として保持しており、Web Appは`ANYONE_ANONYMOUS`です。そのためpairing tokenは「Googleアカウント本人認証」ではなく、端末に配布したbearer credentialによる当面の呼び出し元保護です。端末localStorageの窃取、同一originのXSS、端末共有、token転送は防げません。真の利用者認証が必要なら、Google Identity／Firebase Auth等で検証可能なID tokenをMini GAS手前または専用Gatewayで検証する必要があります。
+
+`confirmationId`はskill、roomId、pause期限またはresume対象、actor、`clientRequestId`、確認失効時刻へサーバー側で結び付けます。PWAは操作内容を再送せず、`confirmationId`と`clientRequestId`、呼び出し元確認用pairing tokenだけを送ります。`LockService`内でpendingを消費し、内部prefix `PALURU_HA_ACTION_STATE_` のScript Propertiesへ期限付き状態とsanitize済み結果を保存するため、同じ確認または同じ`clientRequestId`の再送で上流操作を繰り返しません。pendingは5分、再送結果とrequest indexは6時間保持し、期限切れ状態は次の確認発行時に削除します。上限到達時はfail closedです。この内部状態にpairing token、共有Secret、メッセージ本文は保存しません。
+
+nonceだけで防げるのは、操作内容の改ざん、期限後実行、単純な二重送信です。nonceを取得した本人の識別、端末乗っ取り、XSS、pairing token漏えいは防げないため、nonceを認証とは扱いません。`setAirconOverride`など未接続操作は引き続き拒否します。
+
 ## Deployment operation
 
 コデオはコード変更、テスト、Git、必要なGASの`clasp push`までを担当します。GAS Web App deploymentは所有者がApps Scriptエディタでソース反映を確認後、既存deploymentを手動更新します。通常運用で`clasp deploy`は使用しません。新規deploymentの重複、Library deploymentとの取り違えを避け、Web App URLは末尾`/exec`を使います。Property値だけの変更は通常、再deployment不要です。PWAは既存のGitHub Pages公開とService Worker更新手順に従います。

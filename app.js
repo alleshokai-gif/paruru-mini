@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260719-02";
+const ASSET_VERSION = "v20260719-03";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -9,6 +9,7 @@ const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PROFILE_STORAGE_KEY = "paruru-mini-profile";
 const AGENT_CHAT_SESSION_STORAGE_KEY = "paruru-mini-agent-chat-session-v1";
+const HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY = "paruru-mini-home-agent-pairing-v1";
 const NOTIFICATION_CACHE_MS = 5000;
 const NOTIFICATION_DISPLAY_LIMIT = 5;
 const TOKYO_TIME_ZONE = "Asia/Tokyo";
@@ -315,6 +316,7 @@ const profileDeviceId = document.querySelector("#profileDeviceId");
 const profileCalendarMembers = document.querySelector("#profileCalendarMembers");
 const profileIncludeUnknownCalendarEvents = document.querySelector("#profileIncludeUnknownCalendarEvents");
 const profileTomorrowScheduleStartTime = document.querySelector("#profileTomorrowScheduleStartTime");
+const profileHomeAgentPairingToken = document.querySelector("#profileHomeAgentPairingToken");
 const todayParuru = document.querySelector("#todayParuru");
 const todayParuruLine = document.querySelector("#todayParuruLine");
 const todayParuruList = document.querySelector("#todayParuruList");
@@ -622,7 +624,7 @@ homeAgentRetryButton.addEventListener("click", () => {
     return;
   }
   if (pendingHomeAgentRetry.type === "homeAgent") {
-    submitHomeAgentQuery(pendingHomeAgentRetry.message);
+    submitHomeAgentQuery(pendingHomeAgentRetry.message, { clientRequestId: pendingHomeAgentRetry.clientRequestId });
   }
 });
 homeAgentCloseButton.addEventListener("click", hideHomeAgentCard);
@@ -776,7 +778,6 @@ async function executeHomeAgentAction(candidate) {
     };
   }
 
-  const profile = getCurrentProfile();
   const response = await fetch(GAS_WEB_APP_URL, {
     method: "POST",
     headers: {
@@ -784,18 +785,16 @@ async function executeHomeAgentAction(candidate) {
     },
     body: JSON.stringify({
       action: "homeAgentAction",
-      candidate,
-      confirmed: true,
-      userId: profile.userId,
-      userDisplayName: profile.displayName,
-      deviceId: profile.deviceId,
+      confirmationId: String(candidate?.confirmationId || ""),
+      clientRequestId: String(candidate?.clientRequestId || ""),
+      pairingToken: getHomeAgentPairingToken(),
     }),
   });
 
   return parseApiResponse(response);
 }
 
-function buildHomeAgentPayload(messageText) {
+function buildHomeAgentPayload(messageText, options = {}) {
   const profile = getCurrentProfile();
   return {
     action: "homeAgent",
@@ -804,14 +803,16 @@ function buildHomeAgentPayload(messageText) {
     userDisplayName: profile.displayName,
     calendarSuffix: profile.calendarSuffix,
     deviceId: profile.deviceId,
+    clientRequestId: options.clientRequestId || createUuid(),
+    pairingToken: getHomeAgentPairingToken(),
     conversationId: "",
     context: homeAgentConversationContext,
   };
 }
 
-async function submitHomeAgentQuery(messageText) {
-  const payload = buildHomeAgentPayload(messageText);
-  pendingHomeAgentRetry = { type: "homeAgent", message: messageText };
+async function submitHomeAgentQuery(messageText, options = {}) {
+  const payload = buildHomeAgentPayload(messageText, options);
+  pendingHomeAgentRetry = { type: "homeAgent", message: messageText, clientRequestId: payload.clientRequestId };
   setSending(true, PARURU_MESSAGES.action.homeAgentLoading);
   setParuruSpeech("idle", "ちょっと家の中、見てくる。");
   renderHomeAgentLoading();
@@ -2359,6 +2360,7 @@ function isSignageActionCandidate(candidate) {
 }
 
 function getHomeAgentActionLabel(candidate) {
+  if (candidate?.actionLabel) return String(candidate.actionLabel);
   const skill = candidate?.skill || candidate?.action || "";
   if (skill === "setAirconOverride") return "この設定にする";
   if (skill === "pauseRoomAutomation") return "自動制御だけ止める";
@@ -2406,10 +2408,12 @@ function renderHomeAgentActionConfirmation(actionCandidate) {
   pendingHomeAgentActionCandidate = actionCandidate;
   const actionLabel = getHomeAgentActionLabel(actionCandidate);
   const skill = actionCandidate?.skill || actionCandidate?.action || "";
-  const canExecute = skill === "pauseRoomAutomation" || skill === "resumeRoomAutomation";
+  const canExecute = actionCandidate?.type === "homeAgentActionConfirmation"
+    && isUuid(actionCandidate?.confirmationId)
+    && isUuid(actionCandidate?.clientRequestId);
   const message = skill === "setAirconOverride"
     ? "この版ではエアコン温度変更はまだ未接続。押しても実操作もpause保存もしないよ。"
-    : "確認したらswitchbot-temp-logへ送るよ。";
+    : String(actionCandidate?.confirmationMessage || "この端末では操作を利用できんで。");
   const executeButton = skill === "setAirconOverride"
     ? `<button type="button" data-home-agent-action-unconnected>${escapeHtml(actionLabel)}</button>`
     : canExecute
@@ -2452,8 +2456,7 @@ async function executePendingHomeAgentAction() {
       throw new Error(response.message || response.error?.message || "home agent action failed");
     }
     const result = response.result || {};
-    const skill = pendingHomeAgentActionCandidate.skill || pendingHomeAgentActionCandidate.action || "";
-    const successMessage = skill === "pauseRoomAutomation"
+    const successMessage = response.operation === "pause"
       ? formatHomeAgentPauseSuccess(result)
       : "通常運転に戻したよ。";
     pendingHomeAgentActionCandidate = null;
@@ -3274,6 +3277,10 @@ function renderProfileForm() {
   if (profileTomorrowScheduleStartTime) {
     profileTomorrowScheduleStartTime.value = getTomorrowScheduleStartTime(profile);
   }
+  if (profileHomeAgentPairingToken) {
+    profileHomeAgentPairingToken.value = "";
+    profileHomeAgentPairingToken.placeholder = getHomeAgentPairingToken() ? "設定済み（変更時だけ入力）" : "未設定";
+  }
   renderCalendarMemberSelection(profile);
 }
 
@@ -3290,7 +3297,16 @@ function saveUserProfileFromForm() {
     deviceId: current.deviceId || createDeviceId(),
   };
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  const pairingToken = String(profileHomeAgentPairingToken?.value || "").trim();
+  if (pairingToken) {
+    localStorage.setItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY, pairingToken);
+    profileHomeAgentPairingToken.value = "";
+  }
   return profile;
+}
+
+function getHomeAgentPairingToken() {
+  return String(localStorage.getItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY) || "").trim();
 }
 
 function normalizeCalendarMemberSelection(value) {
