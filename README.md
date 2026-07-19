@@ -300,7 +300,9 @@ Agent由来Follow-upの回答成功時は、既存 `hideFollowupPanel` と `hide
 
 Calendarの読取質問だけを `agentChat` へ送ります。給食・学校固有情報・家電操作・自動制御は既存 `homeAgent` を優先し、Calendarの登録・追加・変更・削除等も読取Agentへ送りません。文末の明示メモ保存は既存 `agentChat / create_memo`、Climate質問は既存 `agentChat / get_home_climate_context`、通常メモは `createWithAI` のままです。
 
-Calendar照会中は既存Agentカードへ「ぱるるが予定を確認中…」と表示します。失敗時は入力と同じ `clientRequestId` を保持して再試行し、別経路へ自動フォールバックしません。PWA buildは `v20260719-01` です。
+Calendar照会中は既存Agentカードへ「ぱるるが予定を確認中…」と表示します。失敗時は入力と同じ `clientRequestId` を保持して再試行し、別経路へ自動フォールバックしません。
+
+Inbox編集はtype別表示です。shoppingでは「今日／明日／1週間以内／日付指定／期限なし」を選び、既存の `dueDate` へ保存します。「1週間以内」はAsia/Tokyoの今日から7日後へ変換します。期限付きのactiveなshoppingはNormal優先度でも「今日のぱるる」候補になります。PWA buildは `v20260719-02` です。
 ## EVA-03E Calendar Context internal API（ローカル実装）
 
 `POST action=calendarContextInternal` は、PALURU_OSだけが利用するCalendar読取専用の内部APIです。認証には専用Script Property `PALURU_CALENDAR_API_TOKEN` を使い、Inbox・Agent・OS caller・Climate用tokenとは共有しません。`period` は `today` / `tomorrow` / `this_week` / `next_7_days`、`scope` は `mine` / `family` の固定値だけを受け付けます。`actor.userId` は既存家族allowlistで解決し、不明な値はfamilyへフォールバックせず拒否します。

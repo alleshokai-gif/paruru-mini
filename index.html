@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260719-01">
-    <link rel="icon" href="./assets/icons/favicon.png?v=20260719-01" type="image/png">
-    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260719-01">
-    <link rel="stylesheet" href="./style.css?v=20260719-01">
+    <link rel="manifest" href="./manifest.json?v=20260719-02">
+    <link rel="icon" href="./assets/icons/favicon.png?v=20260719-02" type="image/png">
+    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260719-02">
+    <link rel="stylesheet" href="./style.css?v=20260719-02">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260719-01" alt="&#12401;&#12427;&#12427;">
+      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260719-02" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">Loading...</p>
     </div>
@@ -35,7 +35,7 @@
 
         <section class="paruru-hero" aria-label="&#12401;&#12427;&#12427;&#20250;&#35441;">
           <div class="paruru-character">
-            <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260719-01" alt="&#12401;&#12427;&#12427;">
+            <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260719-02" alt="&#12401;&#12427;&#12427;">
           </div>
           <div class="paruru-speech-column">
             <div id="paruruSpeech" class="paruru-bubble paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</div>
@@ -224,41 +224,33 @@
           </select>
         </label>
 
-        <div class="edit-grid">
+        <section id="editShoppingPanel" class="edit-datetime-panel" aria-label="&#36023;&#12358;&#12479;&#12452;&#12511;&#12531;&#12464;" hidden>
           <label class="field">
-            <span>&#31278;&#39006;</span>
-            <select id="editType">
-              <option value="note">&#12513;&#12514;</option>
-              <option value="task">&#12479;&#12473;&#12463;</option>
-              <option value="event">&#20104;&#23450;</option>
-              <option value="reminder">&#12522;&#12510;&#12452;&#12531;&#12489;</option>
-              <option value="shopping">&#36023;&#12356;&#29289;</option>
-              <option value="idea">&#12450;&#12452;&#12487;&#12450;</option>
+            <span>&#36023;&#12358;&#12479;&#12452;&#12511;&#12531;&#12464;</span>
+            <select id="editShoppingTiming">
+              <option value="today">&#20170;&#26085;</option>
+              <option value="tomorrow">&#26126;&#26085;</option>
+              <option value="within_7_days">1&#36913;&#38291;&#20197;&#20869;</option>
+              <option value="custom">&#26085;&#20184;&#25351;&#23450;</option>
+              <option value="none">&#26399;&#38480;&#12394;&#12375;</option>
             </select>
           </label>
+        </section>
 
-          <label class="field">
-            <span>&#29366;&#24907;</span>
-            <select id="editStatus">
-              <option value="inbox">Inbox</option>
-              <option value="Done">&#23436;&#20102;</option>
-              <option value="cancelled">&#21462;&#28040;</option>
-            </select>
-          </label>
-        </div>
-
-        <section class="edit-datetime-panel" aria-label="&#26085;&#26178;">
+        <section id="editDuePanel" class="edit-datetime-panel" aria-label="&#32224;&#20999;" hidden>
           <div class="edit-grid">
-            <label class="field">
-              <span>&#32224;&#20999;&#26085;</span>
+            <label id="editDueDateField" class="field">
+              <span id="editDueDateLabel">&#32224;&#20999;&#26085;</span>
               <input id="editDueDate" type="date">
             </label>
-            <label class="field">
+            <label id="editDueTimeField" class="field">
               <span>&#32224;&#20999;&#26178;&#21051;</span>
               <input id="editDueTime" type="time">
             </label>
           </div>
+        </section>
 
+        <section id="editEventPanel" class="edit-datetime-panel" aria-label="&#20104;&#23450;&#26085;&#26178;" hidden>
           <div class="edit-grid">
             <label class="field">
               <span>&#20104;&#23450;&#38283;&#22987;&#26085;</span>
@@ -280,7 +272,9 @@
               <input id="editEventEndTime" type="time">
             </label>
           </div>
+        </section>
 
+        <section id="editReminderPanel" class="edit-datetime-panel" aria-label="&#36890;&#30693;&#26085;&#26178;" hidden>
           <div class="edit-grid">
             <label class="field">
               <span>&#36890;&#30693;&#26085;</span>
@@ -292,6 +286,32 @@
             </label>
           </div>
         </section>
+
+        <details id="editAdvancedSettings" class="edit-advanced-settings">
+          <summary>&#35443;&#32048;&#35373;&#23450;</summary>
+          <div class="edit-grid">
+            <label class="field">
+              <span>&#31278;&#39006;</span>
+              <select id="editType">
+                <option value="note">&#12513;&#12514;</option>
+                <option value="task">&#12479;&#12473;&#12463;</option>
+                <option value="event">&#20104;&#23450;</option>
+                <option value="reminder">&#12522;&#12510;&#12452;&#12531;&#12489;</option>
+                <option value="shopping">&#36023;&#12356;&#29289;</option>
+                <option value="idea">&#12450;&#12452;&#12487;&#12450;</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>&#29366;&#24907;</span>
+              <select id="editStatus">
+                <option value="inbox">Inbox</option>
+                <option value="Done">&#23436;&#20102;</option>
+                <option value="cancelled">&#21462;&#28040;</option>
+              </select>
+            </label>
+          </div>
+        </details>
 
         <p id="detailCalendarStatus" class="detail-calendar-status is-hidden"></p>
 
@@ -333,7 +353,7 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260719-01" defer></script>
+    <script src="./app.js?v=20260719-02" defer></script>
   </body>
 </html>
 

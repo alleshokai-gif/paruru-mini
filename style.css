@@ -1150,6 +1150,29 @@ button:disabled {
   background: #fbfbff;
 }
 
+.edit-datetime-panel[hidden] {
+  display: none;
+}
+
+.edit-advanced-settings {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfbff;
+}
+
+.edit-advanced-settings summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.edit-advanced-settings[open] summary {
+  margin-bottom: 12px;
+}
+
 .edit-grid input,
 .edit-grid select {
   min-width: 0;

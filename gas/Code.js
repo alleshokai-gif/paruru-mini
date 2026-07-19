@@ -970,6 +970,7 @@ function getNotificationReasons_(item, targetDate) {
   }
 
   const type = String(item.type || '').trim().toLowerCase();
+  const isShopping = isShoppingNotificationItem_(item);
   const eventStart = normalizeDateOnlyString_(item.eventStart);
   if (type === 'event' && eventStart === targetDate) {
     reasons.push(normalizeTimeForCompare_(item.eventStartTime) ? 'event_today_timed' : 'event_today');
@@ -981,7 +982,11 @@ function getNotificationReasons_(item, targetDate) {
     if (diffDays < 0) {
       reasons.push('overdue');
     } else if (diffDays === 0) {
-      reasons.push(normalizeTimeForCompare_(item.dueTime) ? 'due_today_timed' : 'due_today');
+      reasons.push(isShopping ? 'due_today' : (normalizeTimeForCompare_(item.dueTime) ? 'due_today_timed' : 'due_today'));
+    } else if (isShopping && diffDays === 1) {
+      reasons.push('due_tomorrow');
+    } else if (isShopping && diffDays <= 7) {
+      reasons.push('due_within_7_days');
     }
   }
 
@@ -1053,7 +1058,9 @@ function sortNotificationCandidates_(items) {
     calendar_event_today: 5,
     urgent: 6,
     followup_required: 7,
-    high_priority: 8,
+    due_tomorrow: 8,
+    due_within_7_days: 9,
+    high_priority: 10,
   };
 
   return items.sort(function(a, b) {
@@ -1385,6 +1392,10 @@ function buildNotificationMessage_(title, reasons) {
     return title + 'は明日まで。今日のうちにやっとく？';
   }
 
+  if (reasons.indexOf('due_within_7_days') !== -1) {
+    return title + 'は1週間以内。忘れんうちに見といてな。';
+  }
+
   if (reasons.indexOf('high_priority') !== -1) {
     return title + '、優先度高め。忘れたら僕が見てたって言うよ。';
   }
@@ -1402,8 +1413,14 @@ function shouldShowInToday_(item, targetDate) {
   }
 
   const dueDate = normalizeDateOnlyString_(item.dueDate);
-  if (dueDate && diffDateOnlyDays_(dueDate, targetDate) <= 0) {
-    return true;
+  if (dueDate) {
+    const diffDays = diffDateOnlyDays_(dueDate, targetDate);
+    if (diffDays <= 0) {
+      return true;
+    }
+    if (isShoppingNotificationItem_(item) && diffDays <= 7) {
+      return true;
+    }
   }
 
   if (getReminderDateOnly_(item) === targetDate) {
@@ -1411,6 +1428,11 @@ function shouldShowInToday_(item, targetDate) {
   }
 
   return normalizeBooleanForSheet_(item.needsFollowup);
+}
+
+function isShoppingNotificationItem_(item) {
+  const type = String(item && item.type || '').trim().toLowerCase();
+  return ['shopping', '買い物', 'purchase', 'buy'].indexOf(type) !== -1;
 }
 
 function isClosedStatus_(status) {
