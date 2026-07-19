@@ -1,5 +1,26 @@
 # PALURU Mini
 
+> **EVA-03 MVP Completed — 2026-07-19**
+> PALURU Mini PWAは三号機v1の会話入口です。完成状態の正本はPALURU Agent側の`docs/eva-03-completion.md`です。
+
+## EVA-03 current routing
+
+| 入力 | 現在の経路 |
+|---|---|
+| Climate質問 | `agentChat` -> Agent Climate Tool |
+| Calendar読取質問 | `agentChat` -> Agent Calendar Tool |
+| 明示的な保存依頼 | `agentChat` -> Agent `create_memo` |
+| 通常メモ | 既存`createWithAI` |
+| 給食・学校固有情報 | 既存`homeAgent` |
+| 家電操作・自動制御要求 | 既存`homeAgent` |
+| Calendar書込み要求 | 読取Toolへ送らず既存の安全な経路 |
+
+Agent経由でClimate実測回答、Calendar実予定回答、Inbox保存、構造化Follow-up中継を利用できます。既存Inbox、通知、Calendar登録、`createWithAI`、`answerFollowup`、旧Home Agentは後方互換のため残しています。
+
+## Deployment operation
+
+コデオはコード変更、テスト、Git、必要なGASの`clasp push`までを担当します。GAS Web App deploymentは所有者がApps Scriptエディタでソース反映を確認後、既存deploymentを手動更新します。通常運用で`clasp deploy`は使用しません。新規deploymentの重複、Library deploymentとの取り違えを避け、Web App URLは末尾`/exec`を使います。Property値だけの変更は通常、再deployment不要です。PWAは既存のGitHub Pages公開とService Worker更新手順に従います。
+
 ## Home Agent Platform
 
 Home Agent Platform全体の正本文書は `../HomeSignage/docs/` に置く。PALURU Mini側ではv1.0の既存Inbox / AI解析 / Follow-upを維持し、GASの `action=homeAgent` でHome Agent層だけを追加する。
