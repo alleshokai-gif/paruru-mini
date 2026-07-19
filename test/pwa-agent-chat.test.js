@@ -206,6 +206,91 @@ test('B3b operation request stays on legacy homeAgent', async () => {
   assert(actions.includes('homeAgent') && !actions.includes('agentChat'), 'operation route changed');
 });
 
+test('EVA-03F Calendar read questions route only to agentChat', async () => {
+  const cases = [
+    '今日の予定は？',
+    '明日何かある？',
+    '今週忙しい？',
+    'これから7日間',
+    '家族みんなの予定は？',
+    '歯医者は何時から？',
+  ];
+  for (const message of cases) {
+    const harness = createHarness();
+    await harness.submit(message);
+    const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
+    assert(JSON.stringify(actions) === JSON.stringify(['agentChat']), message + ' route: ' + actions.join(','));
+  }
+});
+
+test('EVA-03F Calendar writes never reach the read Tool route', async () => {
+  const cases = [
+    '明日10時に歯医者を登録して',
+    'カレンダーに追加して',
+    '予定を変更して',
+    '予定を削除して',
+    '予定をキャンセルして',
+  ];
+  for (const message of cases) {
+    const harness = createHarness();
+    await harness.submit(message);
+    const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
+    assert(!actions.includes('agentChat'), message + ' reached Calendar Agent route');
+    assert(actions.length === 1 && ['createWithAI', 'homeAgent'].includes(actions[0]), message + ' lost its existing safe route');
+  }
+});
+
+test('EVA-03F explicit memo and Home Agent priorities beat Calendar read', async () => {
+  const cases = [
+    { message: '明日の予定を覚えといて', action: 'agentChat' },
+    { message: '今日の給食を覚えといて', action: 'homeAgent' },
+    { message: '明日の学校予定は？', action: 'homeAgent' },
+    { message: '書斎の自動制御を止めて', action: 'homeAgent' },
+    { message: '冷房を弱めて', action: 'homeAgent' },
+  ];
+  for (const item of cases) {
+    const harness = createHarness();
+    await harness.submit(item.message);
+    const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
+    assert(JSON.stringify(actions) === JSON.stringify([item.action]), item.message + ' priority changed');
+  }
+});
+
+test('EVA-03F ambiguous time question is not forced into Calendar Agent', async () => {
+  for (const message of ['何時？', '母の予定は？']) {
+    const harness = createHarness();
+    await harness.submit(message);
+    const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
+    assert(!actions.includes('agentChat'), message + ' was forced into unsupported Calendar scope');
+  }
+});
+
+test('EVA-03F Calendar loading, failure and retry preserve request identity', async () => {
+  const harness = createHarness();
+  let resolveResponse;
+  harness.setResponder((payload) => new Promise((resolve) => {
+    resolveResponse = () => resolve({
+      success: true, reply: '今日は予定なしやで。',
+      sessionId: payload.sessionId, clientRequestId: payload.clientRequestId,
+    });
+  }));
+  const pending = harness.submit('今日の予定は？');
+  await Promise.resolve();
+  assert(harness.elements.get('#homeAgentContent').innerHTML.includes('ぱるるが予定を確認中…'), 'Calendar loading message missing');
+  assert(harness.run('pendingHomeAgentRetry.purpose') === 'calendar', 'Calendar retry purpose missing');
+  resolveResponse();
+  await pending;
+
+  const failed = createHarness();
+  failed.setResponder(() => ({ success: false, error: { code: 'AGENT_ERROR' } }));
+  await failed.submit('明日何かある？');
+  const first = failed.requests[0].payload;
+  assert(failed.elements.get('#memo').value === '明日何かある？', 'Calendar failure cleared input');
+  failed.setResponder((payload) => ({ success: true, reply: '明日は予定なしやで。', sessionId: payload.sessionId, clientRequestId: payload.clientRequestId }));
+  await failed.run('submitAgentChatQuery(pendingHomeAgentRetry.message, { request: pendingHomeAgentRetry })');
+  assert(first.clientRequestId === failed.requests[1].payload.clientRequestId, 'Calendar retry changed clientRequestId');
+});
+
 test('B4 Agent followup renders existing UI and answer updates same item', async () => {
   const harness = createHarness();
   const itemId = '77777777-7777-4777-8777-777777777777';
@@ -352,14 +437,18 @@ test('H existing feature routes remain present', () => {
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260718-04';
+  const expected = 'v20260719-01';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260718-04'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-01'), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
-  JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, ''));
+  const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
+  const manifest = JSON.parse(manifestSource);
+  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-01')), 'manifest icon version mismatch');
+  const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
+  assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
 });
 
 (async () => {

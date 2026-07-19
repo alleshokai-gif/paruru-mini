@@ -133,7 +133,7 @@ Script Properties:
 
 `agentChat`は`message`、UUID形式の`sessionId`と`clientRequestId`を必須とする。`userId`、`userDisplayName`、`deviceId`は会話contextであり認証には使用しない。Agentの内部requestId、生エラー、Tool生データ、URL、tokenはPWAへ返さない。
 
-家の温湿度など現在状態に関する入力は、PWAから`agentChat`へ送る。会話用`sessionId`はversion付きlocalStorageキーで端末ごとに保持し、新規送信ごとに`clientRequestId`を生成する。同一送信の再試行では同じ`clientRequestId`を再利用する。通常メモは従来どおり`createWithAI`へ送り、給食・予定など旧Home Agentの対象は既存`homeAgent`を維持する。
+家の温湿度など現在状態に関する入力は、PWAから`agentChat`へ送る。会話用`sessionId`はversion付きlocalStorageキーで端末ごとに保持し、新規送信ごとに`clientRequestId`を生成する。同一送信の再試行では同じ`clientRequestId`を再利用する。通常メモは従来どおり`createWithAI`へ送り、給食・学校固有情報・家電操作など旧Home Agent専用対象は既存`homeAgent`を維持する。Calendar読取質問はEVA-03Fから`agentChat`へ送る。
 
 `sessionId`、`clientRequestId`、プロフィール情報は認証情報ではない。PWA UIはAgent URLやtokenを保持しない。永続会話Memoryは未実装。
 
@@ -274,6 +274,12 @@ Mini GatewayはPALURU Agentのoptional `followup` を `required`、`itemId`、`q
 Inboxカードの説明文は `aiSummary` を表示します。`answerFollowup` でtask期限、event開始日時、reminder通知日時が確定した場合は、追加AIを呼ばず、保存後itemのtype・title/memo・確定日時から `aiSummary` を再構築します。`aiComment` はカード表示元ではないため変更しません。
 
 Agent由来Follow-upの回答成功時は、既存 `hideFollowupPanel` と `hideHomeAgentCard` を使って入力、pending itemId、Follow-upパネル、Agentメッセージを終了します。失敗時はどれも残します。既存createWithAI Follow-upはパネルを閉じますが、無関係なHome Agent通常回答は閉じません。
+
+## EVA-03F PWA Calendar Routing（ローカル実装）
+
+Calendarの読取質問だけを `agentChat` へ送ります。給食・学校固有情報・家電操作・自動制御は既存 `homeAgent` を優先し、Calendarの登録・追加・変更・削除等も読取Agentへ送りません。文末の明示メモ保存は既存 `agentChat / create_memo`、Climate質問は既存 `agentChat / get_home_climate_context`、通常メモは `createWithAI` のままです。
+
+Calendar照会中は既存Agentカードへ「ぱるるが予定を確認中…」と表示します。失敗時は入力と同じ `clientRequestId` を保持して再試行し、別経路へ自動フォールバックしません。PWA buildは `v20260719-01` です。
 ## EVA-03E Calendar Context internal API（ローカル実装）
 
 `POST action=calendarContextInternal` は、PALURU_OSだけが利用するCalendar読取専用の内部APIです。認証には専用Script Property `PALURU_CALENDAR_API_TOKEN` を使い、Inbox・Agent・OS caller・Climate用tokenとは共有しません。`period` は `today` / `tomorrow` / `this_week` / `next_7_days`、`scope` は `mine` / `family` の固定値だけを受け付けます。`actor.userId` は既存家族allowlistで解決し、不明な値はfamilyへフォールバックせず拒否します。

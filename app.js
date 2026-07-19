@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260718-04";
+const ASSET_VERSION = "v20260719-01";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -43,10 +43,16 @@ const AGENT_CHAT_HOME_STATE_PATTERNS = [
 ];
 const LEGACY_HOME_AGENT_PRIORITY_PATTERNS = [
   /給食|傘|持ち物|出発/,
+  /学校|授業|部活|登校|下校/,
   /強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて/,
   /自動制御|通常運転|一時停止/,
+  /(?:エアコン|冷房|暖房).*(?:つけて|入れて|消して|止めて|切って|設定して|上げて|下げて)/,
 ];
 const EXPLICIT_AGENT_MEMO_REQUEST_PATTERN = /(?:覚え(?:て|といて|ておいて)|メモ(?:して|しといて|っといて)|記録(?:して|しといて|っといて)|控え(?:て|といて)|保存(?:して|しといて)|残し(?:て|といて))\s*[。．.!！…]*$/;
+const CALENDAR_WRITE_PATTERN = /(?:予定|スケジュール|カレンダー|予約|会議|面談|歯医者|病院).*(?:登録|追加|入れて|入れといて|作成|変更|移動|削除|キャンセル)|(?:登録|追加|作成|変更|移動|削除|キャンセル).*(?:予定|スケジュール|カレンダー)/;
+const CALENDAR_READ_TOPIC_PATTERN = /予定|スケジュール|カレンダー|何かある|忙しい|何時から/;
+const CALENDAR_READ_CONTEXT_PATTERN = /今日|明日|今週|今後|これから|一週間|1週間|７日間?|7日間?|家族|みんな|全員|自分|私|父/;
+const CALENDAR_NEXT_SEVEN_DAYS_PATTERN = /(?:これから|今後)?\s*(?:一週間|1週間|７日間?|7日間?)(?:の予定|のスケジュール)?/;
 const DEFAULT_PROFILE = {
   userId: "father",
   displayName: "父",
@@ -453,12 +459,19 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  if (isExplicitAgentMemoRequest(memo)) {
+  const calendarWriteRequest = isCalendarWriteRequest(memo);
+
+  if (!calendarWriteRequest && isExplicitAgentMemoRequest(memo)) {
     await submitAgentChatQuery(memo, { purpose: "memo" });
     return;
   }
 
-  if (isLikelyAgentChatQuery(memo)) {
+  if (!calendarWriteRequest && isCalendarReadQuery(memo)) {
+    await submitAgentChatQuery(memo, { purpose: "calendar" });
+    return;
+  }
+
+  if (!calendarWriteRequest && isLikelyAgentChatQuery(memo)) {
     await submitAgentChatQuery(memo);
     return;
   }
@@ -841,9 +854,12 @@ async function submitAgentChatQuery(messageText, options = {}) {
     deviceId: request.deviceId,
   };
   pendingHomeAgentRetry = request;
-  setSending(true, PARURU_MESSAGES.action.homeAgentLoading);
-  setParuruSpeech("idle", "ぱるるが家の様子を見てる…");
-  renderHomeAgentLoading();
+  const loadingMessage = request.purpose === "calendar"
+    ? "ぱるるが予定を確認中…"
+    : "ぱるるが家の様子を見てる…";
+  setSending(true, loadingMessage);
+  setParuruSpeech("idle", loadingMessage);
+  renderHomeAgentLoading(loadingMessage);
 
   try {
     const result = await callAgentChat(payload);
@@ -1796,6 +1812,31 @@ function isExplicitAgentMemoRequest(text) {
   return EXPLICIT_AGENT_MEMO_REQUEST_PATTERN.test(String(text || "").trim());
 }
 
+function isCalendarWriteRequest(text) {
+  return CALENDAR_WRITE_PATTERN.test(String(text || "").trim());
+}
+
+function isCalendarReadQuery(text) {
+  const value = String(text || "").trim();
+  if (!value || isCalendarWriteRequest(value) || isLegacyHomeAgentPriorityQuery(value)) {
+    return false;
+  }
+  if (CALENDAR_NEXT_SEVEN_DAYS_PATTERN.test(value)) {
+    return true;
+  }
+  if (!CALENDAR_READ_TOPIC_PATTERN.test(value)) {
+    return false;
+  }
+  if (CALENDAR_READ_CONTEXT_PATTERN.test(value)) {
+    return true;
+  }
+  if (/何時から/.test(value)) {
+    const subject = value.replace(/[？?。!！\s]/g, "").replace(/(?:は)?何時から(?:ですか)?/, "");
+    return subject.length >= 2;
+  }
+  return false;
+}
+
 function isLegacyHomeAgentPriorityQuery(text) {
   const value = String(text || "").trim();
   return Boolean(value) && LEGACY_HOME_AGENT_PRIORITY_PATTERNS.some((pattern) => pattern.test(value));
@@ -1811,11 +1852,12 @@ function normalizeHomeAgentResult(response) {
   };
 }
 
-function renderHomeAgentLoading() {
+function renderHomeAgentLoading(messageText) {
   homeAgentCard.classList.remove("is-hidden");
   homeAgentCard.setAttribute("aria-busy", "true");
   homeAgentRetryButton.classList.add("is-hidden");
-  homeAgentContent.innerHTML = `<p class="home-agent-empty">ぱるるが家の様子を見てる…</p>`;
+  const text = String(messageText || "ぱるるが家の様子を見てる…");
+  homeAgentContent.innerHTML = `<p class="home-agent-empty">${escapeHtml(text)}</p>`;
 }
 
 function renderHomeAgentError() {
