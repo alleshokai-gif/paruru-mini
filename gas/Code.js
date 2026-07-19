@@ -58,6 +58,10 @@ function doGet(e) {
       return notificationCandidates_(e.parameter || {});
     }
 
+    if (action === 'calendarContextInternal') {
+      return calendarContextInternal_(e.parameter || {}, 'GET');
+    }
+
     return json_({
       success: false,
       message: 'unknown action',
@@ -81,6 +85,10 @@ function doPost(e) {
 
     if (action === 'createWithAIInternal') {
       return createItemWithAIInternal_(body);
+    }
+
+    if (action === 'calendarContextInternal') {
+      return calendarContextInternal_(body, 'POST');
     }
 
     if (action === 'agentChat') {
@@ -1110,15 +1118,9 @@ function buildTodayCalendarSettings_(params) {
 }
 
 function getTodayCalendarEvents_(targetDate, settings) {
-  const config = getCalendarConfig_('family');
-  const calendar = getCalendarByConfig_(config);
-  const start = parseDateOnly_(targetDate);
-  const end = new Date(start.getTime());
-  end.setDate(end.getDate() + 1);
-  const events = calendar.getEvents(start, end);
-  return events
-    .map(function(event) {
-      return buildCalendarEventModel_(event, targetDate, settings);
+  return CalendarReadService.readNormalizedDay(targetDate)
+    .map(function(normalizedEvent) {
+      return buildCalendarEventModel_(normalizedEvent, targetDate, settings);
     })
     .filter(function(event) {
       return event !== null;
@@ -1126,11 +1128,15 @@ function getTodayCalendarEvents_(targetDate, settings) {
 }
 
 function buildCalendarEventModel_(event, targetDate) {
-  const rawTitle = event.getTitle ? event.getTitle() : '';
+  const normalized = event && event.start instanceof Date
+    ? event
+    : CalendarReadService.normalizeEvent(event);
+  if (!normalized) return null;
+  const rawTitle = normalized.legacyRawTitle;
   const member = parseCalendarMemberTag_(rawTitle);
-  const allDay = event.isAllDayEvent && event.isAllDayEvent();
-  const start = event.getStartTime();
-  const end = event.getEndTime();
+  const allDay = normalized.allDay;
+  const start = normalized.start;
+  const end = normalized.end;
 
   if (!calendarEventOverlapsTargetDate_(start, end, allDay, targetDate)) {
     return null;
@@ -1142,9 +1148,9 @@ function buildCalendarEventModel_(event, targetDate) {
   const endTime = allDay ? '' : Utilities.formatDate(end, 'Asia/Tokyo', 'HH:mm');
   return {
     sourceType: 'google_calendar',
-    sourceId: digestCalendarEventId_(event.getId ? event.getId() : rawTitle + startDate + startTime),
-    id: 'gcal:' + digestCalendarEventId_(event.getId ? event.getId() : rawTitle + startDate + startTime),
-    _calendarEventId: event.getId ? event.getId() : '',
+    sourceId: digestCalendarEventId_(normalized.rawEventId || rawTitle + startDate + startTime),
+    id: 'gcal:' + digestCalendarEventId_(normalized.rawEventId || rawTitle + startDate + startTime),
+    _calendarEventId: normalized.rawEventId,
     title: member.cleanTitle,
     cleanTitle: member.cleanTitle,
     rawTitle: rawTitle,

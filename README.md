@@ -274,3 +274,10 @@ Mini GatewayはPALURU Agentのoptional `followup` を `required`、`itemId`、`q
 Inboxカードの説明文は `aiSummary` を表示します。`answerFollowup` でtask期限、event開始日時、reminder通知日時が確定した場合は、追加AIを呼ばず、保存後itemのtype・title/memo・確定日時から `aiSummary` を再構築します。`aiComment` はカード表示元ではないため変更しません。
 
 Agent由来Follow-upの回答成功時は、既存 `hideFollowupPanel` と `hideHomeAgentCard` を使って入力、pending itemId、Follow-upパネル、Agentメッセージを終了します。失敗時はどれも残します。既存createWithAI Follow-upはパネルを閉じますが、無関係なHome Agent通常回答は閉じません。
+## EVA-03E Calendar Context internal API（ローカル実装）
+
+`POST action=calendarContextInternal` は、PALURU_OSだけが利用するCalendar読取専用の内部APIです。認証には専用Script Property `PALURU_CALENDAR_API_TOKEN` を使い、Inbox・Agent・OS caller・Climate用tokenとは共有しません。`period` は `today` / `tomorrow` / `this_week` / `next_7_days`、`scope` は `mine` / `family` の固定値だけを受け付けます。`actor.userId` は既存家族allowlistで解決し、不明な値はfamilyへフォールバックせず拒否します。
+
+応答schemaは `calendar-context-internal-1.0`、timezoneは `Asia/Tokyo` です。予定は最大100件で、title・開始・終了・終日・対象者ラベルだけを返します。Calendar ID、生event ID、description、location、attendee、URLは返しません。`next_7_days` は現在から「今日の7日後の0:00」までの半開区間です。
+
+`CalendarReadService` は既存の `notificationCandidates` と `getFamilyScheduleSkill_` にも利用されますが、両経路の既存レスポンス形は維持します。テスト用の現在時刻とCalendar mockを注入でき、実Calendarへ接続せず境界条件を確認できます。

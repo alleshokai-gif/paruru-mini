@@ -18,21 +18,12 @@ function getFamilyScheduleSkill_(request) {
     });
   }
 
-  const config = getCalendarConfig_('family');
-  const calendar = getCalendarByConfig_(config);
-  const start = new Date(date.getTime());
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start.getTime());
-  end.setDate(end.getDate() + 1);
-
-  const events = calendar.getEvents(start, end).filter(function(event) {
-    return isHomeAgentCalendarEventOnTargetDate_(event, start, end);
-  }).map(function(event) {
+  const events = CalendarReadService.readNormalizedDay(request.parameters.date).map(function(event) {
     return {
-      title: event.getTitle(),
-      start: event.isAllDayEvent() ? formatHomeAgentDate_(event.getStartTime()) : formatHomeAgentDateTime_(event.getStartTime()),
-      end: event.isAllDayEvent() ? formatHomeAgentDate_(event.getEndTime()) : formatHomeAgentDateTime_(event.getEndTime()),
-      allDay: event.isAllDayEvent(),
+      title: event.legacyRawTitle,
+      start: event.allDay ? formatHomeAgentDate_(event.start) : formatHomeAgentDateTime_(event.start),
+      end: event.allDay ? formatHomeAgentDate_(event.end) : formatHomeAgentDateTime_(event.end),
+      allDay: event.allDay,
     };
   });
 
