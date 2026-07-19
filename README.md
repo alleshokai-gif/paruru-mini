@@ -7,15 +7,19 @@
 
 | 入力 | 現在の経路 |
 |---|---|
-| Climate質問 | `agentChat` -> Agent Climate Tool |
+| Climate・エアコン状態のread質問 | `agentChat` -> Agent Climate Tool |
 | Calendar読取質問 | `agentChat` -> Agent Calendar Tool |
 | 明示的な保存依頼 | `agentChat` -> Agent `create_memo` |
 | 通常メモ | 既存`createWithAI` |
 | 給食・学校固有情報 | 既存`homeAgent` |
-| 家電操作・自動制御要求 | 既存`homeAgent` |
+| 家電操作・自動制御の変更要求 | 既存`homeAgent` |
 | Calendar書込み要求 | 読取Toolへ送らず既存の安全な経路 |
 
 Agent経由でClimate実測回答、Calendar実予定回答、Inbox保存、構造化Follow-up中継を利用できます。既存Inbox、通知、Calendar登録、`createWithAI`、`answerFollowup`、旧Home Agentは後方互換のため残しています。
+
+Inbox一覧は作成日で絞らず、`Inbox`／`inbox`／空欄を未処理として正規化します。旧行の`userId`または`visibility`が空でも一覧から除外しません。完了系（`Done`／`completed`）と削除系だけを除外し、通知候補の日付filterは流用しません。API失敗は正常0件と分け、「Inboxを読み込めませんでした」と再試行を表示します。
+
+エアコンの電源・mode・設定温度・風量・自動制御pauseを尋ねるread質問は新Agentへ送ります。「ついてる？」はread、「つけて」はcommandとして分離し、起動・停止・温度変更・mode変更・風量変更・pause／resume要求は従来の保護された旧Home Agent経路を維持します。read失敗時に旧経路へフォールバックしません。一時的な接続不能だけ再試行を案内し、設定不足や処理不能では無意味な再試行ボタンを表示しません。
 
 ## 旧Home Agent操作入口のP0保護
 
@@ -317,7 +321,7 @@ Calendarの読取質問だけを `agentChat` へ送ります。給食・学校�
 
 Calendar照会中は既存Agentカードへ「ぱるるが予定を確認中…」と表示します。失敗時は入力と同じ `clientRequestId` を保持して再試行し、別経路へ自動フォールバックしません。
 
-Inbox編集はtype別表示です。shoppingでは「今日／明日／1週間以内／日付指定／期限なし」を選び、既存の `dueDate` へ保存します。「1週間以内」はAsia/Tokyoの今日から7日後へ変換します。期限付きのactiveなshoppingはNormal優先度でも「今日のぱるる」候補になります。PWA buildは `v20260719-02` です。
+Inbox編集はtype別表示です。shoppingでは「今日／明日／1週間以内／日付指定／期限なし」を選び、既存の `dueDate` へ保存します。「1週間以内」はAsia/Tokyoの今日から7日後へ変換します。期限付きのactiveなshoppingはNormal優先度でも「今日のぱるる」候補になります。PWA buildは `v20260719-04` です。
 ## EVA-03E Calendar Context internal API（ローカル実装）
 
 `POST action=calendarContextInternal` は、PALURU_OSだけが利用するCalendar読取専用の内部APIです。認証には専用Script Property `PALURU_CALENDAR_API_TOKEN` を使い、Inbox・Agent・OS caller・Climate用tokenとは共有しません。`period` は `today` / `tomorrow` / `this_week` / `next_7_days`、`scope` は `mine` / `family` の固定値だけを受け付けます。`actor.userId` は既存家族allowlistで解決し、不明な値はfamilyへフォールバックせず拒否します。

@@ -206,6 +206,60 @@ test('B3b operation request stays on legacy homeAgent', async () => {
   assert(actions.includes('homeAgent') && !actions.includes('agentChat'), 'operation route changed');
 });
 
+test('P1.5 aircon state reads route only to the new Agent', async () => {
+  const cases = [
+    'リビングのエアコンどうなってる？',
+    '冷房ついてる？',
+    'エアコン動いてる？',
+    '何度設定？',
+    '今どのモード？',
+    '自動制御は一時停止中？',
+    '冷房効いてる？',
+  ];
+  for (const message of cases) {
+    const harness = createHarness();
+    await harness.submit(message);
+    const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
+    assert(JSON.stringify(actions) === JSON.stringify(['agentChat']), message + ' route: ' + actions.join(','));
+    assert(harness.run('pendingHomeAgentRetry') === null, message + ' did not complete Agent request');
+  }
+});
+
+test('P1.5 aircon commands stay on the protected legacy operation route', async () => {
+  const cases = [
+    'エアコンつけて',
+    'エアコン消して',
+    '1度下げて',
+    '除湿にして',
+    '風量を強くして',
+    '自動制御を止めて',
+    '自動制御を再開して',
+  ];
+  for (const message of cases) {
+    const harness = createHarness();
+    await harness.submit(message);
+    const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
+    assert(JSON.stringify(actions) === JSON.stringify(['homeAgent']), message + ' escaped operation route');
+  }
+});
+
+test('P1.5 aircon read uses dedicated loading state', async () => {
+  const harness = createHarness();
+  let resolveResponse;
+  harness.setResponder((payload) => new Promise((resolve) => {
+    resolveResponse = () => resolve({
+      success: true, reply: '記録上は冷房やで。',
+      sessionId: payload.sessionId, clientRequestId: payload.clientRequestId,
+    });
+  }));
+  const pending = harness.submit('リビングのエアコンどうなってる？');
+  await Promise.resolve();
+  assert(harness.elements.get('#homeAgentContent').innerHTML.includes('エアコンの状態を確認中'), 'aircon loading text missing');
+  assert(harness.run('pendingHomeAgentRetry.purpose') === 'aircon-status', 'aircon retry purpose missing');
+  resolveResponse();
+  await pending;
+});
+
 test('EVA-03F Calendar read questions route only to agentChat', async () => {
   const cases = [
     '今日の予定は？',
@@ -318,12 +372,12 @@ test('B4 Agent followup renders existing UI and answer updates same item', async
   assert(harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'Agent message card remained after success');
 });
 
-test('B5 malformed followup keeps input and uses existing retry path', async () => {
+test('B5 malformed followup keeps input without suggesting a futile retry', async () => {
   const harness = createHarness();
   harness.setResponder((payload) => ({ success: true, reply: 'reply', sessionId: payload.sessionId, clientRequestId: payload.clientRequestId, followup: { required: true, itemId: 'bad', question: 'いつ？', inputType: 'date' } }));
   await harness.submit('これ覚えといて');
   assert(harness.elements.get('#memo').value === 'これ覚えといて', 'malformed followup cleared input');
-  assert(!harness.elements.get('#homeAgentRetryButton').classList.contains('is-hidden'), 'retry not shown for malformed followup');
+  assert(harness.elements.get('#homeAgentRetryButton').classList.contains('is-hidden'), 'malformed response was presented as transient');
 });
 
 test('B6 answerFollowup failure keeps the existing answer and row target', async () => {
@@ -360,21 +414,23 @@ test('B8 manual close button behavior remains', () => {
   assert(harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'manual close stopped working');
 });
 
-test('C Agent error keeps input and enables retry without fallback', async () => {
+test('C non-transient Agent error keeps input without fallback or retry prompt', async () => {
   const harness = createHarness();
   harness.setResponder(() => ({ success: false, error: { code: 'AGENT_ERROR' } }));
   await harness.submit('書斎暑い？');
   assert(harness.elements.get('#memo').value === '書斎暑い？', 'input was cleared on error');
-  assert(!harness.elements.get('#homeAgentRetryButton').classList.contains('is-hidden'), 'retry not shown');
+  assert(harness.elements.get('#homeAgentRetryButton').classList.contains('is-hidden'), 'non-transient error showed retry');
+  assert(harness.run('pendingHomeAgentRetry.clientRequestId') === harness.requests[0].payload.clientRequestId, 'failed request identity was lost');
   const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
   assert(JSON.stringify(actions) === JSON.stringify(['agentChat']), 'error silently fell back');
 });
 
 test('D retry reuses clientRequestId and double submit is blocked', async () => {
   const harness = createHarness();
-  harness.setResponder(() => ({ success: false, error: { code: 'AGENT_ERROR' } }));
+  harness.setResponder(() => ({ success: false, error: { code: 'AGENT_UNAVAILABLE' } }));
   await harness.submit('書斎暑い？');
   const first = harness.requests[0].payload;
+  assert(!harness.elements.get('#homeAgentRetryButton').classList.contains('is-hidden'), 'transient failure did not offer retry');
   harness.setResponder((payload) => ({ success: true, reply: '確認できたで。', sessionId: payload.sessionId, clientRequestId: payload.clientRequestId }));
   await harness.run('submitAgentChatQuery(pendingHomeAgentRetry.message, { request: pendingHomeAgentRetry })');
   const second = harness.requests[1].payload;
@@ -419,7 +475,8 @@ test('F invalid Agent responses are handled safely', async () => {
     harness.setResponder(response);
     await harness.submit('書斎暑い？');
     assert(harness.elements.get('#memo').value === '書斎暑い？', 'invalid response cleared input');
-    assert(harness.elements.get('#message').textContent.includes('もう一回'), 'safe error missing');
+    assert(harness.elements.get('#homeAgentRetryButton').classList.contains('is-hidden'), 'malformed response was presented as transient');
+    assert(harness.elements.get('#message').textContent.includes('設定を確認'), 'safe non-transient error missing');
   }
 });
 
@@ -434,21 +491,61 @@ test('H existing feature routes remain present', () => {
   });
 });
 
+test('Inbox list keeps legacy active rows without date user or visibility filtering', () => {
+  const harness = createHarness();
+  harness.context.__items = [
+    { status: 'Inbox', createdAt: '2025-01-01', userId: '', visibility: '' },
+    { status: 'inbox', createdAt: '2024-01-01', userId: '', visibility: '' },
+    { status: '', createdAt: '2023-01-01', userId: '', visibility: '' },
+    { status: 'Pending', createdAt: '2022-01-01', userId: '', visibility: '' },
+    { status: 'Done', createdAt: '2026-07-19', userId: 'father', visibility: 'private' },
+    { status: 'completed', createdAt: '2026-07-19', userId: 'father', visibility: 'private' },
+    { status: 'deleted', createdAt: '2026-07-19', userId: 'father', visibility: 'private' },
+  ];
+  const visible = harness.run('__items.filter(isInboxItem)');
+  assert(visible.length === 4, 'legacy active Inbox rows were filtered');
+  assert(harness.run('normalizeInboxStatus("Inbox")') === 'inbox', 'Inbox case normalization failed');
+  assert(harness.run('normalizeInboxStatus("inbox")') === 'inbox', 'lowercase inbox normalization failed');
+});
+
+test('Inbox API failure is distinct from a successful empty list and offers retry', async () => {
+  const empty = createHarness();
+  empty.run('fetchInboxItems = async function() { return []; }');
+  await empty.run('loadInbox()');
+  assert(empty.elements.get('#inboxList').innerHTML.includes('今日はまだ何も預かってないよ'), 'successful zero was not rendered as empty');
+  assert(!empty.elements.get('#inboxList').innerHTML.includes('data-inbox-retry'), 'successful zero showed retry');
+
+  const failed = createHarness();
+  failed.run('fetchInboxItems = async function() { throw new Error("failed"); }');
+  await failed.run('loadInbox()');
+  const html = failed.elements.get('#inboxList').innerHTML;
+  assert(html.includes('Inboxを読み込めませんでした'), 'failure was rendered as empty');
+  assert(html.includes('data-inbox-retry'), 'failure retry is missing');
+  failed.context.__retryCalls = 0;
+  failed.run('loadInbox = async function() { __retryCalls += 1; }');
+  failed.handlers.get('#inboxList:click')({
+    target: { closest: (selector) => selector === '[data-inbox-retry]' ? {} : null }
+  });
+  await Promise.resolve();
+  assert(failed.context.__retryCalls === 1, 'Inbox retry did not call loadInbox');
+});
+
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260719-03';
+  const expected = 'v20260719-04';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-03'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-04'), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
   const manifest = JSON.parse(manifestSource);
-  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-03')), 'manifest icon version mismatch');
+  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-04')), 'manifest icon version mismatch');
   const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
+  assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');
 });
 
 (async () => {

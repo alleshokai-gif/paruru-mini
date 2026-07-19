@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260719-03";
+const ASSET_VERSION = "v20260719-04";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -40,14 +40,27 @@ const HOME_AGENT_MEMO_PRIORITY_PATTERNS = [
 const AGENT_CHAT_HOME_STATE_PATTERNS = [
   /暑い|寒い|蒸し|蒸す|温度|湿度|室温/,
   /家の温度どう|家の中暑くない|部屋大丈夫|家の中どんな感じ/,
-  /冷房効いとる|設定温度まで下がりそう|ちゃんと冷え|ぬるい/,
+  /冷房効いてる|冷房効いとる|設定温度まで下がりそう|ちゃんと冷え|ぬるい/,
+];
+const AGENT_CHAT_AIRCON_READ_PATTERNS = [
+  /(?:エアコン|冷房|暖房).*(?:どうなって|状態|ついてる|ついとる|動いてる|動いとる|運転中|何度設定|設定温度|どのモード|モード|風量|効いてる|効いとる)/,
+  /何度設定|設定温度|今どのモード|現在どのモード/,
+  /自動制御.*(?:一時停止中|停止中|止まってる|止まっとる|どうなって|状態|動いてる|動いとる|通常運転中)/,
+  /(?:一時停止中|停止中).*(?:自動制御)/,
+];
+const HOME_AGENT_AIRCON_COMMAND_PATTERNS = [
+  /(?:エアコン|冷房|暖房).*(?:つけて|入れて|消して|止めて|切って|設定して|上げて|下げて|強くして|弱くして)/,
+  /(?:つけて|入れて|消して|止めて|切って).*(?:エアコン|冷房|暖房)/,
+  /(?:1度|一度).*(?:下げて|上げて)/,
+  /(?:除湿|冷房|暖房).*(?:にして|切り替えて)/,
+  /風量.*(?:強く|弱く|上げて|下げて|して)/,
+  /自動制御.*(?:止めて|停止して|一時停止して|再開して|戻して|解除して)/,
+  /通常運転.*(?:戻して|再開して)/,
 ];
 const LEGACY_HOME_AGENT_PRIORITY_PATTERNS = [
   /給食|傘|持ち物|出発/,
   /学校|授業|部活|登校|下校/,
   /強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて/,
-  /自動制御|通常運転|一時停止/,
-  /(?:エアコン|冷房|暖房).*(?:つけて|入れて|消して|止めて|切って|設定して|上げて|下げて)/,
 ];
 const EXPLICIT_AGENT_MEMO_REQUEST_PATTERN = /(?:覚え(?:て|といて|ておいて)|メモ(?:して|しといて|っといて)|記録(?:して|しといて|っといて)|控え(?:て|といて)|保存(?:して|しといて)|残し(?:て|といて))\s*[。．.!！…]*$/;
 const CALENDAR_WRITE_PATTERN = /(?:予定|スケジュール|カレンダー|予約|会議|面談|歯医者|病院).*(?:登録|追加|入れて|入れといて|作成|変更|移動|削除|キャンセル)|(?:登録|追加|作成|変更|移動|削除|キャンセル).*(?:予定|スケジュール|カレンダー)/;
@@ -484,6 +497,11 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (!calendarWriteRequest && isAirconReadQuery(memo)) {
+    await submitAgentChatQuery(memo, { purpose: "aircon-status" });
+    return;
+  }
+
   if (!calendarWriteRequest && isLikelyAgentChatQuery(memo)) {
     await submitAgentChatQuery(memo);
     return;
@@ -524,6 +542,11 @@ navItems.forEach((item) => {
 refreshInboxButton.addEventListener("click", loadInbox);
 
 inboxList.addEventListener("click", (event) => {
+  if (event.target.closest("[data-inbox-retry]")) {
+    loadInbox();
+    return;
+  }
+
   const card = event.target.closest(".inbox-card");
   if (!card) {
     return;
@@ -761,8 +784,28 @@ async function callAgentChat(payload) {
     body: JSON.stringify(payload),
   });
 
-  const result = await parseApiResponse(response);
+  if (!response.ok) {
+    throw createAgentChatClientError("AGENT_UNAVAILABLE");
+  }
+  let result;
+  try {
+    result = await response.json();
+  } catch (error) {
+    throw createAgentChatClientError("AGENT_UNAVAILABLE");
+  }
+  if (!result || result.success !== true) {
+    const code = String(result && result.error && result.error.code || "AGENT_ERROR");
+    throw createAgentChatClientError([
+      "AGENT_UNAVAILABLE", "AGENT_ERROR", "CONFIGURATION_ERROR", "INVALID_INPUT"
+    ].includes(code) ? code : "AGENT_ERROR");
+  }
   return validateAgentChatResponse(result, payload);
+}
+
+function createAgentChatClientError(code) {
+  const error = new Error("Agent Gateway request failed");
+  error.code = code;
+  return error;
 }
 
 async function executeHomeAgentAction(candidate) {
@@ -830,7 +873,7 @@ async function submitHomeAgentQuery(messageText, options = {}) {
     resetParuruSpeechSoon();
     revealPanelIfNeeded(homeAgentCard);
   } catch (error) {
-    renderHomeAgentError();
+    renderHomeAgentError({ retryable: true });
     setParuruState("error");
     showMessage(PARURU_MESSAGES.action.homeAgentError, "error");
     revealPanelIfNeeded(homeAgentCard);
@@ -872,7 +915,9 @@ async function submitAgentChatQuery(messageText, options = {}) {
   pendingHomeAgentRetry = request;
   const loadingMessage = request.purpose === "calendar"
     ? "ぱるるが予定を確認中…"
-    : "ぱるるが家の様子を見てる…";
+    : request.purpose === "aircon-status"
+      ? "ぱるるがエアコンの状態を確認中…"
+      : "ぱるるが家の様子を見てる…";
   setSending(true, loadingMessage);
   setParuruSpeech("idle", loadingMessage);
   renderHomeAgentLoading(loadingMessage);
@@ -897,9 +942,13 @@ async function submitAgentChatQuery(messageText, options = {}) {
     resetParuruSpeechSoon();
     revealPanelIfNeeded(homeAgentCard);
   } catch (error) {
-    renderHomeAgentError();
+    const retryable = error && error.code === "AGENT_UNAVAILABLE";
+    const errorMessage = retryable
+      ? "一時的に確認先へつながらんかった。少し待ってからもう一回試して。"
+      : "今はこの確認を完了できんかった。繰り返しても直らん場合は設定を確認してな。";
+    renderHomeAgentError({ retryable, message: errorMessage });
     setParuruState("error");
-    showMessage(PARURU_MESSAGES.action.homeAgentError, "error");
+    showMessage(errorMessage, "error");
     revealPanelIfNeeded(homeAgentCard);
   } finally {
     setSending(false);
@@ -1269,7 +1318,12 @@ function renderInboxLoading() {
 }
 
 function renderInboxError() {
-  inboxList.innerHTML = `<div class="empty-state">Inboxを読めなかった。</div>`;
+  inboxList.innerHTML = `
+    <div class="empty-state inbox-error-state">
+      <p>Inboxを読み込めませんでした。</p>
+      <button type="button" class="secondary-button" data-inbox-retry>再試行</button>
+    </div>
+  `;
 }
 
 function renderNotificationLoading() {
@@ -1628,7 +1682,22 @@ function sortInboxItemsNewestFirst(items) {
 }
 
 function isInboxItem(item) {
-  return String(item.status || "Inbox").toLowerCase() === "inbox";
+  const status = normalizeInboxStatus(item && item.status);
+  return status !== "completed" && status !== "deleted";
+}
+
+function normalizeInboxStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (!normalized || normalized === "inbox") {
+    return "inbox";
+  }
+  if (["done", "complete", "completed"].includes(normalized)) {
+    return "completed";
+  }
+  if (["delete", "deleted", "trash", "trashed"].includes(normalized)) {
+    return "deleted";
+  }
+  return "active";
 }
 
 function normalizeType(type) {
@@ -1897,6 +1966,19 @@ function isLikelyAgentChatQuery(text) {
   return AGENT_CHAT_HOME_STATE_PATTERNS.some((pattern) => pattern.test(value));
 }
 
+function isAirconReadQuery(text) {
+  const value = String(text || "").trim();
+  if (!value || isAirconCommandRequest(value)) {
+    return false;
+  }
+  return AGENT_CHAT_AIRCON_READ_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function isAirconCommandRequest(text) {
+  const value = String(text || "").trim();
+  return Boolean(value) && HOME_AGENT_AIRCON_COMMAND_PATTERNS.some((pattern) => pattern.test(value));
+}
+
 function isExplicitAgentMemoRequest(text) {
   return EXPLICIT_AGENT_MEMO_REQUEST_PATTERN.test(String(text || "").trim());
 }
@@ -1928,7 +2010,10 @@ function isCalendarReadQuery(text) {
 
 function isLegacyHomeAgentPriorityQuery(text) {
   const value = String(text || "").trim();
-  return Boolean(value) && LEGACY_HOME_AGENT_PRIORITY_PATTERNS.some((pattern) => pattern.test(value));
+  return Boolean(value) && (
+    isAirconCommandRequest(value)
+    || LEGACY_HOME_AGENT_PRIORITY_PATTERNS.some((pattern) => pattern.test(value))
+  );
 }
 
 function normalizeHomeAgentResult(response) {
@@ -1949,11 +2034,12 @@ function renderHomeAgentLoading(messageText) {
   homeAgentContent.innerHTML = `<p class="home-agent-empty">${escapeHtml(text)}</p>`;
 }
 
-function renderHomeAgentError() {
+function renderHomeAgentError(options = {}) {
   homeAgentCard.classList.remove("is-hidden");
   homeAgentCard.setAttribute("aria-busy", "false");
-  homeAgentRetryButton.classList.remove("is-hidden");
-  homeAgentContent.innerHTML = `<p class="home-agent-error">${escapeHtml(PARURU_MESSAGES.action.homeAgentError)}</p>`;
+  homeAgentRetryButton.classList.toggle("is-hidden", options.retryable !== true);
+  const text = String(options.message || PARURU_MESSAGES.action.homeAgentError);
+  homeAgentContent.innerHTML = `<p class="home-agent-error">${escapeHtml(text)}</p>`;
 }
 
 function hideHomeAgentCard() {
