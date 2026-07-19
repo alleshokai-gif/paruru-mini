@@ -410,8 +410,11 @@ test('B7 existing createWithAI followup closes panel but not unrelated Home Agen
 test('B8 manual close button behavior remains', () => {
   const harness = createHarness();
   harness.elements.get('#homeAgentCard').classList.remove('is-hidden');
+  harness.elements.get('#message').textContent = 'old Agent error';
+  harness.elements.get('#message').className = 'message error';
   harness.handlers.get('#homeAgentCloseButton:click')();
   assert(harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'manual close stopped working');
+  assert(harness.elements.get('#message').textContent === '', 'manual close left Agent form message');
 });
 
 test('C non-transient Agent error keeps input without fallback or retry prompt', async () => {
@@ -420,6 +423,8 @@ test('C non-transient Agent error keeps input without fallback or retry prompt',
   await harness.submit('書斎暑い？');
   assert(harness.elements.get('#memo').value === '書斎暑い？', 'input was cleared on error');
   assert(harness.elements.get('#homeAgentRetryButton').classList.contains('is-hidden'), 'non-transient error showed retry');
+  assert(harness.elements.get('#homeAgentContent').innerHTML.includes('home-agent-error'), 'Agent error was not rendered in card');
+  assert(harness.elements.get('#message').textContent === '', 'Agent error leaked to form message');
   assert(harness.run('pendingHomeAgentRetry.clientRequestId') === harness.requests[0].payload.clientRequestId, 'failed request identity was lost');
   const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
   assert(JSON.stringify(actions) === JSON.stringify(['agentChat']), 'error silently fell back');
@@ -430,17 +435,39 @@ test('D retry reuses clientRequestId and double submit is blocked', async () => 
   harness.setResponder(() => ({ success: false, error: { code: 'AGENT_UNAVAILABLE' } }));
   await harness.submit('書斎暑い？');
   const first = harness.requests[0].payload;
+  assert(harness.elements.get('#message').textContent === '', 'transient Agent error leaked to form message');
   assert(!harness.elements.get('#homeAgentRetryButton').classList.contains('is-hidden'), 'transient failure did not offer retry');
   harness.setResponder((payload) => ({ success: true, reply: '確認できたで。', sessionId: payload.sessionId, clientRequestId: payload.clientRequestId }));
   await harness.run('submitAgentChatQuery(pendingHomeAgentRetry.message, { request: pendingHomeAgentRetry })');
   const second = harness.requests[1].payload;
   assert(first.clientRequestId === second.clientRequestId, 'retry changed clientRequestId');
+  assert(harness.elements.get('#message').textContent === '', 'retry success left old form message');
 
   const duplicateHarness = createHarness();
   const firstSubmit = duplicateHarness.submit('書斎暑い？');
   const secondSubmit = duplicateHarness.submit('書斎暑い？');
   await Promise.all([firstSubmit, secondSubmit]);
   assert(duplicateHarness.requests.filter((entry) => entry.payload?.action === 'agentChat').length === 1, 'double submit was not blocked');
+});
+
+test('D2 Agent start and later Climate success clear stale form errors', async () => {
+  const harness = createHarness();
+  harness.elements.get('#message').textContent = 'stale red error';
+  harness.elements.get('#message').className = 'message error';
+  await harness.submit('書斎暑い？');
+  assert(harness.elements.get('#message').textContent === '', 'Agent success left stale form error');
+  harness.elements.get('#message').textContent = 'stale red error';
+  harness.elements.get('#message').className = 'message error';
+  await harness.submit('リビングのエアコンどうなってる？');
+  assert(harness.elements.get('#message').textContent === '', 'next Climate success left stale form error');
+});
+
+test('D3 legacy Home Agent error stays in Agent card only', async () => {
+  const harness = createHarness();
+  harness.setActionResponder((payload) => payload.action === 'homeAgent' ? { success: false, error: { code: 'FAILED' } } : { success: true, item: {} });
+  await harness.submit('今日の給食は？');
+  assert(harness.elements.get('#homeAgentContent').innerHTML.includes('home-agent-error'), 'Home Agent error was not rendered in card');
+  assert(harness.elements.get('#message').textContent === '', 'Home Agent error leaked to form message');
 });
 
 test('E new submission gets new request ID and reuses session', async () => {
@@ -476,7 +503,8 @@ test('F invalid Agent responses are handled safely', async () => {
     await harness.submit('書斎暑い？');
     assert(harness.elements.get('#memo').value === '書斎暑い？', 'invalid response cleared input');
     assert(harness.elements.get('#homeAgentRetryButton').classList.contains('is-hidden'), 'malformed response was presented as transient');
-    assert(harness.elements.get('#message').textContent.includes('設定を確認'), 'safe non-transient error missing');
+    assert(harness.elements.get('#homeAgentContent').innerHTML.includes('home-agent-error'), 'safe non-transient error missing');
+    assert(harness.elements.get('#message').textContent === '', 'malformed Agent response leaked to form message');
   }
 });
 
@@ -533,16 +561,16 @@ test('Inbox API failure is distinct from a successful empty list and offers retr
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260719-04';
+  const expected = 'v20260719-05';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-04'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-05'), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
   const manifest = JSON.parse(manifestSource);
-  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-04')), 'manifest icon version mismatch');
+  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-05')), 'manifest icon version mismatch');
   const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
   assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');

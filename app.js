@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260719-04";
+const ASSET_VERSION = "v20260719-05";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -856,6 +856,7 @@ function buildHomeAgentPayload(messageText, options = {}) {
 async function submitHomeAgentQuery(messageText, options = {}) {
   const payload = buildHomeAgentPayload(messageText, options);
   pendingHomeAgentRetry = { type: "homeAgent", message: messageText, clientRequestId: payload.clientRequestId };
+  clearAgentFormMessage();
   setSending(true, PARURU_MESSAGES.action.homeAgentLoading);
   setParuruSpeech("idle", "ちょっと家の中、見てくる。");
   renderHomeAgentLoading();
@@ -868,6 +869,7 @@ async function submitHomeAgentQuery(messageText, options = {}) {
     }
     memoInput.value = "";
     pendingHomeAgentRetry = null;
+    clearAgentFormMessage();
     renderHomeAgentResult(result);
     setParuruSpeech("idle", getHomeAgentSpeech(result));
     resetParuruSpeechSoon();
@@ -875,7 +877,6 @@ async function submitHomeAgentQuery(messageText, options = {}) {
   } catch (error) {
     renderHomeAgentError({ retryable: true });
     setParuruState("error");
-    showMessage(PARURU_MESSAGES.action.homeAgentError, "error");
     revealPanelIfNeeded(homeAgentCard);
   } finally {
     setSending(false);
@@ -918,6 +919,7 @@ async function submitAgentChatQuery(messageText, options = {}) {
     : request.purpose === "aircon-status"
       ? "ぱるるがエアコンの状態を確認中…"
       : "ぱるるが家の様子を見てる…";
+  clearAgentFormMessage();
   setSending(true, loadingMessage);
   setParuruSpeech("idle", loadingMessage);
   renderHomeAgentLoading(loadingMessage);
@@ -926,6 +928,7 @@ async function submitAgentChatQuery(messageText, options = {}) {
     const result = await callAgentChat(payload);
     memoInput.value = "";
     pendingHomeAgentRetry = null;
+    clearAgentFormMessage();
     renderAgentChatReply(result.reply);
     if (result.followup) {
       renderFollowupPanel("home", {
@@ -948,7 +951,6 @@ async function submitAgentChatQuery(messageText, options = {}) {
       : "今はこの確認を完了できんかった。繰り返しても直らん場合は設定を確認してな。";
     renderHomeAgentError({ retryable, message: errorMessage });
     setParuruState("error");
-    showMessage(errorMessage, "error");
     revealPanelIfNeeded(homeAgentCard);
   } finally {
     setSending(false);
@@ -1945,6 +1947,10 @@ function showMessage(text, type) {
   message.className = type ? `message ${type}` : "message";
 }
 
+function clearAgentFormMessage() {
+  showMessage("", "");
+}
+
 function isLikelyHomeAgentQuery(text) {
   const value = String(text || "").trim();
   if (!value) {
@@ -2047,6 +2053,7 @@ function hideHomeAgentCard() {
   homeAgentCard.setAttribute("aria-busy", "false");
   homeAgentContent.innerHTML = "";
   homeAgentRetryButton.classList.add("is-hidden");
+  clearAgentFormMessage();
 }
 
 function renderHomeAgentResult(result) {

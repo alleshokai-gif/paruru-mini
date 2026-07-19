@@ -107,12 +107,12 @@ test('shopping display uses clear deadline labels', () => {
   assert(context.buildTodayDisplayLine({ type: 'shopping', title: '米', reasons: ['due_within_7_days'] }).startsWith('1週間以内'), 'rolling seven-day label wrong');
 });
 
-test('shopping UI contains no calendar-week wording and keeps the unpublished build', () => {
+test('shopping UI contains no calendar-week wording and keeps the current build', () => {
   const html = fs.readFileSync(path.resolve(__dirname, '..', 'index.html'), 'utf8');
   const shoppingPanel = html.match(/id="editShoppingPanel"[\s\S]*?<\/section>/)?.[0] || '';
   assert(shoppingPanel.includes('1&#36913;&#38291;&#20197;&#20869;'), 'rolling seven-day option missing');
   assert(!shoppingPanel.includes('&#20170;&#36913;') && !shoppingPanel.includes('今週'), 'calendar-week wording remains in shopping UI');
-  assert(source.includes('const ASSET_VERSION = "v20260719-04"'), 'build changed unexpectedly');
+  assert(source.includes('const ASSET_VERSION = "v20260719-05"'), 'build changed unexpectedly');
 });
 
 test('successful edit refreshes Inbox and notification candidates', async () => {
