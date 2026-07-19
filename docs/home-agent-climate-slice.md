@@ -47,6 +47,14 @@ switchbot-temp-log GAS:
 
 The secret is sent only from PALURU GAS to switchbot-temp-log GAS. It is required for both read and write actions and is not stored in the front end.
 
+PALURU Mini action-protection properties:
+
+- `PALURU_HOME_AGENT_ACTIONS_ENABLED`: operation kill switch; only explicit `true` enables actions
+- `PALURU_HOME_AGENT_DEVICE_TOKEN_HASHES`: paired `deviceId` to SHA-256 token-hash mapping
+- `PALURU_HOME_AGENT_ALLOWED_ROOM_IDS`: allowlisted logical room IDs
+
+Values are operational secrets or environment configuration and must not be documented in the repository. Deployment, rotation and rollback procedures are maintained in [Home Agent Action Operations](home-agent-action-operations.md).
+
 ## switchbot-temp-log Actions
 
 Read-only actions:
@@ -108,6 +116,42 @@ Resume follows the same confirmation path and calls `resumeRoomAutomation`.
 
 The public Web App remains anonymous. Device pairing is a bearer-token mitigation, not human identity authentication. Missing configuration fails closed, and `PALURU_HOME_AGENT_ACTIONS_ENABLED` is the operational kill switch.
 
+## Operation Security Architecture
+
+```mermaid
+flowchart TD
+    User["利用者"] --> PWA["PALURU Mini PWA"]
+    PWA --> LocalToken["端末別pairing token<br/>PWA localStorage"]
+    PWA -->|"read-only homeAgent"| MiniRead["Mini GAS read-only Home Agent"]
+    MiniRead --> LegacyRead["旧Home Agent read Skills"]
+
+    PWA -->|"操作候補要求 + device context + pairing credential"| MiniProtect["Mini GAS Action Protection"]
+    LocalToken --> MiniProtect
+    Kill["kill switch"] --> MiniProtect
+    Hashes["device token hashes"] --> MiniProtect
+    Rooms["logical room allowlist"] --> MiniProtect
+
+    MiniProtect --> Confirmation["server-side confirmation<br/>skill / room / actor / clientRequestId / expiry"]
+    Confirmation --> PWA
+    PWA -->|"confirmationId + clientRequestId + pairing credential"| Consume["LockServiceで一回だけ消費"]
+    Consume --> Idempotency["期限付きidempotency state<br/>同じ結果を再送"]
+    Consume --> Revalidate["実行直前のroom・期限・active pause再検証"]
+    Revalidate --> LegacyAction["旧Home Agent pause / resume Skill"]
+    LegacyAction --> Upstream["switchbot-temp-log<br/>既存サーバー間認証"]
+```
+
+### Security boundaries and decisions
+
+- Pairing protects the caller possession boundary. It does not prove the human identity behind the device.
+- Confirmation protects operation integrity and replay. It is not authentication by itself.
+- The PWA never resends mutable skill, room or duration fields when confirming an operation.
+- The kill switch is checked before issuance and execution, so missing configuration fails closed without affecting read-only `homeAgent`.
+- The room allowlist contains logical room IDs only. Physical device IDs are never accepted from the browser.
+- `clientRequestId` and the consumed confirmation result prevent an ordinary retry from creating another pause row.
+- Resume is bound to the active pause observed when the confirmation was issued. A changed target is rejected immediately before execution.
+- The existing Mini-to-switchbot shared secret remains a separate server-to-server boundary and is never sent to the PWA.
+- `setAirconOverride` and other unconnected operations remain rejected.
+
 ## Freshness
 
 switchbot-temp-log treats sensor data older than 15 minutes as `stale`.
@@ -133,7 +177,9 @@ No push, Signage, or LINE notification is sent automatically.
 - No shared secret in front-end JavaScript.
 - Read actions and write actions are separated.
 - Every action request requires the shared secret.
-- Write actions also require `confirmed=true`.
+- Mini action issuance requires the kill switch, paired device and logical room allowlist.
+- Write confirmation uses a server-bound, five-minute confirmation rather than trusting client-supplied `confirmed=true` or action parameters.
+- `LockService`, idempotency state and immediate state revalidation protect retries and state changes.
 - Actual aircon operations are not connected in this slice.
 - Safety-off behavior remains under switchbot-temp-log control.
 
