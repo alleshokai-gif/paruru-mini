@@ -103,6 +103,30 @@ function doPost(e) {
       return agentActionCancel_(body);
     }
 
+    if (action === 'devicePairingBegin') {
+      return devicePairingBegin_(body);
+    }
+
+    if (action === 'devicePairingApprove') {
+      return devicePairingApprove_(body);
+    }
+
+    if (action === 'devicePairingStatus') {
+      return devicePairingStatus_(body);
+    }
+
+    if (action === 'devicePairingList') {
+      return devicePairingList_(body);
+    }
+
+    if (action === 'devicePairingRevoke') {
+      return devicePairingRevoke_(body);
+    }
+
+    if (String(action).indexOf('devicePairing') === 0) {
+      return json_({ success: false, data: {}, warnings: [], error: { code: 'UNSUPPORTED_DEVICE_PAIRING_ACTION' }, message: 'unsupported device pairing action' });
+    }
+
     if (action === 'homeAgent') {
       return homeAgent_(body);
     }

@@ -187,6 +187,11 @@ test('existing action routing regression', () => {
   assert(output(context.doGet({ parameter: { action: 'notificationCandidates' } })).route === 'notificationCandidates', 'notification route changed');
 });
 
+test('unknown device pairing action never falls through to memo creation', () => {
+  const result = post({ action: 'devicePairingUnexpected', memo: secretMessage });
+  assert(result.success === false && result.error.code === 'UNSUPPORTED_DEVICE_PAIRING_ACTION', 'device pairing action fell through to memo creation');
+});
+
 test('agentChat forwards structured actionConfirmation only', () => {
   configure();
   const response = agentResponse('寝室の自動制御を1時間停止するで。実行してええ？');

@@ -234,6 +234,17 @@ function assertAllowedHomeAgentRoom_(roomId, deps) {
 }
 
 function verifyHomeAgentDevicePairing_(deviceId, pairingToken, deps) {
+  if (typeof verifyHomeControlDevicePairing_ === 'function') {
+    const registryResult = verifyHomeControlDevicePairing_(deviceId, pairingToken, {
+      getProperty: deps.getProperty,
+      setProperty: function(name, value) { PropertiesService.getScriptProperties().setProperty(name, value); },
+      hash: deps.hash,
+      now: deps.now,
+      lock: deps.lock,
+      alreadyLocked: true,
+    });
+    if (registryResult && registryResult.handled) return;
+  }
   let hashes;
   try {
     hashes = JSON.parse(String(deps.getProperty(HOME_AGENT_DEVICE_TOKEN_HASHES_PROPERTY) || ''));

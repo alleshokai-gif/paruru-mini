@@ -1,0 +1,152 @@
+'use strict';
+
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = path.resolve(__dirname, '..');
+const source = fs.readFileSync(path.join(root, 'gas', 'DevicePairingService.js'), 'utf8');
+const securitySource = fs.readFileSync(path.join(root, 'gas', 'HomeAgentActionSecurity.js'), 'utf8');
+const properties = {};
+let nowMs = Date.parse('2026-07-20T10:00:00+09:00');
+let uuidCounter = 1;
+let randomUuidCounter = 1;
+let locked = false;
+
+function hash(value) { return crypto.createHash('sha256').update(String(value)).digest('hex'); }
+function uuid() { return `aaaaaaaa-aaaa-4aaa-8aaa-${String(uuidCounter++).padStart(12, '0')}`; }
+function response(value) { return value; }
+function post(action, body) { return context[action](body); }
+function assert(value, message) { if (!value) throw new Error(message); }
+function reset() {
+  Object.keys(properties).forEach((key) => delete properties[key]);
+  nowMs = Date.parse('2026-07-20T10:00:00+09:00');
+  uuidCounter = 1;
+  randomUuidCounter = 1;
+}
+
+const context = {
+  Date, JSON, Math, Number, Object, Array, String, RegExp, Error, parseInt,
+  json_: response,
+  PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || '', setProperty: (key, value) => { properties[key] = String(value); } }) },
+  LockService: { getScriptLock: () => ({ waitLock: () => { if (locked) throw new Error('lock re-entry'); locked = true; }, releaseLock: () => { locked = false; } }) },
+  Utilities: {
+    DigestAlgorithm: { SHA_256: 'sha256' }, Charset: { UTF_8: 'utf8' },
+    computeDigest: (_algorithm, value) => Array.from(crypto.createHash('sha256').update(String(value)).digest()),
+    getUuid: () => `${String(randomUuidCounter++).padStart(8, '0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+    formatDate: (date) => date.toISOString(),
+  },
+};
+vm.createContext(context);
+new vm.Script(source + '\n' + securitySource).runInContext(context);
+
+const parentToken = 'parent-pairing-token-000000000000000000000001';
+const childTokenHash = hash('child-pairing-token-000000000000000000000002');
+const parentId = 'parent-device';
+const childId = 'child-device';
+
+function legacyParent() {
+  properties.PALURU_HOME_AGENT_DEVICE_TOKEN_HASHES = JSON.stringify({ [parentId]: hash(parentToken) });
+}
+
+function begin() {
+  return post('devicePairingBegin_', { deviceId: childId, displayName: '新しい端末', tokenHash: childTokenHash });
+}
+
+function approve(code) {
+  return post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code });
+}
+
+const tests = [];
+function test(name, fn) { tests.push({ name, fn }); }
+
+test('Legacy hash map migrates as active registry records without deleting the old property', () => {
+  reset(); legacyParent();
+  const result = context.verifyHomeControlDevicePairing_(parentId, parentToken);
+  assert(result.handled && result.authorized, 'legacy parent was not accepted');
+  const registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  assert(registry.devices[parentId].status === 'active', 'legacy record did not become active');
+  assert(Boolean(properties.PALURU_HOME_AGENT_DEVICE_TOKEN_HASHES), 'legacy property was deleted');
+});
+
+test('begin approve status activates only the requested device and stores hashes only', () => {
+  reset(); legacyParent();
+  const started = begin();
+  assert(started.success && /^\d{6}$/.test(started.data.code), 'begin did not issue a code');
+  const storedBefore = properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1;
+  assert(!storedBefore.includes('child-pairing-token-'), 'raw token reached registry');
+  assert(!storedBefore.includes(started.data.requestSecret), 'request secret reached registry');
+  assert(!storedBefore.includes(started.data.code), 'approval code reached registry');
+  const approved = approve(started.data.code);
+  assert(approved.success && approved.data.status === 'approved', 'registered parent could not approve');
+  const status = post('devicePairingStatus_', { requestId: started.data.requestId, requestSecret: started.data.requestSecret });
+  assert(status.success && status.data.status === 'active', 'new device did not become active');
+});
+
+test('wrong code expires, rate limits, and cannot be reused', () => {
+  reset(); legacyParent();
+  const started = begin();
+  assert(!approve('000000').success, 'wrong code was accepted');
+  for (let index = 0; index < 4; index += 1) approve('000000');
+  assert(approve('000000').error.code === 'PAIRING_CODE_RATE_LIMITED', 'wrong code was not rate limited');
+  const persisted = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  persisted.requests[started.data.requestId].codeExpiresAt = '2020-01-01T00:00:00.000Z';
+  persisted.approveAttempts[parentId].startedAt = 0;
+  properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(persisted);
+  const expired = approve(started.data.code);
+  assert(!expired.success, 'expired code was accepted');
+  const second = begin();
+  const secondRegistry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  assert(secondRegistry.requests[second.data.requestId].codeHash === hash(second.data.code), 'new code hash was not persisted');
+  const validAfterWindow = approve(second.data.code);
+  assert(validAfterWindow.success, `valid code was rejected after rate window: ${validAfterWindow.error && validAfterWindow.error.code}`);
+  assert(!approve(second.data.code).success, 'used code was accepted again');
+});
+
+test('unregistered or revoked devices cannot approve or use the registry', () => {
+  reset(); legacyParent();
+  const started = begin();
+  const unknown = post('devicePairingApprove_', { deviceId: 'unknown-device', pairingToken: parentToken, code: started.data.code });
+  assert(!unknown.success && unknown.error.code === 'UNAUTHORIZED_DEVICE', 'unregistered device approved');
+  const revoked = post('devicePairingRevoke_', { deviceId: parentId, pairingToken: parentToken, targetDeviceId: parentId });
+  assert(revoked.success, 'registered device could not revoke itself');
+  const rejected = post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code: started.data.code });
+  assert(!rejected.success && rejected.error.code === 'UNAUTHORIZED_DEVICE', 'revoked device approved');
+});
+
+test('a revoked Registry device is rejected even while its legacy hash remains', () => {
+  reset(); legacyParent();
+  context.verifyHomeControlDevicePairing_(parentId, parentToken);
+  const registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  registry.devices[parentId].status = 'revoked';
+  registry.devices[parentId].revokedAt = '2026-07-20T00:00:00.000Z';
+  properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(registry);
+  let code = '';
+  try {
+    context.verifyHomeAgentDevicePairing_(parentId, parentToken, {
+      getProperty: (key) => properties[key] || '', hash, now: () => new Date(), lock: context.LockService.getScriptLock(),
+    });
+  } catch (error) { code = error.code; }
+  assert(code === 'UNAUTHORIZED_DEVICE', 'revoked registry device fell back to the legacy hash');
+});
+
+test('only one concurrent approval succeeds and the twenty-device cap is enforced', () => {
+  reset(); legacyParent();
+  const started = begin();
+  assert(approve(started.data.code).success, 'first approval failed');
+  assert(!approve(started.data.code).success, 'second approval succeeded');
+  const registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  for (let index = 0; index < 18; index += 1) {
+    registry.devices[`device-${index}`] = { deviceId: `device-${index}`, displayName: '端末', tokenHash: hash(`token-${index}`), status: 'active', registeredAt: null, lastUsedAt: null, revokedAt: null, tokenGeneration: 1 };
+  }
+  properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(registry);
+  const blocked = post('devicePairingBegin_', { deviceId: 'limit-device', displayName: '上限端末', tokenHash: hash('limit-token') });
+  assert(!blocked.success && blocked.error.code === 'DEVICE_LIMIT_REACHED', 'device cap was not enforced');
+});
+
+for (const item of tests) {
+  try { item.fn(); console.log(`PASS ${item.name}`); }
+  catch (error) { console.error(`FAIL ${item.name}: ${error.message}`); process.exitCode = 1; }
+}
+if (!process.exitCode) console.log(`PASS all ${tests.length} device pairing tests`);
