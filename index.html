@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260719-06">
-    <link rel="icon" href="./assets/icons/favicon.png?v=20260719-06" type="image/png">
-    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260719-06">
-    <link rel="stylesheet" href="./style.css?v=20260719-06">
+    <link rel="manifest" href="./manifest.json?v=20260719-07">
+    <link rel="icon" href="./assets/icons/favicon.png?v=20260719-07" type="image/png">
+    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260719-07">
+    <link rel="stylesheet" href="./style.css?v=20260719-07">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
@@ -152,11 +152,6 @@
               <span>明日の予定を表示する時刻</span>
               <input id="profileTomorrowScheduleStartTime" type="time" required>
             </label>
-            <label class="field">
-              <span>家電操作ペアリングトークン</span>
-              <input id="profileHomeAgentPairingToken" type="password" autocomplete="new-password" minlength="32" maxlength="512">
-              <small>端末ごとに所有者から受け取った値を入力。表示やコードへの埋め込みは行いません。</small>
-            </label>
             <fieldset class="settings-fieldset">
               <legend>&#20170;&#26085;&#27425;&#12395;&#34920;&#31034;&#12377;&#12427;&#23478;&#26063;&#12398;&#20104;&#23450;</legend>
               <div id="profileCalendarMembers" class="settings-check-grid">
@@ -175,6 +170,32 @@
             </fieldset>
             <button type="submit">&#12503;&#12525;&#12501;&#12451;&#12540;&#12523;&#12434;&#20445;&#23384;</button>
           </form>
+          <section id="homeControlSettings" class="settings-fieldset" aria-live="polite">
+            <h2>家電操作</h2>
+            <div id="homeControlStatus"></div>
+            <div id="homeControlUnregistered" hidden>
+              <label class="field">
+                <span>この端末の名前</span>
+                <input id="homeControlDeviceName" type="text" maxlength="80" autocomplete="off">
+              </label>
+              <button id="homeControlEnableButton" type="button">この端末で家電操作を有効にする</button>
+            </div>
+            <div id="homeControlPending" hidden>
+              <p>新しい端末に、次の承認コードを入力してください。</p>
+              <p id="homeControlPendingCode" class="home-control-code"></p>
+              <p id="homeControlPendingExpiry"></p>
+            </div>
+            <div id="homeControlRegistered" hidden>
+              <p id="homeControlRegisteredLabel"></p>
+              <label class="field">
+                <span>新しい端末を承認</span>
+                <input id="homeControlApproveCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+              </label>
+              <button id="homeControlApproveButton" type="button">承認する</button>
+              <div id="homeControlDeviceList"></div>
+            </div>
+            <p id="homeControlMessage" class="form-message" aria-live="polite"></p>
+          </section>
           <p id="buildVersion" class="build-version">Build loading...</p>
         </div>
       </section>
@@ -358,7 +379,7 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260719-06" defer></script>
+    <script src="./app.js?v=20260719-07" defer></script>
   </body>
 </html>
 

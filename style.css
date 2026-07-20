@@ -1194,6 +1194,29 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.home-control-code {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-align: center;
+}
+
+#homeControlDeviceList {
+  display: grid;
+  gap: 8px;
+}
+
+.home-control-device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 .settings-check-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

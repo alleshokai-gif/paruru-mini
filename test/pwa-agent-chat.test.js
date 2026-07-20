@@ -654,19 +654,29 @@ test('Inbox API failure is distinct from a successful empty list and offers retr
   assert(failed.context.__retryCalls === 1, 'Inbox retry did not call loadInbox');
 });
 
+test('EVA-03H1 pairing UI uses explicit onboarding actions and has no manual token field', () => {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  assert(!html.includes('profileHomeAgentPairingToken'), 'manual pairing token input remains in the normal UI');
+  assert(html.includes('homeControlEnableButton') && html.includes('homeControlApproveButton'), 'pairing onboarding controls are missing');
+  ['devicePairingBegin', 'devicePairingApprove', 'devicePairingStatus', 'devicePairingRevoke'].forEach((action) => {
+    assert(appSource.includes(`action: "${action}"`), `missing explicit onboarding action: ${action}`);
+  });
+  assert(appSource.includes('crypto?.getRandomValues') && appSource.includes('crypto?.subtle') && appSource.includes('crypto.subtle.digest'), 'PWA token generation is not Web Crypto based');
+});
+
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260719-06';
+  const expected = 'v20260719-07';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-06'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-07'), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
   const manifest = JSON.parse(manifestSource);
-  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-06')), 'manifest icon version mismatch');
+  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-07')), 'manifest icon version mismatch');
   const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
   assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');
