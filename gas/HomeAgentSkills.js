@@ -941,12 +941,14 @@ function callSwitchbotTempLogHomeAgentApi_(action, payload, options) {
     };
   }
 
-  const secret = getHomeAgentProperty_('PALURU_HOME_AGENT_SECRET', '');
+  const useAutomationSecret = options && options.write === true;
+  const secretProperty = useAutomationSecret ? 'PALURU_HOME_AGENT_AUTOMATION_SECRET' : 'PALURU_HOME_AGENT_SECRET';
+  const secret = getHomeAgentProperty_(secretProperty, '');
   if (!secret) {
     return {
       success: false,
-      errorCode: 'HOME_AGENT_SECRET_NOT_CONFIGURED',
-      message: 'Home Agent shared secret is not configured',
+      errorCode: useAutomationSecret ? 'HOME_AGENT_AUTOMATION_SECRET_NOT_CONFIGURED' : 'HOME_AGENT_SECRET_NOT_CONFIGURED',
+      message: useAutomationSecret ? 'Home Agent automation secret is not configured' : 'Home Agent shared secret is not configured',
     };
   }
   const body = Object.assign({}, payload || {}, {

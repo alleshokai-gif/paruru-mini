@@ -1,5 +1,29 @@
 # PALURU Mini
 
+## EVA-03G Automation confirmation UI
+
+PALURU Mini keeps automation operations behind confirmation, a kill switch, and device-pairing checks.
+
+| Control | Property / storage |
+|---|---|
+| Operation kill switch | `PALURU_HOME_AGENT_ACTIONS_ENABLED` |
+| Device token hashes | `PALURU_HOME_AGENT_DEVICE_TOKEN_HASHES` |
+| Allowed rooms | `PALURU_HOME_AGENT_ALLOWED_ROOM_IDS` |
+| Mini-to-switchbot automation secret | `PALURU_HOME_AGENT_AUTOMATION_SECRET` |
+| Browser token storage | localStorage pairing token |
+
+The pairing token is a device bearer token, not personal identity authentication. XSS, shared devices, or device compromise can still expose it, so the kill switch, allowed-room list, server-bound confirmation, and idempotency remain required.
+
+Agent responses may include a structured `actionConfirmation`. PWA shows “実行する” and “やめる”.
+
+- “実行する” calls `agentActionConfirm`.
+- “やめる” calls `agentActionCancel`.
+- Both paths verify pairing in Mini GAS before calling PALURU Agent.
+- Confirm/cancel do not send the pairing token to PALURU Agent, PALURU_OS, OpenAI, or switchbot-temp-log.
+- Browser confirm/cancel requests do not include operation, room, duration, skill, or `confirmed: true`.
+
+Legacy `homeAgentAction` remains protected for old PWA compatibility. Pause/resume write calls use `PALURU_HOME_AGENT_AUTOMATION_SECRET`; read/proposal calls continue to use `PALURU_HOME_AGENT_SECRET`.
+
 > **EVA-03 MVP Completed — 2026-07-19**
 > PALURU Mini PWAは三号機v1の会話入口です。完成状態の正本はPALURU Agent側の`docs/eva-03-completion.md`です。
 

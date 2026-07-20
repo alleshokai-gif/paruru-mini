@@ -225,7 +225,7 @@ test('P1.5 aircon state reads route only to the new Agent', async () => {
   }
 });
 
-test('P1.5 aircon commands stay on the protected legacy operation route', async () => {
+test('P1.5 aircon device commands stay legacy while automation pause/resume routes to Agent', async () => {
   const cases = [
     'エアコンつけて',
     'エアコン消して',
@@ -239,7 +239,8 @@ test('P1.5 aircon commands stay on the protected legacy operation route', async 
     const harness = createHarness();
     await harness.submit(message);
     const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
-    assert(JSON.stringify(actions) === JSON.stringify(['homeAgent']), message + ' escaped operation route');
+    const expected = /自動制御|閾ｪ蜍募宛蠕｡/.test(message) ? 'agentChat' : 'homeAgent';
+    assert(JSON.stringify(actions) === JSON.stringify([expected]), message + ' escaped operation route');
   }
 });
 
@@ -306,7 +307,8 @@ test('EVA-03F explicit memo and Home Agent priorities beat Calendar read', async
     const harness = createHarness();
     await harness.submit(item.message);
     const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
-    assert(JSON.stringify(actions) === JSON.stringify([item.action]), item.message + ' priority changed');
+    const expected = /自動制御|閾ｪ蜍募宛蠕｡/.test(item.message) ? 'agentChat' : item.action;
+    assert(JSON.stringify(actions) === JSON.stringify([expected]), item.message + ' priority changed');
   }
 });
 
@@ -519,6 +521,100 @@ test('H existing feature routes remain present', () => {
   });
 });
 
+test('EVA-03G automation pause and resume route to Agent, while aircon device operations stay legacy', async () => {
+  const cases = [
+    { message: '寝室の自動制御を1時間止めて', expected: 'agentChat' },
+    { message: '寝室の自動制御を再開して', expected: 'agentChat' },
+    { message: '寝室を通常運転に戻して', expected: 'agentChat' },
+    { message: 'エアコンつけて', expected: 'homeAgent' },
+    { message: '1度下げて', expected: 'homeAgent' },
+    { message: '除湿にして', expected: 'homeAgent' },
+  ];
+  for (const item of cases) {
+    const harness = createHarness();
+    await harness.submit(item.message);
+    const actions = harness.requests.map((entry) => entry.payload?.action).filter(Boolean);
+    assert(actions[0] === item.expected, item.message + ' routed to ' + actions.join(','));
+  }
+});
+
+test('EVA-03G Agent confirmation card is rendered from structured field', async () => {
+  const harness = createHarness();
+  harness.setResponder((payload) => ({
+    success: true,
+    reply: '寝室の自動制御を1時間停止するで。実行してええ？',
+    sessionId: payload.sessionId,
+    clientRequestId: payload.clientRequestId,
+    actionConfirmation: {
+      required: true,
+      confirmationId: '88888888-8888-4888-8888-888888888888',
+      command: 'automation.pause',
+      roomLabel: '寝室',
+      summary: '寝室の自動制御を60分停止します',
+      expiresAt: '2026-07-19T21:05:00+09:00',
+      payload: { roomId: 'bedroom', durationMinutes: 60 },
+    },
+  }));
+  await harness.submit('寝室の自動制御を1時間止めて');
+  const html = harness.elements.get('#homeAgentContent').innerHTML;
+  assert(html.includes('data-home-agent-action-execute'), 'execute button missing');
+  assert(html.includes('寝室の自動制御を60分停止します'), 'confirmation summary missing');
+  assert(!html.includes('bedroom') && !html.includes('durationMinutes'), 'raw operation payload leaked');
+});
+
+test('EVA-03G confirm sends only confirmation identifiers and pairing token to Mini GAS', async () => {
+  const harness = createHarness();
+  harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
+  await harness.run(`executeAgentActionConfirmation({
+    type: "agentActionConfirmation",
+    confirmationId: "88888888-8888-4888-8888-888888888888",
+    clientRequestId: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+    command: "automation.pause",
+    confirmationMessage: "寝室の自動制御を60分停止します",
+    payload: { roomId: "bedroom", durationMinutes: 60 }
+  })`);
+  const sent = harness.requests[harness.requests.length - 1].payload;
+  assert(sent.action === 'agentActionConfirm', 'wrong confirm action');
+  assert(sent.confirmationId && sent.clientRequestId && sent.pairingToken, 'required confirm identifiers missing');
+  ['operation', 'skill', 'roomId', 'duration', 'durationMinutes', 'confirmed', 'payload'].forEach((field) => {
+    assert(!Object.prototype.hasOwnProperty.call(sent, field), field + ' leaked from PWA confirm');
+  });
+});
+
+test('EVA-03G cancel sends only confirmation identifiers and pairing token to Mini GAS', async () => {
+  const harness = createHarness();
+  harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
+  harness.setActionResponder((payload) => {
+    assert(payload.action === 'agentActionCancel', 'wrong cancel action');
+    assert(payload.confirmationId === '88888888-8888-4888-8888-888888888888', 'confirmation id missing');
+    assert(payload.clientRequestId === '6ba7b810-9dad-41d1-80b4-00c04fd430c8', 'clientRequestId missing');
+    assert(payload.deviceId && payload.pairingToken, 'device or pairing token missing');
+    ['operation', 'skill', 'roomId', 'duration', 'durationMinutes', 'confirmed', 'payload'].forEach((field) => {
+      assert(!Object.prototype.hasOwnProperty.call(payload, field), field + ' leaked from PWA cancel');
+    });
+    return { success: true, status: 'cancelled', operation: 'pause', roomLabel: '寝室' };
+  });
+  await harness.run(`cancelAgentActionConfirmation({
+    confirmationId: "88888888-8888-4888-8888-888888888888",
+    clientRequestId: "6ba7b810-9dad-41d1-80b4-00c04fd430c8"
+  })`);
+  const sent = harness.requests[harness.requests.length - 1].payload;
+  assert(sent.action === 'agentActionCancel', 'cancel was not sent');
+});
+
+test('EVA-03G legacy confirmation close does not call cancel endpoint', async () => {
+  const harness = createHarness();
+  await harness.run(`renderHomeAgentActionConfirmation({
+    type: "homeAgentActionConfirmation",
+    skill: "pauseRoomAutomation",
+    confirmationId: "88888888-8888-4888-8888-888888888888",
+    clientRequestId: "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+    confirmationMessage: "legacy"
+  });
+  cancelPendingHomeAgentAction()`);
+  assert(harness.requests.length === 0, 'legacy close called cancel endpoint');
+});
+
 test('Inbox list keeps legacy active rows without date user or visibility filtering', () => {
   const harness = createHarness();
   harness.context.__items = [
@@ -561,16 +657,16 @@ test('Inbox API failure is distinct from a successful empty list and offers retr
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260719-05';
+  const expected = 'v20260719-06';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-05'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-06'), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
   const manifest = JSON.parse(manifestSource);
-  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-05')), 'manifest icon version mismatch');
+  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-06')), 'manifest icon version mismatch');
   const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
   assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');

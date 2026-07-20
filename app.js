@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260719-05";
+const ASSET_VERSION = "v20260719-06";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "Normal";
@@ -54,6 +54,10 @@ const HOME_AGENT_AIRCON_COMMAND_PATTERNS = [
   /(?:1度|一度).*(?:下げて|上げて)/,
   /(?:除湿|冷房|暖房).*(?:にして|切り替えて)/,
   /風量.*(?:強く|弱く|上げて|下げて|して)/,
+  /自動制御.*(?:止めて|停止して|一時停止して|再開して|戻して|解除して)/,
+  /通常運転.*(?:戻して|再開して)/,
+];
+const AGENT_AUTOMATION_CONTROL_PATTERNS = [
   /自動制御.*(?:止めて|停止して|一時停止して|再開して|戻して|解除して)/,
   /通常運転.*(?:戻して|再開して)/,
 ];
@@ -480,6 +484,11 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (isAutomationControlRequest(memo)) {
+    await submitAgentChatQuery(memo, { purpose: "automation-action" });
+    return;
+  }
+
   if (isLegacyHomeAgentPriorityQuery(memo)) {
     await submitHomeAgentQuery(memo);
     return;
@@ -679,7 +688,7 @@ homeAgentCard.addEventListener("click", (event) => {
   }
 
   if (event.target.closest("[data-home-agent-confirm-close]")) {
-    hideSignageConfirmation();
+    cancelPendingHomeAgentAction();
   }
 });
 
@@ -837,6 +846,56 @@ async function executeHomeAgentAction(candidate) {
   return parseApiResponse(response);
 }
 
+async function executeAgentActionConfirmation(candidate) {
+  if (!GAS_WEB_APP_URL) {
+    return {
+      success: true,
+      operation: candidate?.command === "automation.resume" ? "resume" : "pause",
+      result: {
+        activePause: candidate?.command === "automation.pause" ? { expiresAt: "" } : null,
+      },
+    };
+  }
+
+  const profile = getCurrentProfile();
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify({
+      action: "agentActionConfirm",
+      confirmationId: String(candidate?.confirmationId || ""),
+      clientRequestId: String(candidate?.clientRequestId || ""),
+      deviceId: profile.deviceId,
+      pairingToken: getHomeAgentPairingToken(),
+    }),
+  });
+
+  return parseApiResponse(response);
+}
+
+async function cancelAgentActionConfirmation(candidate) {
+  if (!GAS_WEB_APP_URL) {
+    return { success: true, status: "cancelled" };
+  }
+  const profile = getCurrentProfile();
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify({
+      action: "agentActionCancel",
+      confirmationId: String(candidate?.confirmationId || ""),
+      clientRequestId: String(candidate?.clientRequestId || ""),
+      deviceId: profile.deviceId,
+      pairingToken: getHomeAgentPairingToken(),
+    }),
+  });
+  return parseApiResponse(response);
+}
+
 function buildHomeAgentPayload(messageText, options = {}) {
   const profile = getCurrentProfile();
   return {
@@ -918,6 +977,8 @@ async function submitAgentChatQuery(messageText, options = {}) {
     ? "ぱるるが予定を確認中…"
     : request.purpose === "aircon-status"
       ? "ぱるるがエアコンの状態を確認中…"
+      : request.purpose === "automation-action"
+        ? "ぱるるが操作内容を確認中…"
       : "ぱるるが家の様子を見てる…";
   clearAgentFormMessage();
   setSending(true, loadingMessage);
@@ -930,6 +991,16 @@ async function submitAgentChatQuery(messageText, options = {}) {
     pendingHomeAgentRetry = null;
     clearAgentFormMessage();
     renderAgentChatReply(result.reply);
+    if (result.actionConfirmation) {
+      renderHomeAgentActionConfirmation({
+        type: "agentActionConfirmation",
+        confirmationId: result.actionConfirmation.confirmationId,
+        clientRequestId: result.clientRequestId,
+        command: result.actionConfirmation.command,
+        actionLabel: result.actionConfirmation.command === "automation.pause" ? "実行する" : "実行する",
+        confirmationMessage: result.actionConfirmation.summary,
+      });
+    }
     if (result.followup) {
       renderFollowupPanel("home", {
         id: result.followup.itemId,
@@ -968,11 +1039,30 @@ function validateAgentChatResponse(response, request) {
   ) {
     throw new Error("Invalid Agent Gateway response");
   }
-  const result = { reply };
+  const result = { reply, sessionId: request.sessionId, clientRequestId: request.clientRequestId };
   if (Object.prototype.hasOwnProperty.call(response, "followup")) {
     result.followup = validateAgentFollowup(response.followup);
   }
+  if (Object.prototype.hasOwnProperty.call(response, "actionConfirmation")) {
+    result.actionConfirmation = validateAgentActionConfirmation(response.actionConfirmation);
+  }
   return result;
+}
+
+function validateAgentActionConfirmation(confirmation) {
+  const confirmationId = String(confirmation?.confirmationId || "").trim();
+  const command = String(confirmation?.command || "").trim();
+  const roomLabel = String(confirmation?.roomLabel || "").trim();
+  const summary = String(confirmation?.summary || "").trim();
+  const expiresAt = String(confirmation?.expiresAt || "").trim();
+  const allowedCommands = new Set(["automation.pause", "automation.resume"]);
+  if (confirmation?.required !== true || !isUuid(confirmationId) || !allowedCommands.has(command)
+      || !roomLabel || Array.from(roomLabel).length > 40
+      || !summary || Array.from(summary).length > 200
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(expiresAt)) {
+    throw new Error("Invalid Agent action confirmation");
+  }
+  return { required: true, confirmationId, command, roomLabel, summary, expiresAt };
 }
 
 function validateAgentFollowup(followup) {
@@ -1985,6 +2075,11 @@ function isAirconCommandRequest(text) {
   return Boolean(value) && HOME_AGENT_AIRCON_COMMAND_PATTERNS.some((pattern) => pattern.test(value));
 }
 
+function isAutomationControlRequest(text) {
+  const value = String(text || "").trim();
+  return Boolean(value) && AGENT_AUTOMATION_CONTROL_PATTERNS.some((pattern) => pattern.test(value));
+}
+
 function isExplicitAgentMemoRequest(text) {
   return EXPLICIT_AGENT_MEMO_REQUEST_PATTERN.test(String(text || "").trim());
 }
@@ -2454,6 +2549,8 @@ function isSignageActionCandidate(candidate) {
 
 function getHomeAgentActionLabel(candidate) {
   if (candidate?.actionLabel) return String(candidate.actionLabel);
+  if (candidate?.command === "automation.pause") return "実行する";
+  if (candidate?.command === "automation.resume") return "実行する";
   const skill = candidate?.skill || candidate?.action || "";
   if (skill === "setAirconOverride") return "この設定にする";
   if (skill === "pauseRoomAutomation") return "自動制御だけ止める";
@@ -2500,12 +2597,12 @@ function renderHomeAgentActionConfirmation(actionCandidate) {
 
   pendingHomeAgentActionCandidate = actionCandidate;
   const actionLabel = getHomeAgentActionLabel(actionCandidate);
-  const skill = actionCandidate?.skill || actionCandidate?.action || "";
-  const canExecute = actionCandidate?.type === "homeAgentActionConfirmation"
+  const skill = actionCandidate?.skill || actionCandidate?.action || actionCandidate?.command || "";
+  const canExecute = (actionCandidate?.type === "homeAgentActionConfirmation" || actionCandidate?.type === "agentActionConfirmation")
     && isUuid(actionCandidate?.confirmationId)
     && isUuid(actionCandidate?.clientRequestId);
   const message = skill === "setAirconOverride"
-    ? "この版ではエアコン温度変更はまだ未接続。押しても実操作もpause保存もしないよ。"
+      ? "この版ではエアコン温度変更はまだ未接続。押しても実操作もpause保存もしないよ。"
     : String(actionCandidate?.confirmationMessage || "この端末では操作を利用できんで。");
   const executeButton = skill === "setAirconOverride"
     ? `<button type="button" data-home-agent-action-unconnected>${escapeHtml(actionLabel)}</button>`
@@ -2518,7 +2615,7 @@ function renderHomeAgentActionConfirmation(actionCandidate) {
       <p>${escapeHtml(actionLabel || "この候補")}を実行する？</p>
       <p>${escapeHtml(message)}</p>
       <div class="home-agent-confirm-actions">
-        <button class="secondary-button" type="button" data-home-agent-confirm-close>そのまま</button>
+        <button class="secondary-button" type="button" data-home-agent-confirm-close>やめる</button>
         ${executeButton}
       </div>
     </div>
@@ -2529,6 +2626,37 @@ function renderHomeAgentActionConfirmation(actionCandidate) {
 function hideSignageConfirmation() {
   homeAgentContent.querySelector("[data-home-agent-confirm]")?.remove();
   pendingHomeAgentActionCandidate = null;
+}
+
+async function cancelPendingHomeAgentAction() {
+  const candidate = pendingHomeAgentActionCandidate;
+  if (!candidate || candidate.type !== "agentActionConfirmation") {
+    hideSignageConfirmation();
+    return;
+  }
+  const confirmPanel = homeAgentContent.querySelector("[data-home-agent-confirm]");
+  const closeButton = confirmPanel?.querySelector("[data-home-agent-confirm-close]");
+  if (closeButton) {
+    closeButton.disabled = true;
+    closeButton.textContent = "取り消し中…";
+  }
+  try {
+    const response = await cancelAgentActionConfirmation(candidate);
+    if (!response.success) {
+      throw new Error(response.message || response.error?.message || "agent action cancel failed");
+    }
+    hideSignageConfirmation();
+    setParuruSpeech("idle", "やめといたで。");
+  } catch (error) {
+    debugLog("[Paruru] Agent action cancel failed", error?.message || error);
+    if (closeButton) {
+      closeButton.disabled = false;
+      closeButton.textContent = "やめる";
+    }
+    if (confirmPanel && !confirmPanel.querySelector(".home-agent-error")) {
+      confirmPanel.insertAdjacentHTML("beforeend", `<p class="home-agent-error">取り消しに失敗したで。期限切れまで実行せんようにしてな。</p>`);
+    }
+  }
 }
 
 async function executePendingHomeAgentAction() {
@@ -2544,7 +2672,9 @@ async function executePendingHomeAgentAction() {
   }
 
   try {
-    const response = await executeHomeAgentAction(pendingHomeAgentActionCandidate);
+    const response = pendingHomeAgentActionCandidate?.type === "agentActionConfirmation"
+      ? await executeAgentActionConfirmation(pendingHomeAgentActionCandidate)
+      : await executeHomeAgentAction(pendingHomeAgentActionCandidate);
     if (!response.success) {
       throw new Error(response.message || response.error?.message || "home agent action failed");
     }

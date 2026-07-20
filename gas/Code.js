@@ -95,6 +95,14 @@ function doPost(e) {
       return agentChat_(body);
     }
 
+    if (action === 'agentActionConfirm') {
+      return agentActionConfirm_(body);
+    }
+
+    if (action === 'agentActionCancel') {
+      return agentActionCancel_(body);
+    }
+
     if (action === 'homeAgent') {
       return homeAgent_(body);
     }

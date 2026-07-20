@@ -187,6 +187,148 @@ test('existing action routing regression', () => {
   assert(output(context.doGet({ parameter: { action: 'notificationCandidates' } })).route === 'notificationCandidates', 'notification route changed');
 });
 
+test('agentChat forwards structured actionConfirmation only', () => {
+  configure();
+  const response = agentResponse('寝室の自動制御を1時間停止するで。実行してええ？');
+  response.data.actionConfirmation = {
+    required: true,
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    command: 'automation.pause',
+    roomLabel: '寝室',
+    summary: '寝室の自動制御を60分停止します',
+    expiresAt: '2026-07-19T21:05:00+09:00',
+    payload: { roomId: 'bedroom', durationMinutes: 60 },
+    token: secretToken,
+  };
+  mockFetch(200, response);
+  const result = post(valid());
+  assert(result.success && result.actionConfirmation.required === true, 'action confirmation missing');
+  assert(!JSON.stringify(result).includes('bedroom') && !JSON.stringify(result).includes(secretToken), 'raw confirmation leaked');
+});
+
+test('agentActionConfirm verifies pairing before calling Agent', () => {
+  configure();
+  let agentCalls = 0;
+  context.getHomeAgentActionDependencies_ = () => ({});
+  context.assertHomeAgentActionsEnabled_ = () => {};
+  context.verifyHomeAgentDevicePairing_ = (deviceId, pairingToken) => {
+    assert(deviceId === 'device-1' && pairingToken === 'pairing-token-placeholder-000000000001', 'pairing input changed');
+  };
+  context.CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
+  mockFetch(200, {
+    success: true,
+    schemaVersion: 'agent-chat-1.0',
+    data: {
+      status: 'completed',
+      command: 'automation.pause',
+      operation: 'pause',
+      roomLabel: '寝室',
+      observed: { pause: { status: 'paused', pausedUntil: '2026-07-19T22:00:00+09:00' } }
+    }
+  }, (url, options) => {
+    agentCalls += 1;
+    const sent = JSON.parse(options.payload);
+    assert(sent.action === 'agent.confirmAction', 'wrong Agent action');
+    assert(!Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'pairing token sent to Agent');
+    assert(!Object.prototype.hasOwnProperty.call(sent, 'operation'), 'operation sent from browser to Agent');
+  });
+  const result = post({
+    action: 'agentActionConfirm',
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    clientRequestId,
+    deviceId: 'device-1',
+    pairingToken: 'pairing-token-placeholder-000000000001',
+  });
+  assert(result.success && agentCalls === 1 && result.operation === 'pause', 'confirm failed');
+});
+
+test('agentActionConfirm kill switch and pairing failures short-circuit Agent', () => {
+  configure();
+  let agentCalls = 0;
+  mockFetch(200, agentResponse('not used'), () => { agentCalls += 1; });
+  context.getHomeAgentActionDependencies_ = () => ({});
+  context.assertHomeAgentActionsEnabled_ = () => { const error = new Error('disabled'); error.code = 'HOME_AGENT_ACTIONS_DISABLED'; throw error; };
+  context.verifyHomeAgentDevicePairing_ = () => {};
+  let result = post({
+    action: 'agentActionConfirm',
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    clientRequestId,
+    deviceId: 'device-1',
+    pairingToken: 'pairing-token-placeholder-000000000001',
+  });
+  assert(result.error.code === 'HOME_AGENT_ACTIONS_DISABLED' && agentCalls === 0, 'kill switch did not short-circuit');
+  context.assertHomeAgentActionsEnabled_ = () => {};
+  context.verifyHomeAgentDevicePairing_ = () => { const error = new Error('bad'); error.code = 'UNAUTHORIZED_DEVICE'; throw error; };
+  result = post({
+    action: 'agentActionConfirm',
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    clientRequestId,
+    deviceId: 'device-1',
+    pairingToken: 'bad-token',
+  });
+  assert(result.error.code === 'UNAUTHORIZED_DEVICE' && agentCalls === 0, 'pairing failure reached Agent');
+});
+
+test('agentActionCancel verifies pairing and sends only confirmation identifiers', () => {
+  configure();
+  let agentCalls = 0;
+  context.getHomeAgentActionDependencies_ = () => ({});
+  context.assertHomeAgentActionsEnabled_ = () => {};
+  context.verifyHomeAgentDevicePairing_ = (deviceId, pairingToken) => {
+    assert(deviceId === 'device-1' && pairingToken === 'pairing-token-placeholder-000000000001', 'pairing input changed');
+  };
+  mockFetch(200, {
+    success: true,
+    schemaVersion: 'agent-chat-1.0',
+    data: {
+      status: 'cancelled',
+      command: 'automation.pause',
+      operation: 'pause',
+      roomLabel: '寝室',
+      cancelled: true,
+    },
+  }, (url, options) => {
+    agentCalls += 1;
+    const sent = JSON.parse(options.payload);
+    assert(sent.action === 'agent.cancelAction', 'wrong Agent action');
+    assert(sent.confirmationId === '88888888-8888-4888-8888-888888888888', 'confirmation id missing');
+    assert(sent.clientRequestId === clientRequestId, 'clientRequestId missing');
+    assert(!Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'pairing token sent to Agent');
+    ['operation', 'skill', 'roomId', 'duration', 'durationMinutes', 'confirmed', 'payload'].forEach((field) => {
+      assert(!Object.prototype.hasOwnProperty.call(sent, field), field + ' leaked to Agent cancel');
+    });
+  });
+  const result = post({
+    action: 'agentActionCancel',
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    clientRequestId,
+    deviceId: 'device-1',
+    pairingToken: 'pairing-token-placeholder-000000000001',
+    operation: 'resume',
+    roomId: 'living',
+    durationMinutes: 1,
+    confirmed: true,
+  });
+  assert(result.success && result.status === 'cancelled' && agentCalls === 1, 'cancel failed');
+});
+
+test('agentActionCancel kill switch short-circuits Agent', () => {
+  configure();
+  let agentCalls = 0;
+  mockFetch(200, agentResponse('not used'), () => { agentCalls += 1; });
+  context.getHomeAgentActionDependencies_ = () => ({});
+  context.assertHomeAgentActionsEnabled_ = () => { const error = new Error('disabled'); error.code = 'HOME_AGENT_ACTIONS_DISABLED'; throw error; };
+  context.verifyHomeAgentDevicePairing_ = () => {};
+  const result = post({
+    action: 'agentActionCancel',
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    clientRequestId,
+    deviceId: 'device-1',
+    pairingToken: 'pairing-token-placeholder-000000000001',
+  });
+  assert(result.error.code === 'HOME_AGENT_ACTIONS_DISABLED' && agentCalls === 0, 'cancel kill switch did not short-circuit');
+});
+
 test('JavaScript and manifest parse', () => {
   fs.readdirSync(gasDir).filter((name) => name.endsWith('.js')).forEach((name) => new vm.Script(fs.readFileSync(path.join(gasDir, name), 'utf8'), { filename: name }));
   const manifest = JSON.parse(fs.readFileSync(path.join(gasDir, 'appsscript.json'), 'utf8'));
