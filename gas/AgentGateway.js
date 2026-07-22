@@ -273,7 +273,7 @@ function sanitizeAgentActionConfirmation_(confirmation) {
   const roomLabel = String(confirmation.roomLabel || '').trim();
   const summary = String(confirmation.summary || '').trim();
   const expiresAt = String(confirmation.expiresAt || '').trim();
-  const allowedCommands = { 'automation.pause': true, 'automation.resume': true };
+  const allowedCommands = { 'automation.pause': true, 'automation.resume': true, 'aircon.power': true, 'aircon.applySettings': true };
   if (confirmation.required !== true || !isUuid_(confirmationId) || !allowedCommands[command]
       || !roomLabel || Array.from(roomLabel).length > 40
       || !summary || Array.from(summary).length > 200
@@ -293,7 +293,7 @@ function sanitizeAgentActionConfirmation_(confirmation) {
 function buildAgentActionConfirmSuccess_(response) {
   const data = response.data || {};
   const allowedStatus = { completed: true, failed: true, unknown: true };
-  const allowedCommands = { 'automation.pause': true, 'automation.resume': true };
+  const allowedCommands = { 'automation.pause': true, 'automation.resume': true, 'aircon.power': true, 'aircon.applySettings': true };
   const command = String(data.command || '').trim();
   const status = String(data.status || '').trim();
   if (!allowedCommands[command] || !allowedStatus[status]) throw createAgentGatewayError_('AGENT_ERROR');
@@ -315,7 +315,7 @@ function buildAgentActionConfirmSuccess_(response) {
 
 function buildAgentActionCancelSuccess_(response) {
   const data = response.data || {};
-  const allowedCommands = { 'automation.pause': true, 'automation.resume': true };
+  const allowedCommands = { 'automation.pause': true, 'automation.resume': true, 'aircon.power': true, 'aircon.applySettings': true };
   const command = String(data.command || '').trim();
   if (!allowedCommands[command] || data.status !== 'cancelled' || data.cancelled !== true) {
     throw createAgentGatewayError_('AGENT_ERROR');

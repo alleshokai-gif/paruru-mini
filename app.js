@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260719-08";
+const ASSET_VERSION = "v20260719-09";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "";
@@ -513,6 +513,11 @@ async function submitPaluruRequest() {
 async function routePaluruRequest(memo) {
   if (isAutomationControlRequest(memo)) {
     await submitAgentChatQuery(memo, { purpose: "automation-action" });
+    return;
+  }
+
+  if (isAirconOperationRequest(memo)) {
+    await submitAgentChatQuery(memo, { purpose: "aircon-action" });
     return;
   }
 
@@ -1223,7 +1228,9 @@ async function submitAgentChatQuery(messageText, options = {}) {
     ? "ぱるるが予定を確認中…"
     : request.purpose === "aircon-status"
       ? "ぱるるがエアコンの状態を確認中…"
-      : request.purpose === "automation-action"
+    : request.purpose === "automation-action"
+      ? "ぱるるが操作内容を確認中…"
+      : request.purpose === "aircon-action"
         ? "ぱるるが操作内容を確認中…"
       : "ぱるるが確認中…";
   clearAgentFormMessage();
@@ -1301,7 +1308,7 @@ function validateAgentActionConfirmation(confirmation) {
   const roomLabel = String(confirmation?.roomLabel || "").trim();
   const summary = String(confirmation?.summary || "").trim();
   const expiresAt = String(confirmation?.expiresAt || "").trim();
-  const allowedCommands = new Set(["automation.pause", "automation.resume"]);
+  const allowedCommands = new Set(["automation.pause", "automation.resume", "aircon.power", "aircon.applySettings"]);
   if (confirmation?.required !== true || !isUuid(confirmationId) || !allowedCommands.has(command)
       || !roomLabel || Array.from(roomLabel).length > 40
       || !summary || Array.from(summary).length > 200
@@ -2328,6 +2335,11 @@ function isAutomationControlRequest(text) {
   return Boolean(value) && AGENT_AUTOMATION_CONTROL_PATTERNS.some((pattern) => pattern.test(value));
 }
 
+function isAirconOperationRequest(text) {
+  const value = String(text || "").trim();
+  return Boolean(value) && !isAutomationControlRequest(value) && isAirconCommandRequest(value);
+}
+
 function isExplicitAgentMemoRequest(text) {
   return EXPLICIT_AGENT_MEMO_REQUEST_PATTERN.test(String(text || "").trim());
 }
@@ -2923,13 +2935,11 @@ async function executePendingHomeAgentAction() {
     const response = pendingHomeAgentActionCandidate?.type === "agentActionConfirmation"
       ? await executeAgentActionConfirmation(pendingHomeAgentActionCandidate)
       : await executeHomeAgentAction(pendingHomeAgentActionCandidate);
-    if (!response.success) {
+    if (!response.success && !["failed", "unknown"].includes(response.status)) {
       throw new Error(response.message || response.error?.message || "home agent action failed");
     }
     const result = response.result || {};
-    const successMessage = response.operation === "pause"
-      ? formatHomeAgentPauseSuccess(result)
-      : "通常運転に戻したよ。";
+    const successMessage = formatAgentActionResult(response, result);
     pendingHomeAgentActionCandidate = null;
     confirmPanel?.remove();
     homeAgentContent.insertAdjacentHTML("beforeend", `
@@ -2949,6 +2959,13 @@ async function executePendingHomeAgentAction() {
       executeButton.textContent = getHomeAgentActionLabel(pendingHomeAgentActionCandidate);
     }
   }
+}
+
+function formatAgentActionResult(response, result) {
+  if (response.status === "unknown") return "結果を確認できんかった。自動では再実行せんで。";
+  if (response.status === "failed") return "操作できへんかった。自動では再実行せんで。";
+  if (response.operation === "power" || response.operation === "apply_settings") return "操作を受け付けたで。実機での反映確認まではできてへん。";
+  return response.operation === "pause" ? formatHomeAgentPauseSuccess(result) : "通常運転に戻したよ。";
 }
 
 function formatHomeAgentPauseSuccess(result) {

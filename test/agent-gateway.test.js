@@ -211,6 +211,25 @@ test('agentChat forwards structured actionConfirmation only', () => {
   assert(!JSON.stringify(result).includes('bedroom') && !JSON.stringify(result).includes(secretToken), 'raw confirmation leaked');
 });
 
+test('aircon actionConfirmation uses the same allowlist without exposing command internals', () => {
+  configure();
+  const response = agentResponse('確認するで。');
+  response.data.actionConfirmation = {
+    required: true,
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    command: 'aircon.applySettings',
+    roomLabel: 'リビング',
+    summary: 'リビングを冷房25℃に変更します',
+    expiresAt: '2026-07-19T21:05:00+09:00',
+    commandId: 'private-command', currentState: { deviceId: 'private-device' }
+  };
+  mockFetch(200, response);
+  const result = post(valid());
+  assert(result.success && result.actionConfirmation.command === 'aircon.applySettings', 'aircon confirmation rejected');
+  const exposed = JSON.stringify(result);
+  assert(!exposed.includes('private-command') && !exposed.includes('private-device'), 'aircon internals leaked');
+});
+
 test('agentActionConfirm verifies pairing before calling Agent', () => {
   configure();
   let agentCalls = 0;
