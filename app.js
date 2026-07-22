@@ -1,10 +1,10 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260719-07";
+const ASSET_VERSION = "v20260719-08";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
-const DEFAULT_PRIORITY = "Normal";
+const DEFAULT_PRIORITY = "";
 const CHARACTER_BASE_PATH = "assets/character";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PROFILE_STORAGE_KEY = "paruru-mini-profile";
@@ -270,7 +270,8 @@ const categoryInput = document.querySelector("#category");
 const priorityInputs = document.querySelectorAll('input[name="priority"]');
 const paruruImage = document.querySelector("#paruruImage");
 const paruruLine = document.querySelector("#paruruSpeech") || document.querySelector(".paruru-line");
-const submitButton = document.querySelector("#submitButton");
+const askPaluruButton = document.querySelector("#askPaluruButton");
+const saveToPaluruButton = document.querySelector("#saveToPaluruButton");
 const message = document.querySelector("#message");
 const splash = document.querySelector("#splash");
 const buildVersion = document.querySelector("#buildVersion");
@@ -465,15 +466,12 @@ function debugLog(...args) {
 }
 
 categoryInput.addEventListener("change", () => {
-  categoryExplicitlySelected = categoryInput.value !== "未分類";
+  categoryExplicitlySelected = Boolean(categoryInput.value);
 });
 
 priorityInputs.forEach((input) => {
-  input.addEventListener("click", () => {
-    priorityExplicitlySelected = true;
-  });
   input.addEventListener("change", () => {
-    priorityExplicitlySelected = true;
+    priorityExplicitlySelected = Boolean(input.checked && input.value);
   });
 });
 
@@ -487,7 +485,17 @@ memoInput.addEventListener("input", () => {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+});
 
+askPaluruButton.addEventListener("click", async () => {
+  await submitPaluruRequest();
+});
+
+saveToPaluruButton.addEventListener("click", async () => {
+  await savePaluruMemo();
+});
+
+async function submitPaluruRequest() {
   if (isSubmitting) {
     return;
   }
@@ -499,6 +507,10 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  await routePaluruRequest(memo);
+}
+
+async function routePaluruRequest(memo) {
   if (isAutomationControlRequest(memo)) {
     await submitAgentChatQuery(memo, { purpose: "automation-action" });
     return;
@@ -511,41 +523,56 @@ form.addEventListener("submit", async (event) => {
 
   const calendarWriteRequest = isCalendarWriteRequest(memo);
 
-  if (!calendarWriteRequest && isExplicitAgentMemoRequest(memo)) {
+  if (calendarWriteRequest) {
+    await submitHomeAgentQuery(memo);
+    return;
+  }
+
+  if (isExplicitAgentMemoRequest(memo)) {
     await submitAgentChatQuery(memo, { purpose: "memo" });
     return;
   }
 
-  if (!calendarWriteRequest && isCalendarReadQuery(memo)) {
+  if (isCalendarReadQuery(memo)) {
     await submitAgentChatQuery(memo, { purpose: "calendar" });
     return;
   }
 
-  if (!calendarWriteRequest && isAirconReadQuery(memo)) {
+  if (isAirconReadQuery(memo)) {
     await submitAgentChatQuery(memo, { purpose: "aircon-status" });
     return;
   }
 
-  if (!calendarWriteRequest && isLikelyAgentChatQuery(memo)) {
+  if (isLikelyAgentChatQuery(memo)) {
     await submitAgentChatQuery(memo);
     return;
   }
 
-  if (isLikelyHomeAgentQuery(memo)) {
-    await submitHomeAgentQuery(memo);
+  await submitAgentChatQuery(memo, { purpose: "general" });
+}
+
+async function savePaluruMemo() {
+  if (isSubmitting) {
+    return;
+  }
+
+  const memo = memoInput.value.trim();
+  if (!memo) {
+    setParuruState("empty", { showStatus: true });
+    memoInput.focus();
     return;
   }
 
   const payload = buildCreateWithAIPayload(memo);
 
-  setSending(true);
+  setSending(true, "ぱるるが整理中…", "save");
   setParuruState("sending");
   showMessage(PARURU_STATES.sending.line, "");
 
   try {
     const result = await saveMemo(payload);
     form.reset();
-    categoryInput.value = "未分類";
+    categoryInput.value = "";
     resetExplicitSelectionState();
     showSuccessResult(result);
     await loadNotificationCandidates({ force: true });
@@ -557,7 +584,7 @@ form.addEventListener("submit", async (event) => {
   } finally {
     setSending(false);
   }
-});
+}
 
 navItems.forEach((item) => {
   item.addEventListener("click", () => switchView(item.dataset.targetView));
@@ -1135,7 +1162,7 @@ async function submitHomeAgentQuery(messageText, options = {}) {
   const payload = buildHomeAgentPayload(messageText, options);
   pendingHomeAgentRetry = { type: "homeAgent", message: messageText, clientRequestId: payload.clientRequestId };
   clearAgentFormMessage();
-  setSending(true, PARURU_MESSAGES.action.homeAgentLoading);
+  setSending(true, PARURU_MESSAGES.action.homeAgentLoading, "ask");
   setParuruSpeech("idle", "ちょっと家の中、見てくる。");
   renderHomeAgentLoading();
 
@@ -1198,9 +1225,9 @@ async function submitAgentChatQuery(messageText, options = {}) {
       ? "ぱるるがエアコンの状態を確認中…"
       : request.purpose === "automation-action"
         ? "ぱるるが操作内容を確認中…"
-      : "ぱるるが家の様子を見てる…";
+      : "ぱるるが確認中…";
   clearAgentFormMessage();
-  setSending(true, loadingMessage);
+  setSending(true, loadingMessage, "ask");
   setParuruSpeech("idle", loadingMessage);
   renderHomeAgentLoading(loadingMessage);
 
@@ -2162,10 +2189,12 @@ function getShoppingDueDate(timing, customDate, todayParts = getTodayTokyoParts(
   return "";
 }
 
-function setSending(isSending, label = "ぱるるが整理中…") {
+function setSending(isSending, label = "ぱるるが整理中…", intent = "save") {
   isSubmitting = isSending;
-  submitButton.disabled = isSending;
-  submitButton.textContent = isSending ? label : "ぱるるに預ける";
+  askPaluruButton.disabled = isSending;
+  saveToPaluruButton.disabled = isSending;
+  askPaluruButton.textContent = isSending && intent === "ask" ? label : "ぱるるに頼む";
+  saveToPaluruButton.textContent = isSending && intent === "save" ? label : "ぱるるに預ける";
 }
 
 function setParuruState(stateName, options = {}) {

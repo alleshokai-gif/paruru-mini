@@ -60,7 +60,16 @@ function createHarness() {
       scrollIntoView() {},
       getBoundingClientRect() { return { top: 0, bottom: 200, height: 200 }; },
       focus() {},
-      reset() { this.value = ''; },
+      reset() {
+        this.value = '';
+        if (selector === '#inboxForm') {
+          element('#category').value = '';
+          ['Low', 'Normal', 'High'].forEach((priority) => {
+            element(`input[name="priority"][value="${priority}"]`).checked = false;
+          });
+          element('input[name="priority"][value=""]').checked = true;
+        }
+      },
       showModal() {},
       close() {},
     };
@@ -112,7 +121,18 @@ function createHarness() {
       querySelectorAll: () => [],
     },
     requestAnimationFrame: (fn) => fn(),
-    FormData: function() { return { get: () => 'Normal' }; },
+    FormData: function() {
+      return {
+        get: (name) => {
+          if (name !== 'priority') return null;
+          const selected = ['Low', 'Normal', 'High', ''].find((priority) => {
+            const input = element(`input[name="priority"][value="${priority}"]`);
+            return input.checked;
+          });
+          return selected === undefined ? '' : selected;
+        }
+      };
+    },
     fetch: async (url, options = {}) => {
       const payload = options.body ? JSON.parse(options.body) : null;
       requests.push({ url, options, payload });
@@ -130,12 +150,20 @@ function createHarness() {
     handlers,
     storage,
     requests,
+    element,
     setResponder(fn) { responder = fn; },
     setActionResponder(fn) { actionResponder = fn; },
     run(expression) { return vm.runInContext(expression, context); },
-    submit(message) {
+    ask(message) {
       element('#memo').value = message;
-      return handlers.get('#inboxForm:submit')({ preventDefault() {} });
+      return handlers.get('#askPaluruButton:click')();
+    },
+    save(message) {
+      element('#memo').value = message;
+      return handlers.get('#saveToPaluruButton:click')();
+    },
+    submit(message) {
+      return this.ask(message);
     },
   };
 }
@@ -162,9 +190,9 @@ test('A climate question routes only to agentChat and renders reply', async () =
   assert(!harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'non-followup Agent reply was auto-closed');
 });
 
-test('B normal memo stays on createWithAI', async () => {
+test('B save button always sends a normal memo to createWithAI', async () => {
   const harness = createHarness();
-  await harness.submit('牛乳買う');
+  await harness.save('牛乳買う');
   const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
   assert(actions.includes('createWithAI'), 'createWithAI not called');
   assert(!actions.includes('agentChat'), 'normal memo reached agentChat');
@@ -312,12 +340,12 @@ test('EVA-03F explicit memo and Home Agent priorities beat Calendar read', async
   }
 });
 
-test('EVA-03F ambiguous time question is not forced into Calendar Agent', async () => {
+test('EVA-03J ambiguous questions use the general Agent without becoming Calendar reads', async () => {
   for (const message of ['何時？', '母の予定は？']) {
     const harness = createHarness();
     await harness.submit(message);
     const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
-    assert(!actions.includes('agentChat'), message + ' was forced into unsupported Calendar scope');
+    assert(JSON.stringify(actions) === JSON.stringify(['agentChat']), message + ' did not use the general Agent route');
   }
 });
 
@@ -417,6 +445,60 @@ test('B8 manual close button behavior remains', () => {
   harness.handlers.get('#homeAgentCloseButton:click')();
   assert(harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'manual close stopped working');
   assert(harness.elements.get('#message').textContent === '', 'manual close left Agent form message');
+});
+
+test('EVA-03J save button always saves a climate or Calendar question with explicit overrides', async () => {
+  const harness = createHarness();
+  harness.elements.get('#category').value = '開発';
+  await harness.run('categoryExplicitlySelected = true');
+  harness.element('input[name="priority"][value="High"]').checked = true;
+  await harness.run('priorityExplicitlySelected = true');
+  await harness.save('今日の予定は？');
+  const payload = harness.requests.find((entry) => entry.payload?.action === 'createWithAI').payload;
+  assert(payload.memo === '今日の予定は？', 'save message changed');
+  assert(payload.category === '開発' && payload.priority === 'High', 'save overrides were not forwarded');
+  assert(!harness.requests.some((entry) => entry.payload?.action === 'agentChat' || entry.payload?.action === 'homeAgent'), 'save escaped into a query route');
+});
+
+test('EVA-03J ask button sends an otherwise normal request to Agent without save overrides', async () => {
+  const harness = createHarness();
+  harness.elements.get('#category').value = '開発';
+  await harness.run('categoryExplicitlySelected = true');
+  await harness.ask('予定表示を改行する');
+  const payload = harness.requests.find((entry) => entry.payload)?.payload;
+  assert(payload.action === 'agentChat', 'ask did not use the general Agent route');
+  assert(!Object.prototype.hasOwnProperty.call(payload, 'category') && !Object.prototype.hasOwnProperty.call(payload, 'priority'), 'ask leaked save overrides');
+  assert(harness.elements.get('#category').value === '開発', 'ask success reset category');
+});
+
+test('EVA-03J buttons disable together and use distinct processing labels', async () => {
+  const harness = createHarness();
+  let release;
+  harness.setResponder((payload) => new Promise((resolve) => { release = () => resolve({ success: true, reply: '確認したで。', sessionId: payload.sessionId, clientRequestId: payload.clientRequestId }); }));
+  const pending = harness.ask('書斎暑い？');
+  await Promise.resolve();
+  assert(harness.elements.get('#askPaluruButton').disabled && harness.elements.get('#saveToPaluruButton').disabled, 'both buttons were not disabled');
+  assert(harness.elements.get('#askPaluruButton').textContent === 'ぱるるが確認中…', 'ask processing label changed');
+  release();
+  await pending;
+  assert(!harness.elements.get('#askPaluruButton').disabled && !harness.elements.get('#saveToPaluruButton').disabled, 'buttons remained disabled');
+});
+
+test('EVA-03J save success resets only save overrides while ask success keeps them', async () => {
+  const ask = createHarness();
+  ask.elements.get('#category').value = '開発';
+  await ask.run('categoryExplicitlySelected = true');
+  await ask.ask('予定表示を改行する');
+  assert(ask.elements.get('#category').value === '開発', 'ask success reset the category override');
+
+  const save = createHarness();
+  save.elements.get('#category').value = '開発';
+  await save.run('categoryExplicitlySelected = true');
+  save.element('input[name="priority"][value="High"]').checked = true;
+  await save.run('priorityExplicitlySelected = true');
+  await save.save('予定表示を改行する');
+  assert(save.elements.get('#category').value === '', 'save success did not reset category to AI selection');
+  assert(save.element('input[name="priority"][value=""]').checked, 'save success did not reset priority to AI selection');
 });
 
 test('C non-transient Agent error keeps input without fallback or retry prompt', async () => {
@@ -667,16 +749,16 @@ test('EVA-03H1 pairing UI uses explicit onboarding actions and has no manual tok
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260719-07';
+  const expected = 'v20260719-08';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-07'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-08'), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
   const manifest = JSON.parse(manifestSource);
-  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-07')), 'manifest icon version mismatch');
+  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-08')), 'manifest icon version mismatch');
   const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
   assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');

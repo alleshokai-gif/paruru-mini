@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260719-07">
-    <link rel="icon" href="./assets/icons/favicon.png?v=20260719-07" type="image/png">
-    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260719-07">
-    <link rel="stylesheet" href="./style.css?v=20260719-07">
+    <link rel="manifest" href="./manifest.json?v=20260719-08">
+    <link rel="icon" href="./assets/icons/favicon.png?v=20260719-08" type="image/png">
+    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260719-08">
+    <link rel="stylesheet" href="./style.css?v=20260719-08">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260719-05" alt="&#12401;&#12427;&#12427;">
+      <img class="splash-icon" src="./assets/character/official/paruru_face.png?v=20260719-08" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">Loading...</p>
     </div>
@@ -35,7 +35,7 @@
 
         <section class="paruru-hero" aria-label="&#12401;&#12427;&#12427;&#20250;&#35441;">
           <div class="paruru-character">
-            <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260719-04" alt="&#12401;&#12427;&#12427;">
+            <img id="paruruImage" class="paruru-image" src="./assets/character/official/paruru_bust.png?v=20260719-08" alt="&#12401;&#12427;&#12427;">
           </div>
           <div class="paruru-speech-column">
             <div id="paruruSpeech" class="paruru-bubble paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</div>
@@ -62,6 +62,7 @@
           <label class="field">
             <span>&#12459;&#12486;&#12468;&#12522;</span>
             <select id="category" name="category">
+              <option value="">AI&#12395;&#12362;&#12414;&#12363;&#12379;</option>
               <option value="&#26410;&#20998;&#39006;">&#26410;&#20998;&#39006;</option>
               <option value="&#23478;">&#23478;</option>
               <option value="&#20181;&#20107;">&#20181;&#20107;</option>
@@ -76,11 +77,15 @@
           <fieldset class="priority-group">
             <legend>&#20778;&#20808;&#24230;</legend>
             <label>
+              <input type="radio" name="priority" value="" checked>
+              <span>AI&#12395;&#12362;&#12414;&#12363;&#12379;</span>
+            </label>
+            <label>
               <input type="radio" name="priority" value="Low">
               <span>Low</span>
             </label>
             <label>
-              <input type="radio" name="priority" value="Normal" checked>
+              <input type="radio" name="priority" value="Normal">
               <span>Normal</span>
             </label>
             <label>
@@ -89,7 +94,10 @@
             </label>
           </fieldset>
 
-          <button id="submitButton" type="submit">&#12401;&#12427;&#12427;&#12395;&#38928;&#12369;&#12427;</button>
+          <div class="paluru-action-buttons">
+            <button id="askPaluruButton" class="secondary-button" type="button">&#12401;&#12427;&#12427;&#12395;&#38928;&#12416;</button>
+            <button id="saveToPaluruButton" type="button">&#12401;&#12427;&#12427;&#12395;&#38928;&#12369;&#12427;</button>
+          </div>
         </form>
 
         <section id="homeFollowup" class="followup-panel is-hidden" aria-live="polite">
@@ -379,7 +387,7 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260719-07" defer></script>
+    <script src="./app.js?v=20260719-08" defer></script>
   </body>
 </html>
 

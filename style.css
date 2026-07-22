@@ -411,6 +411,7 @@ main,
   font-weight: 800;
   line-height: 1.55;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .home-agent-section {
@@ -568,7 +569,7 @@ select:focus {
 
 .priority-group {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
   margin: 0;
@@ -629,6 +630,23 @@ button:active {
 
 button:disabled {
   opacity: 0.7;
+}
+
+.paluru-action-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.paluru-action-buttons button {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 359px) {
+  .paluru-action-buttons {
+    grid-template-columns: 1fr;
+  }
 }
 
 .message {

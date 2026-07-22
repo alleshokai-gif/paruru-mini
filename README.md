@@ -29,15 +29,12 @@ Legacy `homeAgentAction` remains protected for old PWA compatibility. Pause/resu
 
 ## EVA-03 current routing
 
-| 入力 | 現在の経路 |
+| 最上位意図 | 現在の経路 |
 |---|---|
-| Climate・エアコン状態のread質問 | `agentChat` -> Agent Climate Tool |
-| Calendar読取質問 | `agentChat` -> Agent Calendar Tool |
-| 明示的な保存依頼 | `agentChat` -> Agent `create_memo` |
-| 通常メモ | 既存`createWithAI` |
-| 給食・学校固有情報 | 既存`homeAgent` |
-| 家電操作・自動制御の変更要求 | 既存`homeAgent` |
-| Calendar書込み要求 | 読取Toolへ送らず既存の安全な経路 |
+| 「ぱるるに頼む」 | 読み取り、依頼、操作候補、一般会話を質問として送る。Climate・エアコン状態・Calendar読取は `agentChat` -> Agent Tool、給食・学校・天気・旧Home Agent専用対象は `homeAgent` |
+| 「ぱるるに預ける」 | 本文を常に既存`createWithAI`へ保存。質問文でも照会せず、AI分類・Follow-upを使う |
+
+「頼む」で明示的な保存依頼（「覚えといて」「メモして」「記録しといて」等）を送った場合だけは、既存の `agentChat` -> Agent `create_memo` 経路を維持します。Calendar書込み要求は読取Toolへ送らず、既存の安全な `homeAgent` 経路へ送ります。カテゴリと優先度の初期値は「AIにおまかせ」で、「預ける」の保存成功時だけ初期状態へ戻ります。
 
 Agent経由でClimate実測回答、Calendar実予定回答、Inbox保存、構造化Follow-up中継を利用できます。既存Inbox、通知、Calendar登録、`createWithAI`、`answerFollowup`、旧Home Agentは後方互換のため残しています。
 
