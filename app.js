@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260719-09";
+const ASSET_VERSION = "v20260719-10";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "";
@@ -2196,12 +2196,12 @@ function getShoppingDueDate(timing, customDate, todayParts = getTodayTokyoParts(
   return "";
 }
 
-function setSending(isSending, label = "ぱるるが整理中…", intent = "save") {
+function setSending(isSending) {
   isSubmitting = isSending;
   askPaluruButton.disabled = isSending;
   saveToPaluruButton.disabled = isSending;
-  askPaluruButton.textContent = isSending && intent === "ask" ? label : "ぱるるに頼む";
-  saveToPaluruButton.textContent = isSending && intent === "save" ? label : "ぱるるに預ける";
+  askPaluruButton.textContent = "ぱるるに頼む";
+  saveToPaluruButton.textContent = "ぱるるに預ける";
 }
 
 function setParuruState(stateName, options = {}) {

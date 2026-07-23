@@ -471,14 +471,16 @@ test('EVA-03J ask button sends an otherwise normal request to Agent without save
   assert(harness.elements.get('#category').value === '開発', 'ask success reset category');
 });
 
-test('EVA-03J buttons disable together and use distinct processing labels', async () => {
+test('EVA-03J buttons disable together while retaining fixed labels', async () => {
   const harness = createHarness();
   let release;
   harness.setResponder((payload) => new Promise((resolve) => { release = () => resolve({ success: true, reply: '確認したで。', sessionId: payload.sessionId, clientRequestId: payload.clientRequestId }); }));
   const pending = harness.ask('書斎暑い？');
   await Promise.resolve();
   assert(harness.elements.get('#askPaluruButton').disabled && harness.elements.get('#saveToPaluruButton').disabled, 'both buttons were not disabled');
-  assert(harness.elements.get('#askPaluruButton').textContent === 'ぱるるが確認中…', 'ask processing label changed');
+  assert(harness.elements.get('#askPaluruButton').textContent === 'ぱるるに頼む', 'ask button label changed while processing');
+  assert(harness.elements.get('#saveToPaluruButton').textContent === 'ぱるるに預ける', 'save button label changed while processing');
+  assert(!appSource.includes('ぱるるに預' + 'む'), 'legacy ask-button typo remains');
   release();
   await pending;
   assert(!harness.elements.get('#askPaluruButton').disabled && !harness.elements.get('#saveToPaluruButton').disabled, 'buttons remained disabled');
@@ -767,19 +769,20 @@ test('EVA-03H1 pairing UI uses explicit onboarding actions and has no manual tok
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260719-09';
+  const expected = 'v20260719-10';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-09'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-10'), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
   const manifest = JSON.parse(manifestSource);
-  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-09')), 'manifest icon version mismatch');
+  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-10')), 'manifest icon version mismatch');
   const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
   assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');
+  assert(!versionedAssets.includes('20260719-09'), 'previous PWA asset reference remains');
 });
 
 (async () => {
