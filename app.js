@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260719-10";
+const ASSET_VERSION = "v20260719-11";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "";
@@ -1240,7 +1240,9 @@ async function submitAgentChatQuery(messageText, options = {}) {
 
   try {
     const result = await callAgentChat(payload);
-    memoInput.value = "";
+    if (!result.actionConfirmation) {
+      memoInput.value = "";
+    }
     pendingHomeAgentRetry = null;
     clearAgentFormMessage();
     renderAgentChatReply(result.reply);
@@ -1250,6 +1252,7 @@ async function submitAgentChatQuery(messageText, options = {}) {
         confirmationId: result.actionConfirmation.confirmationId,
         clientRequestId: result.clientRequestId,
         command: result.actionConfirmation.command,
+        roomLabel: result.actionConfirmation.roomLabel,
         actionLabel: result.actionConfirmation.command === "automation.pause" ? "実行する" : "実行する",
         confirmationMessage: result.actionConfirmation.summary,
       });
@@ -2906,6 +2909,7 @@ async function cancelPendingHomeAgentAction() {
       throw new Error(response.message || response.error?.message || "agent action cancel failed");
     }
     hideSignageConfirmation();
+    hideHomeAgentCard();
     setParuruSpeech("idle", "やめといたで。");
   } catch (error) {
     debugLog("[Paruru] Agent action cancel failed", error?.message || error);
@@ -2920,7 +2924,8 @@ async function cancelPendingHomeAgentAction() {
 }
 
 async function executePendingHomeAgentAction() {
-  if (!pendingHomeAgentActionCandidate) {
+  const candidate = pendingHomeAgentActionCandidate;
+  if (!candidate) {
     return;
   }
 
@@ -2932,21 +2937,26 @@ async function executePendingHomeAgentAction() {
   }
 
   try {
-    const response = pendingHomeAgentActionCandidate?.type === "agentActionConfirmation"
-      ? await executeAgentActionConfirmation(pendingHomeAgentActionCandidate)
-      : await executeHomeAgentAction(pendingHomeAgentActionCandidate);
+    const response = candidate.type === "agentActionConfirmation"
+      ? await executeAgentActionConfirmation(candidate)
+      : await executeHomeAgentAction(candidate);
     if (!response.success && !["failed", "unknown"].includes(response.status)) {
       throw new Error(response.message || response.error?.message || "home agent action failed");
     }
     const result = response.result || {};
-    const successMessage = formatAgentActionResult(response, result);
+    const successMessage = formatAgentActionResult(response, result, candidate);
     pendingHomeAgentActionCandidate = null;
-    confirmPanel?.remove();
-    homeAgentContent.insertAdjacentHTML("beforeend", `
+    homeAgentCard.classList.remove("is-hidden");
+    homeAgentCard.setAttribute("aria-busy", "false");
+    homeAgentRetryButton.classList.add("is-hidden");
+    homeAgentContent.innerHTML = `
       <section class="home-agent-section home-agent-action-result">
         <p>${escapeHtml(successMessage)}</p>
       </section>
-    `);
+    `;
+    if (response.status === "completed") {
+      memoInput.value = "";
+    }
     setParuruSpeech("idle", "直しといたよ。");
     revealPanelIfNeeded(homeAgentCard);
   } catch (error) {
@@ -2961,11 +2971,21 @@ async function executePendingHomeAgentAction() {
   }
 }
 
-function formatAgentActionResult(response, result) {
-  if (response.status === "unknown") return "結果を確認できんかった。自動では再実行せんで。";
-  if (response.status === "failed") return "操作できへんかった。自動では再実行せんで。";
-  if (response.operation === "power" || response.operation === "apply_settings") return "操作を受け付けたで。実機での反映確認まではできてへん。";
-  return response.operation === "pause" ? formatHomeAgentPauseSuccess(result) : "通常運転に戻したよ。";
+function formatAgentActionResult(response, result, candidate) {
+  if (response.status === "unknown") return "操作結果を確認できませんでした。自動では再実行せんで。もう一度操作する場合は、最初から頼んでな。";
+  if (response.status === "failed") return "操作を受け付けられませんでした。自動では再実行せんで。";
+  const command = String(candidate?.command || "");
+  const roomLabel = String(candidate?.roomLabel || "").trim();
+  const roomPrefix = roomLabel ? `${roomLabel}の` : "";
+  if (command === "automation.pause") return "自動制御を一時停止しました";
+  if (command === "automation.resume") return "自動制御を再開しました";
+  if (command === "aircon.applySettings") return `${roomPrefix}エアコン設定の変更操作を受け付けました`;
+  if (command === "aircon.power") return `${roomPrefix}エアコンの運転操作を受け付けました`;
+  if (candidate?.type === "homeAgentActionConfirmation") {
+    if (response.operation === "pause") return formatHomeAgentPauseSuccess(result);
+    if (response.operation === "resume") return "通常運転に戻したよ。";
+  }
+  return "操作を受け付けました";
 }
 
 function formatHomeAgentPauseSuccess(result) {

@@ -683,6 +683,81 @@ test('EVA-03G confirm sends only confirmation identifiers and pairing token to M
   });
 });
 
+test('EVA-03I-2B cancel closes only the operation card and keeps the draft', async () => {
+  const harness = createHarness();
+  harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
+  harness.elements.get('#memo').value = '子ども部屋を冷房24℃、風量自動にして';
+  harness.elements.get('#category').value = '家';
+  harness.element('input[name="priority"][value="High"]').checked = true;
+  harness.setActionResponder((payload) => ({ success: true, status: 'cancelled', operation: 'pause' }));
+  await harness.run(`renderHomeAgentActionConfirmation({
+    type: 'agentActionConfirmation',
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    clientRequestId: '6ba7b810-9dad-41d1-80b4-00c04fd430c8',
+    command: 'aircon.applySettings', roomLabel: '子ども部屋', confirmationMessage: 'prepare marker'
+  }); cancelPendingHomeAgentAction()`);
+  assert(harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'cancel left the Agent card visible');
+  assert(harness.elements.get('#homeAgentContent').innerHTML === '', 'cancel left the confirmation content');
+  assert(harness.run('pendingHomeAgentActionCandidate') === null, 'cancel retained the confirmation id');
+  assert(harness.elements.get('#memo').value === '子ども部屋を冷房24℃、風量自動にして', 'cancel cleared the user draft');
+  assert(harness.elements.get('#category').value === '家' && harness.element('input[name="priority"][value="High"]').checked, 'cancel changed save overrides');
+  assert(harness.requests.filter((entry) => entry.payload?.action === 'agentActionCancel').length === 1, 'cancel request count changed');
+});
+
+test('EVA-03I-2B cancel failure retains the operation card and confirmation', async () => {
+  const harness = createHarness();
+  harness.elements.get('#homeAgentCard').classList.remove('is-hidden');
+  harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
+  harness.elements.get('#memo').value = '操作依頼';
+  harness.setActionResponder(() => ({ success: false, error: { code: 'AGENT_ACTION_FAILED' } }));
+  await harness.run(`renderHomeAgentActionConfirmation({
+    type: 'agentActionConfirmation',
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    clientRequestId: '6ba7b810-9dad-41d1-80b4-00c04fd430c8',
+    command: 'aircon.applySettings', roomLabel: '子ども部屋', confirmationMessage: 'prepare marker'
+  }); cancelPendingHomeAgentAction()`);
+  assert(!harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'cancel failure hid the Agent card');
+  assert(harness.run('pendingHomeAgentActionCandidate.confirmationId') === '88888888-8888-4888-8888-888888888888', 'cancel failure cleared the confirmation');
+  assert(harness.elements.get('#memo').value === '操作依頼', 'cancel failure cleared the draft');
+});
+
+test('EVA-03I-2B confirm replaces prepare text with command-specific safe result', async () => {
+  const harness = createHarness();
+  harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
+  harness.elements.get('#memo').value = '子ども部屋を冷房24℃、風量自動にして';
+  harness.setActionResponder(() => ({ success: true, status: 'completed', operation: 'pause', result: {} }));
+  await harness.run(`renderHomeAgentActionConfirmation({
+    type: 'agentActionConfirmation',
+    confirmationId: '88888888-8888-4888-8888-888888888888',
+    clientRequestId: '6ba7b810-9dad-41d1-80b4-00c04fd430c8',
+    command: 'aircon.applySettings', roomLabel: '子ども部屋', confirmationMessage: 'prepare marker'
+  }); executePendingHomeAgentAction()`);
+  const html = harness.elements.get('#homeAgentContent').innerHTML;
+  assert(html.includes('子ども部屋のエアコン設定の変更操作を受け付けました'), 'aircon result used the pause message');
+  assert(!html.includes('prepare marker') && !html.includes('一時停止しました'), 'prepare text was appended instead of replaced');
+  assert(!html.includes('完了しました') && !html.includes('反映しました'), 'result overclaimed verification');
+  assert(harness.elements.get('#memo').value === '', 'completed action did not clear the draft');
+  assert(harness.run('pendingHomeAgentActionCandidate') === null, 'completed action retained confirmation state');
+  await harness.run('executePendingHomeAgentAction()');
+  assert(harness.requests.filter((entry) => entry.payload?.action === 'agentActionConfirm').length === 1, 'completed action could execute twice');
+});
+
+test('EVA-03I-2B command result labels never fall back to pause', () => {
+  const harness = createHarness();
+  const pause = harness.run(`formatAgentActionResult({ status: 'completed' }, {}, { command: 'automation.pause' })`);
+  const resume = harness.run(`formatAgentActionResult({ status: 'completed' }, {}, { command: 'automation.resume' })`);
+  const unknown = harness.run(`formatAgentActionResult({ status: 'completed' }, {}, { command: 'other.command' })`);
+  const legacyPause = harness.run(`formatAgentActionResult({ status: 'completed', operation: 'pause' }, {}, { type: 'homeAgentActionConfirmation' })`);
+  const failed = harness.run(`formatAgentActionResult({ status: 'failed' }, {}, { command: 'aircon.applySettings' })`);
+  const resultUnknown = harness.run(`formatAgentActionResult({ status: 'unknown' }, {}, { command: 'aircon.applySettings' })`);
+  assert(pause === '自動制御を一時停止しました', 'pause result label changed');
+  assert(resume === '自動制御を再開しました', 'resume result label changed');
+  assert(unknown === '操作を受け付けました', 'unknown command became a pause result');
+  assert(legacyPause.includes('自動制御を一時停止'), 'legacy pause result regressed');
+  assert(failed.includes('受け付けられませんでした') && !failed.includes('prepare'), 'failed action did not replace prepare text safely');
+  assert(resultUnknown.includes('操作結果を確認できませんでした') && resultUnknown.includes('最初から頼んでな'), 'unknown action did not require a new prepare');
+});
+
 test('EVA-03G cancel sends only confirmation identifiers and pairing token to Mini GAS', async () => {
   const harness = createHarness();
   harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
@@ -766,23 +841,33 @@ test('EVA-03H1 pairing UI uses explicit onboarding actions and has no manual tok
   assert(appSource.includes('crypto?.getRandomValues') && appSource.includes('crypto?.subtle') && appSource.includes('crypto.subtle.digest'), 'PWA token generation is not Web Crypto based');
 });
 
+test('EVA-03I-2B static action labels are correct before JavaScript runs', () => {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const style = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+  const legacyAskLabel = ['&#12401;', '&#12427;', '&#12427;', '&#12395;', '&#38928;', '&#12416;'].join('');
+  assert(html.includes('&#12401;&#12427;&#12427;&#12395;&#38972;&#12416;'), 'static ask label is not 頼む');
+  assert(!html.includes(legacyAskLabel), 'static ask label typo remains');
+  assert(html.includes('&#12401;&#12427;&#12427;&#12395;&#38928;&#12369;&#12427;'), 'static save label changed');
+  assert(style.includes('grid-template-columns: repeat(2, minmax(0, 1fr))') && style.includes('.paluru-action-buttons button {\n  min-width: 0;\n  white-space: nowrap;'), 'two-button mobile overflow guard changed');
+});
+
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260719-10';
+  const expected = 'v20260719-11';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-10'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-11'), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
   const manifest = JSON.parse(manifestSource);
-  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-10')), 'manifest icon version mismatch');
+  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-11')), 'manifest icon version mismatch');
   const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
   assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');
-  assert(!versionedAssets.includes('20260719-09'), 'previous PWA asset reference remains');
+  assert(!versionedAssets.includes('20260719-10'), 'previous PWA asset reference remains');
 });
 
 (async () => {
