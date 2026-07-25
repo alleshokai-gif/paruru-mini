@@ -1,0 +1,18 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const context = {};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync('gas-health/HealthRuleService.js', 'utf8'), context);
+const complete = {morningRecordedAt:'x',morningStaple:'normal',morningProteinSource:'egg',lunchRecordedAt:'x',lunchProteinSource:'included',postTrainingRecordedAt:'x',postTrainingStatus:'rest_day',dinnerRecordedAt:'x',dinnerExtraProteinSource:'fish',conditionRecordedAt:'x',conditionSymptomsJson:'[]'};
+assert.deepStrictEqual(JSON.parse(JSON.stringify(context.evaluateHealthRules_(complete, []))), ['on_track']);
+assert(context.evaluateHealthRules_({}, []).includes('morning_not_recorded'));
+assert(context.evaluateHealthRules_({...complete,morningStaple:'none'}, []).includes('morning_fuel_missing'));
+assert(!context.evaluateHealthRules_({...complete,postTrainingStatus:'rest_day',postTrainingOnigiriCount:0,postTrainingProteinSource:'none'}, []).includes('post_training_fuel_missing'));
+assert(context.evaluateHealthRules_({...complete,postTrainingStatus:'recorded',postTrainingOnigiriCount:0,postTrainingProteinSource:'none'}, []).includes('post_training_fuel_missing'));
+assert(context.evaluateHealthRules_({...complete,morningProteinSource:'none',lunchProteinSource:'none',dinnerExtraProteinSource:'none'}, []).includes('protein_source_missing'));
+assert(context.evaluateHealthRules_({...complete,conditionSymptomsJson:'["headache"]'}, []).includes('symptom_attention'));
+assert.strictEqual(context.isWeightGainStalled_([{measuredDate:'2026-07-01',weightKg:50},{measuredDate:'2026-07-08',weightKg:50.1},{measuredDate:'2026-07-13',weightKg:50.19}]), true);
+assert.strictEqual(context.isWeightGainStalled_([{measuredDate:'2026-07-01',weightKg:50},{measuredDate:'2026-07-08',weightKg:50.1},{measuredDate:'2026-07-23',weightKg:50.19}]), false);
+console.log('PASS health rule conditions and weight boundaries');

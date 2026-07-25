@@ -1,11 +1,11 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260719-11";
+const ASSET_VERSION = "v20260725-character-layout-1";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "";
-const CHARACTER_BASE_PATH = "assets/character";
+const CHARACTER_BASE_PATH = "assets/character/paluru";
 const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
 const PROFILE_STORAGE_KEY = "paruru-mini-profile";
 const AGENT_CHAT_SESSION_STORAGE_KEY = "paruru-mini-agent-chat-session-v1";

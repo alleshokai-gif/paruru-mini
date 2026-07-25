@@ -40,13 +40,23 @@ function getDeviceMembership_(deviceId) {
 
 function authorizeTargetOperation_(actor, targetUserId, operation) {
   const target = String(targetUserId || '').trim();
-  const allowedOperations = { 'health.daily.get': true, 'health.daily.recordSlot': true, 'health.weight.history': true, 'health.weight.record': true, 'health.summary.get': true };
+  const allowedOperations = { 'health.daily.get': true, 'health.daily.recordSlot': true, 'health.weight.list': true, 'health.weight.record': true, 'health.context.get': true };
   if (!actor || !actor.homeId || !actor.memberUserId || !HOME_MEMBER_ROLES[actor.role] || !allowedOperations[operation]) throw homeMembershipError_('FORBIDDEN');
   const targetMember = getHomeMember_(actor.homeId, target);
-  if (!targetMember || targetMember.status !== 'active') throw homeMembershipError_('FORBIDDEN');
+  if (!targetMember || targetMember.status !== 'active' || targetMember.role !== 'self_record') throw homeMembershipError_('FORBIDDEN');
   if (actor.role === 'admin') return true;
   if (actor.role === 'self_record' && target === actor.memberUserId) return true;
   throw homeMembershipError_('FORBIDDEN');
+}
+
+function getActiveSelfRecordMembers_(homeId) {
+  const sheet = getRequiredHomeMembershipSheet_(HOME_MEMBERS_SHEET_NAME, HOME_MEMBERS_HEADERS);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const map = headers.reduce(function(out, header, index) { out[header] = index; return out; }, {});
+  return values.slice(1).filter(function(row) {
+    return String(row[map.homeId] || '') === String(homeId) && String(row[map.status] || '') === 'active' && String(row[map.role] || '') === 'self_record';
+  }).map(function(row) { return { userId: String(row[map.memberUserId]), displayName: String(row[map.displayName] || '') }; });
 }
 
 function bootstrapPilotHomeMembership_() {

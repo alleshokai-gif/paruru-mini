@@ -1,4 +1,4 @@
-const ASSET_VERSION = "v20260719-11";
+const ASSET_VERSION = "v20260725-character-layout-1";
 const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
 const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
 const DEBUG = false;
@@ -8,6 +8,7 @@ const APP_SHELL_RUNTIME_ASSETS = [
   "index.html",
   versioned("style.css"),
   versioned("app.js"),
+  versioned("features/nurse-okan/nurse-okan.js"),
   "manifest.json",
 ];
 
@@ -15,13 +16,13 @@ const STATIC_IMAGE_ASSETS = [
   versioned("assets/icons/favicon.png"),
   versioned("assets/icons/icon-192.png"),
   versioned("assets/icons/icon-512.png"),
-  versioned("assets/character/official/paruru_face.png"),
-  versioned("assets/character/official/paruru_bust.png"),
-  versioned("assets/character/expressions/paruru_bust_normal.png"),
-  versioned("assets/character/expressions/paruru_bust_smile.png"),
-  versioned("assets/character/expressions/paruru_bust_angry.png"),
-  versioned("assets/character/expressions/paruru_bust_sleepy.png"),
-  versioned("assets/character/expressions/paruru_bust_happy.png"),
+  versioned("assets/character/paluru/official/paruru_face.png"),
+  versioned("assets/character/paluru/official/paruru_bust.png"),
+  versioned("assets/character/paluru/expressions/paruru_bust_normal.png"),
+  versioned("assets/character/paluru/expressions/paruru_bust_smile.png"),
+  versioned("assets/character/paluru/expressions/paruru_bust_angry.png"),
+  versioned("assets/character/paluru/expressions/paruru_bust_sleepy.png"),
+  versioned("assets/character/paluru/expressions/paruru_bust_happy.png"),
 ];
 
 self.addEventListener("install", (event) => {

@@ -854,16 +854,16 @@ test('EVA-03I-2B static action labels are correct before JavaScript runs', () =>
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260719-11';
+  const expected = 'v20260725-character-layout-1';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=20260719-11'), 'HTML app version mismatch');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=' + expected.slice(1)), 'HTML app version mismatch');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
   const manifest = JSON.parse(manifestSource);
-  assert(manifest.icons.every((icon) => icon.src.includes('v=20260719-11')), 'manifest icon version mismatch');
+  assert(manifest.icons.every((icon) => icon.src.includes('v=' + expected.slice(1))), 'manifest icon version mismatch');
   const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
   assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');

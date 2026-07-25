@@ -1284,3 +1284,4 @@ button:disabled {
   background: #ffe9e7;
   color: var(--danger);
 }
+ .nurse-okan{margin:16px;padding:16px;border-radius:16px;background:#fff4ed}.nurse-slot,.nurse-okan button,.nurse-okan input{min-height:48px;font-size:16px;margin:4px}.nurse-slot{padding:8px 12px}.nurse-okan label{display:block;margin:8px 0}

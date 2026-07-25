@@ -123,6 +123,10 @@ function doPost(e) {
       return devicePairingRevoke_(body);
     }
 
+    if (String(action).indexOf('health.') === 0) {
+      return healthGateway_(body);
+    }
+
     if (String(action).indexOf('devicePairing') === 0) {
       return json_({ success: false, data: {}, warnings: [], error: { code: 'UNSUPPORTED_DEVICE_PAIRING_ACTION' }, message: 'unsupported device pairing action' });
     }

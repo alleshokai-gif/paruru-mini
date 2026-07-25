@@ -1,0 +1,10 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const context = {};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync('gas/HealthGatewayService.js', 'utf8'), context);
+assert.strictEqual(context.isAllowedHealthWebAppUrl_('https://script.google.com/macros/s/abc_123/exec'), true);
+['http://script.google.com/macros/s/abc/exec','https://script.google.com/macros/s/abc/dev','https://script.google.com/macros/s/abc/exec?x=1','https://evil.example/macros/s/abc/exec'].forEach((url) => assert.strictEqual(context.isAllowedHealthWebAppUrl_(url), false));
+console.log('PASS health gateway exec URL boundary');

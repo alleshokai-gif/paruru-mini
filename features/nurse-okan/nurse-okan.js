@@ -1,0 +1,43 @@
+(function () {
+  'use strict';
+  const SLOT_LABELS = {morning:'朝食', lunch:'昼食', post_training:'部活後の補食', dinner:'夕食', condition:'体調'};
+  const RULE_LABELS = {morning_not_recorded:'朝食が未記録',post_training_not_recorded:'部活後が未記録',dinner_not_recorded:'夕食が未記録',morning_fuel_missing:'朝の主食なし',post_training_fuel_missing:'補食不足',protein_source_missing:'たんぱく源を確認',symptom_attention:'体調に注意',weight_gain_stalled:'体重の伸びを確認',on_track:'順調'};
+  const state = {context:null,targetUserId:'',daily:null,loading:false,saving:false};
+  let saveFlow_ = null;
+  document.addEventListener('DOMContentLoaded', init);
+  function init() {
+    const main = document.querySelector('main'); if (!main) return;
+    const root = document.createElement('section'); root.id='nurseOkanRoot'; root.className='nurse-okan';
+    root.innerHTML = '<details id="nursePanel"><summary>ナースおかん</summary><div id="nurseContent"><p id="nurseStatus" role="status"></p><label id="nurseTargetLabel">記録する人<select id="nurseTarget"></select></label><div id="nurseRules"></div><div id="nurseSlots"></div><form id="nurseWeight"><label>体重 kg<input name="weightKg" required inputmode="decimal" type="number" min="20" max="200" step="0.1"></label><button type="submit">体重を保存</button></form><div id="nurseWeights"></div></div></details>';
+    main.prepend(root); root.querySelector('details').addEventListener('toggle', function(){if(this.open && !state.context) loadContext_();});
+    root.querySelector('#nurseTarget').addEventListener('change', function(e){state.targetUserId=e.target.value; refresh_();});
+    root.querySelector('#nurseSlots').addEventListener('submit', submitSlot_); root.querySelector('#nurseWeight').addEventListener('submit', submitWeight_);
+  }
+  function profile_(){try{return JSON.parse(localStorage.getItem('paruru_profile_v1')||'{}');}catch(_){return {};}}
+  function pairingToken_(){return localStorage.getItem(typeof HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY==='string'?HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY:'paruru-mini-home-agent-pairing-v1')||'';}
+  function uuid_(){return crypto.randomUUID ? crypto.randomUUID() : '';}
+  function date_(){return new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Tokyo'});}
+  function buildGatewayPayload_(action, profile, pairingToken, targetUserId, body) {
+    return Object.assign({action:action,deviceId:profile.deviceId,pairingToken:pairingToken,targetMemberUserId:targetUserId},body||{});
+  }
+  async function call_(action, body) {
+    if (!navigator.onLine) { const e=new Error('OFFLINE'); e.code='OFFLINE'; throw e; }
+    const p=profile_(); const response=await fetch(GAS_WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(buildGatewayPayload_(action,p,pairingToken_(),state.targetUserId,body))});
+    let data; try {data=await response.json();} catch (_) {throw new Error('NETWORK');} if(!response.ok||!data.success){const e=new Error((data.error||{}).code||'ERROR');e.code=e.message;throw e;} return data.data;
+  }
+  async function loadContext_(){setStatus_('読み込み中…');try{state.context=await call_('health.context.get',{});const targets=state.context.targets||[];state.targetUserId=targets.length===1?targets[0].userId:(targets[0]||{}).userId||state.targetUserId;renderTargets_();await refresh_();}catch(e){setStatus_(e.code==='OFFLINE'?'オフライン中。未保存です。':'読み込めませんでした');}}
+  async function refresh_(){if(!state.targetUserId)return;setStatus_('読み込み中…');try{const both=await Promise.all([call_('health.daily.get',{localDate:date_()}),call_('health.weight.list',{limit:8})]);state.daily=both[0];render_();setStatus_('');}catch(e){setStatus_(e.code==='OFFLINE'?'オフライン中。未保存です。':'読み込めませんでした');}}
+  function renderTargets_(){const select=document.getElementById('nurseTarget'),targets=(state.context||{}).targets||[];select.replaceChildren();targets.forEach(function(t){const option=document.createElement('option');option.value=t.userId;option.textContent=t.displayName||t.userId;option.selected=t.userId===state.targetUserId;select.append(option);});document.getElementById('nurseTargetLabel').hidden=targets.length<=1;}
+  function render_(){const daily=state.daily||{slots:{},ruleCodes:[]}, slots=document.getElementById('nurseSlots');slots.replaceChildren();Object.keys(SLOT_LABELS).forEach(function(slot){const form=document.createElement('form');form.className='nurse-slot';form.dataset.slot=slot;form.innerHTML=slotFields_(slot,daily.slots[slot]||{})+'<button type="submit">'+SLOT_LABELS[slot]+'を保存</button>';slots.append(form);});const rules=document.getElementById('nurseRules');rules.textContent=(daily.ruleCodes||[]).map(function(code){return RULE_LABELS[code]||code;}).join('・');}
+  function slotFields_(slot,value){const selected=function(name,x){return String(value[name]||'')===x?' selected':'';};const opts=function(name,items){return '<select name="'+name+'">'+items.map(function(x){return '<option value="'+x+'"'+selected(name,x)+'>'+x+'</option>';}).join('')+'</select>';};if(slot==='morning')return '<label>主食'+opts('morningStaple',['none','small','normal'])+'</label><label>たんぱく源'+opts('morningProteinSource',['none','egg','natto','dairy','tofu','fish','protein','other'])+'</label>';if(slot==='lunch')return '<label>量'+opts('lunchAmount',['none','half','most','all'])+'</label><label>たんぱく源'+opts('lunchProteinSource',['none','included','unknown'])+'</label>';if(slot==='post_training')return '<label>状態'+opts('postTrainingStatus',['recorded','rest_day'])+'</label><label>おにぎり個数<input name="postTrainingOnigiriCount" type="number" min="0" max="10" value="'+(value.postTrainingOnigiriCount??0)+'"></label><label>たんぱく源'+opts('postTrainingProteinSource',['none','protein','milk','yogurt','soy','other'])+'</label>';if(slot==='dinner')return '<label>ご飯杯数<input name="dinnerRiceBowls" type="number" min="0" max="10" value="'+(value.dinnerRiceBowls??0)+'"></label><label>納豆パック<input name="dinnerNattoPacks" type="number" min="0" max="10" value="'+(value.dinnerNattoPacks??0)+'"></label><label>追加たんぱく'+opts('dinnerExtraProteinSource',['none','egg','dairy','tofu','fish','protein','other'])+'</label>';return '<label>食欲'+opts('conditionAppetite',['good','normal','low'])+'</label><label><input name="symptoms" type="checkbox" value="headache">頭痛</label><label><input name="symptoms" type="checkbox" value="nausea">吐き気</label><label>メモ<input name="note" maxlength="200" value=""></label>';}
+  async function submitSlot_(event){event.preventDefault();if(state.saving)return;const form=event.target,slot=form.dataset.slot,fd=new FormData(form),payload=Object.fromEntries(fd.entries());if(slot==='condition')payload.symptoms=fd.getAll('symptoms');['postTrainingOnigiriCount','dinnerRiceBowls','dinnerNattoPacks'].forEach(function(k){if(k in payload)payload[k]=Number(payload[k]);});await save_('health.daily.recordSlot',{localDate:date_(),slot:slot,payload:payload,clientRequestId:uuid_()});}
+  async function submitWeight_(event){event.preventDefault();if(state.saving)return;const input=event.target.elements.weightKg;await save_('health.weight.record',{measuredDate:date_(),weightKg:Number(input.value),clientRequestId:uuid_()});}
+  function createNurseOkanSaveFlow_(deps) {
+    let inFlight=false;
+    return { isSaving:function(){return inFlight;}, save:async function(action,payload){if(inFlight)return {skipped:true};inFlight=true;deps.onSaving();try{const data=await deps.call(action,payload);await deps.onSuccess(action,data);deps.onSaved();return {saved:true,data:data};}catch(error){deps.onFailure(error);return {saved:false,error:error};}finally{inFlight=false;deps.onSettled();}} };
+  }
+  function ensureSaveFlow_(){if(!saveFlow_)saveFlow_=createNurseOkanSaveFlow_({call:call_,onSaving:function(){state.saving=true;setStatus_('保存中…');},onSuccess:async function(action,data){if(action==='health.daily.recordSlot')state.daily=data;else {document.getElementById('nurseWeight').reset();await refresh_();}render_();},onSaved:function(){setStatus_('保存しました');},onFailure:function(e){setStatus_(e.code==='OFFLINE'?'オフライン中。送信していません。入力は残しています。':'保存できませんでした。入力は残しています。');},onSettled:function(){state.saving=false;}});return saveFlow_;}
+  async function save_(action,payload){return ensureSaveFlow_().save(action,payload);}
+  function setStatus_(text){const el=document.getElementById('nurseStatus');if(el)el.textContent=text;}
+  if (typeof module !== 'undefined' && module.exports) module.exports={buildGatewayPayload_:buildGatewayPayload_,createNurseOkanSaveFlow_:createNurseOkanSaveFlow_};
+}());
