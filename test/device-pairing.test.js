@@ -37,6 +37,13 @@ const context = {
     getUuid: () => `${String(randomUuidCounter++).padStart(8, '0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
     formatDate: (date) => date.toISOString(),
   },
+  resolveMembershipApprovalAdminWithinRegistryLock_: (deviceId, credential, registry) => {
+    if (deviceId !== parentId || credential !== parentToken || !registry.devices[parentId] || registry.devices[parentId].status !== 'active') {
+      throw Object.assign(new Error('UNAUTHORIZED_DEVICE'), { code: 'UNAUTHORIZED_DEVICE' });
+    }
+    return { homeId: 'test-home', memberUserId: 'father', role: 'admin', deviceId };
+  },
+  provisionMembershipFromApprovalTemplateWithinRegistryLock_: () => ({ status: 'active' }),
 };
 vm.createContext(context);
 new vm.Script(source + '\n' + securitySource).runInContext(context);
@@ -54,8 +61,8 @@ function begin() {
   return post('devicePairingBegin_', { deviceId: childId, displayName: '新しい端末', tokenHash: childTokenHash });
 }
 
-function approve(code) {
-  return post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code });
+function approve(code, membershipTemplate = 'father_add_device') {
+  return post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code, membershipTemplate });
 }
 
 const tests = [];
@@ -107,11 +114,11 @@ test('wrong code expires, rate limits, and cannot be reused', () => {
 test('unregistered or revoked devices cannot approve or use the registry', () => {
   reset(); legacyParent();
   const started = begin();
-  const unknown = post('devicePairingApprove_', { deviceId: 'unknown-device', pairingToken: parentToken, code: started.data.code });
+  const unknown = post('devicePairingApprove_', { deviceId: 'unknown-device', pairingToken: parentToken, code: started.data.code, membershipTemplate: 'father_add_device' });
   assert(!unknown.success && unknown.error.code === 'UNAUTHORIZED_DEVICE', 'unregistered device approved');
   const revoked = post('devicePairingRevoke_', { deviceId: parentId, pairingToken: parentToken, targetDeviceId: parentId });
   assert(revoked.success, 'registered device could not revoke itself');
-  const rejected = post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code: started.data.code });
+  const rejected = post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code: started.data.code, membershipTemplate: 'father_add_device' });
   assert(!rejected.success && rejected.error.code === 'UNAUTHORIZED_DEVICE', 'revoked device approved');
 });
 

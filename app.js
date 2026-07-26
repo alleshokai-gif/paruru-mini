@@ -356,6 +356,8 @@ const homeControlPendingCode = document.querySelector("#homeControlPendingCode")
 const homeControlPendingExpiry = document.querySelector("#homeControlPendingExpiry");
 const homeControlRegistered = document.querySelector("#homeControlRegistered");
 const homeControlRegisteredLabel = document.querySelector("#homeControlRegisteredLabel");
+const homeControlApprovePanel = document.querySelector("#homeControlApprovePanel");
+const homeControlMembershipTemplate = document.querySelector("#homeControlMembershipTemplate");
 const homeControlApproveCode = document.querySelector("#homeControlApproveCode");
 const homeControlApproveButton = document.querySelector("#homeControlApproveButton");
 const homeControlDeviceList = document.querySelector("#homeControlDeviceList");
@@ -413,6 +415,7 @@ if ("serviceWorker" in navigator) {
 }
 
 let appAuthenticationState = "booting";
+let activeMembershipContext = null;
 let normalPwaInitialized = false;
 const NURSE_OKAN_HEALTH_ACTIONS = new Set([
   "health.context.get",
@@ -443,6 +446,7 @@ async function callAuthenticatedHealth_(action, body = {}) {
 
 function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
+  if (state !== "active_member") activeMembershipContext = null;
   splash?.classList.remove("is-hidden");
   const loading = splash?.querySelector(".splash-loading");
   if (loading) loading.textContent = message;
@@ -514,6 +518,13 @@ async function initializeAuthenticatedPwa() {
   }
   try {
     const membershipContext = await callHomeControlApi({ action: "membership.context.get", deviceId: userProfile.deviceId, pairingToken: token });
+    activeMembershipContext = {
+      memberUserId: membershipContext.memberUserId,
+      displayName: membershipContext.displayName,
+      role: membershipContext.role,
+      capabilities: membershipContext.capabilities,
+      allowedViews: membershipContext.allowedViews,
+    };
     appAuthenticationState = "active_member";
     initializeNormalPwaOnce();
     document.dispatchEvent(new CustomEvent("paruru:authenticated", {
@@ -1228,6 +1239,15 @@ function scheduleHomeControlPoll() {
 }
 
 async function approveHomeControlPairing() {
+  if (!canApproveHomeControlPairing_()) {
+    setHomeControlMessage("この端末では新しい端末を承認できません。", "error");
+    return;
+  }
+  const membershipTemplate = String(homeControlMembershipTemplate?.value || "").trim();
+  if (!["father_add_device", "second_son_initial"].includes(membershipTemplate)) {
+    setHomeControlMessage("登録する家族を選んでな。", "error");
+    return;
+  }
   const code = String(homeControlApproveCode?.value || "").trim();
   const profile = getCurrentProfile();
   if (!/^\d{6}$/.test(code)) {
@@ -1236,7 +1256,7 @@ async function approveHomeControlPairing() {
   }
   if (homeControlApproveButton) homeControlApproveButton.disabled = true;
   try {
-    await callHomeControlApi({ action: "devicePairingApprove", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(), code });
+    await callHomeControlApi({ action: "devicePairingApprove", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(), code, membershipTemplate });
     if (homeControlApproveCode) homeControlApproveCode.value = "";
     setHomeControlMessage("新しい端末を承認したで。", "success");
     await renderHomeControlSettings();
@@ -1245,6 +1265,10 @@ async function approveHomeControlPairing() {
   } finally {
     if (homeControlApproveButton) homeControlApproveButton.disabled = false;
   }
+}
+
+function canApproveHomeControlPairing_() {
+  return appAuthenticationState === "active_member" && activeMembershipContext?.role === "admin";
 }
 
 async function revokeHomeControlDevice(targetDeviceId) {
@@ -1266,6 +1290,9 @@ async function renderHomeControlSettings() {
   if (homeControlUnregistered) homeControlUnregistered.hidden = Boolean(token || pending);
   if (homeControlPending) homeControlPending.hidden = !pending;
   if (homeControlRegistered) homeControlRegistered.hidden = !token;
+  const canApprove = canApproveHomeControlPairing_();
+  if (homeControlApprovePanel) homeControlApprovePanel.hidden = !canApprove;
+  if (homeControlApproveButton) homeControlApproveButton.disabled = !canApprove;
   if (pending) {
     if (homeControlPendingCode) homeControlPendingCode.textContent = String(pending.code || "");
     if (homeControlPendingExpiry) homeControlPendingExpiry.textContent = formatHomeControlExpiry(pending.expiresAt);

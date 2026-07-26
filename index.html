@@ -204,11 +204,21 @@
             </div>
             <div id="homeControlRegistered" hidden>
               <p id="homeControlRegisteredLabel"></p>
-              <label class="field">
-                <span>新しい端末を承認</span>
-                <input id="homeControlApproveCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
-              </label>
-              <button id="homeControlApproveButton" type="button">承認する</button>
+              <div id="homeControlApprovePanel" hidden>
+                <label class="field">
+                  <span>登録する端末</span>
+                  <select id="homeControlMembershipTemplate">
+                    <option value="">選んでください</option>
+                    <option value="father_add_device">父の追加端末</option>
+                    <option value="second_son_initial">次男の端末</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>新しい端末を承認</span>
+                  <input id="homeControlApproveCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+                </label>
+                <button id="homeControlApproveButton" type="button">承認する</button>
+              </div>
               <div id="homeControlDeviceList"></div>
             </div>
             <p id="homeControlMessage" class="form-message" aria-live="polite"></p>

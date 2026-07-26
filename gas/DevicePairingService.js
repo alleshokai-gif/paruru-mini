@@ -35,6 +35,7 @@ function devicePairingBegin_(body) {
         displayName: input.displayName,
         tokenHash: input.tokenHash,
         codeHash: deps.hash(code),
+        kind: 'pairing',
         status: 'pending',
         createdAt: createdAt,
         expiresAt: homeControlIso_(new Date(now.getTime() + HOME_CONTROL_REQUEST_TTL_MILLISECONDS)),
@@ -71,14 +72,14 @@ function devicePairingApprove_(body) {
     const result = withHomeControlRegistryLock_(function(registry, deps) {
       const now = deps.now();
       pruneHomeControlRegistry_(registry, now.getTime());
-      verifyHomeControlRegistryDevice_(input.deviceId, input.pairingToken, registry, deps, now);
+      const adminActor = resolveMembershipApprovalAdminWithinRegistryLock_(input.deviceId, input.pairingToken, registry, deps, now);
       const rate = registry.approveAttempts[input.deviceId] || { count: 0, startedAt: now.getTime() };
       if (!Number.isFinite(rate.startedAt) || now.getTime() - rate.startedAt >= HOME_CONTROL_APPROVE_RATE_WINDOW_MILLISECONDS) {
         rate.count = 0;
         rate.startedAt = now.getTime();
       }
       const request = findHomeControlRequestByCode_(registry, input.code, deps);
-      if (!request || request.status !== 'pending' || !homeControlFutureIso_(request.codeExpiresAt, now)) {
+      if (!isPendingPairingRequest_(request, now)) {
         rate.count += 1;
         registry.approveAttempts[input.deviceId] = rate;
         if (rate.count >= HOME_CONTROL_APPROVE_MAX_FAILURES) throw homeControlPairingError_('PAIRING_CODE_RATE_LIMITED');
@@ -87,6 +88,7 @@ function devicePairingApprove_(body) {
       if (rate.count) delete registry.approveAttempts[input.deviceId];
       const pendingDevice = registry.devices[request.deviceId];
       if (!pendingDevice || pendingDevice.status !== 'pending') throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
+      provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, pendingDevice.deviceId, input.membershipTemplate, request.requestId, homeControlIso_(now));
       pendingDevice.status = 'active';
       pendingDevice.registeredAt = homeControlIso_(now);
       pendingDevice.lastUsedAt = homeControlIso_(now);
@@ -277,6 +279,21 @@ function findHomeControlRequestByCode_(registry, code, deps) {
   })[0] || null;
 }
 
+function isPendingPairingRequest_(request, now) {
+  if (!request || request.status !== 'pending' || !homeControlFutureIso_(request.codeExpiresAt, now)) return false;
+  if (request.kind === 'pairing') return true;
+  // Pairing requests created before kind was introduced remain valid only when their
+  // required pairing fields are complete. No ambiguous legacy request is accepted.
+  return !request.kind &&
+    isHomeControlUuid_(request.requestId) &&
+    isHomeControlDeviceId_(request.deviceId) &&
+    typeof request.displayName === 'string' &&
+    isHomeControlTokenHash_(request.requestSecretHash) &&
+    isHomeControlTokenHash_(request.tokenHash) &&
+    isHomeControlTokenHash_(request.codeHash) &&
+    homeControlFutureIso_(request.expiresAt, now);
+}
+
 function countHomeControlManagedDevices_(registry) {
   return Object.keys(registry.devices).filter(function(id) {
     const status = registry.devices[id] && registry.devices[id].status;
@@ -295,8 +312,10 @@ function validateDevicePairingBeginInput_(body) {
 function validateDevicePairingApproveInput_(body) {
   const auth = validateHomeControlAuthenticatedInput_(body);
   const code = String(body.code || '').trim();
+  const membershipTemplate = String(body.membershipTemplate || '').trim();
   if (!/^\d{6}$/.test(code)) throw homeControlPairingError_('INVALID_PAIRING_CODE');
-  return { deviceId: auth.deviceId, pairingToken: auth.pairingToken, code: code };
+  if (['father_add_device', 'second_son_initial'].indexOf(membershipTemplate) < 0) throw homeControlPairingError_('INVALID_MEMBERSHIP_TEMPLATE');
+  return { deviceId: auth.deviceId, pairingToken: auth.pairingToken, code: code, membershipTemplate: membershipTemplate };
 }
 
 function validateDevicePairingStatusInput_(body) {
