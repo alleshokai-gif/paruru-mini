@@ -279,6 +279,7 @@ test('today failure preserves previous display and retry UI', async () => {
 });
 
 test('visibility resume forces a refetch and request dates never exceed today plus tomorrow', async () => {
+  vm.runInContext('normalPwaInitialized = true', context);
   requests.length = 0;
   fetchImpl = async (url, options) => {
     requests.push(JSON.stringify({ url: String(url), body: options && options.body || '' }));

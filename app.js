@@ -401,9 +401,20 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-window.addEventListener("load", () => {
+let appAuthenticationState = "booting";
+let normalPwaInitialized = false;
+
+function showAuthenticationState(message) {
+  appAuthenticationState = message;
+  splash?.classList.remove("is-hidden");
+  const loading = splash?.querySelector(".splash-loading");
+  if (loading) loading.textContent = message;
+}
+
+function initializeNormalPwaOnce() {
+  if (normalPwaInitialized) return;
+  normalPwaInitialized = true;
   notificationBoundaryTimerEnabled = true;
-  userProfile = loadUserProfile();
   renderProfileForm();
   setParuruState("normal");
   if (buildVersion) {
@@ -411,12 +422,32 @@ window.addEventListener("load", () => {
   }
   splash?.classList.add("is-hidden");
   loadNotificationCandidates({ force: true });
+}
+
+async function initializeAuthenticatedPwa() {
+  userProfile = loadUserProfile();
+  const token = getHomeAgentPairingToken();
+  if (!token) {
+    showAuthenticationState("この端末は未登録です。端末登録を完了してください。");
+    return;
+  }
+  try {
+    await callHomeControlApi({ action: "membership.context.get", deviceId: userProfile.deviceId, pairingToken: token });
+    appAuthenticationState = "active_member";
+    initializeNormalPwaOnce();
+  } catch (error) {
+    showAuthenticationState(error?.code === "MEMBERSHIP_NOT_FOUND" ? "家族登録待ちです。" : "端末登録を確認できませんでした。");
+  }
+}
+
+window.addEventListener("load", () => {
+  initializeAuthenticatedPwa();
 });
 
 if (typeof document.addEventListener === "function") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-      loadNotificationCandidates({ force: true });
+      if (normalPwaInitialized) loadNotificationCandidates({ force: true });
     }
   });
 }

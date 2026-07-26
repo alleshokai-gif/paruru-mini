@@ -1,0 +1,12 @@
+'use strict';
+const assert=require('assert'),fs=require('fs'),path=require('path');
+const source=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
+assert(source.includes('async function initializeAuthenticatedPwa()'),'auth gate missing');
+assert(source.includes('function initializeNormalPwaOnce()'),'normal initializer missing');
+assert(source.includes('action: "membership.context.get"'),'membership context missing');
+assert(source.includes('if (!token)'),'unpaired branch missing');
+assert(source.includes('error?.code === "MEMBERSHIP_NOT_FOUND"'),'unassigned branch missing');
+assert(source.includes('if (normalPwaInitialized) loadNotificationCandidates'),'visibility gate missing');
+const normal=source.slice(source.indexOf('function initializeNormalPwaOnce()'),source.indexOf('async function initializeAuthenticatedPwa()'));
+assert(normal.includes('loadNotificationCandidates({ force: true })'),'active initialization changed');
+console.log('PASS PWA authentication gate static state boundaries');
