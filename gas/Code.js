@@ -128,6 +128,14 @@ function doPost(e) {
       return devicePairingRevoke_(body);
     }
 
+    if (action === 'membershipRegistrationBegin') {
+      return membershipRegistrationBegin_(body);
+    }
+
+    if (action === 'membershipRegistrationStatus') {
+      return membershipRegistrationStatus_(body);
+    }
+
     if (action === 'membership.context.get') {
       return json_({ success: true, data: getMembershipContext_(body), message: 'membership context loaded' });
     }
