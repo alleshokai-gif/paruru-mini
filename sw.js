@@ -1,4 +1,4 @@
-const ASSET_VERSION = "v20260726-nurse-okan-page-2";
+const ASSET_VERSION = "v20260726-nurse-okan-page-3";
 const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
 const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
 const DEBUG = false;

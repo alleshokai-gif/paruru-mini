@@ -112,7 +112,7 @@ test('shopping UI contains no calendar-week wording and keeps the current build'
   const shoppingPanel = html.match(/id="editShoppingPanel"[\s\S]*?<\/section>/)?.[0] || '';
   assert(shoppingPanel.includes('1&#36913;&#38291;&#20197;&#20869;'), 'rolling seven-day option missing');
   assert(!shoppingPanel.includes('&#20170;&#36913;') && !shoppingPanel.includes('今週'), 'calendar-week wording remains in shopping UI');
-assert(source.includes('const ASSET_VERSION = "v20260726-nurse-okan-page-2"'), 'build version mismatch');
+assert(source.includes('const ASSET_VERSION = "v20260726-nurse-okan-page-3"'), 'build version mismatch');
 });
 
 test('successful edit refreshes Inbox and notification candidates', async () => {
