@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260727-revoked-device-repair">
-  <link rel="icon" href="./assets/icons/favicon.png?v=20260727-revoked-device-repair" type="image/png">
-  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260727-revoked-device-repair">
-  <link rel="stylesheet" href="./style.css?v=20260727-revoked-device-repair">
+    <link rel="manifest" href="./manifest.json?v=20260727-device-approval-code-input">
+  <link rel="icon" href="./assets/icons/favicon.png?v=20260727-device-approval-code-input" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260727-device-approval-code-input">
+  <link rel="stylesheet" href="./style.css?v=20260727-device-approval-code-input">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/paluru/official/paruru_face.png?v=20260727-revoked-device-repair" alt="&#12401;&#12427;&#12427;">
+      <img class="splash-icon" src="./assets/character/paluru/official/paruru_face.png?v=20260727-device-approval-code-input" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">端末を確認中…</p>
     </div>
@@ -55,7 +55,7 @@
 
         <section class="paruru-hero" aria-label="&#12401;&#12427;&#12427;&#20250;&#35441;">
           <div class="paruru-character">
-        <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_bust.png?v=20260727-revoked-device-repair" alt="&#12401;&#12427;&#12427;">
+        <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_bust.png?v=20260727-device-approval-code-input" alt="&#12401;&#12427;&#12427;">
           </div>
           <div class="paruru-speech-column">
             <div id="paruruSpeech" class="paruru-bubble paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</div>
@@ -215,7 +215,7 @@
             </div>
             <div id="homeControlRegistered" hidden>
               <p id="homeControlRegisteredLabel"></p>
-              <div id="homeControlApprovePanel" hidden>
+              <div id="homeControlApprovePanel" class="home-control-approve-panel" hidden>
                 <label class="field">
                   <span>登録する端末</span>
                   <select id="homeControlMembershipTemplate">
@@ -225,8 +225,8 @@
                   </select>
                 </label>
                 <label class="field">
-                  <span>新しい端末を承認</span>
-                  <input id="homeControlApproveCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+                  <span>スマホに表示された6桁コード</span>
+                  <input id="homeControlApproveCode" class="home-control-approve-code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000">
                 </label>
                 <button id="homeControlApproveButton" type="button">承認する</button>
               </div>
@@ -435,8 +435,8 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260727-revoked-device-repair" defer></script>
-    <script src="./features/nurse-okan/nurse-okan.js?v=20260727-revoked-device-repair" defer></script>
+    <script src="./app.js?v=20260727-device-approval-code-input" defer></script>
+    <script src="./features/nurse-okan/nurse-okan.js?v=20260727-device-approval-code-input" defer></script>
   </body>
 </html>
 

@@ -6,9 +6,17 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const style = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
 function between(start, end) { return source.slice(source.indexOf(start), source.indexOf(end)); }
 const approveSource = between('async function approveHomeControlPairing()', 'async function revokeHomeControlDevice');
 const renderSource = between('async function renderHomeControlSettings()', 'function renderHomeControlDeviceList');
+
+assert(html.includes('<span>スマホに表示された6桁コード</span>'), 'approval code label is missing');
+assert(/id="homeControlApproveCode"[^>]*inputmode="numeric"[^>]*pattern="\[0-9\]\*"[^>]*maxlength="6"[^>]*autocomplete="one-time-code"[^>]*placeholder="000000"/.test(html), 'approval code input attributes changed');
+assert(style.includes('.home-control-approve-panel') && style.includes('gap: 20px'), 'approval panel spacing is missing');
+assert(style.includes('.home-control-approve-code') && style.includes('min-height: 56px') && style.includes('font-size: 28px') && style.includes('letter-spacing: 0.22em'), 'approval code input mobile sizing is missing');
+assert(style.includes('.home-control-approve-code:focus') && style.includes('box-shadow:'), 'approval code focus indicator is missing');
 
 function element(value = '') { return { value, hidden: false, disabled: false, textContent: '', className: '' }; }
 function createHarness(options = {}) {
