@@ -6,12 +6,14 @@
   let saveFlow_ = null;
   document.addEventListener('DOMContentLoaded', init);
   function init() {
-    const main = document.querySelector('main'); if (!main) return;
+    setupDrawer_();
+    const mount = document.querySelector('#nurseOkanMount'); if (!mount) return;
     const root = document.createElement('section'); root.id='nurseOkanRoot'; root.className='nurse-okan';
-    root.innerHTML = '<details id="nursePanel"><summary>ナースおかん</summary><div id="nurseContent"><p id="nurseStatus" role="status"></p><label id="nurseTargetLabel">記録する人<select id="nurseTarget"></select></label><div id="nurseRules"></div><div id="nurseSlots"></div><form id="nurseWeight"><label>体重 kg<input name="weightKg" required inputmode="decimal" type="number" min="20" max="200" step="0.1"></label><button type="submit">体重を保存</button></form><div id="nurseWeights"></div></div></details>';
-    main.prepend(root); root.querySelector('details').addEventListener('toggle', function(){if(this.open && !state.context) loadContext_();});
+    root.innerHTML = '<header class="nurse-okan-header"><img class="nurse-okan-character" src="./assets/character/okan/expressions/okan_bust_gentle.png?v=20260726-nurse-okan-page-2" alt="やさしく見守るナースおかん"><div><h1>ナースおかん</h1><p>毎日の食事と体調を、やさしく記録します。</p></div></header><div id="nurseContent" class="nurse-okan-content"><p id="nurseStatus" role="status"></p><label id="nurseTargetLabel">記録する人<select id="nurseTarget"></select></label><div id="nurseRules"></div><div id="nurseSlots"></div><form id="nurseWeight"><label>体重 kg<input name="weightKg" required inputmode="decimal" type="number" min="20" max="200" step="0.1"></label><button type="submit">体重を保存</button></form><div id="nurseWeights"></div></div>';
+    mount.append(root);
     root.querySelector('#nurseTarget').addEventListener('change', function(e){state.targetUserId=e.target.value; refresh_();});
     root.querySelector('#nurseSlots').addEventListener('submit', submitSlot_); root.querySelector('#nurseWeight').addEventListener('submit', submitWeight_);
+    document.addEventListener('nurse-okan:opened', openNursePanel_);
   }
   function profile_(){try{return JSON.parse(localStorage.getItem('paruru_profile_v1')||'{}');}catch(_){return {};}}
   function pairingToken_(){return localStorage.getItem(typeof HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY==='string'?HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY:'paruru-mini-home-agent-pairing-v1')||'';}
@@ -39,5 +41,8 @@
   function ensureSaveFlow_(){if(!saveFlow_)saveFlow_=createNurseOkanSaveFlow_({call:call_,onSaving:function(){state.saving=true;setStatus_('保存中…');},onSuccess:async function(action,data){if(action==='health.daily.recordSlot')state.daily=data;else {document.getElementById('nurseWeight').reset();await refresh_();}render_();},onSaved:function(){setStatus_('保存しました');},onFailure:function(e){setStatus_(e.code==='OFFLINE'?'オフライン中。送信していません。入力は残しています。':'保存できませんでした。入力は残しています。');},onSettled:function(){state.saving=false;}});return saveFlow_;}
   async function save_(action,payload){return ensureSaveFlow_().save(action,payload);}
   function setStatus_(text){const el=document.getElementById('nurseStatus');if(el)el.textContent=text;}
-  if (typeof module !== 'undefined' && module.exports) module.exports={buildGatewayPayload_:buildGatewayPayload_,createNurseOkanSaveFlow_:createNurseOkanSaveFlow_};
+  function openNursePanel_(){if(!state.context)loadContext_();}
+  function setupDrawer_(){const toggle=document.getElementById('menuToggleButton'),drawer=document.getElementById('appDrawer'),overlay=document.getElementById('drawerOverlay'),closeButton=document.getElementById('drawerCloseButton');if(!toggle||!drawer||!overlay||!closeButton)return;createDrawerController_({toggle:toggle,drawer:drawer,overlay:overlay,closeButton:closeButton,menuItems:drawer.querySelectorAll('[data-target-view]'),keyTarget:document,onNavigate:function(viewName){document.dispatchEvent(new CustomEvent('paruru:view-request',{detail:{viewName:viewName}}));}});}
+  function createDrawerController_(deps){let open=false;const setOpen=function(next){open=Boolean(next);deps.drawer.classList.toggle('is-open',open);deps.drawer.setAttribute('aria-hidden',String(!open));deps.overlay.hidden=!open;deps.toggle.setAttribute('aria-expanded',String(open));};const close=function(){setOpen(false);};deps.toggle.addEventListener('click',function(){setOpen(!open);});deps.closeButton.addEventListener('click',close);deps.overlay.addEventListener('click',close);deps.keyTarget.addEventListener('keydown',function(event){if(event.key==='Escape'&&open)close();});Array.prototype.forEach.call(deps.menuItems,function(item){item.addEventListener('click',function(){const viewName=item.dataset.targetView;close();deps.onNavigate(viewName);});});return {isOpen:function(){return open;},close:close};}
+  if (typeof module !== 'undefined' && module.exports) module.exports={buildGatewayPayload_:buildGatewayPayload_,createNurseOkanSaveFlow_:createNurseOkanSaveFlow_,createDrawerController_:createDrawerController_};
 }());

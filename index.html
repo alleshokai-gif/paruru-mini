@@ -6,16 +6,18 @@
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
     <link rel="manifest" href="./manifest.json?v=20260719-11">
-    <link rel="icon" href="./assets/icons/favicon.png?v=20260725-character-layout-1" type="image/png">
-    <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260725-character-layout-1">
-    <link rel="stylesheet" href="./style.css?v=20260725-character-layout-1">
+  <link rel="icon" href="./assets/icons/favicon.png?v=20260726-nurse-okan-page-2" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260726-nurse-okan-page-2">
+  <link rel="stylesheet" href="./style.css?v=20260726-nurse-okan-page-2">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/paluru/official/paruru_face.png?v=20260725-character-layout-1" alt="&#12401;&#12427;&#12427;">
+      <img class="splash-icon" src="./assets/character/paluru/official/paruru_face.png?v=20260726-nurse-okan-page-2" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">Loading...</p>
     </div>
+
+    <button id="menuToggleButton" class="menu-toggle" type="button" aria-label="メニューを開く" aria-controls="appDrawer" aria-expanded="false">☰</button>
 
     <main class="app-shell">
       <section id="homeView" class="app-view is-active" data-view="home">
@@ -35,7 +37,7 @@
 
         <section class="paruru-hero" aria-label="&#12401;&#12427;&#12427;&#20250;&#35441;">
           <div class="paruru-character">
-            <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_bust.png?v=20260725-character-layout-1" alt="&#12401;&#12427;&#12427;">
+        <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_bust.png?v=20260726-nurse-okan-page-2" alt="&#12401;&#12427;&#12427;">
           </div>
           <div class="paruru-speech-column">
             <div id="paruruSpeech" class="paruru-bubble paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</div>
@@ -208,6 +210,10 @@
         </div>
       </section>
 
+      <section id="nurseOkanView" class="app-view" data-view="nurse-okan" aria-label="ナースおかん">
+        <div id="nurseOkanMount"></div>
+      </section>
+
       <p id="message" class="message" role="status" aria-live="polite"></p>
     </main>
 
@@ -216,6 +222,20 @@
       <button class="nav-item" type="button" data-target-view="inbox">Inbox</button>
       <button class="nav-item" type="button" data-target-view="settings">&#35373;&#23450;</button>
     </nav>
+
+    <button id="drawerOverlay" class="drawer-overlay" type="button" aria-label="メニューを閉じる" hidden></button>
+    <aside id="appDrawer" class="app-drawer" aria-label="メニュー" aria-hidden="true">
+      <div class="app-drawer-header">
+        <p>メニュー</p>
+        <button id="drawerCloseButton" class="icon-button" type="button" aria-label="メニューを閉じる">×</button>
+      </div>
+      <nav class="drawer-menu" aria-label="アプリメニュー">
+        <button class="drawer-menu-item" type="button" data-target-view="home">ホーム</button>
+        <button class="drawer-menu-item" type="button" data-target-view="inbox">Inbox</button>
+        <button class="drawer-menu-item" type="button" data-target-view="nurse-okan">ナースおかん</button>
+        <button class="drawer-menu-item" type="button" data-target-view="settings">設定</button>
+      </nav>
+    </aside>
 
     <dialog id="detailDialog" class="app-dialog">
       <form id="editForm" class="edit-form" method="dialog">
@@ -387,8 +407,8 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260725-character-layout-1" defer></script>
-    <script src="./features/nurse-okan/nurse-okan.js?v=20260725-character-layout-1" defer></script>
+    <script src="./app.js?v=20260726-nurse-okan-page-2" defer></script>
+    <script src="./features/nurse-okan/nurse-okan.js?v=20260726-nurse-okan-page-2" defer></script>
   </body>
 </html>
 

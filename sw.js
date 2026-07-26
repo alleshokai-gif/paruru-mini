@@ -1,4 +1,4 @@
-const ASSET_VERSION = "v20260725-character-layout-1";
+const ASSET_VERSION = "v20260726-nurse-okan-page-2";
 const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
 const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
 const DEBUG = false;
@@ -23,6 +23,7 @@ const STATIC_IMAGE_ASSETS = [
   versioned("assets/character/paluru/expressions/paruru_bust_angry.png"),
   versioned("assets/character/paluru/expressions/paruru_bust_sleepy.png"),
   versioned("assets/character/paluru/expressions/paruru_bust_happy.png"),
+  versioned("assets/character/okan/expressions/okan_bust_gentle.png"),
 ];
 
 self.addEventListener("install", (event) => {

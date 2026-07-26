@@ -89,6 +89,71 @@ textarea {
   padding: max(24px, env(safe-area-inset-top)) 24px calc(96px + env(safe-area-inset-bottom));
 }
 
+.menu-toggle {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  z-index: 12;
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  background: rgba(32, 34, 54, 0.42);
+}
+
+.app-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 21;
+  width: min(84vw, 320px);
+  padding: max(16px, env(safe-area-inset-top)) 16px 24px;
+  background: var(--surface);
+  box-shadow: 12px 0 30px rgba(32, 34, 54, 0.22);
+  transform: translateX(-105%);
+  transition: transform 180ms ease;
+}
+
+.app-drawer.is-open {
+  transform: translateX(0);
+}
+
+.app-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.app-drawer-header p {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.drawer-menu {
+  display: grid;
+  gap: 8px;
+}
+
+.drawer-menu-item {
+  min-height: 48px;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+}
+
 main,
 .app-view,
 .inbox-form,
@@ -1284,4 +1349,4 @@ button:disabled {
   background: #ffe9e7;
   color: var(--danger);
 }
- .nurse-okan{margin:16px;padding:16px;border-radius:16px;background:#fff4ed}.nurse-slot,.nurse-okan button,.nurse-okan input{min-height:48px;font-size:16px;margin:4px}.nurse-slot{padding:8px 12px}.nurse-okan label{display:block;margin:8px 0}
+ .nurse-okan{margin:0;background:transparent}.nurse-okan-header{display:flex;align-items:center;gap:12px;padding:16px;border-radius:16px;background:#fff4ed}.nurse-okan-header h1{margin:0;font-size:1.35rem}.nurse-okan-header p{margin:4px 0 0}.nurse-okan-content{padding:16px 0}.nurse-okan-character{display:block;width:100%;max-width:160px;height:auto;flex:0 1 120px}.nurse-slot,.nurse-okan button,.nurse-okan input{min-height:48px;font-size:16px;margin:4px}.nurse-slot{padding:8px 12px}.nurse-okan label{display:block;margin:8px 0}

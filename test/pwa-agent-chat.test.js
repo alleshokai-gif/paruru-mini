@@ -854,7 +854,7 @@ test('EVA-03I-2B static action labels are correct before JavaScript runs', () =>
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260725-character-layout-1';
+  const expected = 'v20260726-nurse-okan-page-2';
   assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
   assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
   assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=' + expected.slice(1)), 'HTML app version mismatch');

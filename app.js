@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260725-character-layout-1";
+const ASSET_VERSION = "v20260726-nurse-okan-page-2";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "";
@@ -595,6 +595,15 @@ navItems.forEach((item) => {
   item.addEventListener("click", () => switchView(item.dataset.targetView));
 });
 
+if (typeof document.addEventListener === "function") {
+  document.addEventListener("paruru:view-request", (event) => {
+    const viewName = event && event.detail && event.detail.viewName;
+    if (["home", "inbox", "nurse-okan", "settings"].includes(viewName)) {
+      switchView(viewName);
+    }
+  });
+}
+
 refreshInboxButton.addEventListener("click", loadInbox);
 
 inboxList.addEventListener("click", (event) => {
@@ -778,6 +787,10 @@ async function switchView(viewName) {
   if (viewName === "settings") {
     renderProfileForm();
     await renderHomeControlSettings();
+  }
+
+  if (viewName === "nurse-okan") {
+    document.dispatchEvent(new CustomEvent("nurse-okan:opened"));
   }
 
   setParuruState("normal");
