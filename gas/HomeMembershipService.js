@@ -4,6 +4,21 @@ const HOME_MEMBERS_HEADERS = ['homeId', 'memberUserId', 'displayName', 'role', '
 const DEVICE_MEMBERSHIPS_HEADERS = ['deviceId', 'homeId', 'memberUserId', 'status', 'assignedBy', 'assignedAt', 'updatedAt'];
 const HOME_MEMBER_ROLES = Object.freeze({ admin: true, self_record: true });
 const HOME_MEMBER_STATUS = Object.freeze({ active: true, disabled: true });
+const ROLE_CAPABILITIES = Object.freeze({
+  admin: Object.freeze(['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record']),
+  self_record: Object.freeze(['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record']),
+});
+const ROLE_ALLOWED_VIEWS = Object.freeze({
+  admin: Object.freeze(['home', 'inbox', 'nurse-okan', 'settings']),
+  self_record: Object.freeze(['home', 'inbox', 'nurse-okan']),
+});
+const HEALTH_OPERATION_CAPABILITIES = Object.freeze({
+  'health.context.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
+  'health.daily.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
+  'health.weight.list': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
+  'health.daily.recordSlot': Object.freeze({ self: 'health.self.record', supervision: 'health.supervision.record' }),
+  'health.weight.record': Object.freeze({ self: 'health.self.record', supervision: 'health.supervision.record' }),
+});
 
 function ensureMembershipSheets_() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -16,7 +31,7 @@ function resolveAuthenticatedActor_(deviceId, pairingToken) {
     const pairing = verifyHomeControlDevicePairing_(deviceId, pairingToken);
     if (!pairing || pairing.handled !== true || pairing.authorized !== true) throw homeMembershipError_('UNAUTHORIZED_DEVICE');
     const sheet = getRequiredHomeMembershipSheet_(DEVICE_MEMBERSHIPS_SHEET_NAME, DEVICE_MEMBERSHIPS_HEADERS);
-    const row = findHomeMembershipRow_(sheet, 'deviceId', deviceId);
+    const row = findUniqueHomeMembershipRow_(sheet, 'deviceId', deviceId);
     if (!row || row.status !== 'active') throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
     const member = getHomeMember_(row.homeId, row.memberUserId);
     if (!member || member.status !== 'active' || !HOME_MEMBER_ROLES[member.role]) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
@@ -28,25 +43,38 @@ function resolveAuthenticatedActor_(deviceId, pairingToken) {
 
 function getHomeMember_(homeId, memberUserId) {
   const sheet = getRequiredHomeMembershipSheet_(HOME_MEMBERS_SHEET_NAME, HOME_MEMBERS_HEADERS);
-  const row = findHomeMembershipRow_(sheet, 'homeId', homeId, 'memberUserId', memberUserId);
+  const row = findUniqueHomeMembershipRow_(sheet, 'homeId', homeId, 'memberUserId', memberUserId);
   return row ? { homeId: row.homeId, memberUserId: row.memberUserId, displayName: row.displayName, role: row.role, status: row.status } : null;
 }
 
 function getDeviceMembership_(deviceId) {
   const sheet = getRequiredHomeMembershipSheet_(DEVICE_MEMBERSHIPS_SHEET_NAME, DEVICE_MEMBERSHIPS_HEADERS);
-  const row = findHomeMembershipRow_(sheet, 'deviceId', deviceId);
+  const row = findUniqueHomeMembershipRow_(sheet, 'deviceId', deviceId);
   return row ? { deviceId: row.deviceId, homeId: row.homeId, memberUserId: row.memberUserId, status: row.status } : null;
 }
 
 function authorizeTargetOperation_(actor, targetUserId, operation) {
   const target = String(targetUserId || '').trim();
-  const allowedOperations = { 'health.daily.get': true, 'health.daily.recordSlot': true, 'health.weight.list': true, 'health.weight.record': true, 'health.context.get': true };
-  if (!actor || !actor.homeId || !actor.memberUserId || !HOME_MEMBER_ROLES[actor.role] || !allowedOperations[operation]) throw homeMembershipError_('FORBIDDEN');
+  const policy = HEALTH_OPERATION_CAPABILITIES[operation];
+  if (!actor || !actor.homeId || !actor.memberUserId || !HOME_MEMBER_ROLES[actor.role] || !policy) throw homeMembershipError_('FORBIDDEN');
   const targetMember = getHomeMember_(actor.homeId, target);
   if (!targetMember || targetMember.status !== 'active' || targetMember.role !== 'self_record') throw homeMembershipError_('FORBIDDEN');
-  if (actor.role === 'admin') return true;
-  if (actor.role === 'self_record' && target === actor.memberUserId) return true;
+  if (target === actor.memberUserId) return authorizeCapability_(actor, policy.self);
+  if (actor.role === 'admin') return authorizeCapability_(actor, policy.supervision);
   throw homeMembershipError_('FORBIDDEN');
+}
+
+function authorizeCapability_(actor, capability) {
+  if (!actor || !actor.homeId || !actor.memberUserId || !HOME_MEMBER_ROLES[actor.role] || ROLE_CAPABILITIES[actor.role].indexOf(String(capability || '')) < 0) throw homeMembershipError_('FORBIDDEN');
+  return true;
+}
+
+function getMembershipContext_(body) {
+  const input = body || {};
+  const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
+  const member = getHomeMember_(actor.homeId, actor.memberUserId);
+  if (!member || member.status !== 'active' || !HOME_MEMBER_ROLES[member.role]) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+  return { memberUserId: member.memberUserId, displayName: member.displayName, role: member.role, capabilities: ROLE_CAPABILITIES[member.role].slice(), allowedViews: ROLE_ALLOWED_VIEWS[member.role].slice() };
 }
 
 function getActiveSelfRecordMembers_(homeId) {
@@ -112,6 +140,21 @@ function findHomeMembershipRow_(sheet, firstKey, firstValue, secondKey, secondVa
     return headers.reduce(function(result, header, column) { result[header] = String(values[index][column] || ''); return result; }, {});
   }
   return null;
+}
+
+function findUniqueHomeMembershipRow_(sheet, firstKey, firstValue, secondKey, secondValue) {
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const firstIndex = headers.indexOf(firstKey);
+  const secondIndex = secondKey ? headers.indexOf(secondKey) : -1;
+  let match = null;
+  for (let index = 1; index < values.length; index += 1) {
+    if (String(values[index][firstIndex] || '') !== String(firstValue || '')) continue;
+    if (secondIndex >= 0 && String(values[index][secondIndex] || '') !== String(secondValue || '')) continue;
+    if (match) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+    match = headers.reduce(function(result, header, column) { result[header] = String(values[index][column] || ''); return result; }, {});
+  }
+  return match;
 }
 
 function upsertHomeMember_(homeId, memberUserId, displayName, role, status, now) {

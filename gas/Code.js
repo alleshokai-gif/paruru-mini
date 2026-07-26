@@ -123,6 +123,10 @@ function doPost(e) {
       return devicePairingRevoke_(body);
     }
 
+    if (action === 'membership.context.get') {
+      return json_({ success: true, data: getMembershipContext_(body), message: 'membership context loaded' });
+    }
+
     if (String(action).indexOf('health.') === 0) {
       return healthGateway_(body);
     }
