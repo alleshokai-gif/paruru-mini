@@ -179,12 +179,14 @@ test('agentChat never falls through to memo creation', () => {
 test('existing action routing regression', () => {
   context.createItemWithAI_ = () => context.json_({ route: 'createWithAI' });
   context.answerFollowup_ = () => context.json_({ route: 'answerFollowup' });
+  context.resolveMemoActor_ = () => ({ memberUserId: 'father' });
   context.listInboxItems_ = () => ['item'];
   context.notificationCandidates_ = () => context.json_({ route: 'notificationCandidates' });
   assert(post({ action: 'createWithAI', memo: 'x' }).route === 'createWithAI', 'createWithAI route changed');
   assert(post({ action: 'answerFollowup', id: 'x', answer: 'y' }).route === 'answerFollowup', 'answerFollowup route changed');
-  assert(output(context.doGet({ parameter: { action: 'list' } })).data[0] === 'item', 'list route changed');
-  assert(output(context.doGet({ parameter: { action: 'notificationCandidates' } })).route === 'notificationCandidates', 'notification route changed');
+  assert(output(context.doPost({ postData: { contents: JSON.stringify({ action: 'list', deviceId: 'device', pairingToken: 'credential' }) } })).data[0] === 'item', 'list route changed');
+  assert(output(context.doPost({ postData: { contents: JSON.stringify({ action: 'notificationCandidates', deviceId: 'device', pairingToken: 'credential' }) } })).route === 'notificationCandidates', 'notification route changed');
+  assert(output(context.doGet({ parameter: { action: 'list' } })).success === false, 'legacy GET list was accepted');
 });
 
 test('unknown device pairing action never falls through to memo creation', () => {

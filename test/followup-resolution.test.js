@@ -18,6 +18,9 @@ const context = {
 };
 vm.createContext(context);
 new vm.Script(fs.readFileSync(path.join(gasDir, 'Code.js'), 'utf8'), { filename: 'Code.js' }).runInContext(context);
+context.resolveAuthenticatedActor_ = () => ({ homeId: 'home', memberUserId: 'father', deviceId: 'father-device', role: 'admin' });
+context.authorizeCapability_ = () => true;
+context.getHomeMember_ = () => ({ displayName: 'Father', status: 'active' });
 context.updateRowFields_ = (sheet, row, index, updates) => { savedUpdates = Object.assign({}, updates); };
 context.appendNewItem_ = () => { appendCalls += 1; throw new Error('unexpected append'); };
 function parse(output) { return JSON.parse(output.getContent()); }
@@ -30,6 +33,7 @@ function target(item) {
     needsFollowup: true, followupQuestion: '締切はいつ？', followupInputType: 'date',
     aiSummary: '部長に資料を提出する仕事タスク。締切が不明なため確認が必要です。'
   }, item || {}), sheet: {}, rowNumber: 2, index: {} });
+  context.getOwnedMemoItem_ = context.getItemById_;
 }
 const tests = []; function test(name, fn) { tests.push({ name, fn }); }
 

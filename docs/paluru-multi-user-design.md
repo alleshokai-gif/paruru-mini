@@ -135,6 +135,10 @@ deep linkは `{ view, taskId }` を基本形とし、サーバーがtaskIdから
 
 ### Mini GAS
 
+#### Phase 0B2 Agent Chat boundary
+
+通常メモAPIはpairing＋Membershipで解決したactor本人のownerだけを扱う。外部PALURU Agent/n8nの `createWithAIInternal` は既存父運用の互換として内部token認証を維持し、owner/createdByをfatherへ固定する。次男のAgent Chat経由メモ作成はこのPhaseでは公開しない。次男対応は、Agent側へサーバー解決済みactorを安全に渡す契約を別Phaseで追加してから行う。
+
 | action群 | 責務 |
 |---|---|
 | `context.get` | actor、capabilities、ホーム表示可能な集約の入口を返す。 |

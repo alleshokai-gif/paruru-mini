@@ -119,8 +119,8 @@ test('successful edit refreshes Inbox and notification candidates', async () => 
   run('editId.value="item-1"; editMemo.value="牛乳"; editTitle.value="牛乳"; editCategory.value="買い物"; editPriority.value="Normal"; editType.value="shopping"; editStatus.value="inbox"; editShoppingTiming.value="today"; shoppingTimingTouched=true');
   await handlers.get('#editForm:submit')({ preventDefault() {} });
   assert(requests.some((entry) => entry.payload && entry.payload.action === 'update'), 'update missing');
-  assert(requests.some((entry) => entry.url.includes('action=list')), 'Inbox was not refreshed');
-  assert(requests.some((entry) => entry.url.includes('action=notificationCandidates')), 'notifications were not refreshed');
+  assert(requests.some((entry) => entry.payload && entry.payload.action === 'list'), 'Inbox was not refreshed');
+  assert(requests.some((entry) => entry.payload && entry.payload.action === 'notificationCandidates'), 'notifications were not refreshed');
 });
 
 let failures = 0;

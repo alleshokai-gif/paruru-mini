@@ -27,7 +27,8 @@ function createItemWithAIInternal_(body) {
 
     const item = createItemWithAIResult_(input, input.memo, {
       source: INTERNAL_MEMO_SOURCE,
-      clientRequestId: input.clientRequestId
+      clientRequestId: input.clientRequestId,
+      identity: { memberUserId: 'father', displayName: '', deviceId: '' }
     });
     return json_({ success: true, item: sanitizeInternalMemoItem_(item), duplicate: false });
   } catch (error) {
@@ -79,9 +80,6 @@ function validateInternalMemoInput_(body) {
     memo: memo,
     clientRequestId: clientRequestId,
     source: source,
-    userId: String(body.userId || '').trim(),
-    userDisplayName: String(body.userDisplayName || '').trim(),
-    deviceId: String(body.deviceId || '').trim(),
     visibility: visibility,
     category: category,
     priority: priority,

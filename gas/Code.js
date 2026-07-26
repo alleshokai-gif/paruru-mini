@@ -46,18 +46,6 @@ function doGet(e) {
   try {
     const action = getAction_(e);
 
-    if (action === 'list') {
-      return json_({
-        success: true,
-        data: listInboxItems_(),
-        message: 'listed',
-      });
-    }
-
-    if (action === 'notificationCandidates') {
-      return notificationCandidates_(e.parameter || {});
-    }
-
     if (action === 'calendarContextInternal') {
       return calendarContextInternal_(e.parameter || {}, 'GET');
     }
@@ -77,10 +65,27 @@ function doGet(e) {
 function doPost(e) {
   try {
     const body = parseBody_(e);
-    const action = body.action || 'create';
+    const action = String(body.action || '').trim();
+
+    if (!action) {
+      return json_({ success: false, status: 400, message: 'action is required' });
+    }
+
+    if (action === 'list') {
+      const actor = resolveMemoActor_(body, 'memo.self.read');
+      return json_({ success: true, data: listInboxItems_(actor), message: 'listed' });
+    }
+
+    if (action === 'notificationCandidates') {
+      return notificationCandidates_(body, resolveMemoActor_(body, 'memo.self.read'));
+    }
 
     if (action === 'createWithAI') {
       return createItemWithAI_(body);
+    }
+
+    if (action === 'create') {
+      return createItem_(body);
     }
 
     if (action === 'createWithAIInternal') {
@@ -163,7 +168,7 @@ function doPost(e) {
       return deleteItem_(body);
     }
 
-    return createItem_(body);
+    return json_({ success: false, status: 400, message: 'unknown action' });
   } catch (error) {
     return json_({
       success: false,
@@ -173,6 +178,7 @@ function doPost(e) {
 }
 
 function createItem_(body) {
+  const identity = resolveMemoActor_(body, 'memo.self.create');
   const memo = String(body.memo || '').trim();
 
   if (!memo) {
@@ -204,10 +210,12 @@ function createItem_(body) {
     aiSummary: body.aiSummary || '',
     aiComment: body.aiComment || '',
     confidence: normalizeNumberForSheet_(body.confidence),
-    userId: body.userId || '',
-    userDisplayName: body.userDisplayName || '',
+    userId: identity.memberUserId,
+    userDisplayName: identity.displayName,
     calendarSuffix: body.calendarSuffix || '',
-    deviceId: body.deviceId || '',
+    deviceId: identity.deviceId,
+    ownerUserId: identity.memberUserId,
+    createdByUserId: identity.memberUserId,
     visibility: normalizeVisibility_(body.visibility),
     calendarTitle: body.calendarTitle || '',
     calendarSyncStatus: getInitialCalendarSyncStatus_(body),
@@ -233,6 +241,7 @@ function createItem_(body) {
 }
 
 function createItemWithAI_(body) {
+  const identity = resolveMemoActor_(body, 'memo.self.create');
   const memo = String(body.memo || '').trim();
 
   if (!memo) {
@@ -246,7 +255,7 @@ function createItemWithAI_(body) {
   try {
     return json_({
       success: true,
-      item: createItemWithAIResult_(body, memo),
+      item: sanitizeItemForClient_(createItemWithAIResult_(body, memo, { identity: identity })),
     });
   } catch (error) {
     return json_({
@@ -258,6 +267,7 @@ function createItemWithAI_(body) {
 
 function createItemWithAIResult_(body, memo, options) {
   const trustedOptions = options || {};
+  const identity = trustedOptions.identity || getInternalFatherMemoIdentity_();
   debugLog_('[createWithAI] received action=createWithAI hasMemo=' + Boolean(memo));
     const analysis = enforceFollowupRules_(analyzeMemoWithAI_(memo), memo);
     const requestedPriority = normalizePriority_(body.priority);
@@ -278,10 +288,12 @@ function createItemWithAIResult_(body, memo, options) {
       eventEndTime: analysis.eventEndTime || '',
       remindAt: analysis.remindAt || '',
       confidence: normalizeNumberForSheet_(analysis.confidence),
-      userId: body.userId || '',
-      userDisplayName: body.userDisplayName || '',
+      userId: identity.memberUserId,
+      userDisplayName: identity.displayName,
       calendarSuffix: body.calendarSuffix || '',
-      deviceId: body.deviceId || '',
+      deviceId: identity.deviceId || '',
+      ownerUserId: identity.memberUserId,
+      createdByUserId: identity.memberUserId,
       visibility: normalizeVisibility_(body.visibility),
       clientRequestId: trustedOptions.clientRequestId || '',
     });
@@ -307,6 +319,7 @@ function createItemWithAIResult_(body, memo, options) {
 }
 
 function answerFollowup_(body) {
+  const actor = resolveMemoActor_(body, 'memo.self.update');
   const id = String(body.id || '').trim();
   const answer = String(body.answer || '').trim();
   const answerDate = String(body.answerDate || '').trim();
@@ -322,7 +335,7 @@ function answerFollowup_(body) {
   }
 
   try {
-    const target = getItemById_(id);
+    const target = getOwnedMemoItem_(id, actor);
     if (!target) {
       return json_({ success: false, message: 'not found' });
     }
@@ -347,7 +360,7 @@ function answerFollowup_(body) {
     const updatedItem = Object.assign({}, target.item, updates);
     return json_({
       success: true,
-      item: updatedItem,
+      item: sanitizeItemForClient_(updatedItem),
       message: 'followup answered',
     });
   } catch (error) {
@@ -359,6 +372,7 @@ function answerFollowup_(body) {
 }
 
 function syncCalendar_(body) {
+  const actor = resolveMemoActor_(body, 'memo.self.update');
   const id = String(body.id || '').trim();
   if (!id) {
     return json_({ success: false, status: 400, message: 'id is required' });
@@ -370,7 +384,7 @@ function syncCalendar_(body) {
   try {
     debugLog_('[syncCalendar] start id=' + id + ' target=' + String(body.calendarTarget || 'family'));
     lock.waitLock(10000);
-    target = getItemById_(id);
+    target = getOwnedMemoItem_(id, actor);
     if (!target) {
       debugLog_('[syncCalendar] item not found id=' + id);
       return json_({ success: false, status: 404, message: 'not found' });
@@ -493,7 +507,7 @@ function syncCalendar_(body) {
     SpreadsheetApp.flush();
     debugLog_('[syncCalendar] spreadsheet updated id=' + id);
 
-    const savedTarget = getItemById_(id);
+    const savedTarget = getOwnedMemoItem_(id, actor);
     const savedItem = savedTarget && savedTarget.item;
     const savedOk = savedItem &&
       normalizeCalendarSyncStatus_(savedItem.calendarSyncStatus) === 'synced' &&
@@ -535,6 +549,7 @@ function syncCalendar_(body) {
 }
 
 function updateCalendar_(body) {
+  const actor = resolveMemoActor_(body, 'memo.self.update');
   const id = String(body.id || '').trim();
   if (!id) {
     return json_({ success: false, status: 400, message: 'id is required' });
@@ -545,7 +560,7 @@ function updateCalendar_(body) {
 
   try {
     lock.waitLock(10000);
-    target = getItemById_(id);
+    target = getOwnedMemoItem_(id, actor);
     if (!target) {
       return json_({ success: false, status: 404, message: 'not found' });
     }
@@ -690,6 +705,8 @@ function appendNewItem_(item) {
     userDisplayName: item.userDisplayName || '',
     calendarSuffix: item.calendarSuffix || '',
     deviceId: item.deviceId || '',
+    ownerUserId: item.ownerUserId || '',
+    createdByUserId: item.createdByUserId || '',
     visibility: normalizeVisibility_(item.visibility),
     clientRequestId: item.clientRequestId || '',
     calendarTitle: item.calendarTitle || '',
@@ -705,6 +722,7 @@ function appendNewItem_(item) {
   };
 
   const sheet = getInboxSheet_();
+  getMemoOwnershipSchema_(sheet, true);
   const actualHeaders = getActualHeaders_(sheet);
   const row = actualHeaders.map(function(header) {
     return header ? savedItem[header] : '';
@@ -721,6 +739,8 @@ function appendNewItem_(item) {
 }
 
 function updateItem_(body) {
+  const actor = resolveMemoActor_(body, 'memo.self.update');
+  assertMemoIdentityFieldsAbsent_(body);
   const id = String(body.id || '').trim();
   if (!id) {
     return json_({ success: false, message: 'id is required' });
@@ -732,7 +752,8 @@ function updateItem_(body) {
   if (!rowNumber) {
     return json_({ success: false, message: 'not found' });
   }
-  const beforeItem = getItemById_(id).item;
+  const ownedTarget = getOwnedMemoItem_(id, actor);
+  const beforeItem = ownedTarget.item;
 
   const allowedFields = [
     'updatedAt',
@@ -757,10 +778,7 @@ function updateItem_(body) {
     'aiComment',
     'confidence',
     'source',
-    'userId',
-    'userDisplayName',
     'calendarSuffix',
-    'deviceId',
     'visibility',
   ];
   if (!Object.prototype.hasOwnProperty.call(body, 'updatedAt')) {
@@ -802,19 +820,17 @@ function updateItem_(body) {
 }
 
 function deleteItem_(body) {
+  const actor = resolveMemoActor_(body, 'memo.self.delete');
   const id = String(body.id || '').trim();
   if (!id) {
     return json_({ success: false, message: 'id is required' });
   }
 
-  const sheet = getInboxSheet_();
-  const index = getHeaderIndex_();
-  const rowNumber = findRowNumberById_(sheet, id, index.id + 1);
-  if (!rowNumber) {
+  const target = getOwnedMemoItem_(id, actor);
+  if (!target) {
     return json_({ success: false, message: 'not found' });
   }
-
-  sheet.deleteRow(rowNumber);
+  target.sheet.deleteRow(target.rowNumber);
 
   return json_({
     success: true,
@@ -848,6 +864,55 @@ function getItemById_(id) {
     rowNumber: rowNumber,
     item: item,
   };
+}
+
+function resolveMemoActor_(body, capability) {
+  const input = body || {};
+  const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
+  authorizeCapability_(actor, capability);
+  const member = getHomeMember_(actor.homeId, actor.memberUserId);
+  if (!member || member.status !== 'active') throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+  return {
+    homeId: actor.homeId,
+    memberUserId: actor.memberUserId,
+    displayName: member.displayName,
+    deviceId: actor.deviceId,
+  };
+}
+
+function getInternalFatherMemoIdentity_() {
+  return { memberUserId: 'father', displayName: '', deviceId: '' };
+}
+
+function getOwnedMemoItem_(id, actor) {
+  const target = getItemById_(id);
+  if (!target) return null;
+  const schema = getMemoOwnershipSchema_(target.sheet, true);
+  assertMemoOwnershipRow_(target.item, schema);
+  if (target.item.ownerUserId !== actor.memberUserId) throw homeMembershipError_('FORBIDDEN');
+  return target;
+}
+
+function assertMemoOwnershipRow_(item, schema) {
+  const owner = String(item.ownerUserId || '').trim();
+  const creator = String(item.createdByUserId || '').trim();
+  if (!owner || !creator || !schema || schema.index.ownerUserId === undefined || schema.index.createdByUserId === undefined) {
+    throw createMemoOwnershipError_('MEMO_OWNERSHIP_INCONSISTENT');
+  }
+}
+
+function assertMemoIdentityFieldsAbsent_(body) {
+  const prohibited = ['userId', 'userDisplayName', 'deviceId', 'ownerUserId', 'createdByUserId', 'role', 'homeId'];
+  if (prohibited.some(function(field) { return Object.prototype.hasOwnProperty.call(body || {}, field); })) {
+    throw homeMembershipError_('FORBIDDEN');
+  }
+}
+
+function buildInboxItemFromRow_(headers, row) {
+  return headers.reduce(function(item, header, index) {
+    if (header) item[header] = normalizeEngineCellValue_(header, row[index]);
+    return item;
+  }, {});
 }
 
 function updateRowFields_(sheet, rowNumber, index, updates) {
@@ -884,41 +949,19 @@ function assertRequiredHeaders_(index, fields) {
   }
 }
 
-function listInboxItems_() {
-  const sheet = getInboxSheet_();
-  const lastRow = sheet.getLastRow();
-  if (lastRow <= 1) {
-    return [];
-  }
-
-  const headers = getActualHeaders_(sheet);
-  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  return values
-    .filter(function(row) { return row[0]; })
-    .map(function(row) {
-      const item = {};
-      headers.forEach(function(header, index) {
-        if (!header) {
-          return;
-        }
-        const value = row[index];
-        item[header] = normalizeEngineCellValue_(header, value);
-      });
-      return sanitizeItemForClient_(item);
-    })
-    .reverse();
+function listInboxItems_(actor) {
+  return readOwnedInboxItems_(actor).map(sanitizeItemForClient_).reverse();
 }
 
-function notificationCandidates_(params) {
+function notificationCandidates_(params, actor) {
   const targetDate = parseNotificationTargetDate_(params.date);
   const limit = normalizeNotificationLimit_(params.limit);
-  const userId = String(params.userId || '').trim();
   const settings = buildTodayCalendarSettings_(params);
-  const items = readInboxItemsForEngine_();
+  const items = readOwnedInboxItems_(actor);
   const warnings = [];
   const paluruCandidates = buildNotificationCandidates_(items, {
     targetDate: targetDate,
-    userId: userId,
+    userId: actor.memberUserId,
     limit: 50,
   });
   let calendarCandidates = [];
@@ -970,6 +1013,22 @@ function readInboxItemsForEngine_() {
       });
       return item;
     });
+}
+
+function readOwnedInboxItems_(actor) {
+  const sheet = getInboxSheet_();
+  const schema = getMemoOwnershipSchema_(sheet, true);
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+  const headers = getActualHeaders_(sheet);
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  return values.filter(function(row) { return row[0]; }).map(function(row) {
+    const item = buildInboxItemFromRow_(headers, row);
+    assertMemoOwnershipRow_(item, schema);
+    return item;
+  }).filter(function(item) {
+    return item.ownerUserId === actor.memberUserId;
+  });
 }
 
 function buildNotificationCandidates_(items, options) {
@@ -1940,6 +1999,9 @@ function buildCalendarResponseItem_(item) {
 function sanitizeItemForClient_(item) {
   const clientItem = Object.assign({}, item);
   delete clientItem.calendarId;
+  delete clientItem.ownerUserId;
+  delete clientItem.createdByUserId;
+  delete clientItem.deviceId;
   return clientItem;
 }
 

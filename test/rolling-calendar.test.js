@@ -12,8 +12,12 @@ const windowHandlers = {};
 const requests = [];
 const scheduled = [];
 const clearedTimers = [];
-let fetchImpl = async (url) => {
-  requests.push(String(url));
+function memoRequestDate(url, options) {
+  if (options && options.body) return JSON.parse(options.body).date;
+  return new URL(String(url)).searchParams.get('date');
+}
+let fetchImpl = async (url, options) => {
+  requests.push(JSON.stringify({ url: String(url), body: options && options.body || '' }));
   return { ok: true, status: 200, json: async () => ({ success: true, items: [], count: 0, warnings: [] }) };
 };
 
@@ -232,8 +236,8 @@ test('two-day requests start in parallel', async () => {
   useAlwaysTomorrowProfile();
   const starters = [];
   const resolvers = [];
-  fetchImpl = (url) => new Promise((resolve) => {
-    starters.push(new URL(String(url)).searchParams.get('date'));
+  fetchImpl = (url, options) => new Promise((resolve) => {
+    starters.push(memoRequestDate(url, options));
     resolvers.push(() => resolve(response(result([]))));
   });
   const pending = call('fetchNotificationCandidates');
@@ -246,8 +250,8 @@ test('two-day requests start in parallel', async () => {
 test('tomorrow failure keeps today result and adds a safe warning', async () => {
   useAlwaysTomorrowProfile();
   const plan = call('getRollingCalendarRequestPlan', Date.now(), '00:00');
-  fetchImpl = async (url) => {
-    const date = new URL(String(url)).searchParams.get('date');
+  fetchImpl = async (url, options) => {
+    const date = memoRequestDate(url, options);
     if (date === plan.tomorrow) throw new Error('mock tomorrow failure');
     return response(result([{ id: 'today-task', sourceType: 'paluru', title: 'today' }]));
   };
@@ -276,8 +280,8 @@ test('today failure preserves previous display and retry UI', async () => {
 
 test('visibility resume forces a refetch and request dates never exceed today plus tomorrow', async () => {
   requests.length = 0;
-  fetchImpl = async (url) => {
-    requests.push(String(url));
+  fetchImpl = async (url, options) => {
+    requests.push(JSON.stringify({ url: String(url), body: options && options.body || '' }));
     return response(result([]));
   };
   assert(typeof documentHandlers.visibilitychange === 'function', 'visibilitychange handler absent');
@@ -285,8 +289,8 @@ test('visibility resume forces a refetch and request dates never exceed today pl
   documentHandlers.visibilitychange();
   await new Promise((resolve) => setImmediate(resolve));
   assert(requests.length >= 1, 'resume did not refetch');
-  requests.forEach((requestUrl) => {
-    const date = new URL(requestUrl).searchParams.get('date');
+  requests.forEach((request) => {
+    const date = JSON.parse(request).body ? JSON.parse(JSON.parse(request).body).date : '';
     assert(/^\d{4}-\d{2}-\d{2}$/.test(date), 'request date missing');
   });
   assert(requests.length <= 2, 'more than today plus tomorrow was requested');
@@ -294,8 +298,8 @@ test('visibility resume forces a refetch and request dates never exceed today pl
 
 test('static regressions retain Inbox, Follow-up, Agent routing, Calendar sync and PWA lifecycle', () => {
   const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
-  assert(appSource.includes('action: "answerFollowup"') && appSource.includes('action: "agentChat"'), 'existing action route removed');
-  assert(appSource.includes('action: "syncCalendar"') && appSource.includes('fetchInboxItems'), 'Calendar or Inbox route removed');
+  assert(appSource.includes('buildMemoCredentialPayload("answerFollowup")') && appSource.includes('action: "agentChat"'), 'existing action route removed');
+  assert(appSource.includes('buildMemoCredentialPayload("syncCalendar")') && appSource.includes('fetchInboxItems'), 'Calendar or Inbox route removed');
   assert(appSource.includes('updateViaCache: "none"'), 'updateViaCache changed');
   assert(sw.includes('self.skipWaiting()') && sw.includes('self.clients.claim()') && sw.includes('networkFirst'), 'Service Worker lifecycle changed');
 });

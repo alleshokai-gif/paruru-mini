@@ -86,11 +86,16 @@ test('missing clientRequestId header fails without AI or migration', () => {
   headers.push(removed);
   assert(result.error.code === 'CONFIGURATION_ERROR' && aiCalls === beforeAi, 'missing header did not fail safely');
 });
-test('public createWithAI route remains explicit and shared', () => {
+test('public createWithAI route remains explicit and uses server ownership', () => {
   const code = fs.readFileSync(path.join(gasDir, 'Code.js'), 'utf8');
-  assert(code.includes("if (action === 'createWithAI')") && code.includes('item: createItemWithAIResult_(body, memo)'), 'public createWithAI contract path changed');
+  assert(code.includes("if (action === 'createWithAI')") && code.includes("resolveMemoActor_(body, 'memo.self.create')"), 'public createWithAI ownership path changed');
   const headerBlock = code.slice(code.indexOf('const HEADERS = ['), code.indexOf('];', code.indexOf('const HEADERS = [')) + 2);
   assert(!headerBlock.includes("'clientRequestId'"), 'automatic header migration introduced');
+});
+test('internal caller identity is ignored and ownership is fixed to father', () => {
+  const code = fs.readFileSync(path.join(gasDir, 'InternalMemoApi.js'), 'utf8');
+  assert(code.includes("identity: { memberUserId: 'father'"), 'internal ownership is not fixed to father');
+  assert(!code.includes('userId: String(body.userId'), 'internal caller userId is still accepted');
 });
 
 let failures = 0;

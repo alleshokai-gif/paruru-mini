@@ -1346,6 +1346,15 @@ function validateAgentFollowup(followup) {
   return { required: true, itemId, question, inputType };
 }
 
+function buildMemoCredentialPayload(action) {
+  const profile = getCurrentProfile();
+  return {
+    ...(action ? { action } : {}),
+    deviceId: profile.deviceId,
+    pairingToken: getHomeAgentPairingToken(),
+  };
+}
+
 function buildCreateWithAIPayload(memo) {
   const selectedPriority = getSelectedPriority();
   const profile = getCurrentProfile();
@@ -1357,6 +1366,7 @@ function buildCreateWithAIPayload(memo) {
     calendarSuffix: profile.calendarSuffix,
     deviceId: profile.deviceId,
     visibility: "private",
+    ...buildMemoCredentialPayload(),
   };
 
   if (categoryExplicitlySelected && categoryInput.value) {
@@ -1383,9 +1393,11 @@ async function fetchInboxItems() {
     return sortInboxItemsNewestFirst(loadDummyItems().filter(isInboxItem));
   }
 
-  const url = new URL(GAS_WEB_APP_URL);
-  url.searchParams.set("action", "list");
-  const response = await fetch(url.toString());
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(buildMemoCredentialPayload("list")),
+  });
   const result = await parseApiResponse(response);
   return sortInboxItemsNewestFirst((result.data || []).filter(isInboxItem));
 }
@@ -1476,17 +1488,18 @@ async function fetchNotificationCandidates() {
 }
 
 async function fetchNotificationCandidatesForDate(profile, targetDate) {
-  const url = new URL(GAS_WEB_APP_URL);
-  url.searchParams.set("action", "notificationCandidates");
-  url.searchParams.set("limit", "50");
-  url.searchParams.set("date", targetDate);
-  if (profile.userId) {
-    url.searchParams.set("userId", profile.userId);
-  }
-  url.searchParams.set("selectedMemberKeys", normalizeCalendarMemberSelection(profile.selectedCalendarMemberKeys).join(","));
-  url.searchParams.set("includeUnknown", profile.includeUnknownCalendarEvents ? "true" : "false");
-
-  const response = await fetch(url.toString(), { cache: "no-store" });
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      ...buildMemoCredentialPayload("notificationCandidates"),
+      limit: "50",
+      date: targetDate,
+      selectedMemberKeys: normalizeCalendarMemberSelection(profile.selectedCalendarMemberKeys).join(","),
+      includeUnknown: profile.includeUnknownCalendarEvents ? "true" : "false",
+    }),
+  });
   return parseApiResponse(response);
 }
 
@@ -1581,7 +1594,7 @@ async function updateInboxItem(id, updates) {
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
     },
-    body: JSON.stringify({ action: "update", id, ...updates }),
+    body: JSON.stringify({ ...buildMemoCredentialPayload("update"), id, ...updates }),
   });
 
   return parseApiResponse(response);
@@ -1597,7 +1610,7 @@ async function answerFollowup(payload) {
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
     },
-    body: JSON.stringify({ action: "answerFollowup", ...payload }),
+    body: JSON.stringify({ ...buildMemoCredentialPayload("answerFollowup"), ...payload }),
   });
 
   return parseApiResponse(response);
@@ -1614,7 +1627,7 @@ async function syncCalendar(payload) {
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
     },
-    body: JSON.stringify({ action: "syncCalendar", ...payload }),
+    body: JSON.stringify({ ...buildMemoCredentialPayload("syncCalendar"), ...payload }),
   });
 
   return parseApiResponse(response, { debugLabel: "syncCalendar" });
@@ -1630,7 +1643,7 @@ async function updateCalendar(payload) {
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
     },
-    body: JSON.stringify({ action: "updateCalendar", ...payload }),
+    body: JSON.stringify({ ...buildMemoCredentialPayload("updateCalendar"), ...payload }),
   });
 
   return parseApiResponse(response);
@@ -1646,7 +1659,7 @@ async function deleteInboxItem(id) {
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
     },
-    body: JSON.stringify({ action: "delete", id }),
+    body: JSON.stringify({ ...buildMemoCredentialPayload("delete"), id }),
   });
 
   return parseApiResponse(response);
