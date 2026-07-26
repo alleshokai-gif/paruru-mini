@@ -274,6 +274,17 @@ const askPaluruButton = document.querySelector("#askPaluruButton");
 const saveToPaluruButton = document.querySelector("#saveToPaluruButton");
 const message = document.querySelector("#message");
 const splash = document.querySelector("#splash");
+const authLock = document.querySelector("#authLock");
+const authLockMessage = document.querySelector("#authLockMessage");
+const authLockUnpaired = document.querySelector("#authLockUnpaired");
+const authLockPending = document.querySelector("#authLockPending");
+const authLockUnassigned = document.querySelector("#authLockUnassigned");
+const authLockError = document.querySelector("#authLockError");
+const authLockDeviceName = document.querySelector("#authLockDeviceName");
+const authLockBeginButton = document.querySelector("#authLockBeginButton");
+const authLockRetryButton = document.querySelector("#authLockRetryButton");
+const authLockCode = document.querySelector("#authLockCode");
+const authLockExpiry = document.querySelector("#authLockExpiry");
 const buildVersion = document.querySelector("#buildVersion");
 const views = document.querySelectorAll(".app-view");
 const navItems = document.querySelectorAll(".nav-item");
@@ -403,17 +414,61 @@ if ("serviceWorker" in navigator) {
 
 let appAuthenticationState = "booting";
 let normalPwaInitialized = false;
+const NURSE_OKAN_HEALTH_ACTIONS = new Set([
+  "health.context.get",
+  "health.daily.get",
+  "health.daily.recordSlot",
+  "health.weight.list",
+  "health.weight.record",
+]);
 
-function showAuthenticationState(message) {
-  appAuthenticationState = message;
+async function callAuthenticatedHealth_(action, body = {}) {
+  if (appAuthenticationState !== "active_member" || !normalPwaInitialized) {
+    throw createHomeControlError("AUTHENTICATION_REQUIRED");
+  }
+  if (!NURSE_OKAN_HEALTH_ACTIONS.has(action)) {
+    throw createHomeControlError("HEALTH_ACTION_NOT_ALLOWED");
+  }
+  const token = getHomeAgentPairingToken();
+  if (!token || !userProfile?.deviceId) {
+    throw createHomeControlError("AUTHENTICATION_REQUIRED");
+  }
+  return callHomeControlApi({
+    ...(body && typeof body === "object" ? body : {}),
+    action,
+    deviceId: userProfile.deviceId,
+    pairingToken: token,
+  });
+}
+
+function showAuthenticationState(message, state = "locked") {
+  appAuthenticationState = state;
   splash?.classList.remove("is-hidden");
   const loading = splash?.querySelector(".splash-loading");
   if (loading) loading.textContent = message;
+  if (authLock) {
+    authLock.hidden = false;
+    authLockMessage.textContent = message;
+    document.body.classList.remove("is-authenticated");
+    [authLockUnpaired, authLockPending, authLockUnassigned, authLockError].forEach((element) => {
+      if (element) element.hidden = true;
+    });
+    const panel = state === "unpaired"
+      ? authLockUnpaired
+      : state === "pairing_pending"
+        ? authLockPending
+        : state === "paired_unassigned"
+          ? authLockUnassigned
+          : authLockError;
+    if (panel) panel.hidden = false;
+  }
 }
 
 function initializeNormalPwaOnce() {
   if (normalPwaInitialized) return;
   normalPwaInitialized = true;
+  document.body.classList.add("is-authenticated");
+  if (authLock) authLock.hidden = true;
   notificationBoundaryTimerEnabled = true;
   renderProfileForm();
   setParuruState("normal");
@@ -424,19 +479,57 @@ function initializeNormalPwaOnce() {
   loadNotificationCandidates({ force: true });
 }
 
+authLockBeginButton?.addEventListener("click", async () => {
+  if (homeControlDeviceName) {
+    homeControlDeviceName.value = authLockDeviceName.value;
+  }
+  await beginHomeControlPairing();
+  renderAuthenticationLock_();
+});
+authLockRetryButton?.addEventListener("click", () => {
+  initializeAuthenticatedPwa();
+});
+
+function renderAuthenticationLock_() {
+  const pending = getHomeControlPending();
+  if (!pending) return;
+  if (isHomeControlPendingExpired_(pending)) {
+    expireHomeControlPending_();
+    return;
+  }
+  showAuthenticationState("端末承認を待っています。", "pairing_pending");
+  authLockCode.textContent = String(pending.code || "");
+  authLockExpiry.textContent = formatHomeControlExpiry(pending.expiresAt);
+  scheduleHomeControlPoll();
+}
+
 async function initializeAuthenticatedPwa() {
   userProfile = loadUserProfile();
   const token = getHomeAgentPairingToken();
   if (!token) {
-    showAuthenticationState("この端末は未登録です。端末登録を完了してください。");
+    const pending = getHomeControlPending();
+    showAuthenticationState(pending ? "端末承認を待っています。" : "この端末は未登録です。端末登録を完了してください。", pending ? "pairing_pending" : "unpaired");
+    renderAuthenticationLock_();
     return;
   }
   try {
-    await callHomeControlApi({ action: "membership.context.get", deviceId: userProfile.deviceId, pairingToken: token });
+    const membershipContext = await callHomeControlApi({ action: "membership.context.get", deviceId: userProfile.deviceId, pairingToken: token });
     appAuthenticationState = "active_member";
     initializeNormalPwaOnce();
+    document.dispatchEvent(new CustomEvent("paruru:authenticated", {
+      detail: {
+        context: {
+          memberUserId: membershipContext.memberUserId,
+          displayName: membershipContext.displayName,
+          role: membershipContext.role,
+          capabilities: membershipContext.capabilities,
+          allowedViews: membershipContext.allowedViews,
+        },
+        healthApi: callAuthenticatedHealth_,
+      },
+    }));
   } catch (error) {
-    showAuthenticationState(error?.code === "MEMBERSHIP_NOT_FOUND" ? "家族登録待ちです。" : "端末登録を確認できませんでした。");
+    showAuthenticationState(error?.code === "MEMBERSHIP_NOT_FOUND" ? "家族登録待ちです。" : "端末登録を確認できませんでした。", error?.code === "MEMBERSHIP_NOT_FOUND" ? "paired_unassigned" : "revoked_error");
   }
 }
 
@@ -1042,6 +1135,19 @@ function clearHomeControlPending() {
   }
 }
 
+function isHomeControlPendingExpired_(pending) {
+  const now = Date.now();
+  const codeExpiresAt = Date.parse(String(pending?.expiresAt || ""));
+  const requestExpiresAt = Number(pending?.requestExpiresAt || 0);
+  return (Number.isFinite(codeExpiresAt) && now >= codeExpiresAt)
+    || (Number.isFinite(requestExpiresAt) && requestExpiresAt > 0 && now >= requestExpiresAt);
+}
+
+function expireHomeControlPending_() {
+  clearHomeControlPending();
+  showAuthenticationState("承認期限が切れました。もう一度登録してください。", "unpaired");
+}
+
 function setHomeControlMessage(message, type = "") {
   if (!homeControlMessage) return;
   homeControlMessage.textContent = message || "";
@@ -1078,8 +1184,8 @@ async function beginHomeControlPairing() {
     const generated = await createHomeControlToken();
     const data = await callHomeControlApi({ action: "devicePairingBegin", deviceId: profile.deviceId, displayName, tokenHash: generated.tokenHash });
     if (!isUuid(data.requestId) || !/^\d{6}$/.test(String(data.code || "")) || !String(data.requestSecret || "")) throw createHomeControlError("HOME_CONTROL_FAILED");
-    saveHomeControlPending({ requestId: data.requestId, requestSecret: data.requestSecret, token: generated.token, code: data.code, expiresAt: data.expiresAt, displayName });
-    await renderHomeControlSettings();
+    saveHomeControlPending({ requestId: data.requestId, requestSecret: data.requestSecret, token: generated.token, code: data.code, expiresAt: data.expiresAt, requestExpiresAt: Date.now() + 15 * 60 * 1000, displayName });
+    renderAuthenticationLock_();
   } catch (error) {
     setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
   } finally {
@@ -1090,19 +1196,28 @@ async function beginHomeControlPairing() {
 async function pollHomeControlPairing() {
   const pending = getHomeControlPending();
   if (!pending) return;
+  if (isHomeControlPendingExpired_(pending)) {
+    expireHomeControlPending_();
+    return;
+  }
   try {
     const data = await callHomeControlApi({ action: "devicePairingStatus", requestId: pending.requestId, requestSecret: pending.requestSecret });
     if (data.status === "active") {
       localStorage.setItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY, pending.token);
       clearHomeControlPending();
       setHomeControlMessage("この端末を登録したで。", "success");
-      await renderHomeControlSettings();
+      await initializeAuthenticatedPwa();
       return;
     }
     pending.expiresAt = data.expiresAt || pending.expiresAt;
     saveHomeControlPending(pending);
   } catch (error) {
     setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
+    if (["PAIRING_REQUEST_INVALID", "INVALID_PAIRING_CODE", "DEVICE_ALREADY_REGISTERED", "UNAUTHORIZED_DEVICE"].includes(error?.code)) {
+      clearHomeControlPending();
+      showAuthenticationState("端末登録を確認できませんでした。", "revoked_error");
+      return;
+    }
   }
   scheduleHomeControlPoll();
 }

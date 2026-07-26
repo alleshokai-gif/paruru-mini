@@ -17,6 +17,13 @@
       <p class="splash-loading">Loading...</p>
     </div>
 
+    <section id="authLock" class="auth-lock" aria-live="polite">
+      <h1>端末登録</h1><p id="authLockMessage">登録状態を確認中…</p>
+      <div id="authLockUnpaired"><label>この端末の名前<input id="authLockDeviceName" maxlength="80" autocomplete="off"></label><button id="authLockBeginButton" type="button">登録を開始</button></div>
+      <div id="authLockPending" hidden><p>承認コード</p><p id="authLockCode"></p><p id="authLockExpiry"></p><p>父の端末で承認してください。</p></div>
+      <div id="authLockUnassigned" hidden><p>端末は承認済みです。家族登録をお待ちください。</p></div>
+      <div id="authLockError" hidden><p>端末登録を再確認してください。</p><button id="authLockRetryButton" type="button">再確認</button></div>
+    </section>
     <button id="menuToggleButton" class="menu-toggle" type="button" aria-label="メニューを開く" aria-controls="appDrawer" aria-expanded="false">☰</button>
 
     <main class="app-shell">

@@ -2,9 +2,22 @@
   'use strict';
   const SLOT_LABELS = {morning:'朝食', lunch:'昼食', post_training:'部活後の補食', dinner:'夕食', condition:'体調'};
   const RULE_LABELS = {morning_not_recorded:'朝食が未記録',post_training_not_recorded:'部活後が未記録',dinner_not_recorded:'夕食が未記録',morning_fuel_missing:'朝の主食なし',post_training_fuel_missing:'補食不足',protein_source_missing:'たんぱく源を確認',symptom_attention:'体調に注意',weight_gain_stalled:'体重の伸びを確認',on_track:'順調'};
-  const state = {context:null,targetUserId:'',daily:null,loading:false,saving:false};
+  const state = {
+    context:null,
+    targetUserId:'',
+    daily:null,
+    loading:false,
+    saving:false,
+    authContext:null,
+    healthApi:null,
+  };
   let saveFlow_ = null;
   document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('paruru:authenticated', function(event) {
+    const detail = event.detail || {};
+    state.authContext = detail.context || null;
+    state.healthApi = typeof detail.healthApi === 'function' ? detail.healthApi : null;
+  });
   function init() {
     setupDrawer_();
     const mount = document.querySelector('#nurseOkanMount'); if (!mount) return;
@@ -15,17 +28,15 @@
     root.querySelector('#nurseSlots').addEventListener('submit', submitSlot_); root.querySelector('#nurseWeight').addEventListener('submit', submitWeight_);
     document.addEventListener('nurse-okan:opened', openNursePanel_);
   }
-  function profile_(){try{return JSON.parse(localStorage.getItem('paruru_profile_v1')||'{}');}catch(_){return {};}}
-  function pairingToken_(){return localStorage.getItem(typeof HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY==='string'?HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY:'paruru-mini-home-agent-pairing-v1')||'';}
   function uuid_(){return crypto.randomUUID ? crypto.randomUUID() : '';}
   function date_(){return new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Tokyo'});}
-  function buildGatewayPayload_(action, profile, pairingToken, targetUserId, body) {
-    return Object.assign({action:action,deviceId:profile.deviceId,pairingToken:pairingToken,targetMemberUserId:targetUserId},body||{});
+  function buildHealthRequest_(action, targetUserId, body) {
+    return Object.assign({action:action,targetMemberUserId:targetUserId},body||{});
   }
   async function call_(action, body) {
     if (!navigator.onLine) { const e=new Error('OFFLINE'); e.code='OFFLINE'; throw e; }
-    const p=profile_(); const response=await fetch(GAS_WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(buildGatewayPayload_(action,p,pairingToken_(),state.targetUserId,body))});
-    let data; try {data=await response.json();} catch (_) {throw new Error('NETWORK');} if(!response.ok||!data.success){const e=new Error((data.error||{}).code||'ERROR');e.code=e.message;throw e;} return data.data;
+    if (!state.authContext || !state.healthApi) { const e=new Error('AUTHENTICATION_REQUIRED'); e.code='AUTHENTICATION_REQUIRED'; throw e; }
+    return state.healthApi(action, buildHealthRequest_(action,state.targetUserId,body));
   }
   async function loadContext_(){setStatus_('読み込み中…');try{state.context=await call_('health.context.get',{});const targets=state.context.targets||[];state.targetUserId=targets.length===1?targets[0].userId:(targets[0]||{}).userId||state.targetUserId;renderTargets_();await refresh_();}catch(e){setStatus_(e.code==='OFFLINE'?'オフライン中。未保存です。':'読み込めませんでした');}}
   async function refresh_(){if(!state.targetUserId)return;setStatus_('読み込み中…');try{const both=await Promise.all([call_('health.daily.get',{localDate:date_()}),call_('health.weight.list',{limit:8})]);state.daily=both[0];render_();setStatus_('');}catch(e){setStatus_(e.code==='OFFLINE'?'オフライン中。未保存です。':'読み込めませんでした');}}
@@ -44,5 +55,5 @@
   function openNursePanel_(){if(!state.context)loadContext_();}
   function setupDrawer_(){const toggle=document.getElementById('menuToggleButton'),drawer=document.getElementById('appDrawer'),overlay=document.getElementById('drawerOverlay'),closeButton=document.getElementById('drawerCloseButton');if(!toggle||!drawer||!overlay||!closeButton)return;createDrawerController_({toggle:toggle,drawer:drawer,overlay:overlay,closeButton:closeButton,menuItems:drawer.querySelectorAll('[data-target-view]'),keyTarget:document,onNavigate:function(viewName){document.dispatchEvent(new CustomEvent('paruru:view-request',{detail:{viewName:viewName}}));}});}
   function createDrawerController_(deps){let open=false;const setOpen=function(next){open=Boolean(next);deps.drawer.classList.toggle('is-open',open);deps.drawer.setAttribute('aria-hidden',String(!open));deps.overlay.hidden=!open;deps.toggle.setAttribute('aria-expanded',String(open));};const close=function(){setOpen(false);};deps.toggle.addEventListener('click',function(){setOpen(!open);});deps.closeButton.addEventListener('click',close);deps.overlay.addEventListener('click',close);deps.keyTarget.addEventListener('keydown',function(event){if(event.key==='Escape'&&open)close();});Array.prototype.forEach.call(deps.menuItems,function(item){item.addEventListener('click',function(){const viewName=item.dataset.targetView;close();deps.onNavigate(viewName);});});return {isOpen:function(){return open;},close:close};}
-  if (typeof module !== 'undefined' && module.exports) module.exports={buildGatewayPayload_:buildGatewayPayload_,createNurseOkanSaveFlow_:createNurseOkanSaveFlow_,createDrawerController_:createDrawerController_};
+  if (typeof module !== 'undefined' && module.exports) module.exports={buildHealthRequest_:buildHealthRequest_,createNurseOkanSaveFlow_:createNurseOkanSaveFlow_,createDrawerController_:createDrawerController_};
 }());
