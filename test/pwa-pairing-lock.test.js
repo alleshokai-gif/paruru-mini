@@ -18,6 +18,7 @@ const nurse = fs.readFileSync(path.join(root, 'features/nurse-okan', 'nurse-okan
   'authLockError',
   'authLockBeginButton',
   'authLockRetryButton',
+  'authLockReRegisterButton',
   'authLockCode',
   'authLockExpiry',
 ].forEach((id) => assert(html.includes(id), `lock DOM missing ${id}`));
@@ -35,12 +36,15 @@ function classList() {
 }
 
 function element() {
+  const listeners = new Map();
   return {
     hidden: false,
     textContent: '',
     value: '',
     classList: classList(),
-    addEventListener() {},
+    disabled: false,
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    async click() { return listeners.get('click') && listeners.get('click')(); },
   };
 }
 
@@ -92,6 +96,7 @@ function createHarness(options = {}) {
     authLockDeviceName: element(),
     authLockBeginButton: element(),
     authLockRetryButton: element(),
+    authLockReRegisterButton: element(),
     authLockCode: element(),
     authLockExpiry: element(),
     authLockMembershipBeginButton: element(),
@@ -108,7 +113,7 @@ function createHarness(options = {}) {
       body: { classList: classList() },
       dispatchEvent(event) { events.push(event); },
     },
-    window: { addEventListener() {} },
+    window: { addEventListener() {}, confirm: () => true },
     CustomEvent: function CustomEvent(type, init) { this.type = type; this.detail = init.detail; },
     localStorage: {
       getItem(key) { return storage.has(key) ? storage.get(key) : null; },
@@ -174,6 +179,18 @@ async function startup(options) {
 }
 
 (async () => {
+  let completeBootCheck;
+  const bootCheck = createHarness({
+    token: 'credential',
+    response: () => new Promise((resolve) => { completeBootCheck = resolve; }),
+  });
+  const bootPromise = bootCheck.context.initializeAuthenticatedPwa();
+  assert.strictEqual(bootCheck.state(), 'booting', 'authentication must remain booting while the server check is pending');
+  assert.strictEqual(bootCheck.panels.lock.hidden, true, 'registration UI must not flash during boot');
+  completeBootCheck({ memberUserId: 'father' });
+  await bootPromise;
+  assert.strictEqual(bootCheck.state(), 'active_member');
+
   const unpaired = await startup();
   assert.strictEqual(unpaired.state(), 'unpaired');
   assert.strictEqual(unpaired.normalInitializations, undefined);
@@ -239,6 +256,51 @@ async function startup(options) {
   assert.strictEqual(revoked.state(), 'revoked_error');
   assert.strictEqual(revoked.context.normalInitializations, 0);
   assert.strictEqual(revoked.panels.error.hidden, false);
+  assert.strictEqual(revoked.context.authLockRetryButton.textContent, '再確認');
+
+  const retry = createHarness({
+    token: 'credential',
+    response: () => { const error = new Error('revoked'); error.code = 'UNAUTHORIZED_DEVICE'; throw error; },
+  });
+  await retry.context.initializeAuthenticatedPwa();
+  const retryClick = retry.context.authLockRetryButton.click();
+  assert.strictEqual(retry.context.authLockRetryButton.disabled, true, 'retry must show an in-progress state');
+  assert.strictEqual(retry.context.authLockRetryButton.textContent, '再確認中…');
+  await retryClick;
+  assert.strictEqual(retry.context.authLockRetryButton.disabled, false, 'retry failure must re-enable the button');
+  assert(retry.panels.message.textContent.includes('再確認できませんでした'), 'retry failure message is not shown');
+
+  const retrySuccess = createHarness({
+    token: 'credential',
+    response: () => { const error = new Error('revoked'); error.code = 'UNAUTHORIZED_DEVICE'; throw error; },
+  });
+  await retrySuccess.context.initializeAuthenticatedPwa();
+  retrySuccess.setResponse(() => ({ memberUserId: 'father' }));
+  await retrySuccess.context.authLockRetryButton.click();
+  assert.strictEqual(retrySuccess.state(), 'active_member');
+  assert.strictEqual(retrySuccess.context.authLockRetryButton.textContent, '再確認');
+  assert(retrySuccess.panels.message.textContent.includes('端末を確認できました'), 'retry success message is not shown');
+
+  const preserve = createHarness({
+    token: 'credential',
+    response: () => { const error = new Error('revoked'); error.code = 'UNAUTHORIZED_DEVICE'; throw error; },
+  });
+  preserve.context.localStorage.setItem('profile', 'profile-data');
+  preserve.context.localStorage.setItem('inbox', 'inbox-data');
+  preserve.context.localStorage.setItem('agent-session', 'session-data');
+  preserve.context.localStorage.setItem('pairing-token', 'credential');
+  preserve.context.localStorage.setItem('pairing-pending', 'pairing-data');
+  preserve.context.localStorage.setItem('membership-pending', 'membership-data');
+  await preserve.context.initializeAuthenticatedPwa();
+  await preserve.context.authLockReRegisterButton.click();
+  assert.strictEqual(preserve.state(), 'unpaired', 're-registration must return to the unpaired screen');
+  assert.strictEqual(preserve.context.localStorage.getItem('pairing-token'), null);
+  assert.strictEqual(preserve.context.localStorage.getItem('pairing-pending'), null);
+  assert.strictEqual(preserve.context.localStorage.getItem('membership-pending'), null);
+  assert.strictEqual(preserve.context.localStorage.getItem('profile'), 'profile-data');
+  assert.strictEqual(preserve.context.localStorage.getItem('inbox'), 'inbox-data');
+  assert.strictEqual(preserve.context.localStorage.getItem('agent-session'), 'session-data');
+  assert.strictEqual(preserve.panels.unpaired.hidden, false);
 
   const pending = createHarness({ token: 'credential' });
   pending.savePending({ requestId: 'request-a', requestSecret: 'secret', token: 'credential', code: '123456', expiresAt: new Date(Date.now() + 60000).toISOString(), requestExpiresAt: Date.now() + 60000 });

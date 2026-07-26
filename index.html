@@ -5,19 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260726-nurse-okan-page-3">
-  <link rel="icon" href="./assets/icons/favicon.png?v=20260726-nurse-okan-page-3" type="image/png">
-  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260726-nurse-okan-page-3">
-  <link rel="stylesheet" href="./style.css?v=20260726-nurse-okan-page-3">
+    <link rel="manifest" href="./manifest.json?v=20260727-revoked-device-repair">
+  <link rel="icon" href="./assets/icons/favicon.png?v=20260727-revoked-device-repair" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260727-revoked-device-repair">
+  <link rel="stylesheet" href="./style.css?v=20260727-revoked-device-repair">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/paluru/official/paruru_face.png?v=20260726-nurse-okan-page-3" alt="&#12401;&#12427;&#12427;">
+      <img class="splash-icon" src="./assets/character/paluru/official/paruru_face.png?v=20260727-revoked-device-repair" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
-      <p class="splash-loading">Loading...</p>
+      <p class="splash-loading">端末を確認中…</p>
     </div>
 
-    <section id="authLock" class="auth-lock" aria-live="polite">
+    <section id="authLock" class="auth-lock" aria-live="polite" hidden>
       <h1>端末登録</h1><p id="authLockMessage">登録状態を確認中…</p>
       <div id="authLockUnpaired"><label>この端末の名前<input id="authLockDeviceName" maxlength="80" autocomplete="off"></label><button id="authLockBeginButton" type="button">登録を開始</button></div>
       <div id="authLockPending" hidden><p>承認コード</p><p id="authLockCode"></p><p id="authLockExpiry"></p><p>父の端末で承認してください。</p></div>
@@ -29,7 +29,11 @@
         </div>
         <p id="authLockMembershipMessage" class="form-message" aria-live="polite"></p>
       </div>
-      <div id="authLockError" hidden><p>端末登録を再確認してください。</p><button id="authLockRetryButton" type="button">再確認</button></div>
+      <div id="authLockError" hidden>
+        <p>端末登録を再確認してください。端末が無効化されている場合は、既存の6桁コードで再登録できます。</p>
+        <button id="authLockRetryButton" type="button">再確認</button>
+        <button id="authLockReRegisterButton" type="button">この端末を再登録</button>
+      </div>
     </section>
     <button id="menuToggleButton" class="menu-toggle" type="button" aria-label="メニューを開く" aria-controls="appDrawer" aria-expanded="false">☰</button>
 
@@ -51,7 +55,7 @@
 
         <section class="paruru-hero" aria-label="&#12401;&#12427;&#12427;&#20250;&#35441;">
           <div class="paruru-character">
-        <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_bust.png?v=20260726-nurse-okan-page-3" alt="&#12401;&#12427;&#12427;">
+        <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_bust.png?v=20260727-revoked-device-repair" alt="&#12401;&#12427;&#12427;">
           </div>
           <div class="paruru-speech-column">
             <div id="paruruSpeech" class="paruru-bubble paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</div>
@@ -431,8 +435,8 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=20260726-nurse-okan-page-3" defer></script>
-    <script src="./features/nurse-okan/nurse-okan.js?v=20260726-nurse-okan-page-3" defer></script>
+    <script src="./app.js?v=20260727-revoked-device-repair" defer></script>
+    <script src="./features/nurse-okan/nurse-okan.js?v=20260727-revoked-device-repair" defer></script>
   </body>
 </html>
 

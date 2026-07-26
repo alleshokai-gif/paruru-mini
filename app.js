@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.0.0";
-const ASSET_VERSION = "v20260726-nurse-okan-page-3";
+const ASSET_VERSION = "v20260727-revoked-device-repair";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "";
@@ -284,6 +284,7 @@ const authLockError = document.querySelector("#authLockError");
 const authLockDeviceName = document.querySelector("#authLockDeviceName");
 const authLockBeginButton = document.querySelector("#authLockBeginButton");
 const authLockRetryButton = document.querySelector("#authLockRetryButton");
+const authLockReRegisterButton = document.querySelector("#authLockReRegisterButton");
 const authLockCode = document.querySelector("#authLockCode");
 const authLockExpiry = document.querySelector("#authLockExpiry");
 const authLockMembershipBeginButton = document.querySelector("#authLockMembershipBeginButton");
@@ -457,6 +458,11 @@ function showAuthenticationState(message, state = "locked") {
   splash?.classList.remove("is-hidden");
   const loading = splash?.querySelector(".splash-loading");
   if (loading) loading.textContent = message;
+  if (state === "booting") {
+    if (authLock) authLock.hidden = true;
+    document.body.classList.remove("is-authenticated");
+    return;
+  }
   if (authLock) {
     authLock.hidden = false;
     authLockMessage.textContent = message;
@@ -475,6 +481,49 @@ function showAuthenticationState(message, state = "locked") {
   }
 }
 
+function setAuthenticationRetryState_(message, isBusy = false) {
+  if (authLockMessage) authLockMessage.textContent = message;
+  if (authLockRetryButton) {
+    authLockRetryButton.disabled = isBusy;
+    authLockRetryButton.textContent = isBusy ? "再確認中…" : "再確認";
+  }
+}
+
+async function retryAuthentication_() {
+  if (authLockRetryButton?.disabled) return;
+  setAuthenticationRetryState_("端末を再確認中…", true);
+  try {
+    await initializeAuthenticatedPwa();
+    if (appAuthenticationState === "active_member") {
+      setAuthenticationRetryState_("端末を確認できました。");
+      if (typeof message !== "undefined" && message) {
+        message.textContent = "端末を確認できました。";
+        message.className = "message success";
+      }
+      return;
+    }
+    if (appAuthenticationState === "revoked_error") {
+      setAuthenticationRetryState_("再確認できませんでした。端末が無効化されている場合は再登録してください。");
+    }
+  } catch (error) {
+    showAuthenticationState("再確認できませんでした。", "revoked_error");
+  } finally {
+    if (appAuthenticationState !== "active_member") setAuthenticationRetryState_(authLockMessage?.textContent || "再確認できませんでした。");
+  }
+}
+
+function resetRevokedDeviceForReRegistration_() {
+  if (appAuthenticationState !== "revoked_error") return;
+  const confirmReRegistration = typeof window.confirm === "function"
+    ? window.confirm("この端末を再登録します。端末の承認情報だけを削除し、プロフィールやメモは残ります。続けますか？")
+    : false;
+  if (!confirmReRegistration) return;
+  localStorage.removeItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY);
+  clearHomeControlPending();
+  clearMembershipRegistrationPending();
+  showAuthenticationState("この端末は未登録です。既存の6桁コードで登録を開始してください。", "unpaired");
+}
+
 function initializeNormalPwaOnce() {
   if (normalPwaInitialized) return;
   normalPwaInitialized = true;
@@ -490,19 +539,18 @@ function initializeNormalPwaOnce() {
   loadNotificationCandidates({ force: true });
 }
 
-authLockBeginButton?.addEventListener("click", async () => {
-  if (homeControlDeviceName) {
-    homeControlDeviceName.value = authLockDeviceName.value;
-  }
-  await beginHomeControlPairing();
-  renderAuthenticationLock_();
-});
-authLockRetryButton?.addEventListener("click", () => {
-  initializeAuthenticatedPwa();
-});
-authLockMembershipBeginButton?.addEventListener("click", () => {
-  beginMembershipRegistration();
-});
+function bindAuthenticationLockControls_() {
+  authLockBeginButton?.addEventListener("click", async () => {
+    if (homeControlDeviceName) homeControlDeviceName.value = authLockDeviceName.value;
+    await beginHomeControlPairing();
+    renderAuthenticationLock_();
+  });
+  authLockRetryButton?.addEventListener("click", retryAuthentication_);
+  authLockReRegisterButton?.addEventListener("click", resetRevokedDeviceForReRegistration_);
+  authLockMembershipBeginButton?.addEventListener("click", () => beginMembershipRegistration());
+}
+
+bindAuthenticationLockControls_();
 
 function renderAuthenticationLock_() {
   const pending = getHomeControlPending();
@@ -534,6 +582,7 @@ const renderMembershipRegistrationLock_ = function() {
 };
 
 async function initializeAuthenticatedPwa() {
+  showAuthenticationState("端末を確認中…", "booting");
   userProfile = loadUserProfile();
   const token = getHomeAgentPairingToken();
   if (!token) {
@@ -551,6 +600,7 @@ async function initializeAuthenticatedPwa() {
       return;
     }
     showAuthenticationState("端末登録を確認できませんでした。", "revoked_error");
+    setAuthenticationRetryState_("端末登録を確認できませんでした。再確認するか、この端末を再登録してください。");
   }
 }
 
