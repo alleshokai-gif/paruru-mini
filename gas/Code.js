@@ -1922,26 +1922,10 @@ function getCalendarByConfig_(config) {
   return calendar;
 }
 
-const CALENDAR_SUFFIX_BY_MEMBER_USER_ID_ = Object.freeze({
-  father: '（父）',
-  mother: '（母）',
-  eldest_son: '（理）',
-  eldest_daughter: '（は）',
-  second_son: '（ふ）',
-  youngest_daughter: '（り）',
-});
-
-const KNOWN_CALENDAR_SUFFIXES_ = Object.freeze(Object.keys(CALENDAR_SUFFIX_BY_MEMBER_USER_ID_)
-  .map(function(memberUserId) {
-    return CALENDAR_SUFFIX_BY_MEMBER_USER_ID_[memberUserId];
-  }));
-
 function getCalendarSuffixForMember_(memberUserId) {
   const normalizedMemberUserId = String(memberUserId || '').trim();
-  const suffix = CALENDAR_SUFFIX_BY_MEMBER_USER_ID_[normalizedMemberUserId];
-  if (suffix) {
-    return suffix;
-  }
+  const policy = findHomeMemberPolicy_(normalizedMemberUserId);
+  if (policy) return policy.calendarSuffix;
 
   const error = new Error('UNKNOWN_CALENDAR_MEMBER');
   error.code = 'UNKNOWN_CALENDAR_MEMBER';
@@ -1956,9 +1940,10 @@ function getCalendarSuffix_(body, item) {
 function stripKnownCalendarSuffixes_(title) {
   let normalizedTitle = String(title || '').trim();
   let removed = true;
+  const knownCalendarSuffixes = getKnownHomeMemberCalendarSuffixes_();
   while (removed && normalizedTitle) {
     removed = false;
-    KNOWN_CALENDAR_SUFFIXES_.forEach(function(suffix) {
+    knownCalendarSuffixes.forEach(function(suffix) {
       if (normalizedTitle.endsWith(suffix)) {
         normalizedTitle = normalizedTitle.slice(0, -suffix.length).trim();
         removed = true;

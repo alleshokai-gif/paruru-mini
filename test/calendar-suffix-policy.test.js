@@ -6,6 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 const codeSource = fs.readFileSync(path.join(__dirname, '..', 'gas', 'Code.js'), 'utf8');
+const policySource = fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMemberPolicy.js'), 'utf8');
 const homeAgentSource = fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeAgentCore.js'), 'utf8');
 const writes = [];
 let savedItem = null;
@@ -21,6 +22,7 @@ const context = {
 };
 
 vm.createContext(context);
+vm.runInContext(policySource, context);
 vm.runInContext(codeSource, context);
 vm.runInContext(homeAgentSource, context);
 Object.assign(context, {

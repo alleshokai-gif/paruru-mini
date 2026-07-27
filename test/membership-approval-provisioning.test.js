@@ -46,13 +46,13 @@ function setup(options = {}) {
   const spreadsheet = new Spreadsheet();
   spreadsheet.sheets.Home_Members = new Sheet(spreadsheet, homeHeaders);
   spreadsheet.sheets.Device_Memberships = new Sheet(spreadsheet, deviceHeaders);
-  add(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'father', displayName: 'Father', role: options.adminRole || 'admin', status: 'active' });
+  add(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: options.adminRole || 'admin', status: 'active' });
   add(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'admin-device', homeId: options.adminDeviceHome || 'home-a', memberUserId: 'father', status: 'active' });
   if (options.duplicateTargetDevice) {
     add(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'target-device', homeId: 'home-a', memberUserId: 'father', status: 'disabled' });
     add(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'target-device', homeId: 'home-a', memberUserId: 'father', status: 'disabled' });
   }
-  if (options.existingSecondSon) add(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'second_son', displayName: 'Second Son', role: 'self_record', status: 'disabled' });
+  if (options.existingSecondSon) add(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'second_son', displayName: '次男', role: 'self_record', status: 'disabled' });
   const registry = { devices: { 'admin-device': { status: 'active' } } };
   const context = {
     SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet },
@@ -63,6 +63,7 @@ function setup(options = {}) {
     Error, String, Object, Array,
   };
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMemberPolicy.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMembershipService.js'), 'utf8'), context);
   return { spreadsheet, registry, api: context };
 }

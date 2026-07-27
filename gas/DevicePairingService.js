@@ -459,7 +459,7 @@ function validateDevicePairingApproveInput_(body) {
   const code = String(body.code || '').trim();
   const membershipTemplate = String(body.membershipTemplate || '').trim();
   if (!/^\d{6}$/.test(code)) throw homeControlPairingError_('INVALID_PAIRING_CODE');
-  if (['father_add_device', 'second_son_initial'].indexOf(membershipTemplate) < 0) throw homeControlPairingError_('INVALID_MEMBERSHIP_TEMPLATE');
+  if (!isHomeMemberApprovalTemplate_(membershipTemplate)) throw homeControlPairingError_('INVALID_MEMBERSHIP_TEMPLATE');
   return { deviceId: auth.deviceId, pairingToken: auth.pairingToken, code: code, membershipTemplate: membershipTemplate };
 }
 

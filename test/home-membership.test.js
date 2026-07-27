@@ -33,6 +33,7 @@ function load(spreadsheet, properties) {
       : ({ handled: true, authorized: false }),
   };
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMemberPolicy.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMembershipService.js'), 'utf8'), context);
   return context;
 }
@@ -44,16 +45,17 @@ const deviceHeaders = ['memberUserId', 'updatedAt', 'homeId', 'deviceId', 'statu
 const spreadsheet = new Spreadsheet();
 spreadsheet.sheets.Home_Members = new Sheet(homeHeaders);
 spreadsheet.sheets.Device_Memberships = new Sheet(deviceHeaders);
-addRow(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'father', role: 'admin', status: 'active' });
-addRow(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'second_son', role: 'self_record', status: 'active' });
+addRow(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', status: 'active' });
+addRow(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'second_son', displayName: '次男', role: 'self_record', status: 'active' });
 addRow(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-b', memberUserId: 'other_child', role: 'self_record', status: 'active' });
 addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'father-phone', homeId: 'home-a', memberUserId: 'father', status: 'active' });
 addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'son-phone', homeId: 'home-a', memberUserId: 'second_son', status: 'active' });
 addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'old-phone', homeId: 'home-a', memberUserId: 'second_son', status: 'disabled' });
+addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'unknown-phone', homeId: 'home-b', memberUserId: 'other_child', status: 'active' });
 const api = load(spreadsheet, {});
 
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_('father-phone', 'pairing'))), { homeId: 'home-a', memberUserId: 'father', role: 'admin', deviceId: 'father-phone' });
-assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }))), { homeId: 'home-a', memberUserId: 'father', displayName: '', role: 'admin', capabilities: ['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record'], deviceId: 'father-phone' });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }))), { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record'], deviceId: 'father-phone' });
 assert.strictEqual(api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: 'pairing' }).memberUserId, 'second_son');
 expectCode(() => api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: '' }), 'UNAUTHORIZED_DEVICE');
 assert.strictEqual(api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }).memberUserId, 'father');
@@ -64,6 +66,15 @@ spreadsheet.sheets.Home_Members.values[1][fatherStatusColumn] = 'disabled';
 expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing' }), 'MEMBERSHIP_NOT_FOUND');
 spreadsheet.sheets.Home_Members.values[1][fatherStatusColumn] = 'active';
 expectCode(() => api.resolveAuthenticatedActor_('old-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
+expectCode(() => api.resolveAuthenticatedActor_('unknown-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
+const fatherDisplayNameColumn = homeHeaders.indexOf('displayName');
+spreadsheet.sheets.Home_Members.values[1][fatherDisplayNameColumn] = 'Father';
+expectCode(() => api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
+spreadsheet.sheets.Home_Members.values[1][fatherDisplayNameColumn] = '父';
+const fatherRoleColumn = homeHeaders.indexOf('role');
+spreadsheet.sheets.Home_Members.values[1][fatherRoleColumn] = 'self_record';
+expectCode(() => api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
+spreadsheet.sheets.Home_Members.values[1][fatherRoleColumn] = 'admin';
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'second_son', 'health.weight.record'), true);
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.weight.record'), 'FORBIDDEN');
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'other_child', 'health.weight.record'), 'FORBIDDEN');

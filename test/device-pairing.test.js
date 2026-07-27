@@ -7,6 +7,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'gas', 'DevicePairingService.js'), 'utf8');
+const policySource = fs.readFileSync(path.join(root, 'gas', 'HomeMemberPolicy.js'), 'utf8');
 const securitySource = fs.readFileSync(path.join(root, 'gas', 'HomeAgentActionSecurity.js'), 'utf8');
 const properties = {};
 let nowMs = Date.parse('2026-07-20T10:00:00+09:00');
@@ -46,7 +47,7 @@ const context = {
   provisionMembershipFromApprovalTemplateWithinRegistryLock_: () => ({ status: 'active' }),
 };
 vm.createContext(context);
-new vm.Script(source + '\n' + securitySource).runInContext(context);
+new vm.Script(policySource + '\n' + source + '\n' + securitySource).runInContext(context);
 
 const parentToken = 'parent-pairing-token-000000000000000000000001';
 const childTokenHash = hash('child-pairing-token-000000000000000000000002');

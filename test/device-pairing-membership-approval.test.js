@@ -7,6 +7,7 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'gas', 'DevicePairingService.js'), 'utf8');
+const policySource = fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMemberPolicy.js'), 'utf8');
 const parentId = 'admin-device';
 const childId = 'joining-device';
 const parentToken = 'test-parent-credential-000000000000000000000001';
@@ -58,6 +59,7 @@ function createHarness() {
     getDeviceMembership_: () => null,
   };
   vm.createContext(context);
+  vm.runInContext(policySource, context);
   vm.runInContext(source, context);
 
   function seedParent() {
