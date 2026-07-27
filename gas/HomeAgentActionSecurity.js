@@ -38,8 +38,9 @@ function createHomeAgentActionConfirmation_(candidate, request, pairingToken, de
   const parameters = Object.assign({}, candidate && candidate.parameters || {});
   const roomId = String(parameters.roomId || '').trim();
   assertAllowedHomeAgentRoom_(roomId, deps);
-  const actor = sanitizeHomeAgentActionActor_(request || {});
-  verifyHomeAgentDevicePairing_(actor.deviceId, pairingToken, deps);
+  const trustedActor = request && request._authenticatedActor;
+  const actor = trustedActor ? sanitizeTrustedHomeAgentActionActor_(trustedActor) : sanitizeHomeAgentActionActor_(request || {});
+  if (!trustedActor) verifyHomeAgentDevicePairing_(actor.deviceId, pairingToken, deps);
   const clientRequestId = String(request && request.clientRequestId || '').trim();
   if (!isHomeAgentActionUuid_(clientRequestId)) throw homeAgentActionSecurityError_('INVALID_CLIENT_REQUEST_ID');
 
@@ -264,6 +265,16 @@ function sanitizeHomeAgentActionActor_(request) {
   return {
     userId: String(request.userId || '').trim().slice(0, 100),
     userDisplayName: String(request.userDisplayName || '').trim().slice(0, 100),
+    deviceId: deviceId,
+  };
+}
+
+function sanitizeTrustedHomeAgentActionActor_(actor) {
+  const deviceId = String(actor && actor.deviceId || '').trim().slice(0, 200);
+  if (!deviceId) throw homeAgentActionSecurityError_('UNAUTHORIZED_DEVICE');
+  return {
+    userId: String(actor && actor.memberUserId || '').trim().slice(0, 100),
+    userDisplayName: String(actor && actor.displayName || '').trim().slice(0, 100),
     deviceId: deviceId,
   };
 }

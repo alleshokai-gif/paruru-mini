@@ -569,9 +569,11 @@ test('E new submission gets new request ID and reuses session', async () => {
 test('E2 invalid stored session is regenerated and UUID fallback works', () => {
   const harness = createHarness();
   harness.storage.set('paruru-mini-agent-chat-session-v1', 'invalid-session');
+  harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
   const payload = harness.run('buildAgentChatPayload("書斎暑い？")');
   assert(/^[0-9a-f-]{36}$/i.test(payload.sessionId), 'invalid session was not regenerated');
   assert(harness.storage.get('paruru-mini-agent-chat-session-v1') === payload.sessionId, 'new session was not stored');
+  assert(payload.pairingToken === 'pairing-token-placeholder-000000000001', 'agentChat pairing token was not attached');
   harness.context.crypto.randomUUID = undefined;
   const fallback = harness.run('createUuid()');
   assert(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(fallback), 'UUID fallback is invalid');

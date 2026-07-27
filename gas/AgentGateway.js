@@ -5,7 +5,8 @@ const PALURU_AGENT_TOKEN_PROPERTY = 'PALURU_AGENT_TOKEN';
 
 function agentChat_(body) {
   try {
-    const input = validateAgentChatInput_(body || {});
+    const actor = resolveHomeAgentReadActor_(body || {});
+    const input = validateAgentChatInput_(body || {}, actor);
     const config = getPaluruAgentConfig_();
     const response = callPaluruAgent_(config, input);
     return json_(buildAgentChatSuccess_(response, input));
@@ -39,7 +40,7 @@ function agentActionCancel_(body) {
   }
 }
 
-function validateAgentChatInput_(body) {
+function validateAgentChatInput_(body, actor) {
   const message = String(body.message || '').trim();
   const sessionId = String(body.sessionId || '').trim();
   const clientRequestId = String(body.clientRequestId || '').trim();
@@ -56,12 +57,12 @@ function validateAgentChatInput_(body) {
     sessionId: sessionId,
     clientRequestId: clientRequestId,
     actor: {
-      userId: String(body.userId || '').trim().slice(0, 100),
-      userDisplayName: String(body.userDisplayName || '').trim().slice(0, 100),
-      deviceId: String(body.deviceId || '').trim().slice(0, 200),
-      visibility: String(body.visibility || 'private').trim(),
-      category: String(body.category || '').trim(),
-      priority: String(body.priority || '').trim(),
+      memberUserId: String(actor && actor.memberUserId || '').trim().slice(0, 100),
+      displayName: String(actor && actor.displayName || '').trim().slice(0, 100),
+      role: String(actor && actor.role || '').trim().slice(0, 100),
+      capabilities: Array.isArray(actor && actor.capabilities) ? actor.capabilities.slice() : [],
+      homeId: String(actor && actor.homeId || '').trim().slice(0, 200),
+      deviceId: String(actor && actor.deviceId || '').trim().slice(0, 200),
     },
   };
 }

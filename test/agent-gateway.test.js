@@ -10,6 +10,9 @@ const files = ['Code.js', 'AgentGateway.js'];
 const properties = {};
 const logs = [];
 let fetchImpl = () => { throw new Error('live network forbidden'); };
+let readActor = null;
+let readActorError = null;
+let readActorCalls = 0;
 
 const context = {
   console: { log: (...args) => logs.push(args.join(' ')) },
@@ -29,6 +32,14 @@ const context = {
 };
 vm.createContext(context);
 new vm.Script(files.map((name) => fs.readFileSync(path.join(gasDir, name), 'utf8')).join('\n')).runInContext(context);
+context.resolveHomeAgentReadActor_ = () => {
+  readActorCalls += 1;
+  if (readActorError) throw Object.assign(new Error(readActorError), { code: readActorError });
+  return readActor || {
+    homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
+    capabilities: ['home.read', 'home.control'], deviceId: 'server-device',
+  };
+};
 
 const sessionId = '550e8400-e29b-41d4-a716-446655440000';
 const clientRequestId = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
@@ -63,7 +74,7 @@ function mockFetch(status, body, onCall) {
   };
 }
 function configure() { properties.PALURU_AGENT_URL = secretUrl; properties.PALURU_AGENT_TOKEN = secretToken; }
-function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; fetchImpl = () => { throw new Error('live network forbidden'); }; }
+function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; }
 function assert(value, message) { if (!value) throw new Error(message); }
 
 const tests = [];
@@ -76,10 +87,26 @@ test('tool-free response', () => {
     assert(url === secretUrl && sent.authToken === secretToken, 'server credentials not used');
     assert(options.contentType === 'text/plain;charset=utf-8', 'wrong content type');
     assert(!('userId' in sent) && sent.action === 'agent.chat', 'wrong upstream contract');
-    assert(sent.actor.userId === 'father' && sent.actor.deviceId === 'device', 'actor not forwarded');
+    assert(sent.actor.memberUserId === 'father' && sent.actor.displayName === '父' && sent.actor.deviceId === 'server-device', 'server actor not forwarded');
+    assert(!Object.prototype.hasOwnProperty.call(sent.actor, 'userId') && !Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'client actor or pairing token leaked downstream');
   });
   const result = post(valid({ userId: 'father', userDisplayName: '父', deviceId: 'device' }));
   assert(result.success && result.reply && result.toolExecutions.length === 0, 'tool-free response failed');
+});
+
+test('read authorization rejects before Agent call and ignores client actor spoofing', () => {
+  configure();
+  let calls = 0;
+  mockFetch(200, agentResponse('ok'), () => { calls += 1; });
+  readActor = { homeId: 'home-a', memberUserId: 'second_son', displayName: '次男', role: 'self_record', capabilities: ['home.read'], deviceId: 'son-device' };
+  const allowed = post(valid({ userId: 'father', userDisplayName: '父', role: 'admin', capabilities: ['home.control'], homeId: 'spoofed', pairingToken: 'spoofed-token' }));
+  assert(allowed.success && calls === 1 && readActorCalls === 1, 'self_record home.read was not accepted');
+
+  reset(); configure();
+  mockFetch(200, agentResponse('must not be called'), () => { calls += 1; });
+  readActorError = 'UNAUTHORIZED_DEVICE';
+  const rejected = post(valid({ pairingToken: '' }));
+  assert(!rejected.success && calls === 1 && readActorCalls === 1, 'unauthorized request reached Agent');
 });
 
 test('climate tool response is sanitized', () => {

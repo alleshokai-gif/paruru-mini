@@ -1610,6 +1610,7 @@ function buildAgentChatPayload(messageText, options = {}) {
     userId: profile.userId,
     userDisplayName: profile.displayName,
     deviceId: profile.deviceId,
+    pairingToken: getHomeAgentPairingToken(),
   };
 }
 
@@ -1627,6 +1628,7 @@ async function submitAgentChatQuery(messageText, options = {}) {
     userId: request.userId,
     userDisplayName: request.userDisplayName,
     deviceId: request.deviceId,
+    pairingToken: request.pairingToken,
   };
   pendingHomeAgentRetry = request;
   const loadingMessage = request.purpose === "calendar"

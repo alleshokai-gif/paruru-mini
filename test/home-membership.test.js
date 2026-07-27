@@ -28,7 +28,9 @@ function load(spreadsheet, properties) {
     SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || '' }) },
     Utilities: { formatDate: () => '2026-07-24T12:00:00+09:00' },
-    verifyHomeControlDevicePairing_: () => ({ handled: true, authorized: true }),
+    verifyHomeControlDevicePairing_: (_deviceId, pairingToken) => String(pairingToken || '') === 'pairing'
+      ? ({ handled: true, authorized: true })
+      : ({ handled: true, authorized: false }),
   };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMembershipService.js'), 'utf8'), context);
@@ -51,6 +53,9 @@ addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'old-ph
 const api = load(spreadsheet, {});
 
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_('father-phone', 'pairing'))), { homeId: 'home-a', memberUserId: 'father', role: 'admin', deviceId: 'father-phone' });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }))), { homeId: 'home-a', memberUserId: 'father', displayName: '', role: 'admin', capabilities: ['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record'], deviceId: 'father-phone' });
+assert.strictEqual(api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: 'pairing' }).memberUserId, 'second_son');
+expectCode(() => api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: '' }), 'UNAUTHORIZED_DEVICE');
 expectCode(() => api.resolveAuthenticatedActor_('old-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'second_son', 'health.weight.record'), true);
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.weight.record'), 'FORBIDDEN');

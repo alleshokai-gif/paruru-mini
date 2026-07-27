@@ -1,5 +1,30 @@
 ﻿function homeAgent_(body) {
-  return json_(runHomeAgentRequest_(body || {}));
+  const actor = resolveHomeAgentReadActor_(body || {});
+  return json_(runHomeAgentRequest_(buildTrustedHomeAgentRequest_(body || {}, actor)));
+}
+
+function buildTrustedHomeAgentRequest_(body, actor) {
+  const trustedActor = actor || {};
+  const request = Object.assign({}, body || {}, {
+    userId: trustedActor.memberUserId,
+    userDisplayName: trustedActor.displayName,
+    role: trustedActor.role,
+    capabilities: Array.isArray(trustedActor.capabilities) ? trustedActor.capabilities.slice() : [],
+    homeId: trustedActor.homeId,
+    deviceId: trustedActor.deviceId,
+    useMocks: false,
+    allowActiveSpreadsheetFallback: false,
+    _authenticatedActor: {
+      memberUserId: trustedActor.memberUserId,
+      displayName: trustedActor.displayName,
+      role: trustedActor.role,
+      capabilities: Array.isArray(trustedActor.capabilities) ? trustedActor.capabilities.slice() : [],
+      homeId: trustedActor.homeId,
+      deviceId: trustedActor.deviceId,
+    },
+  });
+  delete request.pairingToken;
+  return request;
 }
 
 function homeAgentAction_(body) {
@@ -89,7 +114,7 @@ function runHomeAgentRequest_(body) {
   const actionCandidates = secureHomeAgentActionCandidates_(
     resultActionCandidates.concat(signageCandidates),
     request,
-    body && body.pairingToken
+    '',
   );
   if (responseResult && Array.isArray(responseResult.actionCandidates)) {
     responseResult.actionCandidates = actionCandidates.filter(function(candidate) {
