@@ -13,6 +13,9 @@ let fetchImpl = () => { throw new Error('live network forbidden'); };
 let readActor = null;
 let readActorError = null;
 let readActorCalls = 0;
+let controlActor = null;
+let controlActorError = null;
+let controlActorCalls = 0;
 
 const context = {
   console: { log: (...args) => logs.push(args.join(' ')) },
@@ -38,6 +41,15 @@ context.resolveHomeAgentReadActor_ = () => {
   return readActor || {
     homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
     capabilities: ['home.read', 'home.control'], deviceId: 'server-device',
+  };
+};
+context.resolveHomeAgentControlActor_ = () => {
+  controlActorCalls += 1;
+  if (controlActorError) throw Object.assign(new Error(controlActorError), { code: controlActorError });
+  if (typeof controlActor === 'function') return controlActor(controlActorCalls);
+  return controlActor || {
+    homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
+    capabilities: ['home.read', 'home.control'], deviceId: 'server-control-device',
   };
 };
 
@@ -74,7 +86,7 @@ function mockFetch(status, body, onCall) {
   };
 }
 function configure() { properties.PALURU_AGENT_URL = secretUrl; properties.PALURU_AGENT_TOKEN = secretToken; }
-function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; }
+function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; controlActor = null; controlActorError = null; controlActorCalls = 0; }
 function assert(value, message) { if (!value) throw new Error(message); }
 
 const tests = [];
@@ -259,14 +271,11 @@ test('aircon actionConfirmation uses the same allowlist without exposing command
   assert(!exposed.includes('private-command') && !exposed.includes('private-device'), 'aircon internals leaked');
 });
 
-test('agentActionConfirm verifies pairing before calling Agent', () => {
+test('agentActionConfirm resolves control actor twice before calling Agent', () => {
   configure();
   let agentCalls = 0;
   context.getHomeAgentActionDependencies_ = () => ({});
   context.assertHomeAgentActionsEnabled_ = () => {};
-  context.verifyHomeAgentDevicePairing_ = (deviceId, pairingToken) => {
-    assert(deviceId === 'device-1' && pairingToken === 'pairing-token-placeholder-000000000001', 'pairing input changed');
-  };
   context.CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
   mockFetch(200, {
     success: true,
@@ -284,24 +293,25 @@ test('agentActionConfirm verifies pairing before calling Agent', () => {
     assert(sent.action === 'agent.confirmAction', 'wrong Agent action');
     assert(!Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'pairing token sent to Agent');
     assert(!Object.prototype.hasOwnProperty.call(sent, 'operation'), 'operation sent from browser to Agent');
+    assert(!Object.prototype.hasOwnProperty.call(sent, 'actor'), 'client actor sent to Agent');
   });
   const result = post({
     action: 'agentActionConfirm',
     confirmationId: '88888888-8888-4888-8888-888888888888',
     clientRequestId,
-    deviceId: 'device-1',
+    deviceId: 'spoofed-device',
     pairingToken: 'pairing-token-placeholder-000000000001',
+    userId: 'spoofed-user', role: 'self_record', capabilities: [], homeId: 'spoofed-home', _authenticatedActor: { deviceId: 'spoofed' },
   });
-  assert(result.success && agentCalls === 1 && result.operation === 'pause', 'confirm failed');
+  assert(result.success && agentCalls === 1 && controlActorCalls === 2 && result.operation === 'pause', 'confirm failed');
 });
 
-test('agentActionConfirm kill switch and pairing failures short-circuit Agent', () => {
+test('agentActionConfirm kill switch and control authorization failures short-circuit Agent', () => {
   configure();
   let agentCalls = 0;
   mockFetch(200, agentResponse('not used'), () => { agentCalls += 1; });
   context.getHomeAgentActionDependencies_ = () => ({});
   context.assertHomeAgentActionsEnabled_ = () => { const error = new Error('disabled'); error.code = 'HOME_AGENT_ACTIONS_DISABLED'; throw error; };
-  context.verifyHomeAgentDevicePairing_ = () => {};
   let result = post({
     action: 'agentActionConfirm',
     confirmationId: '88888888-8888-4888-8888-888888888888',
@@ -311,7 +321,7 @@ test('agentActionConfirm kill switch and pairing failures short-circuit Agent', 
   });
   assert(result.error.code === 'HOME_AGENT_ACTIONS_DISABLED' && agentCalls === 0, 'kill switch did not short-circuit');
   context.assertHomeAgentActionsEnabled_ = () => {};
-  context.verifyHomeAgentDevicePairing_ = () => { const error = new Error('bad'); error.code = 'UNAUTHORIZED_DEVICE'; throw error; };
+  controlActorError = 'FORBIDDEN';
   result = post({
     action: 'agentActionConfirm',
     confirmationId: '88888888-8888-4888-8888-888888888888',
@@ -319,17 +329,29 @@ test('agentActionConfirm kill switch and pairing failures short-circuit Agent', 
     deviceId: 'device-1',
     pairingToken: 'bad-token',
   });
-  assert(result.error.code === 'UNAUTHORIZED_DEVICE' && agentCalls === 0, 'pairing failure reached Agent');
+  assert(result.error.code === 'FORBIDDEN' && agentCalls === 0, 'control authorization failure reached Agent');
 });
 
-test('agentActionCancel verifies pairing and sends only confirmation identifiers', () => {
+test('agentActionConfirm rechecks membership immediately before Agent call', () => {
   configure();
   let agentCalls = 0;
   context.getHomeAgentActionDependencies_ = () => ({});
   context.assertHomeAgentActionsEnabled_ = () => {};
-  context.verifyHomeAgentDevicePairing_ = (deviceId, pairingToken) => {
-    assert(deviceId === 'device-1' && pairingToken === 'pairing-token-placeholder-000000000001', 'pairing input changed');
+  context.CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
+  controlActor = (call) => {
+    if (call === 1) return { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.control'], deviceId: 'server-control-device' };
+    throw Object.assign(new Error('MEMBERSHIP_NOT_FOUND'), { code: 'MEMBERSHIP_NOT_FOUND' });
   };
+  mockFetch(200, agentResponse('must not be called'), () => { agentCalls += 1; });
+  const result = post({ action: 'agentActionConfirm', confirmationId: '88888888-8888-4888-8888-888888888888', clientRequestId, deviceId: 'spoofed', pairingToken: 'credential' });
+  assert(result.error.code === 'MEMBERSHIP_NOT_FOUND' && controlActorCalls === 2 && agentCalls === 0, 'membership change reached Agent');
+});
+
+test('agentActionCancel resolves control actor and sends only confirmation identifiers', () => {
+  configure();
+  let agentCalls = 0;
+  context.getHomeAgentActionDependencies_ = () => ({});
+  context.assertHomeAgentActionsEnabled_ = () => {};
   mockFetch(200, {
     success: true,
     schemaVersion: 'agent-chat-1.0',
@@ -355,14 +377,14 @@ test('agentActionCancel verifies pairing and sends only confirmation identifiers
     action: 'agentActionCancel',
     confirmationId: '88888888-8888-4888-8888-888888888888',
     clientRequestId,
-    deviceId: 'device-1',
+    deviceId: 'spoofed-device',
     pairingToken: 'pairing-token-placeholder-000000000001',
     operation: 'resume',
     roomId: 'living',
     durationMinutes: 1,
     confirmed: true,
   });
-  assert(result.success && result.status === 'cancelled' && agentCalls === 1, 'cancel failed');
+  assert(result.success && result.status === 'cancelled' && agentCalls === 1 && controlActorCalls === 2, 'cancel failed');
 });
 
 test('agentActionCancel kill switch short-circuits Agent', () => {
@@ -371,7 +393,6 @@ test('agentActionCancel kill switch short-circuits Agent', () => {
   mockFetch(200, agentResponse('not used'), () => { agentCalls += 1; });
   context.getHomeAgentActionDependencies_ = () => ({});
   context.assertHomeAgentActionsEnabled_ = () => { const error = new Error('disabled'); error.code = 'HOME_AGENT_ACTIONS_DISABLED'; throw error; };
-  context.verifyHomeAgentDevicePairing_ = () => {};
   const result = post({
     action: 'agentActionCancel',
     confirmationId: '88888888-8888-4888-8888-888888888888',

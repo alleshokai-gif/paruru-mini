@@ -89,6 +89,22 @@ function resolveHomeAgentReadActor_(body) {
   };
 }
 
+function resolveHomeAgentControlActor_(body) {
+  const input = body || {};
+  const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
+  authorizeCapability_(actor, 'home.control');
+  const member = getHomeMember_(actor.homeId, actor.memberUserId);
+  if (!member || member.status !== 'active') throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+  return {
+    homeId: actor.homeId,
+    memberUserId: actor.memberUserId,
+    displayName: member.displayName,
+    role: actor.role,
+    capabilities: ROLE_CAPABILITIES[actor.role].slice(),
+    deviceId: actor.deviceId,
+  };
+}
+
 function getMembershipContext_(body) {
   const input = body || {};
   const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);

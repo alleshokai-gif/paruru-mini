@@ -17,10 +17,12 @@ function agentChat_(body) {
 
 function agentActionConfirm_(body) {
   try {
-    const input = validateAgentActionConfirmInput_(body || {});
-    verifyAgentActionDevice_(input.deviceId, input.pairingToken);
-    enforceAgentActionRateLimit_(input.deviceId, input.clientRequestId);
+    const actor = resolveHomeAgentControlActor_(body || {});
+    const input = validateAgentActionConfirmInput_(body || {}, actor);
+    assertAgentActionsEnabled_();
+    enforceAgentActionRateLimit_(actor.deviceId, input.clientRequestId);
     const config = getPaluruAgentConfig_();
+    assertSameHomeAgentControlActor_(actor, resolveHomeAgentControlActor_(body || {}));
     const response = callPaluruAgentActionConfirm_(config, input);
     return json_(buildAgentActionConfirmSuccess_(response));
   } catch (error) {
@@ -30,9 +32,11 @@ function agentActionConfirm_(body) {
 
 function agentActionCancel_(body) {
   try {
-    const input = validateAgentActionConfirmInput_(body || {});
-    verifyAgentActionDevice_(input.deviceId, input.pairingToken);
+    const actor = resolveHomeAgentControlActor_(body || {});
+    const input = validateAgentActionConfirmInput_(body || {}, actor);
+    assertAgentActionsEnabled_();
     const config = getPaluruAgentConfig_();
+    assertSameHomeAgentControlActor_(actor, resolveHomeAgentControlActor_(body || {}));
     const response = callPaluruAgentActionCancel_(config, input);
     return json_(buildAgentActionCancelSuccess_(response));
   } catch (error) {
@@ -147,26 +151,35 @@ function buildAgentChatSuccess_(response, input) {
   return result;
 }
 
-function validateAgentActionConfirmInput_(body) {
+function validateAgentActionConfirmInput_(body, actor) {
   const confirmationId = String(body.confirmationId || '').trim();
   const clientRequestId = String(body.clientRequestId || '').trim();
-  const deviceId = String(body.deviceId || '').trim().slice(0, 200);
-  const pairingToken = String(body.pairingToken || '');
-  if (!isUuid_(confirmationId) || !isUuid_(clientRequestId) || !deviceId) {
+  if (!isUuid_(confirmationId) || !isUuid_(clientRequestId) || !actor || !actor.deviceId) {
     throw createAgentGatewayError_('INVALID_INPUT');
   }
   return {
     confirmationId: confirmationId,
     clientRequestId: clientRequestId,
-    deviceId: deviceId,
-    pairingToken: pairingToken
+    actor: {
+      homeId: String(actor.homeId || '').trim().slice(0, 200),
+      memberUserId: String(actor.memberUserId || '').trim().slice(0, 100),
+      deviceId: String(actor.deviceId || '').trim().slice(0, 200),
+    },
   };
 }
 
-function verifyAgentActionDevice_(deviceId, pairingToken) {
+function assertAgentActionsEnabled_() {
   const deps = getHomeAgentActionDependencies_();
   assertHomeAgentActionsEnabled_(deps);
-  verifyHomeAgentDevicePairing_(deviceId, pairingToken, deps);
+}
+
+function assertSameHomeAgentControlActor_(expected, actual) {
+  if (!expected || !actual
+      || String(expected.homeId || '') !== String(actual.homeId || '')
+      || String(expected.memberUserId || '') !== String(actual.memberUserId || '')
+      || String(expected.deviceId || '') !== String(actual.deviceId || '')) {
+    throw createAgentGatewayError_('UNAUTHORIZED_DEVICE');
+  }
 }
 
 function enforceAgentActionRateLimit_(deviceId, clientRequestId) {
@@ -336,6 +349,8 @@ function buildAgentActionConfirmError_(error) {
     AGENT_UNAVAILABLE: true,
     AGENT_ERROR: true,
     UNAUTHORIZED_DEVICE: true,
+    FORBIDDEN: true,
+    MEMBERSHIP_NOT_FOUND: true,
     HOME_AGENT_ACTIONS_DISABLED: true,
     AGENT_ACTION_RATE_LIMITED: true,
   };
@@ -345,7 +360,7 @@ function buildAgentActionConfirmError_(error) {
 
 function getAgentActionPublicErrorMessage_(code) {
   if (code === 'HOME_AGENT_ACTIONS_DISABLED') return 'home agent operations are disabled';
-  if (code === 'UNAUTHORIZED_DEVICE') return 'device authentication failed';
+  if (code === 'UNAUTHORIZED_DEVICE' || code === 'FORBIDDEN' || code === 'MEMBERSHIP_NOT_FOUND') return 'device authentication failed';
   if (code === 'AGENT_ACTION_RATE_LIMITED') return 'too many action requests';
   if (code === 'CONFIGURATION_ERROR') return 'Agent connection is not configured';
   if (code === 'AGENT_UNAVAILABLE') return 'Agent is unavailable';

@@ -28,7 +28,30 @@ function buildTrustedHomeAgentRequest_(body, actor) {
 }
 
 function homeAgentAction_(body) {
-  return json_(runHomeAgentAction_(body || {}));
+  const actor = resolveHomeAgentControlActor_(body || {});
+  return json_(runHomeAgentAction_(buildTrustedHomeAgentActionRequest_(body || {}, actor)));
+}
+
+function buildTrustedHomeAgentActionRequest_(body, actor) {
+  const trustedActor = actor || {};
+  const request = Object.assign({}, body || {}, {
+    userId: trustedActor.memberUserId,
+    userDisplayName: trustedActor.displayName,
+    role: trustedActor.role,
+    capabilities: Array.isArray(trustedActor.capabilities) ? trustedActor.capabilities.slice() : [],
+    homeId: trustedActor.homeId,
+    deviceId: trustedActor.deviceId,
+    _authenticatedActor: {
+      memberUserId: trustedActor.memberUserId,
+      displayName: trustedActor.displayName,
+      role: trustedActor.role,
+      capabilities: Array.isArray(trustedActor.capabilities) ? trustedActor.capabilities.slice() : [],
+      homeId: trustedActor.homeId,
+      deviceId: trustedActor.deviceId,
+    },
+  });
+  delete request.pairingToken;
+  return request;
 }
 
 function runHomeAgentAction_(body) {

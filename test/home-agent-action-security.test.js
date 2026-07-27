@@ -26,6 +26,7 @@ const clientIds = [
   '44444444-4444-4444-8444-444444444444',
   '55555555-5555-4555-8555-555555555555',
   '66666666-6666-4666-8666-666666666666',
+  '77777777-7777-4777-8777-777777777777',
 ];
 
 function sha256(value) {
@@ -69,7 +70,28 @@ function configure() {
 }
 
 function request(clientRequestId) {
-  return { clientRequestId, userId: 'father', userDisplayName: '父', deviceId };
+  return {
+    clientRequestId,
+    userId: 'spoofed-user',
+    userDisplayName: '偽名',
+    deviceId: 'spoofed-device',
+    _authenticatedActor: trustedActor(),
+  };
+}
+
+function trustedActor(overrides) {
+  return Object.assign({
+    homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
+    capabilities: ['home.read', 'home.control'], deviceId,
+  }, overrides || {});
+}
+
+function confirmationBody(issued, overrides) {
+  return Object.assign({
+    confirmationId: issued.confirmationId,
+    clientRequestId: issued.clientRequestId,
+    _authenticatedActor: trustedActor(),
+  }, overrides || {});
 }
 
 function pauseCandidate(hours) {
@@ -96,9 +118,10 @@ test('kill switch missing or disabled fails closed', () => {
   assert(result.error.code === 'HOME_AGENT_ACTIONS_DISABLED' && executeCalls === 0, 'disabled action executed');
 });
 
-test('device pairing and server room allowlist are required', () => {
+test('trusted control actor and server room allowlist are required', () => {
   configure();
-  assert(errorCode(() => context.createHomeAgentActionConfirmation_(pauseCandidate(2), request(clientIds[0]), 'wrong-token-that-is-long-enough-000000', deps)) === 'UNAUTHORIZED_DEVICE', 'wrong pairing accepted');
+  const untrusted = { clientRequestId: clientIds[0], deviceId };
+  assert(errorCode(() => context.createHomeAgentActionConfirmation_(pauseCandidate(2), untrusted, token, deps)) === 'UNAUTHORIZED_DEVICE', 'untrusted actor accepted');
   const badRoom = pauseCandidate(2); badRoom.parameters.roomId = 'unknown-room';
   assert(errorCode(() => context.createHomeAgentActionConfirmation_(badRoom, request(clientIds[0]), token, deps)) === 'ROOM_NOT_ALLOWED', 'unknown room accepted');
 });
@@ -108,25 +131,22 @@ test('confirmation is bound to operation and omits mutable parameters', () => {
   const issued = context.createHomeAgentActionConfirmation_(pauseCandidate(2), request(clientIds[0]), token, deps);
   const text = JSON.stringify(issued);
   assert(issued.type === 'homeAgentActionConfirmation' && !text.includes('bedroom') && !text.includes('duration') && !text.includes('pauseRoomAutomation'), 'mutable operation leaked');
-  const response = context.executeHomeAgentActionConfirmation_({
-    confirmationId: issued.confirmationId,
-    clientRequestId: issued.clientRequestId,
-    pairingToken: token,
+  const response = context.executeHomeAgentActionConfirmation_(confirmationBody(issued, {
     candidate: { skill: 'resumeRoomAutomation', parameters: { roomId: 'living', durationMinutes: 999 } },
-  }, deps);
+  }), deps);
   assert(response.success && response.operation === 'pause', 'client altered bound operation');
   assert(!JSON.stringify(response).includes('must-not-leak'), 'execution result was not sanitized');
 });
 
 test('missing altered and expired confirmations are rejected', () => {
   configure();
-  const missing = context.executeHomeAgentActionConfirmation_({ clientRequestId: clientIds[1], pairingToken: token }, deps);
+  const missing = context.executeHomeAgentActionConfirmation_({ clientRequestId: clientIds[1], _authenticatedActor: trustedActor() }, deps);
   assert(missing.error.code === 'INVALID_CONFIRMATION', 'missing confirmation accepted');
   const issued = context.createHomeAgentActionConfirmation_(pauseCandidate(2), request(clientIds[1]), token, deps);
-  const altered = context.executeHomeAgentActionConfirmation_({ confirmationId: issued.confirmationId, clientRequestId: clientIds[2], pairingToken: token }, deps);
+  const altered = context.executeHomeAgentActionConfirmation_(confirmationBody(issued, { clientRequestId: clientIds[2] }), deps);
   assert(altered.error.code === 'INVALID_CONFIRMATION', 'altered request accepted');
   nowMs += 6 * 60 * 1000;
-  const expired = context.executeHomeAgentActionConfirmation_({ confirmationId: issued.confirmationId, clientRequestId: issued.clientRequestId, pairingToken: token }, deps);
+  const expired = context.executeHomeAgentActionConfirmation_(confirmationBody(issued), deps);
   assert(expired.error.code === 'CONFIRMATION_EXPIRED', 'expired confirmation accepted');
   nowMs -= 6 * 60 * 1000;
 });
@@ -135,11 +155,30 @@ test('same confirmation executes upstream once and replays same result', () => {
   configure();
   const issued = context.createHomeAgentActionConfirmation_(resumeCandidate(), request(clientIds[2]), token, deps);
   const before = executeCalls;
-  const body = { confirmationId: issued.confirmationId, clientRequestId: issued.clientRequestId, pairingToken: token };
+  const body = confirmationBody(issued);
   const first = context.executeHomeAgentActionConfirmation_(body, deps);
   const second = context.executeHomeAgentActionConfirmation_(body, deps);
   assert(first.success && JSON.stringify(first) === JSON.stringify(second), 'result replay changed');
   assert(executeCalls === before + 1, 'upstream executed more than once');
+});
+
+test('confirmation is bound to the server actor and legacy records fail closed', () => {
+  configure();
+  const issued = context.createHomeAgentActionConfirmation_(pauseCandidate(2), request(clientIds[6]), token, deps);
+  const before = executeCalls;
+  const otherDevice = confirmationBody(issued, { _authenticatedActor: trustedActor({ deviceId: 'other-device' }) });
+  const denied = context.executeHomeAgentActionConfirmation_(otherDevice, deps);
+  assert(denied.error.code === 'UNAUTHORIZED_DEVICE' && executeCalls === before, 'other device executed a confirmation');
+
+  const key = context.homeAgentActionPendingKey_(issued.confirmationId, deps);
+  const envelope = JSON.parse(state.get(key));
+  const legacy = JSON.parse(envelope.value);
+  legacy.actor = { userId: 'father', deviceId };
+  envelope.value = JSON.stringify(legacy);
+  state.put(key, JSON.stringify(envelope));
+  const legacyDenied = context.executeHomeAgentActionConfirmation_(confirmationBody(issued), deps);
+  assert(legacyDenied.error.code === 'UNAUTHORIZED_DEVICE' && executeCalls === before, 'legacy confirmation record executed');
+  assert(state.get(key), 'rejected confirmation changed pending state');
 });
 
 test('same clientRequestId issues one confirmation and cannot create a second pause', () => {
@@ -148,7 +187,7 @@ test('same clientRequestId issues one confirmation and cannot create a second pa
   const second = context.createHomeAgentActionConfirmation_(pauseCandidate(2), request(clientIds[3]), token, deps);
   assert(first.confirmationId === second.confirmationId, 'retry issued a second confirmation');
   const before = executeCalls;
-  const body = { confirmationId: first.confirmationId, clientRequestId: clientIds[3], pairingToken: token };
+  const body = confirmationBody(first);
   context.executeHomeAgentActionConfirmation_(body, deps);
   context.executeHomeAgentActionConfirmation_(body, deps);
   assert(executeCalls === before + 1, 'retry created a second operation');
@@ -180,11 +219,14 @@ test('production executor revalidates room state and resume target immediately b
   context.pauseRoomAutomationSkill_ = () => { pauseWrites += 1; return { success: true, data: { activePause: { expiresAt: 'later', status: 'active' } } }; };
   context.getRoomAutomationPauseSkill_ = () => ({ success: true, data: { activePause: { pauseId: 'expected-target' } } });
   context.resumeRoomAutomationSkill_ = () => { resumeWrites += 1; return { success: true, data: { resumed: 1, status: 'cancelled' } }; };
-  context.executeSecuredHomeAgentActionRecord_({ skill: 'pauseRoomAutomation', roomId: 'bedroom', actor: {}, operation: { pauseExpiresAt: 'later' } });
-  context.executeSecuredHomeAgentActionRecord_({ skill: 'resumeRoomAutomation', roomId: 'bedroom', actor: {}, operation: { resumeTarget: 'expected-target' } });
+  const recordActor = { homeId: 'home-a', memberUserId: 'father', deviceId };
+  context.executeSecuredHomeAgentActionRecord_({ skill: 'pauseRoomAutomation', roomId: 'bedroom', actor: recordActor, operation: { pauseExpiresAt: 'later' } }, trustedActor());
+  context.executeSecuredHomeAgentActionRecord_({ skill: 'resumeRoomAutomation', roomId: 'bedroom', actor: recordActor, operation: { resumeTarget: 'expected-target' } }, trustedActor());
   assert(pauseWrites === 1 && resumeWrites === 1, 'validated operations did not execute');
-  assert(errorCode(() => context.executeSecuredHomeAgentActionRecord_({ skill: 'resumeRoomAutomation', roomId: 'bedroom', actor: {}, operation: { resumeTarget: 'changed-target' } })) === 'HOME_AGENT_ACTION_STATE_CHANGED', 'changed resume target executed');
+  assert(errorCode(() => context.executeSecuredHomeAgentActionRecord_({ skill: 'resumeRoomAutomation', roomId: 'bedroom', actor: recordActor, operation: { resumeTarget: 'changed-target' } }, trustedActor())) === 'HOME_AGENT_ACTION_STATE_CHANGED', 'changed resume target executed');
   assert(resumeWrites === 1, 'resume wrote after target changed');
+  assert(errorCode(() => context.executeSecuredHomeAgentActionRecord_({ skill: 'pauseRoomAutomation', roomId: 'bedroom', actor: recordActor, operation: { pauseExpiresAt: 'later' } }, trustedActor({ capabilities: ['home.read'] }))) === 'UNAUTHORIZED_DEVICE', 'missing control capability reached write');
+  assert(pauseWrites === 1, 'write occurred after control capability recheck failed');
 });
 
 test('read-only route remains and PWA sends no mutable action fields', () => {
@@ -201,7 +243,7 @@ test('tokens confirmation IDs and operation bodies are not logged', () => {
   const all = source + fs.readFileSync(path.join(root, 'gas', 'HomeAgentCore.js'), 'utf8') + fs.readFileSync(path.join(root, 'app.js'), 'utf8');
   assert(!/Logger\.log\([^\n]*(pairingToken|confirmationId)/.test(all), 'sensitive value logged by GAS');
   assert(!/debugLog\([^\n]*(pairingToken|confirmationId)/.test(all), 'sensitive value logged by PWA');
-  const failure = context.executeHomeAgentActionConfirmation_({ confirmationId: 'bad', clientRequestId: clientIds[5], pairingToken: token }, deps);
+  const failure = context.executeHomeAgentActionConfirmation_({ confirmationId: 'bad', clientRequestId: clientIds[5], _authenticatedActor: trustedActor() }, deps);
   const text = JSON.stringify(failure);
   assert(!text.includes(token) && !text.includes('bedroom'), 'public error leaked protected input');
 });

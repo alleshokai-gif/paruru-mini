@@ -56,6 +56,13 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_(
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }))), { homeId: 'home-a', memberUserId: 'father', displayName: '', role: 'admin', capabilities: ['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record'], deviceId: 'father-phone' });
 assert.strictEqual(api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: 'pairing' }).memberUserId, 'second_son');
 expectCode(() => api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: '' }), 'UNAUTHORIZED_DEVICE');
+assert.strictEqual(api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }).memberUserId, 'father');
+expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'son-phone', pairingToken: 'pairing' }), 'FORBIDDEN');
+expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: '' }), 'UNAUTHORIZED_DEVICE');
+const fatherStatusColumn = homeHeaders.indexOf('status');
+spreadsheet.sheets.Home_Members.values[1][fatherStatusColumn] = 'disabled';
+expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing' }), 'MEMBERSHIP_NOT_FOUND');
+spreadsheet.sheets.Home_Members.values[1][fatherStatusColumn] = 'active';
 expectCode(() => api.resolveAuthenticatedActor_('old-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'second_son', 'health.weight.record'), true);
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.weight.record'), 'FORBIDDEN');
