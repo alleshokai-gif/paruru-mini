@@ -32,22 +32,22 @@ const legacy = load([
   ['one', 'private memo must not leak', 'Inbox'],
   ['two', 'another private memo', 'Inbox'],
 ]);
-assert.deepStrictEqual(JSON.parse(JSON.stringify(legacy.api.setupMemoOwnershipSchema_())), { addedHeaders: ['ownerUserId', 'createdByUserId'], addedHeaderCount: 2 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(legacy.api.setupMemoOwnershipSchema())), { addedHeaders: ['ownerUserId', 'createdByUserId'], addedHeaderCount: 2 });
 assert.deepStrictEqual(legacy.sheet.values[0], ['id', 'memo', 'status', 'ownerUserId', 'createdByUserId']);
-assert.deepStrictEqual(JSON.parse(JSON.stringify(legacy.api.setupMemoOwnershipSchema_())), { addedHeaders: [], addedHeaderCount: 0 });
-const beforeAudit = legacy.api.auditLegacyMemoOwnership_();
+assert.deepStrictEqual(JSON.parse(JSON.stringify(legacy.api.setupMemoOwnershipSchema())), { addedHeaders: [], addedHeaderCount: 0 });
+const beforeAudit = legacy.api.auditLegacyMemoOwnership();
 assert.deepStrictEqual(JSON.parse(JSON.stringify(beforeAudit)), { ownerUnsetCount: 2, ownerSetCount: 0, duplicateHeaders: [] });
 assert(!JSON.stringify(beforeAudit).includes('private memo'), 'memo text leaked from audit');
-assert.deepStrictEqual(JSON.parse(JSON.stringify(legacy.api.migrateLegacyMemosToFather_())), { migratedCount: 2 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(legacy.api.migrateLegacyMemosToFather())), { migratedCount: 2 });
 assert.deepStrictEqual(legacy.sheet.values[1].slice(3), ['father', 'father']);
-assert.deepStrictEqual(JSON.parse(JSON.stringify(legacy.api.migrateLegacyMemosToFather_())), { migratedCount: 0 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(legacy.api.migrateLegacyMemosToFather())), { migratedCount: 0 });
 
 const mixed = load([
   ['id', 'memo', 'ownerUserId', 'createdByUserId'],
   ['one', 'keep owner', 'second_son', 'second_son'],
   ['two', 'migrate only this', '', ''],
 ]);
-assert.deepStrictEqual(JSON.parse(JSON.stringify(mixed.api.migrateLegacyMemosToFather_())), { migratedCount: 1 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(mixed.api.migrateLegacyMemosToFather())), { migratedCount: 1 });
 assert.deepStrictEqual(mixed.sheet.values[1].slice(2), ['second_son', 'second_son']);
 assert.deepStrictEqual(mixed.sheet.values[2].slice(2), ['father', 'father']);
 
@@ -55,12 +55,12 @@ const partial = load([
   ['id', 'memo', 'ownerUserId', 'createdByUserId'],
   ['one', 'do not overwrite', '', 'second_son'],
 ]);
-expectCode(() => partial.api.auditLegacyMemoOwnership_(), 'MEMO_OWNERSHIP_INCONSISTENT');
-expectCode(() => partial.api.migrateLegacyMemosToFather_(), 'MEMO_OWNERSHIP_INCONSISTENT');
+expectCode(() => partial.api.auditLegacyMemoOwnership(), 'MEMO_OWNERSHIP_INCONSISTENT');
+expectCode(() => partial.api.migrateLegacyMemosToFather(), 'MEMO_OWNERSHIP_INCONSISTENT');
 assert.deepStrictEqual(partial.sheet.values[1].slice(2), ['', 'second_son']);
-expectCode(() => load([['id', 'memo', 'memo']]).api.setupMemoOwnershipSchema_(), 'MEMO_OWNERSHIP_CONFIGURATION_ERROR');
-expectCode(() => load(null).api.setupMemoOwnershipSchema_(), 'MEMO_OWNERSHIP_CONFIGURATION_ERROR');
+expectCode(() => load([['id', 'memo', 'memo']]).api.setupMemoOwnershipSchema(), 'MEMO_OWNERSHIP_CONFIGURATION_ERROR');
+expectCode(() => load(null).api.setupMemoOwnershipSchema(), 'MEMO_OWNERSHIP_CONFIGURATION_ERROR');
 
 const code = fs.readFileSync(path.join(__dirname, '..', 'gas', 'Code.js'), 'utf8');
-['setupMemoOwnershipSchema_', 'auditLegacyMemoOwnership_', 'migrateLegacyMemosToFather_'].forEach((name) => assert(!code.includes(name), name + ' must not be exposed through doPost'));
+['setupMemoOwnershipSchema', 'auditLegacyMemoOwnership', 'migrateLegacyMemosToFather'].forEach((name) => assert(!code.includes(name), name + ' must not be exposed through doPost'));
 console.log('PASS memo ownership schema, migration, privacy, and web isolation');

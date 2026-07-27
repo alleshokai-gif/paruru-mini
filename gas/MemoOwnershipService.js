@@ -3,8 +3,8 @@ const MEMO_OWNERSHIP_HEADERS = Object.freeze(['ownerUserId', 'createdByUserId'])
 const MEMO_OWNERSHIP_REQUIRED_HEADERS = Object.freeze(['id', 'memo']);
 const LEGACY_MEMO_OWNER_USER_ID = 'father';
 
-// Manual-only maintenance function. It is intentionally not routed from doPost.
-function setupMemoOwnershipSchema_() {
+// Trusted operator-only maintenance function. Run manually from the Apps Script editor; never route from doPost.
+function setupMemoOwnershipSchema() {
   const sheet = getMemoOwnershipSheet_();
   const schema = getMemoOwnershipSchema_(sheet, false);
   const missingHeaders = MEMO_OWNERSHIP_HEADERS.filter(function(header) {
@@ -22,8 +22,8 @@ function setupMemoOwnershipSchema_() {
   };
 }
 
-// Manual-only audit. Counts never include memo text or row contents.
-function auditLegacyMemoOwnership_() {
+// Trusted operator-only audit. Run manually from the Apps Script editor; counts never include memo text or row contents.
+function auditLegacyMemoOwnership() {
   const sheet = getMemoOwnershipSheet_();
   const schema = getMemoOwnershipSchema_(sheet, true);
   const ownerColumn = schema.index.ownerUserId + 1;
@@ -56,8 +56,8 @@ function auditLegacyMemoOwnership_() {
   };
 }
 
-// Manual-only migration. Existing ownership is never overwritten.
-function migrateLegacyMemosToFather_() {
+// Trusted operator-only migration. Run manually from the Apps Script editor; existing ownership is never overwritten.
+function migrateLegacyMemosToFather() {
   const sheet = getMemoOwnershipSheet_();
   const schema = getMemoOwnershipSchema_(sheet, true);
   const rowCount = Math.max(sheet.getLastRow() - 1, 0);
