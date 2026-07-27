@@ -10,6 +10,7 @@
     saving:false,
     authContext:null,
     healthApi:null,
+    preview:null,
   };
   let saveFlow_ = null;
   document.addEventListener('DOMContentLoaded', init);
@@ -17,6 +18,16 @@
     const detail = event.detail || {};
     state.authContext = detail.context || null;
     state.healthApi = typeof detail.healthApi === 'function' ? detail.healthApi : null;
+  });
+  document.addEventListener('paruru:developer-preview', function(event) {
+    const detail = event.detail || {};
+    state.preview = detail.active === true ? detail.fixture || {} : null;
+    if (!state.preview) { state.context=null; state.daily=null; state.targetUserId=''; return; }
+    const health = state.preview.health || {};
+    state.context = health.context || {targets:[]};
+    state.daily = health.daily || {slots:{},ruleCodes:[]};
+    state.targetUserId = ((state.context.targets || [])[0] || {}).userId || '';
+    renderTargets_(); render_(); setPreviewDisabled_(); setStatus_('次男プレビュー／保存不可');
   });
   function init() {
     setupDrawer_();
@@ -34,6 +45,7 @@
     return Object.assign({action:action,targetMemberUserId:targetUserId},body||{});
   }
   async function call_(action, body) {
+    if (state.preview) { const e=new Error('DEVELOPER_PREVIEW_READ_ONLY'); e.code='DEVELOPER_PREVIEW_READ_ONLY'; throw e; }
     if (!navigator.onLine) { const e=new Error('OFFLINE'); e.code='OFFLINE'; throw e; }
     if (!state.authContext || !state.healthApi) { const e=new Error('AUTHENTICATION_REQUIRED'); e.code='AUTHENTICATION_REQUIRED'; throw e; }
     return state.healthApi(action, buildHealthRequest_(action,state.targetUserId,body));
@@ -52,7 +64,8 @@
   function ensureSaveFlow_(){if(!saveFlow_)saveFlow_=createNurseOkanSaveFlow_({call:call_,onSaving:function(){state.saving=true;setStatus_('保存中…');},onSuccess:async function(action,data){if(action==='health.daily.recordSlot')state.daily=data;else {document.getElementById('nurseWeight').reset();await refresh_();}render_();},onSaved:function(){setStatus_('保存しました');},onFailure:function(e){setStatus_(e.code==='OFFLINE'?'オフライン中。送信していません。入力は残しています。':'保存できませんでした。入力は残しています。');},onSettled:function(){state.saving=false;}});return saveFlow_;}
   async function save_(action,payload){return ensureSaveFlow_().save(action,payload);}
   function setStatus_(text){const el=document.getElementById('nurseStatus');if(el)el.textContent=text;}
-  function openNursePanel_(){if(!state.context)loadContext_();}
+  function setPreviewDisabled_(){const root=document.getElementById('nurseOkanRoot');if(!root)return;root.querySelectorAll('input, select, textarea, button').forEach(function(control){control.disabled=Boolean(state.preview);});}
+  function openNursePanel_(){if(state.preview){renderTargets_();render_();setPreviewDisabled_();return;}if(!state.context)loadContext_();}
   function setupDrawer_(){const toggle=document.getElementById('menuToggleButton'),drawer=document.getElementById('appDrawer'),overlay=document.getElementById('drawerOverlay'),closeButton=document.getElementById('drawerCloseButton');if(!toggle||!drawer||!overlay||!closeButton)return;createDrawerController_({toggle:toggle,drawer:drawer,overlay:overlay,closeButton:closeButton,menuItems:drawer.querySelectorAll('[data-target-view]'),keyTarget:document,onNavigate:function(viewName){document.dispatchEvent(new CustomEvent('paruru:view-request',{detail:{viewName:viewName}}));}});}
   function createDrawerController_(deps){let open=false;const setOpen=function(next){open=Boolean(next);deps.drawer.classList.toggle('is-open',open);deps.drawer.setAttribute('aria-hidden',String(!open));deps.overlay.hidden=!open;deps.toggle.setAttribute('aria-expanded',String(open));};const close=function(){setOpen(false);};deps.toggle.addEventListener('click',function(){setOpen(!open);});deps.closeButton.addEventListener('click',close);deps.overlay.addEventListener('click',close);deps.keyTarget.addEventListener('keydown',function(event){if(event.key==='Escape'&&open)close();});Array.prototype.forEach.call(deps.menuItems,function(item){item.addEventListener('click',function(){const viewName=item.dataset.targetView;close();deps.onNavigate(viewName);});});return {isOpen:function(){return open;},close:close};}
   if (typeof module !== 'undefined' && module.exports) module.exports={buildHealthRequest_:buildHealthRequest_,createNurseOkanSaveFlow_:createNurseOkanSaveFlow_,createDrawerController_:createDrawerController_};

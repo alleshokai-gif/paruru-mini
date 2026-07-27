@@ -11,6 +11,11 @@
   <link rel="stylesheet" href="./style.css?v=20260727-device-approval-code-input">
   </head>
   <body>
+    <aside id="developerPreviewBanner" class="developer-preview-banner" aria-live="polite" hidden>
+      <strong>次男プレビュー／保存不可</strong>
+      <span>固定fixture表示中。実データ・本番APIは使用しません。</span>
+      <button id="developerPreviewExitButton" type="button">プレビューを終了</button>
+    </aside>
     <div id="splash" class="splash" aria-label="Loading">
       <img class="splash-icon" src="./assets/character/paluru/official/paruru_face.png?v=20260727-device-approval-code-input" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
@@ -233,6 +238,11 @@
               <div id="homeControlDeviceList"></div>
             </div>
             <p id="homeControlMessage" class="form-message" aria-live="polite"></p>
+          </section>
+          <section id="developerPreviewSettings" class="settings-fieldset" hidden>
+            <legend>開発者プレビュー</legend>
+            <p>父adminだけが、保存不可の次男fixtureを確認できます。</p>
+            <button id="developerPreviewStartButton" type="button">次男プレビューを開始</button>
           </section>
           <p id="buildVersion" class="build-version">Build loading...</p>
         </div>

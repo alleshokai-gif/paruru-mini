@@ -27,6 +27,26 @@ body {
   overflow-x: clip;
 }
 
+.developer-preview-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 720px);
+  margin: 0 auto;
+  padding: 10px 16px;
+  background: #3f2f73;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.developer-preview-banner span { flex: 1; }
+.developer-preview-banner button { border: 0; border-radius: 8px; padding: 7px 10px; background: #fff; color: #3f2f73; font-weight: 700; }
+
+body.is-developer-preview .app-shell { opacity: 0.98; }
+
 body {
   position: relative;
   min-height: 100vh;
