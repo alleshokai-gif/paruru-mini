@@ -111,13 +111,16 @@ test('wrong code expires, rate limits, and cannot be reused', () => {
   assert(!approve(second.data.code).success, 'used code was accepted again');
 });
 
-test('unregistered or revoked devices cannot approve or use the registry', () => {
+test('unregistered, revoked, or current devices cannot approve or use the registry', () => {
   reset(); legacyParent();
   const started = begin();
   const unknown = post('devicePairingApprove_', { deviceId: 'unknown-device', pairingToken: parentToken, code: started.data.code, membershipTemplate: 'father_add_device' });
   assert(!unknown.success && unknown.error.code === 'UNAUTHORIZED_DEVICE', 'unregistered device approved');
-  const revoked = post('devicePairingRevoke_', { deviceId: parentId, pairingToken: parentToken, targetDeviceId: parentId });
-  assert(revoked.success, 'registered device could not revoke itself');
+  const current = post('devicePairingRevoke_', { deviceId: parentId, pairingToken: parentToken, targetDeviceId: parentId });
+  assert(!current.success && current.error.code === 'CANNOT_REVOKE_CURRENT_DEVICE', 'current device could revoke itself');
+  const registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  registry.devices[parentId].status = 'revoked';
+  properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(registry);
   const rejected = post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code: started.data.code, membershipTemplate: 'father_add_device' });
   assert(!rejected.success && rejected.error.code === 'UNAUTHORIZED_DEVICE', 'revoked device approved');
 });

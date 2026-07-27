@@ -10,7 +10,9 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const style = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
 function between(start, end) { return source.slice(source.indexOf(start), source.indexOf(end)); }
 const approveSource = between('async function approveHomeControlPairing()', 'async function revokeHomeControlDevice');
+const revokeSource = between('async function revokeHomeControlDevice(targetDeviceId)', 'async function renderHomeControlSettings()');
 const renderSource = between('async function renderHomeControlSettings()', 'function renderHomeControlDeviceList');
+const deviceListSource = between('function renderHomeControlDeviceList(devices)', 'function getHomeControlPublicMessage');
 
 assert(html.includes('<span>スマホに表示された6桁コード</span>'), 'approval code label is missing');
 assert(/id="homeControlApproveCode"[^>]*inputmode="numeric"[^>]*pattern="\[0-9\]\*"[^>]*maxlength="6"[^>]*autocomplete="one-time-code"[^>]*placeholder="000000"/.test(html), 'approval code input attributes changed');
@@ -23,24 +25,25 @@ function createHarness(options = {}) {
   const requests = [];
   const messages = [];
   const context = {
-    String, Array, Object, Promise,
+    String, Array, Object, Promise, Boolean,
     homeControlApproveCode: element(options.code || '123456'),
     homeControlMembershipTemplate: element(options.template || ''),
     homeControlApproveButton: element(),
     homeControlApprovePanel: element(),
     homeControlUnregistered: element(), homeControlPending: element(), homeControlRegistered: element(),
-    homeControlPendingCode: element(), homeControlPendingExpiry: element(), homeControlStatus: element(), homeControlDeviceName: element(), homeControlRegisteredLabel: element(),
+    homeControlPendingCode: element(), homeControlPendingExpiry: element(), homeControlStatus: element(), homeControlDeviceName: element(), homeControlRegisteredLabel: element(), homeControlDeviceList: Object.assign(element(), { replaceChildren() {} }),
     getCurrentProfile: () => ({ deviceId: 'test-device', displayName: '父' }),
     getHomeAgentPairingToken: () => 'test-credential',
     getHomeControlPending: () => null,
     formatHomeControlExpiry: () => '', scheduleHomeControlPoll() {},
+    escapeHtml: (value) => String(value),
     renderHomeControlDeviceList() {},
     setHomeControlMessage(message, type) { messages.push({ message, type }); },
     callHomeControlApi: async (payload) => { requests.push(payload); return payload.action === 'devicePairingList' ? { devices: [] } : {}; },
     renderHomeControlSettings: async () => {},
   };
   vm.createContext(context);
-  vm.runInContext(`let appAuthenticationState = ${JSON.stringify(options.state || 'active_member')}; let activeMembershipContext = ${JSON.stringify({ role: options.role || 'admin' })}; ${approveSource}\n${renderSource}\nglobalThis.setRole_ = (role) => { activeMembershipContext = { role }; };`, context);
+  vm.runInContext(`let appAuthenticationState = ${JSON.stringify(options.state || 'active_member')}; let activeMembershipContext = ${JSON.stringify({ role: options.role || 'admin' })}; ${approveSource}\n${revokeSource}\n${renderSource}\n${deviceListSource}\nglobalThis.setRole_ = (role) => { activeMembershipContext = { role }; };`, context);
   return { context, requests, messages };
 }
 
@@ -63,13 +66,24 @@ function createHarness(options = {}) {
   const nonAdmin = createHarness({ template: 'father_add_device', role: 'self_record' });
   await nonAdmin.context.renderHomeControlSettings();
   assert.strictEqual(nonAdmin.context.homeControlApprovePanel.hidden, true, 'non-admin must not see approval controls');
+  assert.strictEqual(nonAdmin.context.homeControlDeviceList.hidden, true, 'non-admin must not see device list');
+  assert.strictEqual(nonAdmin.requests.length, 0, 'non-admin must not request the device list');
   await nonAdmin.context.approveHomeControlPairing();
-  assert.strictEqual(nonAdmin.requests.length, 1, 'render list request only; approval must not be sent');
-  assert.strictEqual(nonAdmin.requests[0].action, 'devicePairingList');
+  await nonAdmin.context.revokeHomeControlDevice('another-device');
+  assert.strictEqual(nonAdmin.requests.length, 0, 'non-admin must not send approval or revoke requests');
 
   const admin = createHarness({ template: 'father_add_device' });
   await admin.context.renderHomeControlSettings();
   assert.strictEqual(admin.context.homeControlApprovePanel.hidden, false, 'admin must see approval controls after active membership');
+  assert.strictEqual(admin.context.homeControlDeviceList.hidden, false, 'admin must see device list');
+  assert.strictEqual(admin.requests[0].action, 'devicePairingList', 'admin must request the device list');
+  admin.context.renderHomeControlDeviceList([
+    { deviceId: 'test-device', displayName: 'この端末名', status: 'active', isCurrent: true },
+    { deviceId: 'other-device', displayName: 'ほかの端末', status: 'active', isCurrent: false },
+  ]);
+  assert(admin.context.homeControlDeviceList.innerHTML.includes('この端末'), 'current device label is missing');
+  assert(!admin.context.homeControlDeviceList.innerHTML.includes('data-home-control-revoke="test-device"'), 'current device must not have a revoke button');
+  assert(admin.context.homeControlDeviceList.innerHTML.includes('data-home-control-revoke="other-device"'), 'other active device must remain revocable');
 
   console.log('PASS PWA membership template approval payload, validation, and admin-only visibility');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

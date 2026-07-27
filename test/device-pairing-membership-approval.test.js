@@ -81,7 +81,15 @@ function createHarness() {
   function approve(code, template, extra) { return context.devicePairingApprove_(Object.assign({ deviceId: parentId, pairingToken: parentToken, code, membershipTemplate: template }, extra || {})); }
   function registry() { return JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1); }
   return {
-    begin, membershipBegin, membershipStatus, approve, context, provisionCalls, registry, seedParent, seedActiveMembershipDevice,
+    begin, membershipBegin, membershipStatus, approve,
+    list: () => context.devicePairingList_({ deviceId: parentId, pairingToken: parentToken }),
+    revoke: (targetDeviceId) => context.devicePairingRevoke_({ deviceId: parentId, pairingToken: parentToken, targetDeviceId }),
+    context, provisionCalls, registry, seedParent, seedActiveMembershipDevice,
+    setParentDeviceStatus: (status) => {
+      const saved = registry();
+      saved.devices[parentId].status = status;
+      properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(saved);
+    },
     setAdminMode: (value) => { adminMode = value; }, setProvisionFailure: (value) => { provisionFailure = value; }, setSaveFailures: (value) => { saveFailures = value; },
     setNow: (value) => { nowMs = Date.parse(value); }, now: () => new Date(nowMs),
   };
@@ -151,6 +159,35 @@ test('non-admin and client spoofed identity values cannot alter approval', () =>
   expectCode(h.approve(started.data.code, 'father_add_device', { userId: 'spoofed', role: 'admin', homeId: 'spoofed', capabilities: ['home.control'] }), 'FORBIDDEN');
   assert.strictEqual(h.registry().requests[started.data.requestId].status, 'pending');
   assert.strictEqual(h.provisionCalls.length, 0);
+});
+
+test('only an active admin membership can list or revoke devices', () => {
+  const h = createHarness(); h.seedParent(); h.seedActiveMembershipDevice();
+  assert(h.list().success, 'active admin could not list devices');
+  const beforeSelfRevoke = h.registry();
+  expectCode(h.revoke(parentId), 'CANNOT_REVOKE_CURRENT_DEVICE');
+  assert.deepStrictEqual(h.registry(), beforeSelfRevoke, 'self revoke must not change the registry');
+  assert(h.revoke(membershipDeviceId).success, 'active admin could not revoke a device');
+
+  for (const role of ['self_record', 'guardian']) {
+    const blocked = createHarness(); blocked.seedParent(); blocked.seedActiveMembershipDevice(); blocked.setAdminMode(role);
+    expectCode(blocked.list(), 'FORBIDDEN');
+    expectCode(blocked.revoke(parentId), 'FORBIDDEN');
+    expectCode(blocked.revoke(membershipDeviceId), 'FORBIDDEN');
+    assert.strictEqual(blocked.registry().devices[membershipDeviceId].status, 'active');
+  }
+
+  const inactive = createHarness(); inactive.seedParent(); inactive.seedActiveMembershipDevice(); inactive.setAdminMode('disabled');
+  expectCode(inactive.list(), 'FORBIDDEN');
+  expectCode(inactive.revoke(membershipDeviceId), 'FORBIDDEN');
+
+  const revoked = createHarness(); revoked.seedParent(); revoked.seedActiveMembershipDevice(); revoked.setParentDeviceStatus('revoked');
+  expectCode(revoked.list(), 'UNAUTHORIZED_DEVICE');
+  expectCode(revoked.revoke(membershipDeviceId), 'UNAUTHORIZED_DEVICE');
+
+  const unregistered = createHarness(); unregistered.seedParent();
+  expectCode(unregistered.context.devicePairingList_({ deviceId: 'unknown-device', pairingToken: parentToken }), 'UNAUTHORIZED_DEVICE');
+  expectCode(unregistered.context.devicePairingRevoke_({ deviceId: 'unknown-device', pairingToken: parentToken, targetDeviceId: parentId }), 'UNAUTHORIZED_DEVICE');
 });
 
 test('expired and wrong codes keep pairing pending and obey the existing rate boundary', () => {

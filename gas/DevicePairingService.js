@@ -230,7 +230,7 @@ function devicePairingList_(body) {
     const result = withHomeControlRegistryLock_(function(registry, deps) {
       const now = deps.now();
       pruneHomeControlRegistry_(registry, now.getTime());
-      verifyHomeControlRegistryDevice_(input.deviceId, input.pairingToken, registry, deps, now);
+      resolveMembershipApprovalAdminWithinRegistryLock_(input.deviceId, input.pairingToken, registry, deps, now);
       return Object.keys(registry.devices).map(function(deviceId) {
         const item = registry.devices[deviceId];
         return {
@@ -256,10 +256,11 @@ function devicePairingRevoke_(body) {
   try {
     const input = validateDevicePairingRevokeInput_(body || {});
     const result = withHomeControlRegistryLock_(function(registry, deps) {
-      const now = deps.now();
-      pruneHomeControlRegistry_(registry, now.getTime());
-      verifyHomeControlRegistryDevice_(input.deviceId, input.pairingToken, registry, deps, now);
-      const target = registry.devices[input.targetDeviceId];
+    const now = deps.now();
+    pruneHomeControlRegistry_(registry, now.getTime());
+    const adminActor = resolveMembershipApprovalAdminWithinRegistryLock_(input.deviceId, input.pairingToken, registry, deps, now);
+    if (String(adminActor.deviceId) === input.targetDeviceId) throw homeControlPairingError_('CANNOT_REVOKE_CURRENT_DEVICE');
+    const target = registry.devices[input.targetDeviceId];
       if (!target || target.status !== 'active') throw homeControlPairingError_('PAIRING_DEVICE_NOT_FOUND');
       target.status = 'revoked';
       target.revokedAt = homeControlIso_(now);
