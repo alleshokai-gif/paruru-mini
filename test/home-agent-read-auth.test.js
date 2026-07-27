@@ -13,6 +13,12 @@ function load(options = {}) {
   const context = {
     Array, Object, String,
     json_: (value) => value,
+    getCalendarSuffixForMember_: (memberUserId) => {
+      if (memberUserId === 'father') return '（父）';
+      const error = new Error('UNKNOWN_CALENDAR_MEMBER');
+      error.code = 'UNKNOWN_CALENDAR_MEMBER';
+      throw error;
+    },
     resolveHomeAgentReadActor_: options.resolve || (() => ({
       homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
       capabilities: ['home.read', 'home.control'], deviceId: 'father-device',
@@ -32,7 +38,7 @@ function load(options = {}) {
 const allowed = load();
 const result = allowed.context.homeAgent_({
   deviceId: 'spoofed-device', pairingToken: 'credential', userId: 'spoofed-user', userDisplayName: '偽名',
-  role: 'self_record', capabilities: ['home.control'], homeId: 'spoofed-home', useMocks: true,
+  role: 'self_record', capabilities: ['home.control'], homeId: 'spoofed-home', calendarSuffix: '（母）', useMocks: true,
   allowActiveSpreadsheetFallback: true,
 });
 assert.strictEqual(allowed.calls(), 1, 'authorized read did not reach Home Agent Core');
@@ -42,6 +48,7 @@ assert.strictEqual(result.role, 'admin');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(result.capabilities)), ['home.read', 'home.control']);
 assert.strictEqual(result.homeId, 'home-a');
 assert.strictEqual(result.deviceId, 'father-device');
+assert.strictEqual(result.calendarSuffix, '（父）');
 assert.strictEqual(result.useMocks, false);
 assert.strictEqual(result.allowActiveSpreadsheetFallback, false);
 assert(!Object.prototype.hasOwnProperty.call(result, 'pairingToken'), 'pairing token reached Core');

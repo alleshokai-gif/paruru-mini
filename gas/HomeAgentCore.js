@@ -8,6 +8,7 @@ function buildTrustedHomeAgentRequest_(body, actor) {
   const request = Object.assign({}, body || {}, {
     userId: trustedActor.memberUserId,
     userDisplayName: trustedActor.displayName,
+    calendarSuffix: getCalendarSuffixForMember_(trustedActor.memberUserId),
     role: trustedActor.role,
     capabilities: Array.isArray(trustedActor.capabilities) ? trustedActor.capabilities.slice() : [],
     homeId: trustedActor.homeId,
@@ -671,13 +672,8 @@ function isHomeAgentBroadScheduleRequest_(message) {
 }
 
 function getHomeAgentCalendarSuffix_(request) {
-  if (request.calendarSuffix) {
-    return request.calendarSuffix;
-  }
-  if (request.userId === 'father') {
-    return '（父）';
-  }
-  return '';
+  const actor = request && request._authenticatedActor;
+  return getCalendarSuffixForMember_(actor && actor.memberUserId);
 }
 
 function detectHomeAgentRoomId_(message) {

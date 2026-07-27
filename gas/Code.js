@@ -187,6 +187,7 @@ function doPost(e) {
 
 function createItem_(body) {
   const identity = resolveMemoActor_(body, 'memo.self.create');
+  const calendarSuffix = getCalendarSuffixForMember_(identity.memberUserId);
   const memo = String(body.memo || '').trim();
 
   if (!memo) {
@@ -220,12 +221,12 @@ function createItem_(body) {
     confidence: normalizeNumberForSheet_(body.confidence),
     userId: identity.memberUserId,
     userDisplayName: identity.displayName,
-    calendarSuffix: body.calendarSuffix || '',
+    calendarSuffix: calendarSuffix,
     deviceId: identity.deviceId,
     ownerUserId: identity.memberUserId,
     createdByUserId: identity.memberUserId,
     visibility: normalizeVisibility_(body.visibility),
-    calendarTitle: body.calendarTitle || '',
+    calendarTitle: buildCalendarTitle_(body.title || memo.slice(0, 20), calendarSuffix),
     calendarSyncStatus: getInitialCalendarSyncStatus_(body),
     calendarId: '',
     calendarEventId: '',
@@ -276,6 +277,7 @@ function createItemWithAI_(body) {
 function createItemWithAIResult_(body, memo, options) {
   const trustedOptions = options || {};
   const identity = trustedOptions.identity || getInternalFatherMemoIdentity_();
+  const calendarSuffix = getCalendarSuffixForMember_(identity.memberUserId);
   debugLog_('[createWithAI] received action=createWithAI hasMemo=' + Boolean(memo));
     const analysis = enforceFollowupRules_(analyzeMemoWithAI_(memo), memo);
     const requestedPriority = normalizePriority_(body.priority);
@@ -298,7 +300,7 @@ function createItemWithAIResult_(body, memo, options) {
       confidence: normalizeNumberForSheet_(analysis.confidence),
       userId: identity.memberUserId,
       userDisplayName: identity.displayName,
-      calendarSuffix: body.calendarSuffix || '',
+      calendarSuffix: calendarSuffix,
       deviceId: identity.deviceId || '',
       ownerUserId: identity.memberUserId,
       createdByUserId: identity.memberUserId,
@@ -306,7 +308,7 @@ function createItemWithAIResult_(body, memo, options) {
       clientRequestId: trustedOptions.clientRequestId || '',
     });
 
-    itemInput.calendarTitle = body.calendarTitle || '';
+    itemInput.calendarTitle = buildCalendarTitle_(itemInput.title || memo, calendarSuffix);
     itemInput.calendarSyncStatus = getInitialCalendarSyncStatus_(itemInput);
     itemInput.calendarId = '';
     itemInput.calendarEventId = '';
@@ -381,6 +383,7 @@ function answerFollowup_(body) {
 
 function syncCalendar_(body) {
   const actor = resolveMemoActor_(body, 'memo.self.update');
+  const suffix = getCalendarSuffixForMember_(actor.memberUserId);
   const id = String(body.id || '').trim();
   if (!id) {
     return json_({ success: false, status: 400, message: 'id is required' });
@@ -423,6 +426,7 @@ function syncCalendar_(body) {
 
     const calendarTarget = normalizeCalendarTarget_(body.calendarTarget || target.item.defaultCalendar || 'family');
     assertRequiredHeaders_(target.index, [
+      'calendarSuffix',
       'calendarTitle',
       'calendarSyncStatus',
       'calendarId',
@@ -451,8 +455,7 @@ function syncCalendar_(body) {
       throw new Error('startDate is required');
     }
 
-    const suffix = getCalendarSuffix_(body, target.item);
-    const baseTitle = String(body.calendarTitle || target.item.calendarTitle || target.item.title || target.item.memo || '').trim();
+    const baseTitle = String(target.item.title || target.item.memo || '').trim();
     const calendarTitle = buildCalendarTitle_(baseTitle, suffix);
     if (!calendarTitle) {
       throw new Error('calendarTitle is required');
@@ -498,6 +501,7 @@ function syncCalendar_(body) {
 
     const now = nowTokyoString_();
     const updates = {
+      calendarSuffix: suffix,
       calendarTitle: calendarTitle,
       calendarSyncStatus: 'synced',
       calendarId: calendarConfig.calendarId,
@@ -558,6 +562,7 @@ function syncCalendar_(body) {
 
 function updateCalendar_(body) {
   const actor = resolveMemoActor_(body, 'memo.self.update');
+  const suffix = getCalendarSuffixForMember_(actor.memberUserId);
   const id = String(body.id || '').trim();
   if (!id) {
     return json_({ success: false, status: 400, message: 'id is required' });
@@ -582,6 +587,17 @@ function updateCalendar_(body) {
       return json_({ success: false, status: 400, message: 'calendar item is not updateable' });
     }
 
+    assertRequiredHeaders_(target.index, [
+      'calendarSuffix',
+      'calendarTitle',
+      'calendarSyncStatus',
+      'calendarSyncedAt',
+      'calendarStart',
+      'calendarEnd',
+      'calendarAllDay',
+      'calendarLastError',
+      'updatedAt',
+    ]);
     const calendarTarget = normalizeCalendarTarget_(body.calendarTarget || 'family');
     const calendarConfig = getCalendarConfig_(calendarTarget);
     const calendar = getCalendarByConfig_(calendarConfig);
@@ -605,8 +621,7 @@ function updateCalendar_(body) {
       throw new Error('startDate is required');
     }
 
-    const suffix = getCalendarSuffix_(body, target.item);
-    const baseTitle = String(body.calendarTitle || target.item.title || target.item.memo || '').trim();
+    const baseTitle = String(target.item.title || target.item.memo || '').trim();
     const calendarTitle = buildCalendarTitle_(baseTitle, suffix);
     if (!calendarTitle) {
       throw new Error('calendarTitle is required');
@@ -641,6 +656,7 @@ function updateCalendar_(body) {
 
     const now = nowTokyoString_();
     const updates = {
+      calendarSuffix: suffix,
       calendarTitle: calendarTitle,
       calendarSyncStatus: 'synced',
       calendarSyncedAt: now,
@@ -748,6 +764,7 @@ function appendNewItem_(item) {
 
 function updateItem_(body) {
   const actor = resolveMemoActor_(body, 'memo.self.update');
+  const calendarSuffix = getCalendarSuffixForMember_(actor.memberUserId);
   assertMemoIdentityFieldsAbsent_(body);
   const id = String(body.id || '').trim();
   if (!id) {
@@ -786,7 +803,6 @@ function updateItem_(body) {
     'aiComment',
     'confidence',
     'source',
-    'calendarSuffix',
     'visibility',
   ];
   if (!Object.prototype.hasOwnProperty.call(body, 'updatedAt')) {
@@ -798,6 +814,7 @@ function updateItem_(body) {
       afterItem[field] = normalizeValueForSheet_(field, body[field]);
     }
   });
+  afterItem.calendarSuffix = calendarSuffix;
   const validatedItem = validateAnalyzedItem_(afterItem);
   ['needsFollowup', 'followupQuestion', 'followupInputType'].forEach(function(field) {
     if (Object.prototype.hasOwnProperty.call(index, field)) {
@@ -811,6 +828,9 @@ function updateItem_(body) {
       }
     }
   });
+  if (Object.prototype.hasOwnProperty.call(index, 'calendarSuffix')) {
+    setSheetValueForField_(sheet, rowNumber, index.calendarSuffix + 1, 'calendarSuffix', afterItem.calendarSuffix);
+  }
   if (hasCalendarRelevantChanges_(beforeItem, afterItem)) {
     updateRowFields_(sheet, rowNumber, index, {
       calendarTitle: buildCalendarTitle_(afterItem.title || afterItem.memo || '', getCalendarSuffix_({}, afterItem)),
@@ -1902,32 +1922,58 @@ function getCalendarByConfig_(config) {
   return calendar;
 }
 
+const CALENDAR_SUFFIX_BY_MEMBER_USER_ID_ = Object.freeze({
+  father: '（父）',
+  mother: '（母）',
+  eldest_son: '（理）',
+  eldest_daughter: '（は）',
+  second_son: '（ふ）',
+  youngest_daughter: '（り）',
+});
+
+const KNOWN_CALENDAR_SUFFIXES_ = Object.freeze(Object.keys(CALENDAR_SUFFIX_BY_MEMBER_USER_ID_)
+  .map(function(memberUserId) {
+    return CALENDAR_SUFFIX_BY_MEMBER_USER_ID_[memberUserId];
+  }));
+
+function getCalendarSuffixForMember_(memberUserId) {
+  const normalizedMemberUserId = String(memberUserId || '').trim();
+  const suffix = CALENDAR_SUFFIX_BY_MEMBER_USER_ID_[normalizedMemberUserId];
+  if (suffix) {
+    return suffix;
+  }
+
+  const error = new Error('UNKNOWN_CALENDAR_MEMBER');
+  error.code = 'UNKNOWN_CALENDAR_MEMBER';
+  throw error;
+}
+
 function getCalendarSuffix_(body, item) {
-  const explicitSuffix = String(body.calendarSuffix || '').trim();
-  if (explicitSuffix) {
-    return explicitSuffix;
-  }
+  const source = item || {};
+  return getCalendarSuffixForMember_(source.ownerUserId || source.userId || '');
+}
 
-  const storedSuffix = String(item.calendarSuffix || '').trim();
-  if (storedSuffix) {
-    return storedSuffix;
+function stripKnownCalendarSuffixes_(title) {
+  let normalizedTitle = String(title || '').trim();
+  let removed = true;
+  while (removed && normalizedTitle) {
+    removed = false;
+    KNOWN_CALENDAR_SUFFIXES_.forEach(function(suffix) {
+      if (normalizedTitle.endsWith(suffix)) {
+        normalizedTitle = normalizedTitle.slice(0, -suffix.length).trim();
+        removed = true;
+      }
+    });
   }
-
-  const displayName = String(body.userDisplayName || item.userDisplayName || '').trim();
-  return displayName ? '（' + displayName + '）' : '';
+  return normalizedTitle;
 }
 
 function buildCalendarTitle_(title, suffix) {
-  const baseTitle = String(title || '').trim();
+  const baseTitle = stripKnownCalendarSuffixes_(title);
   const normalizedSuffix = String(suffix || '').trim();
   if (!baseTitle || !normalizedSuffix) {
     return baseTitle;
   }
-
-  if (baseTitle.endsWith(normalizedSuffix)) {
-    return baseTitle;
-  }
-
   return baseTitle + normalizedSuffix;
 }
 
