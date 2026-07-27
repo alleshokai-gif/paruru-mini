@@ -86,6 +86,7 @@ function createHarness(options = {}) {
     homeControlPollTimer: null,
     membershipRegistrationPollTimer: null,
     notificationBoundaryTimerEnabled: false,
+    activeView: 'home',
     userProfile: null,
     authLock: panels.lock,
     authLockMessage: panels.message,
@@ -143,6 +144,8 @@ function createHarness(options = {}) {
       return response(payload);
     },
     renderProfileForm() { context.normalInitializations += 1; },
+    applyAllowedViews_() {},
+    switchView: async () => {},
     setParuruState() {},
     loadNotificationCandidates() { context.notificationLoads += 1; },
     beginHomeControlPairing: async () => {},

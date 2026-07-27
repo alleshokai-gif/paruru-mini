@@ -154,23 +154,23 @@
           <form id="profileForm" class="settings-form">
             <label class="field">
               <span>&#21033;&#29992;&#32773;ID</span>
-              <input id="profileUserId" type="text" inputmode="latin" autocomplete="off">
+              <input id="profileUserId" type="text" readonly>
             </label>
             <label class="field">
               <span>&#21033;&#29992;&#32773;&#21517;</span>
-              <input id="profileDisplayName" type="text" autocomplete="name">
+              <input id="profileDisplayName" type="text" readonly>
+            </label>
+            <label class="field">
+              <span>role</span>
+              <input id="profileRole" type="text" readonly>
             </label>
             <label class="field">
               <span>&#12459;&#12524;&#12531;&#12480;&#12540;&#25509;&#23614;&#36766;</span>
-              <input id="profileCalendarSuffix" type="text">
+              <input id="profileCalendarSuffix" type="text" readonly>
             </label>
             <label class="field">
               <span>&#12487;&#12501;&#12457;&#12523;&#12488;&#30331;&#37682;&#20808;</span>
-              <select id="profileDefaultCalendar">
-                <option value="family">&#12501;&#12449;&#12511;&#12522;&#12540;</option>
-                <option value="personal">&#20491;&#20154;</option>
-                <option value="shared">&#20849;&#26377;</option>
-              </select>
+              <input id="profileDefaultCalendar" type="text" value="Family" readonly>
             </label>
             <label class="field">
               <span>&#31471;&#26411;ID</span>
@@ -196,7 +196,7 @@
                 <span>&#12479;&#12464;&#12394;&#12375;&#20104;&#23450;&#12418;&#34920;&#31034;</span>
               </label>
             </fieldset>
-            <button type="submit">&#12503;&#12525;&#12501;&#12451;&#12540;&#12523;&#12434;&#20445;&#23384;</button>
+            <button type="submit">表示設定を保存</button>
           </form>
           <section id="homeControlSettings" class="settings-fieldset" aria-live="polite">
             <h2>家電操作</h2>

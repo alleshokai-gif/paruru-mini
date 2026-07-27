@@ -295,6 +295,7 @@ const authLockMembershipMessage = document.querySelector("#authLockMembershipMes
 const buildVersion = document.querySelector("#buildVersion");
 const views = document.querySelectorAll(".app-view");
 const navItems = document.querySelectorAll(".nav-item");
+const viewNavigationItems = document.querySelectorAll("[data-target-view]");
 const inboxList = document.querySelector("#inboxList");
 const refreshInboxButton = document.querySelector("#refreshInboxButton");
 const detailDialog = document.querySelector("#detailDialog");
@@ -348,6 +349,7 @@ const detailCalendarLater = document.querySelector("#detailCalendarLater");
 const profileForm = document.querySelector("#profileForm");
 const profileUserId = document.querySelector("#profileUserId");
 const profileDisplayName = document.querySelector("#profileDisplayName");
+const profileRole = document.querySelector("#profileRole");
 const profileCalendarSuffix = document.querySelector("#profileCalendarSuffix");
 const profileDefaultCalendar = document.querySelector("#profileDefaultCalendar");
 const profileDeviceId = document.querySelector("#profileDeviceId");
@@ -618,18 +620,22 @@ const activateMembershipContext_ = function(membershipContext) {
     memberUserId: membershipContext.memberUserId,
     displayName: membershipContext.displayName,
     role: membershipContext.role,
+    calendarSuffix: membershipContext.calendarSuffix,
     capabilities: Array.isArray(membershipContext.capabilities) ? membershipContext.capabilities.slice() : [],
     allowedViews: Array.isArray(membershipContext.allowedViews) ? membershipContext.allowedViews.slice() : [],
   };
   clearMembershipRegistrationPending();
   appAuthenticationState = "active_member";
   initializeNormalPwaOnce();
+  applyAllowedViews_();
+  void switchView(activeView);
   document.dispatchEvent(new CustomEvent("paruru:authenticated", {
     detail: {
       context: {
         memberUserId: membershipContext.memberUserId,
         displayName: membershipContext.displayName,
         role: membershipContext.role,
+        calendarSuffix: membershipContext.calendarSuffix,
         capabilities: membershipContext.capabilities,
         allowedViews: membershipContext.allowedViews,
       },
@@ -827,9 +833,7 @@ navItems.forEach((item) => {
 if (typeof document.addEventListener === "function") {
   document.addEventListener("paruru:view-request", (event) => {
     const viewName = event && event.detail && event.detail.viewName;
-    if (["home", "inbox", "nurse-okan", "settings"].includes(viewName)) {
-      switchView(viewName);
-    }
+    switchView(viewName);
   });
 }
 
@@ -999,26 +1003,32 @@ document.querySelectorAll("[data-close-dialog]").forEach((button) => {
 });
 
 async function switchView(viewName) {
-  activeView = viewName;
-  views.forEach((view) => view.classList.toggle("is-active", view.dataset.view === viewName));
-  navItems.forEach((item) => item.classList.toggle("is-active", item.dataset.targetView === viewName));
+  const resolvedView = normalizeAllowedView_(viewName);
+  if (!resolvedView) return;
+  activeView = resolvedView;
+  views.forEach((view) => {
+    const allowed = isViewAllowed_(view.dataset.view);
+    view.hidden = !allowed;
+    view.classList.toggle("is-active", allowed && view.dataset.view === resolvedView);
+  });
+  navItems.forEach((item) => item.classList.toggle("is-active", item.dataset.targetView === resolvedView));
   showMessage("", "");
 
-  if (viewName === "inbox") {
+  if (resolvedView === "inbox") {
     await loadInbox();
     return;
   }
 
-  if (viewName === "home") {
+  if (resolvedView === "home") {
     await loadNotificationCandidates();
   }
 
-  if (viewName === "settings") {
+  if (resolvedView === "settings") {
     renderProfileForm();
     await renderHomeControlSettings();
   }
 
-  if (viewName === "nurse-okan") {
+  if (resolvedView === "nurse-okan") {
     document.dispatchEvent(new CustomEvent("nurse-okan:opened"));
   }
 
@@ -4153,7 +4163,15 @@ function getCurrentProfile() {
     userProfile = loadUserProfile();
   }
 
-  return userProfile;
+  const context = activeMembershipContext;
+  if (!context) return userProfile;
+  return Object.assign({}, userProfile, {
+    userId: context.memberUserId,
+    displayName: context.displayName,
+    role: context.role,
+    calendarSuffix: context.calendarSuffix || "",
+    defaultCalendar: "family",
+  });
 }
 
 function getTomorrowScheduleStartTime(profile = getCurrentProfile()) {
@@ -4169,8 +4187,9 @@ function normalizeClockTime(value) {
 function loadUserProfile() {
   const stored = readStoredProfile();
   const profile = {
-    ...DEFAULT_PROFILE,
-    ...stored,
+    selectedCalendarMemberKeys: stored.selectedCalendarMemberKeys,
+    includeUnknownCalendarEvents: stored.includeUnknownCalendarEvents,
+    tomorrowScheduleStartTime: stored.tomorrowScheduleStartTime,
     deviceId: stored.deviceId || createDeviceId(),
   };
   profile.selectedCalendarMemberKeys = normalizeCalendarMemberSelection(profile.selectedCalendarMemberKeys);
@@ -4237,10 +4256,11 @@ function isUuid(value) {
 
 function renderProfileForm() {
   const profile = getCurrentProfile();
-  profileUserId.value = profile.userId || DEFAULT_PROFILE.userId;
-  profileDisplayName.value = profile.displayName || DEFAULT_PROFILE.displayName;
+  profileUserId.value = profile.userId || "";
+  profileDisplayName.value = profile.displayName || "";
+  if (profileRole) profileRole.value = profile.role || "";
   profileCalendarSuffix.value = profile.calendarSuffix || "";
-  profileDefaultCalendar.value = profile.defaultCalendar || DEFAULT_PROFILE.defaultCalendar;
+  profileDefaultCalendar.value = "Family";
   profileDeviceId.value = profile.deviceId || "";
   if (profileTomorrowScheduleStartTime) {
     profileTomorrowScheduleStartTime.value = getTomorrowScheduleStartTime(profile);
@@ -4251,10 +4271,6 @@ function renderProfileForm() {
 function saveUserProfileFromForm() {
   const current = getCurrentProfile();
   const profile = {
-    userId: normalizeUserId(profileUserId.value) || DEFAULT_PROFILE.userId,
-    displayName: profileDisplayName.value.trim() || DEFAULT_PROFILE.displayName,
-    calendarSuffix: profileCalendarSuffix.value.trim(),
-    defaultCalendar: normalizeCalendarTarget(profileDefaultCalendar.value),
     selectedCalendarMemberKeys: readCalendarMemberSelectionFromForm(),
     includeUnknownCalendarEvents: Boolean(profileIncludeUnknownCalendarEvents?.checked),
     tomorrowScheduleStartTime: normalizeClockTime(profileTomorrowScheduleStartTime?.value) || DEFAULT_TOMORROW_SCHEDULE_START_TIME,
@@ -4262,6 +4278,26 @@ function saveUserProfileFromForm() {
   };
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   return profile;
+}
+
+function isViewAllowed_(viewName) {
+  return appAuthenticationState === "active_member"
+    && Array.isArray(activeMembershipContext?.allowedViews)
+    && activeMembershipContext.allowedViews.includes(String(viewName || ""));
+}
+
+function normalizeAllowedView_(viewName) {
+  return isViewAllowed_(viewName) ? viewName : isViewAllowed_("home") ? "home" : "";
+}
+
+function applyAllowedViews_() {
+  viewNavigationItems.forEach((item) => {
+    const allowed = isViewAllowed_(item.dataset.targetView);
+    item.hidden = !allowed;
+    item.disabled = !allowed;
+    item.setAttribute("aria-hidden", String(!allowed));
+  });
+  views.forEach((view) => { view.hidden = !isViewAllowed_(view.dataset.view); });
 }
 
 function getHomeAgentPairingToken() {
