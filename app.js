@@ -93,21 +93,21 @@ const PARURU_MESSAGES = {
     followup: "これ、もうひとつ聞いてええ？",
     calendarPrompt: "予定っぽいね。カレンダー入れる？",
     calendarSynced: "カレンダーに入れといたよ。",
-    hasNotifications: "兄弟、今日は気にしとくことあるよ。",
-    noNotifications: "今日は急ぎなし。珍しいね、兄弟。",
+    hasNotifications: "{{address}}、今日は気にしとくことあるよ。",
+    noNotifications: "今日は急ぎなし。珍しいね、{{address}}。",
     error: "うまくいかんかった。もう一回だけ。",
-    notificationOne: "兄弟、ひとつ気にしといて。",
+    notificationOne: "{{address}}、ひとつ気にしといて。",
     notificationMany: (count) => `今日は${count}つあるよ。見といてな。`,
     homeAgent: "家の中、見てきたよ。",
   },
   state: {
-    loading: "……ちょっと待って、兄弟。",
+    loading: "……ちょっと待って、{{address}}。",
     normal: "……メモしとく？",
     sending: "ちょっと待って。今まとめよる。",
     success: "はいはい、預かったよ。",
-    empty: "兄弟、何も書いてないよ。僕でも無理。",
+    empty: "{{address}}、何も書いてないよ。僕でも無理。",
     error: "うまくいかんかった。もう一回だけ試してみて。",
-    inboxEmpty: "今日はまだ何も預かってないよ。珍しいね、兄弟。",
+    inboxEmpty: "今日はまだ何も預かってないよ。珍しいね、{{address}}。",
     done: "直しといたよ。えらいえらい。",
     deleteConfirm: "ほんまに消す？ 後で泣いても知らんよ。",
     deleted: "消しといたよ。",
@@ -115,14 +115,14 @@ const PARURU_MESSAGES = {
   notification: {
     loadingLine: "ちょっと見てくる。",
     loadingBody: "読み込み中...",
-    empty: "今日は急ぎなし。珍しいね、兄弟。",
+    empty: "今日は急ぎなし。珍しいね、{{address}}。",
     loadedLine: "今日の予定とやること、まとめといたよ。",
     error: "うまく読めんかった。もう一回だけ試してみて。",
-    fallback: "兄弟、これ確認しといて。",
+    fallback: "{{address}}、これ確認しといて。",
     more: (count) => `ほか${count}件`,
   },
   action: {
-    profileSaved: "保存しといたよ、兄弟。",
+    profileSaved: "保存しといたよ、{{address}}。",
     detailOpenFailed: "詳細を開けんかった。Inboxで見てな。",
     followupSuccess: "直しといたよ。",
     followupError: "うまくいかんかった。もう一回だけ試してみて。",
@@ -141,7 +141,7 @@ const PARURU_MESSAGES = {
   },
   notificationMessage: {
     overdue: (title) => `${title}、期限過ぎとるよ。僕のせいにはせんといてな。`,
-    due_today: (title) => `兄弟、${title}は今日まで。僕は覚えとったよ。`,
+    due_today: (title) => `{{address}}、${title}は今日まで。僕は覚えとったよ。`,
     urgent: (title) => `至急やで。${title}、先に見といて。`,
     followup_required: (title) => `${title}、まだ確認が残っとるよ。答えとく？`,
     due_tomorrow: (title) => `${title}は明日まで。今日のうちにやっとく？`,
@@ -386,6 +386,7 @@ let pendingHomeAgentActionCandidate = null;
 let pendingHomeAgentRetry = null;
 let homeControlPollTimer = null;
 let membershipRegistrationPollTimer = null;
+let activeMembershipContext = null;
 
 setParuruState("loading");
 
@@ -425,7 +426,6 @@ if ("serviceWorker" in navigator) {
 }
 
 let appAuthenticationState = "booting";
-let activeMembershipContext = null;
 let normalPwaInitialized = false;
 
 function canUseHomeControl_() {
@@ -621,6 +621,7 @@ const activateMembershipContext_ = function(membershipContext) {
     displayName: membershipContext.displayName,
     role: membershipContext.role,
     calendarSuffix: membershipContext.calendarSuffix,
+    addressTerms: Object.assign({}, membershipContext.addressTerms || {}),
     capabilities: Array.isArray(membershipContext.capabilities) ? membershipContext.capabilities.slice() : [],
     allowedViews: Array.isArray(membershipContext.allowedViews) ? membershipContext.allowedViews.slice() : [],
   };
@@ -636,6 +637,7 @@ const activateMembershipContext_ = function(membershipContext) {
         displayName: membershipContext.displayName,
         role: membershipContext.role,
         calendarSuffix: membershipContext.calendarSuffix,
+        addressTerms: Object.assign({}, membershipContext.addressTerms || {}),
         capabilities: membershipContext.capabilities,
         allowedViews: membershipContext.allowedViews,
       },
@@ -985,7 +987,7 @@ profileForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   userProfile = saveUserProfileFromForm();
   renderProfileForm();
-  showMessage(PARURU_MESSAGES.action.profileSaved, "success");
+  showMessage(formatParuruLine_(PARURU_MESSAGES.action.profileSaved), "success");
   await loadNotificationCandidates({ force: true });
 });
 
@@ -2123,9 +2125,9 @@ function renderInboxError() {
 function renderNotificationLoading() {
   setNotificationViewState("loading");
   todayParuru.classList.remove("is-hidden");
-  todayParuruLine.textContent = PARURU_MESSAGES.notification.loadingLine;
+  todayParuruLine.textContent = formatParuruLine_(PARURU_MESSAGES.notification.loadingLine);
   todayParuruLine.classList.remove("is-hidden");
-  todayParuruList.innerHTML = `<p class="today-paruru-empty">${escapeHtml(PARURU_MESSAGES.notification.loadingBody)}</p>`;
+  todayParuruList.innerHTML = `<p class="today-paruru-empty">${escapeHtml(formatParuruLine_(PARURU_MESSAGES.notification.loadingBody))}</p>`;
   todayParuruAllButton.classList.add("is-hidden");
 }
 
@@ -2137,7 +2139,7 @@ function renderNotificationError() {
   todayParuruLine.textContent = "";
   todayParuruList.innerHTML = `
     <div class="today-paruru-error">
-      <p>${escapeHtml(PARURU_MESSAGES.notification.error)}</p>
+      <p>${escapeHtml(formatParuruLine_(PARURU_MESSAGES.notification.error))}</p>
       <button class="secondary-button" type="button" data-notification-refresh>もう一回</button>
     </div>
   `;
@@ -2177,7 +2179,7 @@ function renderNotificationCandidates(items, totalCount, includeTomorrow = false
   setNotificationViewState("loaded-with-items");
   todayParuru.classList.remove("is-hidden");
   setParuruSpeech("idle", buildNotificationSummarySpeech(totalCount || visibleItems.length));
-  todayParuruLine.textContent = PARURU_MESSAGES.notification.loadedLine;
+  todayParuruLine.textContent = formatParuruLine_(PARURU_MESSAGES.notification.loadedLine);
   todayParuruLine.classList.remove("is-hidden");
   todayParuruList.innerHTML = renderRollingNotificationItems(visibleItems, includeTomorrow) + renderNotificationMore(totalCount, visibleItems.length);
   todayParuruAllButton.classList.remove("is-hidden");
@@ -2222,9 +2224,9 @@ function setNotificationViewState(stateName) {
 function buildNotificationSummarySpeech(count) {
   const safeCount = Number.isFinite(Number(count)) ? Number(count) : 0;
   if (safeCount <= 1) {
-    return PARURU_MESSAGES.speech.notificationOne;
+    return formatParuruLine_(PARURU_MESSAGES.speech.notificationOne);
   }
-  return PARURU_MESSAGES.speech.notificationMany(safeCount);
+  return formatParuruLine_(PARURU_MESSAGES.speech.notificationMany(safeCount));
 }
 
 function renderNotificationItem(item) {
@@ -2242,7 +2244,7 @@ function renderNotificationItem(item) {
 }
 
 function buildTodayDisplayLine(item) {
-  const title = item.title || item.memo?.slice(0, 20) || PARURU_MESSAGES.notification.fallback;
+  const title = item.title || item.memo?.slice(0, 20) || formatParuruLine_(PARURU_MESSAGES.notification.fallback);
   const reasons = item.reasons || [];
 
   if (normalizeType(item.type) === "shopping") {
@@ -2659,13 +2661,24 @@ function setParuruState(stateName, options = {}) {
   setParuruSpeech(state.speech, state.line);
 
   if (options.showStatus) {
-    showMessage(state.line, state.messageType || "");
+    showMessage(formatParuruLine_(state.line), state.messageType || "");
   }
 }
 
 function setParuruSpeech(stateName = "idle", customLine = "") {
   const line = customLine || PARURU_MESSAGES.speech[stateName] || PARURU_MESSAGES.speech.idle;
-  paruruLine.textContent = line;
+  paruruLine.textContent = formatParuruLine_(line);
+}
+
+function formatParuruLine_(template) {
+  return formatAddressedLine_(template, activeMembershipContext?.addressTerms?.paruru);
+}
+
+function formatAddressedLine_(template, address) {
+  const text = String(template || "");
+  const normalizedAddress = String(address || "").trim();
+  if (normalizedAddress) return text.split("{{address}}").join(normalizedAddress);
+  return text.replace(/(?:、|\s)?\{\{address\}\}(?:、|\s)?/g, "");
 }
 
 function resetParuruSpeechSoon(delay = 4500) {
@@ -2681,7 +2694,7 @@ function showParuruMessage(line, type, imageState = "normal") {
   const state = PARURU_STATES[imageState] || PARURU_STATES.normal;
   paruruImage.src = state.image;
   setParuruSpeech("idle", line);
-  showMessage(line, type || "");
+  showMessage(formatParuruLine_(line), type || "");
 }
 
 function showTemporaryParuruMessage(line, type, imageState = "normal") {
@@ -4967,37 +4980,27 @@ function getDummyNotificationLevel(reasons) {
 }
 
 function buildDummyNotificationMessage(title, reasons) {
+  let message = "";
   if (reasons.includes("overdue")) {
-    return PARURU_MESSAGES.notificationMessage.overdue(title);
+    message = PARURU_MESSAGES.notificationMessage.overdue(title);
+  } else if (reasons.includes("event_today_timed") || reasons.includes("event_today") || reasons.includes("reminder_today")) {
+    message = title;
+  } else if (reasons.includes("due_today") || reasons.includes("due_today_timed")) {
+    message = PARURU_MESSAGES.notificationMessage.due_today(title);
+  } else if (reasons.includes("urgent")) {
+    message = PARURU_MESSAGES.notificationMessage.urgent(title);
+  } else if (reasons.includes("followup_required")) {
+    message = PARURU_MESSAGES.notificationMessage.followup_required(title);
+  } else if (reasons.includes("due_tomorrow")) {
+    message = PARURU_MESSAGES.notificationMessage.due_tomorrow(title);
+  } else if (reasons.includes("due_within_7_days")) {
+    message = PARURU_MESSAGES.notificationMessage.due_within_7_days(title);
+  } else if (reasons.includes("high_priority")) {
+    message = PARURU_MESSAGES.notificationMessage.high_priority(title);
+  } else {
+    message = PARURU_MESSAGES.notificationMessage.fallback(title);
   }
-  if (reasons.includes("event_today_timed") || reasons.includes("event_today")) {
-    return title;
-  }
-  if (reasons.includes("due_today")) {
-    return PARURU_MESSAGES.notificationMessage.due_today(title);
-  }
-  if (reasons.includes("due_today_timed")) {
-    return PARURU_MESSAGES.notificationMessage.due_today(title);
-  }
-  if (reasons.includes("reminder_today")) {
-    return title;
-  }
-  if (reasons.includes("urgent")) {
-    return PARURU_MESSAGES.notificationMessage.urgent(title);
-  }
-  if (reasons.includes("followup_required")) {
-    return PARURU_MESSAGES.notificationMessage.followup_required(title);
-  }
-  if (reasons.includes("due_tomorrow")) {
-    return PARURU_MESSAGES.notificationMessage.due_tomorrow(title);
-  }
-  if (reasons.includes("due_within_7_days")) {
-    return PARURU_MESSAGES.notificationMessage.due_within_7_days(title);
-  }
-  if (reasons.includes("high_priority")) {
-    return PARURU_MESSAGES.notificationMessage.high_priority(title);
-  }
-  return PARURU_MESSAGES.notificationMessage.fallback(title);
+  return formatParuruLine_(message);
 }
 
 function dummySyncCalendar(payload) {

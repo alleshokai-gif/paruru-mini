@@ -15,6 +15,13 @@ const HOME_MEMBER_POLICY = Object.freeze({
   youngest_daughter: Object.freeze({ memberUserId: 'youngest_daughter', displayName: '次女', role: 'self_record', calendarSuffix: '（り）', registrationMode: HOME_MEMBER_REGISTRATION_MODES.NOT_ALLOWED, approvalTemplateId: '' }),
 });
 
+// Fixed character-to-member forms of address.  Unlisted combinations are
+// deliberately addressless so new members never inherit an unintended name.
+const HOME_MEMBER_ADDRESS_POLICY = Object.freeze({
+  paruru: Object.freeze({ father: '兄弟', second_son: 'ふうが' }),
+  nurseOkan: Object.freeze({ father: 'お父さん', second_son: 'ふうちゃん' }),
+});
+
 function findHomeMemberPolicy_(memberUserId) {
   return HOME_MEMBER_POLICY[String(memberUserId || '').trim()] || null;
 }
@@ -25,6 +32,24 @@ function getHomeMemberPolicy_(memberUserId) {
   const error = new Error('UNKNOWN_HOME_MEMBER');
   error.code = 'UNKNOWN_HOME_MEMBER';
   throw error;
+}
+
+function getHomeMemberAddress_(characterId, memberUserId) {
+  const characterPolicy = HOME_MEMBER_ADDRESS_POLICY[String(characterId || '').trim()];
+  return characterPolicy ? String(characterPolicy[String(memberUserId || '').trim()] || '') : '';
+}
+
+function getHomeMemberAddressTerms_(memberUserId) {
+  return Object.keys(HOME_MEMBER_ADDRESS_POLICY).reduce(function(terms, characterId) {
+    terms[characterId] = getHomeMemberAddress_(characterId, memberUserId);
+    return terms;
+  }, {});
+}
+
+function prependHomeMemberAddress_(characterId, memberUserId, text) {
+  const address = getHomeMemberAddress_(characterId, memberUserId);
+  const body = String(text || '');
+  return address ? address + '、' + body : body;
 }
 
 function isHomeMemberPolicyMatch_(member) {

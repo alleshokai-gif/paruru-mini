@@ -993,6 +993,7 @@ function notificationCandidates_(params, actor) {
   const paluruCandidates = buildNotificationCandidates_(items, {
     targetDate: targetDate,
     userId: actor.memberUserId,
+    actor: actor,
     limit: 50,
   });
   let calendarCandidates = [];
@@ -1078,7 +1079,7 @@ function buildNotificationCandidates_(items, options) {
       return;
     }
 
-    candidates.push(buildNotificationCandidate_(item, reasons, index));
+    candidates.push(buildNotificationCandidate_(item, reasons, index, options.actor));
   });
 
   return sortNotificationCandidates_(candidates).slice(0, limit);
@@ -1138,7 +1139,7 @@ function getNotificationReasons_(item, targetDate) {
   return reasons;
 }
 
-function buildNotificationCandidate_(item, reasons, index) {
+function buildNotificationCandidate_(item, reasons, index, actor) {
   const title = String(item.title || item.memo || '無題').trim();
   return {
     sourceType: 'paluru',
@@ -1167,7 +1168,7 @@ function buildNotificationCandidate_(item, reasons, index) {
     needsFollowup: normalizeBooleanForSheet_(item.needsFollowup),
     reasons: reasons,
     notificationLevel: getNotificationLevel_(reasons),
-    message: buildNotificationMessage_(title, reasons),
+    message: buildNotificationMessage_(title, reasons, actor),
     userId: item.userId || '',
     userDisplayName: item.userDisplayName || '',
     createdAt: item.createdAt || '',
@@ -1501,13 +1502,16 @@ function digestCalendarEventId_(value) {
   return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/g, '').slice(0, 16);
 }
 
-function buildNotificationMessage_(title, reasons) {
+function buildNotificationMessage_(title, reasons, actor) {
   if (reasons.indexOf('overdue') !== -1) {
     return title + '、期限過ぎとるよ。僕のせいにはせんといてな。';
   }
 
   if (reasons.indexOf('due_today') !== -1) {
-    return '兄弟、' + title + 'は今日まで。僕は覚えとったよ。';
+    const message = title + 'は今日まで。僕は覚えとったよ。';
+    return actor && actor.memberUserId && typeof prependHomeMemberAddress_ === 'function'
+      ? prependHomeMemberAddress_('paruru', actor.memberUserId, message)
+      : message;
   }
 
   if (reasons.indexOf('urgent') !== -1) {

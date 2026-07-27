@@ -113,7 +113,7 @@ function getMembershipContext_(body) {
   const member = getHomeMember_(actor.homeId, actor.memberUserId);
   if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member) || !HOME_MEMBER_ROLES[member.role]) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
   const policy = getHomeMemberPolicy_(member.memberUserId);
-  return { memberUserId: member.memberUserId, displayName: member.displayName, role: member.role, calendarSuffix: policy.calendarSuffix, capabilities: ROLE_CAPABILITIES[member.role].slice(), allowedViews: ROLE_ALLOWED_VIEWS[member.role].slice() };
+  return { memberUserId: member.memberUserId, displayName: member.displayName, role: member.role, calendarSuffix: policy.calendarSuffix, addressTerms: getHomeMemberAddressTerms_(member.memberUserId), capabilities: ROLE_CAPABILITIES[member.role].slice(), allowedViews: ROLE_ALLOWED_VIEWS[member.role].slice() };
 }
 
 function getActiveSelfRecordMembers_(homeId) {
