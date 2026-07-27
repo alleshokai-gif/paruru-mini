@@ -425,6 +425,12 @@ if ("serviceWorker" in navigator) {
 let appAuthenticationState = "booting";
 let activeMembershipContext = null;
 let normalPwaInitialized = false;
+
+function canUseHomeControl_() {
+  return appAuthenticationState === "active_member"
+    && Array.isArray(activeMembershipContext?.capabilities)
+    && activeMembershipContext.capabilities.includes("home.control");
+}
 const NURSE_OKAN_HEALTH_ACTIONS = new Set([
   "health.context.get",
   "health.daily.get",
@@ -454,7 +460,10 @@ async function callAuthenticatedHealth_(action, body = {}) {
 
 function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
-  if (state !== "active_member") activeMembershipContext = null;
+  if (state !== "active_member") {
+    activeMembershipContext = null;
+    if (typeof pendingHomeAgentActionCandidate !== "undefined") pendingHomeAgentActionCandidate = null;
+  }
   splash?.classList.remove("is-hidden");
   const loading = splash?.querySelector(".splash-loading");
   if (loading) loading.textContent = message;
@@ -609,8 +618,8 @@ const activateMembershipContext_ = function(membershipContext) {
     memberUserId: membershipContext.memberUserId,
     displayName: membershipContext.displayName,
     role: membershipContext.role,
-    capabilities: membershipContext.capabilities,
-    allowedViews: membershipContext.allowedViews,
+    capabilities: Array.isArray(membershipContext.capabilities) ? membershipContext.capabilities.slice() : [],
+    allowedViews: Array.isArray(membershipContext.allowedViews) ? membershipContext.allowedViews.slice() : [],
   };
   clearMembershipRegistrationPending();
   appAuthenticationState = "active_member";
@@ -1106,6 +1115,7 @@ function createAgentChatClientError(code) {
 }
 
 async function executeHomeAgentAction(candidate) {
+  if (!canUseHomeControl_()) throw createHomeControlError("HOME_CONTROL_FORBIDDEN");
   if (!GAS_WEB_APP_URL) {
     return {
       success: true,
@@ -1135,6 +1145,7 @@ async function executeHomeAgentAction(candidate) {
 }
 
 async function executeAgentActionConfirmation(candidate) {
+  if (!canUseHomeControl_()) throw createHomeControlError("HOME_CONTROL_FORBIDDEN");
   if (!GAS_WEB_APP_URL) {
     return {
       success: true,
@@ -1164,6 +1175,7 @@ async function executeAgentActionConfirmation(candidate) {
 }
 
 async function cancelAgentActionConfirmation(candidate) {
+  if (!canUseHomeControl_()) throw createHomeControlError("HOME_CONTROL_FORBIDDEN");
   if (!GAS_WEB_APP_URL) {
     return { success: true, status: "cancelled" };
   }
@@ -1654,15 +1666,19 @@ async function submitAgentChatQuery(messageText, options = {}) {
     clearAgentFormMessage();
     renderAgentChatReply(result.reply);
     if (result.actionConfirmation) {
-      renderHomeAgentActionConfirmation({
-        type: "agentActionConfirmation",
-        confirmationId: result.actionConfirmation.confirmationId,
-        clientRequestId: result.clientRequestId,
-        command: result.actionConfirmation.command,
-        roomLabel: result.actionConfirmation.roomLabel,
-        actionLabel: result.actionConfirmation.command === "automation.pause" ? "実行する" : "実行する",
-        confirmationMessage: result.actionConfirmation.summary,
-      });
+      if (canUseHomeControl_()) {
+        renderHomeAgentActionConfirmation({
+          type: "agentActionConfirmation",
+          confirmationId: result.actionConfirmation.confirmationId,
+          clientRequestId: result.clientRequestId,
+          command: result.actionConfirmation.command,
+          roomLabel: result.actionConfirmation.roomLabel,
+          actionLabel: result.actionConfirmation.command === "automation.pause" ? "実行する" : "実行する",
+          confirmationMessage: result.actionConfirmation.summary,
+        });
+      } else {
+        renderHomeAgentControlUnavailableNotice();
+      }
     }
     if (result.followup) {
       renderFollowupPanel("home", {
@@ -3081,6 +3097,9 @@ function renderHomeAgentWarnings(warnings) {
 
 function renderHomeAgentActions(result) {
   const actionCandidates = Array.isArray(result.actionCandidates) ? result.actionCandidates : [];
+  if (actionCandidates.length > 0 && !canUseHomeControl_()) {
+    return renderHomeAgentControlUnavailableNotice(true);
+  }
   const nonSignageCandidates = actionCandidates.filter((candidate) => !isSignageActionCandidate(candidate));
   const candidate = findSignageActionCandidate(result.actionCandidates);
   if (!candidate && nonSignageCandidates.length === 0) {
@@ -3098,6 +3117,14 @@ function renderHomeAgentActions(result) {
   });
   buttons.push(`<button class="secondary-button" type="button" data-home-agent-confirm-close>そのまま</button>`);
   return `<div class="home-agent-actions">${buttons.join("")}</div>`;
+}
+
+function renderHomeAgentControlUnavailableNotice(returnHtml = false) {
+  const notice = `<p class="home-agent-empty home-agent-control-unavailable">この端末では家の状態確認だけ利用できます。</p>`;
+  if (returnHtml) return notice;
+  homeAgentContent.insertAdjacentHTML("beforeend", notice);
+  pendingHomeAgentActionCandidate = null;
+  return "";
 }
 
 function parseHomeAgentActionCandidate(encoded) {
@@ -3273,6 +3300,11 @@ function renderSignageConfirmation(signageMessage) {
 }
 
 function renderHomeAgentActionConfirmation(actionCandidate) {
+  if (!canUseHomeControl_()) {
+    pendingHomeAgentActionCandidate = null;
+    renderHomeAgentControlUnavailableNotice();
+    return;
+  }
   const existing = homeAgentContent.querySelector("[data-home-agent-confirm]");
   if (existing) {
     existing.remove();
@@ -3313,6 +3345,10 @@ function hideSignageConfirmation() {
 
 async function cancelPendingHomeAgentAction() {
   const candidate = pendingHomeAgentActionCandidate;
+  if (!canUseHomeControl_()) {
+    hideSignageConfirmation();
+    return;
+  }
   if (!candidate || candidate.type !== "agentActionConfirmation") {
     hideSignageConfirmation();
     return;
@@ -3346,6 +3382,10 @@ async function cancelPendingHomeAgentAction() {
 async function executePendingHomeAgentAction() {
   const candidate = pendingHomeAgentActionCandidate;
   if (!candidate) {
+    return;
+  }
+  if (!canUseHomeControl_()) {
+    hideSignageConfirmation();
     return;
   }
 

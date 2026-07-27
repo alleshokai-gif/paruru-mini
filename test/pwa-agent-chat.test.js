@@ -117,6 +117,7 @@ function createHarness() {
     },
     document: {
       documentElement: { clientHeight: 800 },
+      body: { classList: createClassList() },
       querySelector: element,
       querySelectorAll: () => [],
     },
@@ -144,6 +145,7 @@ function createHarness() {
   };
   vm.createContext(context);
   new vm.Script(appSource, { filename: 'app.js' }).runInContext(context);
+  vm.runInContext('appAuthenticationState = "active_member"; activeMembershipContext = { capabilities: ["home.control"] };', context);
   return {
     context,
     elements,
@@ -170,6 +172,16 @@ function createHarness() {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+async function expectReject(promise, code) {
+  try {
+    await promise;
+  } catch (error) {
+    assert(error && error.code === code, `unexpected rejection: ${error && error.code}`);
+    return;
+  }
+  throw new Error(`expected rejection: ${code}`);
 }
 
 const tests = [];
@@ -792,6 +804,33 @@ test('EVA-03G legacy confirmation close does not call cancel endpoint', async ()
   });
   cancelPendingHomeAgentAction()`);
   assert(harness.requests.length === 0, 'legacy close called cancel endpoint');
+});
+
+test('home.control capability gates action UI and direct action transports', async () => {
+  const harness = createHarness();
+  harness.run('activeMembershipContext = { role: "admin", capabilities: ["home.read"] }; userProfile = { role: "admin", capabilities: ["home.control"] };');
+  harness.run(`renderHomeAgentResult({
+    summary: "家の状態は確認できたよ。",
+    actionCandidates: [{ type: "homeAgentActionConfirmation", confirmationId: "88888888-8888-4888-8888-888888888888", clientRequestId: "6ba7b810-9dad-41d1-80b4-00c04fd430c8", skill: "pauseRoomAutomation" }]
+  });`);
+  const html = harness.elements.get('#homeAgentContent').innerHTML;
+  assert(html.includes('家の状態は確認できたよ。'), 'read response was hidden without home.control');
+  assert(html.includes('この端末では家の状態確認だけ利用できます。'), 'control-unavailable guidance missing');
+  assert(!html.includes('data-home-agent-action') && !html.includes('data-home-agent-action-execute'), 'control UI rendered without capability');
+  await expectReject(harness.run('executeHomeAgentAction({})'), 'HOME_CONTROL_FORBIDDEN');
+  await expectReject(harness.run('executeAgentActionConfirmation({})'), 'HOME_CONTROL_FORBIDDEN');
+  await expectReject(harness.run('cancelAgentActionConfirmation({})'), 'HOME_CONTROL_FORBIDDEN');
+  await harness.run(`renderHomeAgentActionConfirmation({ type: 'agentActionConfirmation', confirmationId: '88888888-8888-4888-8888-888888888888', clientRequestId: '6ba7b810-9dad-41d1-80b4-00c04fd430c8' }); executePendingHomeAgentAction(); cancelPendingHomeAgentAction();`);
+  assert(harness.requests.length === 0, 'direct action path sent a request without home.control');
+  harness.run('activeMembershipContext = { capabilities: ["home.control"] }; showAuthenticationState("locked", "revoked_error");');
+  assert(harness.run('canUseHomeControl_()') === false, 'authentication release retained home.control');
+});
+
+test('admin membership context retains Home Agent action controls', () => {
+  const harness = createHarness();
+  harness.run('activeMembershipContext = { role: "self_record", capabilities: ["home.control"] }; userProfile = { role: "self_record", capabilities: [] };');
+  harness.run(`renderHomeAgentResult({ actionCandidates: [{ type: "homeAgentActionConfirmation", confirmationId: "88888888-8888-4888-8888-888888888888", clientRequestId: "6ba7b810-9dad-41d1-80b4-00c04fd430c8", skill: "pauseRoomAutomation" }] });`);
+  assert(harness.elements.get('#homeAgentContent').innerHTML.includes('data-home-agent-action'), 'server capability did not retain action candidate');
 });
 
 test('Inbox list keeps legacy active rows without date user or visibility filtering', () => {
