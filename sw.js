@@ -1,4 +1,4 @@
-const ASSET_VERSION = "v20260727-multi-user-preview";
+const ASSET_VERSION = "v20260727-pwa-hotfix";
 const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
 const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
 const DEBUG = false;

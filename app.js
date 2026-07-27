@@ -1,7 +1,7 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.1.0";
-const ASSET_VERSION = "v20260727-multi-user-preview";
+const ASSET_VERSION = "v20260727-pwa-hotfix";
 const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "";
@@ -83,29 +83,6 @@ const DEFAULT_PROFILE = {
   includeUnknownCalendarEvents: false,
   tomorrowScheduleStartTime: DEFAULT_TOMORROW_SCHEDULE_START_TIME,
 };
-
-const SECOND_SON_DEVELOPER_PREVIEW_FIXTURE = Object.freeze({
-  presentation: Object.freeze({
-    memberUserId: "second_son",
-    displayName: "次男",
-    role: "self_record",
-    calendarSuffix: "（ふ）",
-    addressTerms: Object.freeze({ paruru: "ふうが", nurseOkan: "ふうちゃん" }),
-    allowedViews: Object.freeze(["home", "inbox", "nurse-okan"]),
-  }),
-  inboxItems: Object.freeze([
-    Object.freeze({ id: "preview-inbox-1", title: "提出物を確認", memo: "固定fixtureです。実データは使用していません。", type: "task", category: "学校", priority: "Normal", status: "inbox", userId: "preview-second-son", userDisplayName: "次男", createdAt: "2026-01-01T09:00:00+09:00" }),
-  ]),
-  notifications: Object.freeze([
-    Object.freeze({ id: "preview-notification-1", sourceType: "paluru", title: "提出物を確認", type: "task", reasons: ["due_today"], notificationLevel: "normal", message: "提出物を確認", userId: "preview-second-son", userDisplayName: "次男" }),
-    Object.freeze({ id: "preview-calendar-1", sourceType: "calendar", title: "部活", calendarTitle: "部活（ふ）", type: "event", reasons: ["event_today"], notificationLevel: "normal", allDay: true, eventStart: "2026-01-01", eventEnd: "2099-01-02", rollingDay: "today", rollingDisplayDate: "2026-01-01", userId: "preview-second-son", userDisplayName: "次男" }),
-  ]),
-  health: Object.freeze({
-    context: Object.freeze({ targets: Object.freeze([{ userId: "preview-second-son", displayName: "次男" }]) }),
-    daily: Object.freeze({ slots: Object.freeze({ morning: Object.freeze({ morningStaple: "normal", morningProteinSource: "egg" }), lunch: Object.freeze({ lunchAmount: "all", lunchProteinSource: "included" }), post_training: Object.freeze({ postTrainingStatus: "recorded", postTrainingOnigiriCount: 1, postTrainingProteinSource: "protein" }), dinner: Object.freeze({ dinnerRiceBowls: 1, dinnerNattoPacks: 1, dinnerExtraProteinSource: "none" }), condition: Object.freeze({ conditionAppetite: "good", symptoms: [] }) }), ruleCodes: Object.freeze(["on_track"]) }),
-    weights: Object.freeze({ items: Object.freeze([{ measuredDate: "2026-01-01", weightKg: 55.2 }, { measuredDate: "2025-12-25", weightKg: 55.0 }]) }),
-  }),
-});
 
 const PARURU_MESSAGES = {
   speech: {
@@ -403,10 +380,6 @@ const homeAgentCard = document.querySelector("#homeAgentCard");
 const homeAgentContent = document.querySelector("#homeAgentContent");
 const homeAgentRetryButton = document.querySelector("#homeAgentRetryButton");
 const homeAgentCloseButton = document.querySelector("#homeAgentCloseButton");
-const developerPreviewBanner = document.querySelector("#developerPreviewBanner");
-const developerPreviewStartButton = document.querySelector("#developerPreviewStartButton");
-const developerPreviewExitButton = document.querySelector("#developerPreviewExitButton");
-const developerPreviewSettings = document.querySelector("#developerPreviewSettings");
 
 let homeAgentConversationContext = {};
 let pendingHomeAgentActionCandidate = null;
@@ -414,86 +387,6 @@ let pendingHomeAgentRetry = null;
 let homeControlPollTimer = null;
 let membershipRegistrationPollTimer = null;
 let activeMembershipContext = null;
-let developerPreviewState = null;
-
-function isDeveloperPreviewActive_() {
-  return Boolean(developerPreviewState);
-}
-
-function canStartSecondSonDeveloperPreview_() {
-  return appAuthenticationState === "active_member"
-    && activeMembershipContext?.memberUserId === "father"
-    && activeMembershipContext?.role === "admin";
-}
-
-function getPresentationContext_() {
-  return developerPreviewState?.fixture?.presentation || activeMembershipContext;
-}
-
-function assertDeveloperPreviewNetworkAllowed_() {
-  if (isDeveloperPreviewActive_()) throw createHomeControlError("DEVELOPER_PREVIEW_NETWORK_DISABLED");
-}
-
-function assertDeveloperPreviewWriteAllowed_() {
-  if (isDeveloperPreviewActive_()) throw createHomeControlError("DEVELOPER_PREVIEW_READ_ONLY");
-}
-
-function cloneDeveloperPreviewFixture_(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function discardDeveloperPreviewRuntimeState_() {
-  pendingHomeAgentActionCandidate = null;
-  pendingHomeAgentRetry = null;
-  homeAgentConversationContext = {};
-  hideHomeAgentCard();
-  [detailDialog, deleteDialog].forEach((dialog) => { if (dialog?.open) dialog.close(); });
-  inboxItems = [];
-  notificationCandidatesState = { lastFetchedAt: 0, inFlight: null, items: [], totalCount: 0, includeTomorrow: false, warnings: [] };
-}
-
-function applyDeveloperPreviewUi_() {
-  const active = isDeveloperPreviewActive_();
-  document.body.classList.toggle("is-developer-preview", active);
-  if (developerPreviewBanner) developerPreviewBanner.hidden = !active;
-  if (developerPreviewStartButton) developerPreviewStartButton.hidden = active || !canStartSecondSonDeveloperPreview_();
-  if (developerPreviewSettings) developerPreviewSettings.hidden = active || !canStartSecondSonDeveloperPreview_();
-  [askPaluruButton, saveToPaluruButton, refreshNotificationsButton, homeAgentRetryButton].forEach((control) => { if (control) control.disabled = active; });
-  document.querySelectorAll("#inboxForm input, #inboxForm select, #inboxForm textarea, #inboxForm button, #editForm input, #editForm select, #editForm textarea, #editForm button, #homeFollowup input, #homeFollowup button, #detailFollowup input, #detailFollowup button, #homeControlSettings input, #homeControlSettings select, #homeControlSettings button").forEach((control) => { control.disabled = active; });
-}
-
-async function startSecondSonDeveloperPreview_() {
-  if (!canStartSecondSonDeveloperPreview_() || isDeveloperPreviewActive_()) return;
-  developerPreviewState = {
-    fixture: SECOND_SON_DEVELOPER_PREVIEW_FIXTURE,
-    previousView: activeView,
-    previousMembershipContext: activeMembershipContext,
-  };
-  discardDeveloperPreviewRuntimeState_();
-  applyDeveloperPreviewUi_();
-  applyAllowedViews_();
-  document.dispatchEvent(new CustomEvent("paruru:developer-preview", { detail: { active: true, fixture: cloneDeveloperPreviewFixture_(SECOND_SON_DEVELOPER_PREVIEW_FIXTURE) } }));
-  await switchView("home");
-}
-
-async function exitDeveloperPreview_(options = {}) {
-  if (!isDeveloperPreviewActive_()) return;
-  const previousView = developerPreviewState.previousView;
-  const previousMembershipContext = developerPreviewState.previousMembershipContext;
-  developerPreviewState = null;
-  activeMembershipContext = previousMembershipContext || activeMembershipContext;
-  discardDeveloperPreviewRuntimeState_();
-  applyDeveloperPreviewUi_();
-  applyAllowedViews_();
-  document.dispatchEvent(new CustomEvent("paruru:developer-preview", { detail: { active: false } }));
-  if (!options.silent && appAuthenticationState === "active_member") await switchView(previousView || "home");
-}
-
-function handleDeveloperPreviewExitClick_(event) {
-  event?.preventDefault();
-  event?.stopPropagation();
-  void exitDeveloperPreview_();
-}
 
 setParuruState("loading");
 
@@ -536,8 +429,7 @@ let appAuthenticationState = "booting";
 let normalPwaInitialized = false;
 
 function canUseHomeControl_() {
-  return !isDeveloperPreviewActive_()
-    && appAuthenticationState === "active_member"
+  return appAuthenticationState === "active_member"
     && Array.isArray(activeMembershipContext?.capabilities)
     && activeMembershipContext.capabilities.includes("home.control");
 }
@@ -550,7 +442,6 @@ const NURSE_OKAN_HEALTH_ACTIONS = new Set([
 ]);
 
 async function callAuthenticatedHealth_(action, body = {}) {
-  if (typeof assertDeveloperPreviewNetworkAllowed_ === "function") assertDeveloperPreviewNetworkAllowed_();
   if (appAuthenticationState !== "active_member" || !normalPwaInitialized) {
     throw createHomeControlError("AUTHENTICATION_REQUIRED");
   }
@@ -570,7 +461,6 @@ async function callAuthenticatedHealth_(action, body = {}) {
 }
 
 function showAuthenticationState(message, state = "locked") {
-  if (state !== "active_member" && typeof isDeveloperPreviewActive_ === "function" && isDeveloperPreviewActive_()) void exitDeveloperPreview_({ silent: true });
   appAuthenticationState = state;
   if (state !== "active_member") {
     activeMembershipContext = null;
@@ -652,7 +542,6 @@ function initializeNormalPwaOnce() {
   if (authLock) authLock.hidden = true;
   notificationBoundaryTimerEnabled = true;
   renderProfileForm();
-  if (typeof applyDeveloperPreviewUi_ === "function") applyDeveloperPreviewUi_();
   setParuruState("normal");
   if (buildVersion) {
     buildVersion.textContent = `PALURU Mini ${APP_VERSION} / Build ${BUILD_VERSION}`;
@@ -905,7 +794,6 @@ async function routePaluruRequest(memo) {
 }
 
 async function savePaluruMemo() {
-  assertDeveloperPreviewWriteAllowed_();
   if (isSubmitting) {
     return;
   }
@@ -1109,8 +997,6 @@ homeControlDeviceList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-home-control-revoke]");
   if (button) revokeHomeControlDevice(button.dataset.homeControlRevoke || "");
 });
-developerPreviewStartButton?.addEventListener("click", () => { void startSecondSonDeveloperPreview_(); });
-developerPreviewExitButton?.addEventListener("click", handleDeveloperPreviewExitClick_, { capture: true });
 
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -1152,11 +1038,6 @@ async function switchView(viewName) {
 }
 
 async function loadInbox(options = {}) {
-  if (isDeveloperPreviewActive_()) {
-    inboxItems = cloneDeveloperPreviewFixture_(developerPreviewState.fixture.inboxItems);
-    renderInboxList(inboxItems);
-    return inboxItems;
-  }
   if (!options.quiet) {
     setParuruState("loading");
     renderInboxLoading();
@@ -1177,7 +1058,6 @@ async function loadInbox(options = {}) {
 }
 
 async function saveMemo(payload) {
-  assertDeveloperPreviewWriteAllowed_();
   if (!GAS_WEB_APP_URL) {
     return dummyCreate(payload);
   }
@@ -1194,7 +1074,6 @@ async function saveMemo(payload) {
 }
 
 async function callHomeAgent(payload) {
-  assertDeveloperPreviewNetworkAllowed_();
   if (!GAS_WEB_APP_URL) {
     return dummyHomeAgent(payload);
   }
@@ -1211,7 +1090,6 @@ async function callHomeAgent(payload) {
 }
 
 async function callAgentChat(payload) {
-  assertDeveloperPreviewNetworkAllowed_();
   if (!GAS_WEB_APP_URL) {
     throw new Error("PALURU Mini Gateway is unavailable");
   }
@@ -1249,7 +1127,6 @@ function createAgentChatClientError(code) {
 }
 
 async function executeHomeAgentAction(candidate) {
-  assertDeveloperPreviewWriteAllowed_();
   if (!canUseHomeControl_()) throw createHomeControlError("HOME_CONTROL_FORBIDDEN");
   if (!GAS_WEB_APP_URL) {
     return {
@@ -1280,7 +1157,6 @@ async function executeHomeAgentAction(candidate) {
 }
 
 async function executeAgentActionConfirmation(candidate) {
-  assertDeveloperPreviewWriteAllowed_();
   if (!canUseHomeControl_()) throw createHomeControlError("HOME_CONTROL_FORBIDDEN");
   if (!GAS_WEB_APP_URL) {
     return {
@@ -1311,7 +1187,6 @@ async function executeAgentActionConfirmation(candidate) {
 }
 
 async function cancelAgentActionConfirmation(candidate) {
-  assertDeveloperPreviewWriteAllowed_();
   if (!canUseHomeControl_()) throw createHomeControlError("HOME_CONTROL_FORBIDDEN");
   if (!GAS_WEB_APP_URL) {
     return { success: true, status: "cancelled" };
@@ -1334,7 +1209,6 @@ async function cancelAgentActionConfirmation(candidate) {
 }
 
 async function callHomeControlApi(payload) {
-  assertDeveloperPreviewNetworkAllowed_();
   if (!GAS_WEB_APP_URL) throw createHomeControlError("HOME_CONTROL_UNAVAILABLE");
   const response = await fetch(GAS_WEB_APP_URL, {
     method: "POST",
@@ -1452,7 +1326,6 @@ async function createHomeControlToken() {
 }
 
 async function beginHomeControlPairing() {
-  if (typeof assertDeveloperPreviewWriteAllowed_ === "function") assertDeveloperPreviewWriteAllowed_();
   if (homeControlEnableButton?.disabled) return;
   const profile = getCurrentProfile();
   const displayName = String(homeControlDeviceName?.value || profile.displayName || "この端末").trim();
@@ -1476,7 +1349,6 @@ async function beginHomeControlPairing() {
 }
 
 const beginMembershipRegistration = async function() {
-  if (typeof assertDeveloperPreviewWriteAllowed_ === "function") assertDeveloperPreviewWriteAllowed_();
   if (authLockMembershipBeginButton?.disabled) return;
   const profile = userProfile || loadUserProfile();
   const pairingToken = getHomeAgentPairingToken();
@@ -1598,7 +1470,6 @@ const scheduleMembershipRegistrationPoll = function() {
 };
 
 async function approveHomeControlPairing() {
-  if (typeof assertDeveloperPreviewWriteAllowed_ === "function") assertDeveloperPreviewWriteAllowed_();
   if (!canApproveHomeControlPairing_()) {
     setHomeControlMessage("この端末では新しい端末を承認できません。", "error");
     return;
@@ -1632,7 +1503,6 @@ function canApproveHomeControlPairing_() {
 }
 
 async function revokeHomeControlDevice(targetDeviceId) {
-  if (typeof assertDeveloperPreviewWriteAllowed_ === "function") assertDeveloperPreviewWriteAllowed_();
   if (!canApproveHomeControlPairing_()) {
     return;
   }
@@ -1648,7 +1518,6 @@ async function revokeHomeControlDevice(targetDeviceId) {
 }
 
 async function renderHomeControlSettings() {
-  if (typeof isDeveloperPreviewActive_ === "function" && isDeveloperPreviewActive_()) return;
   const profile = getCurrentProfile();
   const token = getHomeAgentPairingToken();
   const pending = getHomeControlPending();
@@ -1942,7 +1811,6 @@ function buildCreateWithAIPayload(memo) {
 }
 
 async function fetchInboxItems() {
-  assertDeveloperPreviewNetworkAllowed_();
   if (!GAS_WEB_APP_URL) {
     return sortInboxItemsNewestFirst(loadDummyItems().filter(isInboxItem));
   }
@@ -1957,12 +1825,6 @@ async function fetchInboxItems() {
 }
 
 async function loadNotificationCandidates(options = {}) {
-  if (isDeveloperPreviewActive_()) {
-    const items = cloneDeveloperPreviewFixture_(developerPreviewState.fixture.notifications);
-    notificationCandidatesState = { lastFetchedAt: Date.now(), inFlight: null, items, totalCount: items.length, includeTomorrow: false, warnings: [] };
-    renderNotificationCandidates(items, items.length, false);
-    return items;
-  }
   const now = Date.now();
   if (!options.force && notificationCandidatesState.inFlight) {
     return notificationCandidatesState.inFlight;
@@ -2019,7 +1881,6 @@ async function loadNotificationCandidates(options = {}) {
 }
 
 async function fetchNotificationCandidates() {
-  assertDeveloperPreviewNetworkAllowed_();
   const profile = getCurrentProfile();
   const plan = getRollingCalendarRequestPlan(Date.now(), getTomorrowScheduleStartTime(profile));
   if (!GAS_WEB_APP_URL) {
@@ -2049,7 +1910,6 @@ async function fetchNotificationCandidates() {
 }
 
 async function fetchNotificationCandidatesForDate(profile, targetDate) {
-  assertDeveloperPreviewNetworkAllowed_();
   const response = await fetch(GAS_WEB_APP_URL, {
     method: "POST",
     cache: "no-store",
@@ -2147,7 +2007,6 @@ function sortRollingCalendarItems(items) {
 }
 
 async function updateInboxItem(id, updates) {
-  assertDeveloperPreviewWriteAllowed_();
   if (!GAS_WEB_APP_URL) {
     return dummyUpdate(id, updates);
   }
@@ -2164,7 +2023,6 @@ async function updateInboxItem(id, updates) {
 }
 
 async function answerFollowup(payload) {
-  assertDeveloperPreviewWriteAllowed_();
   if (!GAS_WEB_APP_URL) {
     return dummyAnswerFollowup(payload);
   }
@@ -2181,7 +2039,6 @@ async function answerFollowup(payload) {
 }
 
 async function syncCalendar(payload) {
-  assertDeveloperPreviewWriteAllowed_();
   if (!GAS_WEB_APP_URL) {
     return dummySyncCalendar(payload);
   }
@@ -2199,7 +2056,6 @@ async function syncCalendar(payload) {
 }
 
 async function updateCalendar(payload) {
-  assertDeveloperPreviewWriteAllowed_();
   if (!GAS_WEB_APP_URL) {
     return dummyUpdateCalendar(payload);
   }
@@ -2216,7 +2072,6 @@ async function updateCalendar(payload) {
 }
 
 async function deleteInboxItem(id) {
-  assertDeveloperPreviewWriteAllowed_();
   if (!GAS_WEB_APP_URL) {
     return dummyDelete(id);
   }
@@ -2816,8 +2671,7 @@ function setParuruSpeech(stateName = "idle", customLine = "") {
 }
 
 function formatParuruLine_(template) {
-  const presentation = typeof getPresentationContext_ === "function" ? getPresentationContext_() : activeMembershipContext;
-  return formatAddressedLine_(template, presentation?.addressTerms?.paruru);
+  return formatAddressedLine_(template, activeMembershipContext?.addressTerms?.paruru);
 }
 
 function formatAddressedLine_(template, address) {
@@ -4428,7 +4282,6 @@ function renderProfileForm() {
 }
 
 function saveUserProfileFromForm() {
-  if (isDeveloperPreviewActive_()) return getCurrentProfile();
   const current = getCurrentProfile();
   const profile = {
     selectedCalendarMemberKeys: readCalendarMemberSelectionFromForm(),
@@ -4441,10 +4294,9 @@ function saveUserProfileFromForm() {
 }
 
 function isViewAllowed_(viewName) {
-  const presentation = typeof getPresentationContext_ === "function" ? getPresentationContext_() : activeMembershipContext;
   return appAuthenticationState === "active_member"
-    && Array.isArray(presentation?.allowedViews)
-    && presentation.allowedViews.includes(String(viewName || ""));
+    && Array.isArray(activeMembershipContext?.allowedViews)
+    && activeMembershipContext.allowedViews.includes(String(viewName || ""));
 }
 
 function normalizeAllowedView_(viewName) {
