@@ -31,9 +31,11 @@ body {
   position: sticky;
   top: 0;
   z-index: 30;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  column-gap: 12px;
+  row-gap: 6px;
   width: min(100%, 720px);
   margin: 0 auto;
   padding: 10px 16px;
@@ -42,8 +44,22 @@ body {
   font-size: 0.9rem;
 }
 
-.developer-preview-banner span { flex: 1; }
-.developer-preview-banner button { border: 0; border-radius: 8px; padding: 7px 10px; background: #fff; color: #3f2f73; font-weight: 700; }
+.developer-preview-banner strong,
+.developer-preview-banner span { min-width: 0; }
+.developer-preview-banner span { line-height: 1.45; }
+.developer-preview-banner button { min-height: 48px; border: 0; border-radius: 8px; padding: 7px 12px; background: #fff; color: #3f2f73; font-weight: 700; white-space: nowrap; }
+
+@media (max-width: 560px) {
+  .developer-preview-banner {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 10px 12px;
+  }
+
+  .developer-preview-banner span {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
 
 body.is-developer-preview .app-shell { opacity: 0.98; }
 

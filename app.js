@@ -464,7 +464,11 @@ function applyDeveloperPreviewUi_() {
 
 async function startSecondSonDeveloperPreview_() {
   if (!canStartSecondSonDeveloperPreview_() || isDeveloperPreviewActive_()) return;
-  developerPreviewState = { fixture: SECOND_SON_DEVELOPER_PREVIEW_FIXTURE, previousView: activeView };
+  developerPreviewState = {
+    fixture: SECOND_SON_DEVELOPER_PREVIEW_FIXTURE,
+    previousView: activeView,
+    previousMembershipContext: activeMembershipContext,
+  };
   discardDeveloperPreviewRuntimeState_();
   applyDeveloperPreviewUi_();
   applyAllowedViews_();
@@ -475,12 +479,20 @@ async function startSecondSonDeveloperPreview_() {
 async function exitDeveloperPreview_(options = {}) {
   if (!isDeveloperPreviewActive_()) return;
   const previousView = developerPreviewState.previousView;
+  const previousMembershipContext = developerPreviewState.previousMembershipContext;
   developerPreviewState = null;
+  activeMembershipContext = previousMembershipContext || activeMembershipContext;
   discardDeveloperPreviewRuntimeState_();
   applyDeveloperPreviewUi_();
   applyAllowedViews_();
   document.dispatchEvent(new CustomEvent("paruru:developer-preview", { detail: { active: false } }));
   if (!options.silent && appAuthenticationState === "active_member") await switchView(previousView || "home");
+}
+
+function handleDeveloperPreviewExitClick_(event) {
+  event?.preventDefault();
+  event?.stopPropagation();
+  void exitDeveloperPreview_();
 }
 
 setParuruState("loading");
@@ -1098,7 +1110,7 @@ homeControlDeviceList?.addEventListener("click", (event) => {
   if (button) revokeHomeControlDevice(button.dataset.homeControlRevoke || "");
 });
 developerPreviewStartButton?.addEventListener("click", () => { void startSecondSonDeveloperPreview_(); });
-developerPreviewExitButton?.addEventListener("click", () => { void exitDeveloperPreview_(); });
+developerPreviewExitButton?.addEventListener("click", handleDeveloperPreviewExitClick_, { capture: true });
 
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
   button.addEventListener("click", () => {
