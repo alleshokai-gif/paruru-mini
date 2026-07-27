@@ -383,6 +383,7 @@ function answerFollowup_(body) {
 
 function syncCalendar_(body) {
   const actor = resolveMemoActor_(body, 'memo.self.update');
+  authorizeCapability_(actor, 'calendar.family.create');
   const suffix = getCalendarSuffixForMember_(actor.memberUserId);
   const id = String(body.id || '').trim();
   if (!id) {
@@ -562,6 +563,7 @@ function syncCalendar_(body) {
 
 function updateCalendar_(body) {
   const actor = resolveMemoActor_(body, 'memo.self.update');
+  authorizeCapability_(actor, 'calendar.family.edit_own');
   const suffix = getCalendarSuffixForMember_(actor.memberUserId);
   const id = String(body.id || '').trim();
   if (!id) {
@@ -904,6 +906,7 @@ function resolveMemoActor_(body, capability) {
     homeId: actor.homeId,
     memberUserId: actor.memberUserId,
     displayName: member.displayName,
+    role: actor.role,
     deviceId: actor.deviceId,
   };
 }

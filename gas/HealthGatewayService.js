@@ -9,7 +9,9 @@ function healthGateway_(body) {
     if (!HEALTH_OPS[input.action]) throw healthGatewayError_('FORBIDDEN');
     const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
     const targets = getActiveSelfRecordMembers_(actor.homeId);
-    const targetUserId = String(input.targetMemberUserId || (actor.role === 'self_record' ? actor.memberUserId : (targets.length === 1 ? targets[0].userId : ''))).trim();
+    const canSuperviseHealth = hasRoleCapability_(actor, 'health.supervision.read');
+    const canControlHome = hasRoleCapability_(actor, 'home.control');
+    const targetUserId = String(input.targetMemberUserId || (!canSuperviseHealth || !canControlHome ? actor.memberUserId : (targets.length === 1 ? targets[0].userId : ''))).trim();
     if (!targetUserId) throw healthGatewayError_('INVALID_INPUT');
     authorizeTargetOperation_(actor, targetUserId, input.action);
 
@@ -35,7 +37,15 @@ function healthGateway_(body) {
     if (!result || result.success !== true || !result.data || typeof result.data !== 'object') {
       throw healthGatewayError_(result && result.error && result.error.code === 'INVALID_INPUT' ? 'INVALID_INPUT' : 'HEALTH_UNAVAILABLE');
     }
-    if (input.action === 'health.context.get') result.data.targets = actor.role === 'admin' ? targets : targets.filter(function(item) { return item.userId === actor.memberUserId; });
+    if (input.action === 'health.context.get') {
+      const actorMember = getHomeMember_(actor.homeId, actor.memberUserId);
+      const selfTarget = actorMember ? { userId: actorMember.memberUserId, displayName: actorMember.displayName } : null;
+      result.data.targets = canSuperviseHealth
+        ? canControlHome
+          ? targets
+          : selfTarget ? [selfTarget].concat(targets) : targets
+        : selfTarget ? [selfTarget] : [];
+    }
     return json_({ success: true, data: result.data, message: 'ok' });
   } catch (error) {
     const code = error && error.code;

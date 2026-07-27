@@ -2,14 +2,16 @@ const HOME_MEMBERS_SHEET_NAME = 'Home_Members';
 const DEVICE_MEMBERSHIPS_SHEET_NAME = 'Device_Memberships';
 const HOME_MEMBERS_HEADERS = ['homeId', 'memberUserId', 'displayName', 'role', 'status', 'createdAt', 'updatedAt'];
 const DEVICE_MEMBERSHIPS_HEADERS = ['deviceId', 'homeId', 'memberUserId', 'status', 'assignedBy', 'assignedAt', 'updatedAt'];
-const HOME_MEMBER_ROLES = Object.freeze({ admin: true, self_record: true });
+const HOME_MEMBER_ROLES = Object.freeze({ admin: true, guardian: true, self_record: true });
 const HOME_MEMBER_STATUS = Object.freeze({ active: true, disabled: true });
 const ROLE_CAPABILITIES = Object.freeze({
   admin: Object.freeze(['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record']),
+  guardian: Object.freeze(['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record']),
   self_record: Object.freeze(['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record']),
 });
 const ROLE_ALLOWED_VIEWS = Object.freeze({
   admin: Object.freeze(['home', 'inbox', 'nurse-okan', 'settings']),
+  guardian: Object.freeze(['home', 'inbox', 'nurse-okan']),
   self_record: Object.freeze(['home', 'inbox', 'nurse-okan']),
 });
 const HEALTH_OPERATION_CAPABILITIES = Object.freeze({
@@ -58,15 +60,19 @@ function authorizeTargetOperation_(actor, targetUserId, operation) {
   const policy = HEALTH_OPERATION_CAPABILITIES[operation];
   if (!actor || !actor.homeId || !actor.memberUserId || !HOME_MEMBER_ROLES[actor.role] || !policy) throw homeMembershipError_('FORBIDDEN');
   const targetMember = getHomeMember_(actor.homeId, target);
-  if (!targetMember || targetMember.status !== 'active' || !isHomeMemberPolicyMatch_(targetMember) || targetMember.role !== 'self_record') throw homeMembershipError_('FORBIDDEN');
+  if (!targetMember || targetMember.status !== 'active' || !isHomeMemberPolicyMatch_(targetMember)) throw homeMembershipError_('FORBIDDEN');
   if (target === actor.memberUserId) return authorizeCapability_(actor, policy.self);
-  if (actor.role === 'admin') return authorizeCapability_(actor, policy.supervision);
-  throw homeMembershipError_('FORBIDDEN');
+  if (targetMember.role !== 'self_record') throw homeMembershipError_('FORBIDDEN');
+  return authorizeCapability_(actor, policy.supervision);
 }
 
 function authorizeCapability_(actor, capability) {
-  if (!actor || !actor.homeId || !actor.memberUserId || !HOME_MEMBER_ROLES[actor.role] || ROLE_CAPABILITIES[actor.role].indexOf(String(capability || '')) < 0) throw homeMembershipError_('FORBIDDEN');
+  if (!hasRoleCapability_(actor, capability)) throw homeMembershipError_('FORBIDDEN');
   return true;
+}
+
+function hasRoleCapability_(actor, capability) {
+  return Boolean(actor && actor.homeId && actor.memberUserId && HOME_MEMBER_ROLES[actor.role] && ROLE_CAPABILITIES[actor.role].indexOf(String(capability || '')) >= 0);
 }
 
 function resolveHomeAgentReadActor_(body) {

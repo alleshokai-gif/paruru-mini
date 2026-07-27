@@ -13,6 +13,7 @@ let savedItem = null;
 let calendarTarget = null;
 let calendarEvent = null;
 let currentItem = null;
+const calendarCapabilities = [];
 
 const context = {
   Array, Boolean, Date, Error, JSON, Math, Number, Object, RegExp, String,
@@ -33,8 +34,10 @@ Object.assign(context, {
     homeId: 'home-a',
     memberUserId: body && body.deviceId === 'unknown-device' ? 'unknown_member' : 'father',
     displayName: '父',
+    role: 'admin',
     deviceId: String((body && body.deviceId) || 'father-device'),
   }),
+  authorizeCapability_: (_actor, capability) => { calendarCapabilities.push(capability); return true; },
   assertMemoIdentityFieldsAbsent_: () => {},
   validateAnalyzedItem_: (item) => item,
   normalizeTagsForSheet_: (value) => value,
@@ -50,7 +53,7 @@ Object.assign(context, {
   getInboxSheet_: () => ({}),
   getHeaderIndex_: () => ({ calendarSuffix: 0 }),
   findRowNumberById_: () => 2,
-  getOwnedMemoItem_: () => ({ item: currentItem, sheet: {}, rowNumber: 2, index: { calendarSuffix: 0 } }),
+  getOwnedMemoItem_: (_id, actor) => currentItem && currentItem.ownerUserId === actor.memberUserId ? ({ item: currentItem, sheet: {}, rowNumber: 2, index: { calendarSuffix: 0 } }) : null,
   normalizeValueForSheet_: (_field, value) => value,
   setSheetValueForField_: (_sheet, _row, _column, field, value) => { currentItem[field] = value; writes.push({ field, value }); },
   updateRowFields_: (_sheet, _row, _index, updates) => { Object.assign(currentItem, updates); },
@@ -105,6 +108,7 @@ calendarTarget = null;
 context.syncCalendar_({ deviceId: 'father-device', id: 'item-id', calendarSuffix: '（り）', calendarTitle: '偽タイトル（母）', startDate: '2026-07-27', allDay: true });
 assert.strictEqual(calendarTarget, '同期（父）');
 assert.strictEqual(currentItem.calendarSuffix, '（父）');
+assert.deepStrictEqual(calendarCapabilities.splice(0), ['calendar.family.create']);
 
 calendarEvent = { setTitle: (title) => { calendarTarget = title; }, setDescription() {}, setAllDayDates() {} };
 currentItem = { id: 'item-id', ownerUserId: 'father', userId: 'father', title: '更新予定（理）（は）', memo: '更新', type: 'event', calendarSuffix: '（母）', calendarEventId: 'event-id', calendarSyncStatus: 'update_required' };
@@ -112,6 +116,13 @@ calendarTarget = null;
 context.updateCalendar_({ deviceId: 'father-device', id: 'item-id', calendarSuffix: '（り）', calendarTitle: '偽タイトル（母）', startDate: '2026-07-27', allDay: true });
 assert.strictEqual(calendarTarget, '更新予定（父）');
 assert.strictEqual(currentItem.calendarSuffix, '（父）');
+assert.deepStrictEqual(calendarCapabilities.splice(0), ['calendar.family.edit_own']);
+
+currentItem = { id: 'other-item', ownerUserId: 'second_son', userId: 'second_son', title: '他人予定', memo: '更新', type: 'event', calendarEventId: '', calendarSyncStatus: 'pending' };
+calendarTarget = null;
+const otherOwnerResult = context.syncCalendar_({ deviceId: 'father-device', id: 'other-item', startDate: '2026-07-27', allDay: true });
+assert.strictEqual(otherOwnerResult.success, false);
+assert.strictEqual(calendarTarget, null);
 
 assert.throws(() => context.createItem_({ deviceId: 'unknown-device', memo: '予定' }), (error) => error.code === 'UNKNOWN_CALENDAR_MEMBER');
 const personalEvents = context.filterHomeAgentPersonalEvents_({
