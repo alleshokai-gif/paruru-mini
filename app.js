@@ -394,7 +394,12 @@ function resolveNextHealthTask(dailyRecord, now) {
 }
 
 async function fetchNextHealthTask_() {
-  if (appAuthenticationState !== "active_member" || !normalPwaInitialized || !activeMembershipContext?.memberUserId) {
+  if (
+    appAuthenticationState !== "active_member"
+    || !normalPwaInitialized
+    || activeMembershipContext?.role !== "self_record"
+    || !activeMembershipContext?.memberUserId
+  ) {
     return null;
   }
   try {
@@ -949,7 +954,8 @@ doneButton.addEventListener("click", async () => {
     await updateInboxItem(id, { status: "Done" });
   } catch (error) {
     debugLog("[Paruru] complete update failed", error?.message || error);
-    setParuruState("error", { showStatus: true });
+    setParuruState("error");
+    showMessage(buildInboxUpdateFailureMessage_(error), "error");
     return;
   }
 
@@ -2112,15 +2118,20 @@ async function updateInboxItem(id, updates) {
     return dummyUpdate(id, updates);
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify({ ...buildMemoCredentialPayload("update"), id, ...updates }),
-  });
+  try {
+    const response = await fetch(GAS_WEB_APP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify({ ...buildMemoCredentialPayload("update"), id, ...updates }),
+    });
 
-  return parseApiResponse(response);
+    return await parseApiResponse(response);
+  } catch (error) {
+    logInboxUpdateFailure_(id, error);
+    throw error;
+  }
 }
 
 async function answerFollowup(payload) {
@@ -2195,19 +2206,57 @@ async function parseApiResponse(response, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    const error = new Error(`Request failed: ${response.status}`);
+    error.httpStatus = response.status;
+    error.responseSuccess = null;
+    throw error;
   }
 
-  const result = await response.json();
+  let result;
+  try {
+    result = await response.json();
+  } catch (cause) {
+    const error = new Error("Invalid API response");
+    error.httpStatus = response.status;
+    error.responseSuccess = null;
+    throw error;
+  }
   if (debugLabel) {
     debugLog(`[Paruru] ${debugLabel} parsed response`, sanitizeApiResponseForLog(result));
   }
 
   if (!result.success) {
-    throw new Error(result.message || "API failed");
+    const error = new Error(result.message || "API failed");
+    error.httpStatus = response.status;
+    error.responseSuccess = false;
+    error.responseErrorCode = String(result?.error?.code || "").trim();
+    error.responseMessage = String(result?.message || "").trim();
+    if (error.responseErrorCode) error.code = error.responseErrorCode;
+    throw error;
   }
 
   return result;
+}
+
+function logInboxUpdateFailure_(id, error) {
+  const profile = getCurrentProfile();
+  const pairingToken = getHomeAgentPairingToken();
+  console.error("[Paruru] Inbox update failed", {
+    action: "update",
+    httpStatus: Number.isFinite(Number(error?.httpStatus)) ? Number(error.httpStatus) : null,
+    responseSuccess: typeof error?.responseSuccess === "boolean" ? error.responseSuccess : null,
+    responseErrorCode: String(error?.responseErrorCode || error?.code || "").trim(),
+    responseMessage: String(error?.responseMessage || error?.message || "").trim(),
+    inboxId: String(id || "").trim(),
+    role: String(activeMembershipContext?.role || "").trim(),
+    hasDeviceId: Boolean(profile?.deviceId),
+    hasPairingToken: Boolean(pairingToken),
+  });
+}
+
+function buildInboxUpdateFailureMessage_(error) {
+  const code = String(error?.responseErrorCode || error?.code || "").trim();
+  return `完了できませんでした${code ? `（${code}）` : ""}`;
 }
 
 function renderInboxLoading() {

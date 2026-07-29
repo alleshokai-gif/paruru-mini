@@ -1,0 +1,48 @@
+'use strict';
+
+const assert = require('assert');
+const crypto = require('crypto');
+const fs = require('fs');
+const vm = require('vm');
+
+class Range { constructor(sheet,row,column,rowCount,columnCount){this.sheet=sheet;this.row=row;this.column=column;this.rowCount=rowCount;this.columnCount=columnCount;} getValues(){return Array.from({length:this.rowCount},(_,i)=>Array.from({length:this.columnCount},(_,j)=>this.sheet.values[this.row-1+i]?.[this.column-1+j]??''));} setValues(values){values.forEach((row,i)=>row.forEach((value,j)=>{(this.sheet.values[this.row-1+i]||=[])[this.column-1+j]=value;}));} }
+class Sheet { constructor(){this.values=[];} getLastColumn(){return Math.max(0,...this.values.map((row)=>row.length));} getLastRow(){return this.values.length;} getRange(...args){return new Range(this,...args);} getDataRange(){return new Range(this,1,1,Math.max(1,this.getLastRow()),Math.max(1,this.getLastColumn()));} appendRow(row){this.values.push(row);} setFrozenRows(){} }
+class Spreadsheet { constructor(){this.sheets={};} getSheetByName(name){return this.sheets[name]||null;} insertSheet(name){return this.sheets[name]=new Sheet();} }
+
+const spreadsheet = new Spreadsheet();
+const context = {
+  JSON, Number, String, Object, Array, Date, Math, RegExp,
+  Utilities: { getUuid: () => crypto.randomUUID(), formatDate: (_date,_zone,format) => format === 'yyyy-MM-dd' ? '2026-07-29' : '2026-07-29T12:00:00+09:00', base64Encode: (value) => Buffer.from(value).toString('base64'), computeDigest: (_algorithm,value) => crypto.createHash('sha256').update(value).digest(), DigestAlgorithm:{SHA_256:'sha256'}, Charset:{UTF_8:'utf8'} },
+  PropertiesService:{getScriptProperties:()=>({getProperty:(key)=>key==='HEALTH_SPREADSHEET_ID'?'sheet':''})},
+  SpreadsheetApp:{openById:()=>spreadsheet}, LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
+};
+vm.createContext(context);
+['HealthSetup.js','HealthSecurity.js','HealthRuleService.js','HealthDataService.js'].forEach((file)=>vm.runInContext(fs.readFileSync(`gas-health/${file}`,'utf8'),context));
+context.setupHealthSchema_();
+
+const base = { homeId:'home', actorUserId:'self', targetUserId:'self', localDate:'2026-07-29' };
+function save(slot, payload) { return context.dailyRecord_(Object.assign({}, base, { slot, payload, clientRequestId:crypto.randomUUID() })); }
+function daily() { return context.dailyGet_(base); }
+
+let value = save('morning',{morningStaple:'small',morningProteinSource:'egg',morningWater:true,morningMedication:true,morningCondition:true});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(value.slots.morning)),{morningStaple:'small',morningProteinSource:'egg',morningWater:true,morningMedication:true,morningCondition:true,recordedAt:'2026-07-29T12:00:00+09:00',recordedBy:'self'});
+value = save('lunch',{lunchAmount:'all',lunchProteinSource:'included',lunchWater:true});
+assert.strictEqual(daily().slots.lunch.lunchWater,true,'school water did not survive reload');
+value = save('post_training',{postTrainingStatus:'recorded',postTrainingOnigiriCount:1,postTrainingProteinSource:'protein'});
+assert.strictEqual(daily().slots.post_training.postTrainingProteinSource,'protein');
+assert.strictEqual(daily().slots.post_training.postTrainingOnigiriCount,1,'club snack was lost when protein was saved');
+value = save('dinner',{dinnerRiceBowls:1,dinnerNattoPacks:2,dinnerExtraProteinSource:'fish',dinnerMedication:true,bedtime:true});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(daily().slots.dinner)),{dinnerRiceBowls:1,dinnerNattoPacks:2,dinnerExtraProteinSource:'fish',dinnerMedication:true,bedtime:true,recordedAt:'2026-07-29T12:00:00+09:00',recordedBy:'self'});
+
+assert.throws(()=>save('morning',{morningStaple:'normal',morningProteinSource:'none',morningWater:'true',morningMedication:false,morningCondition:false}),(error)=>error.code==='INVALID_INPUT','boolean validation accepted string input');
+const headers = spreadsheet.sheets.Health_Daily.values[0];
+['morningWater','morningMedication','morningCondition','lunchWater','dinnerMedication','bedtime'].forEach((header)=>assert(headers.includes(header),`${header} header missing`));
+const legacy = new Array(headers.length).fill('');
+const index = headers.reduce((out,header,position)=>(out[header]=position,out),{});
+Object.assign(legacy,{[index.recordId]:'legacy',[index.homeId]:'home',[index.targetUserId]:'legacy-user',[index.localDate]:'2026-07-29',[index.morningStaple]:'normal',[index.morningProteinSource]:'egg',[index.morningRecordedAt]:'2026-07-29T07:00:00+09:00',[index.morningRecordedBy]:'legacy'});
+spreadsheet.sheets.Health_Daily.appendRow(legacy);
+const legacyDaily = context.dailyGet_({homeId:'home',targetUserId:'legacy-user',localDate:'2026-07-29'});
+assert.strictEqual(legacyDaily.slots.morning.morningWater,false,'legacy blank water was not read as unchecked');
+assert.strictEqual(legacyDaily.slots.morning.morningMedication,false,'legacy blank medication was not read as unchecked');
+assert.strictEqual(legacyDaily.slots.morning.morningStaple,'normal','legacy detailed value changed');
+console.log('PASS Health_Daily checkbox persistence, validation, reload, and legacy blanks');

@@ -26,8 +26,35 @@
     return ROUTINES.slice().reverse().find((routine) => hour >= routine.dueHour) || null;
   }
 
+  function isChecked_(value) {
+    return value === true || String(value || "").toLowerCase() === "true";
+  }
+
+  function isRoutineComplete(slot, value) {
+    const record = value || {};
+    if (slot === "morning") {
+      return record.morningStaple && record.morningStaple !== "none"
+        && isChecked_(record.morningWater)
+        && isChecked_(record.morningMedication)
+        && isChecked_(record.morningCondition);
+    }
+    if (slot === "lunch") {
+      return record.lunchAmount && record.lunchAmount !== "none" && isChecked_(record.lunchWater);
+    }
+    if (slot === "post_training") {
+      return record.postTrainingProteinSource && record.postTrainingProteinSource !== "none"
+        && Number(record.postTrainingOnigiriCount) > 0;
+    }
+    if (slot === "dinner") {
+      return Number(record.dinnerRiceBowls) > 0
+        && isChecked_(record.dinnerMedication)
+        && isChecked_(record.bedtime);
+    }
+    return Boolean(record.recordedAt);
+  }
+
   function getPendingRoutines_(slots) {
-    return ROUTINES.filter((routine) => !slots[routine.slot]?.recordedAt);
+    return ROUTINES.filter((routine) => !isRoutineComplete(routine.slot, slots[routine.slot]));
   }
 
   function getRoutineState_(routine, currentRoutine) {
@@ -58,5 +85,5 @@
     };
   }
 
-  return Object.freeze({ ROUTINES, resolveCurrentRoutine, resolveNextHealthTask });
+  return Object.freeze({ ROUTINES, resolveCurrentRoutine, resolveNextHealthTask, isRoutineComplete });
 }));

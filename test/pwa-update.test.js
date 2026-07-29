@@ -12,6 +12,14 @@ const nurseSource = fs.readFileSync(path.join(root, 'features', 'nurse-okan', 'n
 assert(appSource.includes('...buildMemoCredentialPayload("update"), id, ...updates'), 'update payload lost credentials');
 assert(appSource.includes('await updateInboxItem(id, { status: "Done" });'), 'Done status changed');
 assert(appSource.includes('debugLog("[Paruru] edit update failed"') && appSource.includes('debugLog("[Paruru] complete update failed"'), 'update handlers lack failure handling');
+assert(appSource.includes('activeMembershipContext?.role !== "self_record"'), 'health task role gate missing');
+assert(appSource.includes('console.error("[Paruru] Inbox update failed"'), 'Inbox update diagnostic log missing');
+['action: "update"', 'httpStatus:', 'responseSuccess:', 'responseErrorCode:', 'responseMessage:', 'inboxId:', 'role:', 'hasDeviceId:', 'hasPairingToken:'].forEach((field) => assert(appSource.includes(field), `Inbox update diagnostic field missing: ${field}`));
+assert(appSource.includes('error.responseErrorCode = String(result?.error?.code || "").trim();'), 'API error code is not retained');
+assert(appSource.includes('error.httpStatus = response.status;'), 'HTTP status is not retained');
+assert(appSource.includes('完了できませんでした${code ? `（${code}）` : ""}'), 'completion error code is not shown safely');
+assert(!appSource.includes('console.error("[Paruru] Inbox update failed", {\n    action: "update",\n    deviceId:'), 'diagnostic log leaked deviceId');
+assert(!appSource.includes('console.error("[Paruru] Inbox update failed", {\n    action: "update",\n    pairingToken:'), 'diagnostic log leaked pairingToken');
 assert(appSource.includes('showMessage("保存はできたけど、一覧の更新に失敗したで。", "error")'), 'edit refresh failure is not distinguished');
 assert(appSource.includes('showMessage("完了できたけど、一覧の更新に失敗したで。", "error")'), 'complete refresh failure is not distinguished');
 assert(appSource.includes('throwOnError: true'), 'refresh failure is swallowed for update flows');

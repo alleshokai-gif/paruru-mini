@@ -8,17 +8,19 @@ assert.deepStrictEqual(resolveNextHealthTask({ slots: {} }, at(8)), {
   slot: 'morning', title: '朝の健康記録', overdue: true, priority: 'high', action: 'daily',
 });
 
-assert.deepStrictEqual(resolveNextHealthTask({ slots: { morning: { recordedAt: '2026-07-29T07:30:00+09:00' } } }, at(13)), {
+assert.deepStrictEqual(resolveNextHealthTask({ slots: { morning: { morningStaple:'normal',morningWater:true,morningMedication:true,morningCondition:true } } }, at(13)), {
   slot: 'lunch', title: '昼の健康記録', overdue: true, priority: 'high', action: 'daily',
 });
 
-assert.deepStrictEqual(resolveNextHealthTask({ slots: { morning: { recordedAt: 'x' }, lunch: { recordedAt: 'x' } } }, at(14)), {
+assert.deepStrictEqual(resolveNextHealthTask({ slots: { morning: { morningStaple:'normal',morningWater:true,morningMedication:true,morningCondition:true }, lunch: { lunchAmount:'all',lunchWater:true } } }, at(14)), {
   slot: 'post_training', title: '部活後の健康記録', overdue: false, priority: 'normal', action: 'daily',
 });
 
 assert.strictEqual(resolveNextHealthTask({ slots: {
-  morning: { recordedAt: 'x' }, lunch: { recordedAt: 'x' }, post_training: { recordedAt: 'x' },
-  dinner: { recordedAt: 'x' }, condition: { recordedAt: 'x' },
+  morning: { morningStaple:'normal',morningWater:true,morningMedication:true,morningCondition:true }, lunch: { lunchAmount:'all',lunchWater:true }, post_training: { postTrainingProteinSource:'protein',postTrainingOnigiriCount:1 },
+  dinner: { dinnerRiceBowls:1,dinnerMedication:true,bedtime:true }, condition: { recordedAt: 'x' },
 } }, at(23)), null);
+
+assert.strictEqual(resolveNextHealthTask({ slots: { morning: { morningStaple:'normal',morningWater:true,morningMedication:false,morningCondition:true } } }, at(8)).slot, 'morning');
 
 console.log('PASS health routine resolution and overdue ordering');
