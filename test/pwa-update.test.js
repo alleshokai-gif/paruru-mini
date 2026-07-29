@@ -7,6 +7,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const gasSource = fs.readFileSync(path.join(root, 'gas', 'Code.js'), 'utf8');
+const nurseSource = fs.readFileSync(path.join(root, 'features', 'nurse-okan', 'nurse-okan.js'), 'utf8');
 
 assert(appSource.includes('...buildMemoCredentialPayload("update"), id, ...updates'), 'update payload lost credentials');
 assert(appSource.includes('await updateInboxItem(id, { status: "Done" });'), 'Done status changed');
@@ -19,4 +20,8 @@ assert(gasSource.includes("const prohibited = ['userId', 'userDisplayName', 'own
 assert(!gasSource.includes("'deviceId', 'ownerUserId'"), 'deviceId remains forbidden for authenticated update');
 assert(!gasSource.includes("'pairingToken'"), 'pairingToken was added to the forbidden identity fields');
 assert(gasSource.includes("if (target.item.ownerUserId !== actor.memberUserId) throw homeMembershipError_('FORBIDDEN');"), 'cross-owner rejection missing');
+assert(appSource.includes('health.daily.get') && appSource.includes('prependVirtualHealthTask_'), 'health task composition missing');
+assert(appSource.includes('action: "daily"') && appSource.includes('healthSlot'), 'health task navigation metadata missing');
+assert(nurseSource.includes("new CustomEvent('nurse-okan:daily-saved'"), 'daily save invalidation event missing');
+assert(nurseSource.includes('focusPendingOpen_') && nurseSource.includes('scrollIntoView'), 'nurse daily deep focus missing');
 console.log('PASS authenticated update payload, Done handler error handling, ownership guard, and fail-closed identity policy');

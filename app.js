@@ -387,6 +387,45 @@ let pendingHomeAgentRetry = null;
 let homeControlPollTimer = null;
 let membershipRegistrationPollTimer = null;
 let activeMembershipContext = null;
+let healthTaskCache = null;
+
+function resolveNextHealthTask(dailyRecord, now) {
+  return window.PALURUHealthRoutine?.resolveNextHealthTask(dailyRecord, now) || null;
+}
+
+async function fetchNextHealthTask_() {
+  if (appAuthenticationState !== "active_member" || !normalPwaInitialized || !activeMembershipContext?.memberUserId) {
+    return null;
+  }
+  try {
+    const daily = await callAuthenticatedHealth_("health.daily.get", {
+      localDate: new Date().toLocaleDateString("sv-SE", { timeZone: TOKYO_TIME_ZONE }),
+      targetMemberUserId: activeMembershipContext.memberUserId,
+    });
+    healthTaskCache = resolveNextHealthTask(daily, new Date());
+    return healthTaskCache;
+  } catch (error) {
+    debugLog("[Paruru] health task failed", error?.message || error);
+    healthTaskCache = null;
+    return null;
+  }
+}
+
+function prependVirtualHealthTask_(items, task) {
+  if (!task) return Array.isArray(items) ? items : [];
+  const localDate = new Date().toLocaleDateString("sv-SE", { timeZone: TOKYO_TIME_ZONE });
+  return [{
+    id: `health-daily-${localDate}-${task.slot}`,
+    type: "health_daily",
+    title: task.title,
+    memo: task.title,
+    notificationLevel: task.overdue ? "urgent" : "normal",
+    reasons: task.overdue ? ["overdue"] : [],
+    virtual: true,
+    healthAction: task.action,
+    healthSlot: task.slot,
+  }, ...(Array.isArray(items) ? items : [])];
+}
 
 setParuruState("loading");
 
@@ -962,6 +1001,13 @@ todayParuruList.addEventListener("click", (event) => {
   if (!item) {
     return;
   }
+  if (item.dataset.healthAction === "daily" && item.dataset.healthSlot) {
+    switchView("nurse-okan", {
+      action: "daily",
+      slot: item.dataset.healthSlot,
+    });
+    return;
+  }
   openNotificationDetail(item.dataset.notificationId);
 });
 todayParuruAllButton.addEventListener("click", () => switchView("inbox"));
@@ -1032,6 +1078,7 @@ document.querySelectorAll("[data-close-dialog]").forEach((button) => {
 });
 
 async function switchView(viewName) {
+  const options = arguments[1] || {};
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
@@ -1058,7 +1105,7 @@ async function switchView(viewName) {
   }
 
   if (resolvedView === "nurse-okan") {
-    document.dispatchEvent(new CustomEvent("nurse-okan:opened"));
+    document.dispatchEvent(new CustomEvent("nurse-okan:opened", { detail: options || {} }));
   }
 
   setParuruState("normal");
@@ -1861,9 +1908,11 @@ async function loadNotificationCandidates(options = {}) {
   }
 
   if (!options.force && now - notificationCandidatesState.lastFetchedAt < NOTIFICATION_CACHE_MS) {
+    const healthTask = await fetchNextHealthTask_();
+    const displayItems = prependVirtualHealthTask_(notificationCandidatesState.items, healthTask);
     renderNotificationCandidates(
-      notificationCandidatesState.items,
-      notificationCandidatesState.totalCount,
+      displayItems,
+      notificationCandidatesState.totalCount + (healthTask ? 1 : 0),
       notificationCandidatesState.includeTomorrow
     );
     renderNotificationWarnings(notificationCandidatesState.warnings);
@@ -1884,10 +1933,17 @@ async function loadNotificationCandidates(options = {}) {
         includeTomorrow: Boolean(result.includeTomorrow),
         warnings: Array.isArray(result.warnings) ? result.warnings : [],
       };
-      renderNotificationCandidates(items, notificationCandidatesState.totalCount, notificationCandidatesState.includeTomorrow);
-      renderNotificationWarnings(notificationCandidatesState.warnings);
-      scheduleNotificationBoundary(items);
-      return items;
+      return fetchNextHealthTask_().then((healthTask) => {
+        const displayItems = prependVirtualHealthTask_(items, healthTask);
+        renderNotificationCandidates(
+          displayItems,
+          notificationCandidatesState.totalCount + (healthTask ? 1 : 0),
+          notificationCandidatesState.includeTomorrow
+        );
+        renderNotificationWarnings(notificationCandidatesState.warnings);
+        scheduleNotificationBoundary(items);
+        return items;
+      });
     })
     .catch((error) => {
       debugLog("[Paruru] notification candidates failed", error?.message || error);
@@ -1898,9 +1954,10 @@ async function loadNotificationCandidates(options = {}) {
       }
       if (notificationCandidatesState.items.length > 0) {
         notificationCandidatesState.warnings = ["notification_refresh_failed"];
+        const displayItems = prependVirtualHealthTask_(notificationCandidatesState.items, healthTaskCache);
         renderNotificationCandidates(
-          notificationCandidatesState.items,
-          notificationCandidatesState.totalCount,
+          displayItems,
+          notificationCandidatesState.totalCount + (healthTaskCache ? 1 : 0),
           notificationCandidatesState.includeTomorrow
         );
         renderNotificationWarnings(notificationCandidatesState.warnings);
@@ -1912,6 +1969,16 @@ async function loadNotificationCandidates(options = {}) {
     });
 
   return notificationCandidatesState.inFlight;
+}
+
+if (typeof document.addEventListener === "function") {
+  document.addEventListener("nurse-okan:daily-saved", () => {
+    healthTaskCache = null;
+    notificationCandidatesState.lastFetchedAt = 0;
+    if (activeView === "home") {
+      void loadNotificationCandidates({ force: true });
+    }
+  });
 }
 
 async function fetchNotificationCandidates() {
@@ -2266,8 +2333,11 @@ function buildNotificationSummarySpeech(count) {
 function renderNotificationItem(item) {
   const level = normalizeNotificationLevel(item.notificationLevel);
   const labels = (item.reasons || []).slice(0, 2).map(renderNotificationReasonLabel).join("");
+  const healthAttributes = item.virtual && item.healthAction === "daily"
+    ? ` data-health-action="daily" data-health-slot="${escapeHtml(item.healthSlot || "")}"`
+    : "";
   return `
-    <button class="today-paruru-item today-paruru-${escapeHtml(level)}" type="button" data-notification-id="${escapeHtml(item.id)}">
+    <button class="today-paruru-item today-paruru-${escapeHtml(level)}" type="button" data-notification-id="${escapeHtml(item.id)}"${healthAttributes}>
       <span class="today-paruru-badges">
         ${renderNotificationLevelBadge(level)}
         ${labels}
