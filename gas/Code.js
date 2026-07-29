@@ -933,7 +933,7 @@ function assertMemoOwnershipRow_(item, schema) {
 }
 
 function assertMemoIdentityFieldsAbsent_(body) {
-  const prohibited = ['userId', 'userDisplayName', 'deviceId', 'ownerUserId', 'createdByUserId', 'role', 'homeId'];
+  const prohibited = ['userId', 'userDisplayName', 'ownerUserId', 'createdByUserId', 'role', 'homeId'];
   if (prohibited.some(function(field) { return Object.prototype.hasOwnProperty.call(body || {}, field); })) {
     throw homeMembershipError_('FORBIDDEN');
   }

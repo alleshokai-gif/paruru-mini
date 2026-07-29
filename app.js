@@ -865,18 +865,31 @@ editForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  await updateInboxItem(id, buildEditUpdatePayload({
-    title: editTitle.value.trim() || memo.slice(0, 20),
-    memo,
-    category: editCategory.value,
-    priority: editPriority.value,
-    type: editType.value,
-    status: editStatus.value,
-  }));
+  try {
+    await updateInboxItem(id, buildEditUpdatePayload({
+      title: editTitle.value.trim() || memo.slice(0, 20),
+      memo,
+      category: editCategory.value,
+      priority: editPriority.value,
+      type: editType.value,
+      status: editStatus.value,
+    }));
+  } catch (error) {
+    debugLog("[Paruru] edit update failed", error?.message || error);
+    setParuruState("error", { showStatus: true });
+    return;
+  }
 
   detailDialog.close();
-  await loadInbox({ quiet: true });
-  await loadNotificationCandidates({ force: true });
+  try {
+    const inboxLoaded = await loadInbox({ quiet: true });
+    if (!inboxLoaded) throw new Error("INBOX_REFRESH_FAILED");
+    await loadNotificationCandidates({ force: true, throwOnError: true });
+  } catch (error) {
+    debugLog("[Paruru] edit refresh failed", error?.message || error);
+    showMessage("保存はできたけど、一覧の更新に失敗したで。", "error");
+    return;
+  }
   setParuruState("success", { showStatus: true });
 });
 
@@ -893,10 +906,24 @@ editDueDate.addEventListener("change", () => {
 
 doneButton.addEventListener("click", async () => {
   const id = editId.value;
-  await updateInboxItem(id, { status: "Done" });
+  try {
+    await updateInboxItem(id, { status: "Done" });
+  } catch (error) {
+    debugLog("[Paruru] complete update failed", error?.message || error);
+    setParuruState("error", { showStatus: true });
+    return;
+  }
+
   detailDialog.close();
-  await loadInbox({ quiet: true });
-  await loadNotificationCandidates({ force: true });
+  try {
+    const inboxLoaded = await loadInbox({ quiet: true });
+    if (!inboxLoaded) throw new Error("INBOX_REFRESH_FAILED");
+    await loadNotificationCandidates({ force: true, throwOnError: true });
+  } catch (error) {
+    debugLog("[Paruru] complete refresh failed", error?.message || error);
+    showMessage("完了できたけど、一覧の更新に失敗したで。", "error");
+    return;
+  }
   setParuruState("done", { showStatus: true });
 });
 
@@ -1054,7 +1081,10 @@ async function loadInbox(options = {}) {
   } catch (error) {
     renderInboxError();
     setParuruState("error", { showStatus: true });
+    return false;
   }
+
+  return true;
 }
 
 async function saveMemo(payload) {
@@ -1862,6 +1892,10 @@ async function loadNotificationCandidates(options = {}) {
     .catch((error) => {
       debugLog("[Paruru] notification candidates failed", error?.message || error);
       notificationCandidatesState.inFlight = null;
+      if (options.throwOnError) {
+        renderNotificationError();
+        throw error;
+      }
       if (notificationCandidatesState.items.length > 0) {
         notificationCandidatesState.warnings = ["notification_refresh_failed"];
         renderNotificationCandidates(
