@@ -13,18 +13,29 @@ const spreadsheet = new Spreadsheet();
 const context = {
   JSON, Number, String, Object, Array, Date, Math, RegExp,
   Utilities: { getUuid: () => crypto.randomUUID(), formatDate: (_date,_zone,format) => format === 'yyyy-MM-dd' ? '2026-07-29' : '2026-07-29T12:00:00+09:00', base64Encode: (value) => Buffer.from(value).toString('base64'), computeDigest: (_algorithm,value) => crypto.createHash('sha256').update(value).digest(), DigestAlgorithm:{SHA_256:'sha256'}, Charset:{UTF_8:'utf8'} },
-  PropertiesService:{getScriptProperties:()=>({getProperty:(key)=>key==='HEALTH_SPREADSHEET_ID'?'sheet':''})},
+  PropertiesService:{getScriptProperties:()=>({getProperty:(key)=>key==='HEALTH_SPREADSHEET_ID'?'sheet':key==='HEALTH_SERVICE_TOKEN'?'test-token':''})},
   SpreadsheetApp:{openById:()=>spreadsheet}, LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
+  ContentService:{MimeType:{JSON:'application/json'},createTextOutput:(text)=>({text,setMimeType(){return this;},getContent(){return this.text;}})},
 };
 vm.createContext(context);
 ['HealthSetup.js','HealthSecurity.js','HealthRuleService.js','HealthDataService.js'].forEach((file)=>vm.runInContext(fs.readFileSync(`gas-health/${file}`,'utf8'),context));
+vm.runInContext(fs.readFileSync('gas-health/Code.js','utf8'),context);
 context.setupHealthSchema_();
 
 const base = { homeId:'home', actorUserId:'self', targetUserId:'self', localDate:'2026-07-29' };
 function save(slot, payload) { return context.dailyRecord_(Object.assign({}, base, { slot, payload, clientRequestId:crypto.randomUUID() })); }
 function daily() { return context.dailyGet_(base); }
 
+const initialDaily = daily();
+assert.deepStrictEqual(JSON.parse(JSON.stringify(initialDaily.slots)),{},'header-only Health_Daily must return an empty slots object');
+assert(initialDaily.ruleCodes.includes('morning_not_recorded'),'initial daily rules must treat every slot as unrecorded');
+assert.strictEqual(spreadsheet.sheets.Health_Daily.getLastRow(),1,'daily get must not create an initial Health_Daily row');
+const initialResponse=JSON.parse(context.doPost({postData:{contents:JSON.stringify(Object.assign({operation:'health.daily.get',serviceToken:'test-token'},base))}}).getContent());
+assert.strictEqual(initialResponse.success,true,'header-only Health_Daily must be a successful health.daily.get response');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(initialResponse.data.slots)),{},'initial API response must contain empty slots');
+
 let value = save('morning',{morningStaple:'small',morningProteinSource:'egg',morningWater:true,morningMedication:true,morningCondition:true,morningMealType:'banana_1',morningWaterType:'milk_glass_1',morningConditionType:'good'});
+assert.strictEqual(spreadsheet.sheets.Health_Daily.getLastRow(),2,'first slot save must create the initial Health_Daily row');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(value.slots.morning)),{morningStaple:'small',morningProteinSource:'egg',morningWater:true,morningMedication:true,morningCondition:true,morningMealType:'banana_1',morningMealOther:'',morningWaterType:'milk_glass_1',morningWaterOther:'',morningConditionType:'good',morningConditionOther:'',recordedAt:'2026-07-29T12:00:00+09:00',recordedBy:'self'});
 value = save('lunch',{lunchAmount:'all',lunchProteinSource:'included',lunchWater:true,lunchCondition:false,lunchMealType:'bento',lunchWaterType:'sports_drink_bottle_1'});
 assert.strictEqual(daily().slots.lunch.lunchWater,true,'school water did not survive reload');
