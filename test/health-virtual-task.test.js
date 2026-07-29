@@ -53,8 +53,8 @@ async function nextFor(role, slots) {
 
   const complete = {
     morning: { morningStaple:'normal',morningWater:true,morningMedication:true,morningCondition:true },
-    lunch: { lunchAmount:'all',lunchWater:true },
-    post_training: { postTrainingProteinSource:'protein',postTrainingOnigiriCount:1 },
+    lunch: { lunchAmount:'all',lunchWater:true,lunchCondition:true },
+    post_training: { postTrainingProteinSource:'protein',postTrainingOnigiriCount:1,postTrainingWater:true,postTrainingCondition:true },
     dinner: { dinnerRiceBowls:1,dinnerMedication:true,bedtime:true },
     condition: { recordedAt: '2026-07-29T22:00:00+09:00' },
   };

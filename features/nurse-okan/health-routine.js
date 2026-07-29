@@ -39,11 +39,15 @@
         && isChecked_(record.morningCondition);
     }
     if (slot === "lunch") {
-      return record.lunchAmount && record.lunchAmount !== "none" && isChecked_(record.lunchWater);
+      return record.lunchAmount && record.lunchAmount !== "none"
+        && isChecked_(record.lunchWater)
+        && isChecked_(record.lunchCondition);
     }
     if (slot === "post_training") {
       return record.postTrainingProteinSource && record.postTrainingProteinSource !== "none"
-        && Number(record.postTrainingOnigiriCount) > 0;
+        && Number(record.postTrainingOnigiriCount) > 0
+        && isChecked_(record.postTrainingWater)
+        && isChecked_(record.postTrainingCondition);
     }
     if (slot === "dinner") {
       return Number(record.dinnerRiceBowls) > 0

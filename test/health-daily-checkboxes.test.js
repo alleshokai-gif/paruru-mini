@@ -24,19 +24,25 @@ const base = { homeId:'home', actorUserId:'self', targetUserId:'self', localDate
 function save(slot, payload) { return context.dailyRecord_(Object.assign({}, base, { slot, payload, clientRequestId:crypto.randomUUID() })); }
 function daily() { return context.dailyGet_(base); }
 
-let value = save('morning',{morningStaple:'small',morningProteinSource:'egg',morningWater:true,morningMedication:true,morningCondition:true});
-assert.deepStrictEqual(JSON.parse(JSON.stringify(value.slots.morning)),{morningStaple:'small',morningProteinSource:'egg',morningWater:true,morningMedication:true,morningCondition:true,recordedAt:'2026-07-29T12:00:00+09:00',recordedBy:'self'});
-value = save('lunch',{lunchAmount:'all',lunchProteinSource:'included',lunchWater:true});
+let value = save('morning',{morningStaple:'small',morningProteinSource:'egg',morningWater:true,morningMedication:true,morningCondition:true,morningMealType:'banana_1',morningWaterType:'milk_glass_1',morningConditionType:'good'});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(value.slots.morning)),{morningStaple:'small',morningProteinSource:'egg',morningWater:true,morningMedication:true,morningCondition:true,morningMealType:'banana_1',morningMealOther:'',morningWaterType:'milk_glass_1',morningWaterOther:'',morningConditionType:'good',morningConditionOther:'',recordedAt:'2026-07-29T12:00:00+09:00',recordedBy:'self'});
+value = save('lunch',{lunchAmount:'all',lunchProteinSource:'included',lunchWater:true,lunchCondition:false,lunchMealType:'bento',lunchWaterType:'sports_drink_bottle_1'});
 assert.strictEqual(daily().slots.lunch.lunchWater,true,'school water did not survive reload');
-value = save('post_training',{postTrainingStatus:'recorded',postTrainingOnigiriCount:1,postTrainingProteinSource:'protein'});
+value = save('post_training',{postTrainingStatus:'recorded',postTrainingOnigiriCount:1,postTrainingProteinSource:'protein',postTrainingWater:false,postTrainingCondition:false,postTrainingSnackType:'onigiri_1',postTrainingProteinAmount:'30'});
 assert.strictEqual(daily().slots.post_training.postTrainingProteinSource,'protein');
 assert.strictEqual(daily().slots.post_training.postTrainingOnigiriCount,1,'club snack was lost when protein was saved');
-value = save('dinner',{dinnerRiceBowls:1,dinnerNattoPacks:2,dinnerExtraProteinSource:'fish',dinnerMedication:true,bedtime:true});
-assert.deepStrictEqual(JSON.parse(JSON.stringify(daily().slots.dinner)),{dinnerRiceBowls:1,dinnerNattoPacks:2,dinnerExtraProteinSource:'fish',dinnerMedication:true,bedtime:true,recordedAt:'2026-07-29T12:00:00+09:00',recordedBy:'self'});
+value = save('dinner',{dinnerRiceBowls:1,dinnerNattoPacks:2,dinnerExtraProteinSource:'fish',dinnerMedication:true,bedtime:true,dinnerMealType:'rice_2_fish'});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(daily().slots.dinner)),{dinnerRiceBowls:1,dinnerNattoPacks:2,dinnerExtraProteinSource:'fish',dinnerMedication:true,bedtime:true,dinnerMealType:'rice_2_fish',dinnerMealOther:'',recordedAt:'2026-07-29T12:00:00+09:00',recordedBy:'self'});
+
+value = save('morning',{morningStaple:'none',morningProteinSource:'egg',morningWater:false,morningMedication:true,morningCondition:false});
+assert.strictEqual(daily().slots.morning.morningMealType,'banana_1','unchecked meal erased stored detail');
+value = save('morning',{morningStaple:'normal',morningProteinSource:'egg',morningWater:true,morningMedication:true,morningCondition:true,morningMealType:'other',morningMealOther:'焼きそばパン',morningWaterType:'milk_glass_1',morningConditionType:'good'});
+assert.strictEqual(daily().slots.morning.morningMealOther,'焼きそばパン','other text did not survive reload');
+assert.throws(()=>save('morning',{morningStaple:'normal',morningProteinSource:'none',morningWater:false,morningMedication:false,morningCondition:false,morningMealType:'other'}),(error)=>error.code==='INVALID_INPUT','other without text was accepted');
 
 assert.throws(()=>save('morning',{morningStaple:'normal',morningProteinSource:'none',morningWater:'true',morningMedication:false,morningCondition:false}),(error)=>error.code==='INVALID_INPUT','boolean validation accepted string input');
 const headers = spreadsheet.sheets.Health_Daily.values[0];
-['morningWater','morningMedication','morningCondition','lunchWater','dinnerMedication','bedtime'].forEach((header)=>assert(headers.includes(header),`${header} header missing`));
+['morningWater','morningMedication','morningCondition','lunchWater','lunchCondition','postTrainingWater','postTrainingCondition','dinnerMedication','bedtime','morningMealType','morningMealOther','morningWaterType','morningWaterOther','morningConditionType','morningConditionOther','lunchMealType','lunchMealOther','lunchWaterType','lunchWaterOther','lunchConditionType','lunchConditionOther','postTrainingSnackType','postTrainingSnackOther','postTrainingWaterType','postTrainingWaterOther','postTrainingProteinAmount','postTrainingProteinOther','postTrainingConditionType','postTrainingConditionOther','dinnerMealType','dinnerMealOther'].forEach((header)=>assert(headers.includes(header),`${header} header missing`));
 const legacy = new Array(headers.length).fill('');
 const index = headers.reduce((out,header,position)=>(out[header]=position,out),{});
 Object.assign(legacy,{[index.recordId]:'legacy',[index.homeId]:'home',[index.targetUserId]:'legacy-user',[index.localDate]:'2026-07-29',[index.morningStaple]:'normal',[index.morningProteinSource]:'egg',[index.morningRecordedAt]:'2026-07-29T07:00:00+09:00',[index.morningRecordedBy]:'legacy'});
