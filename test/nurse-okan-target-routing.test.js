@@ -1,0 +1,20 @@
+'use strict';
+const assert=require('assert'),fs=require('fs'),vm=require('vm');
+const ctx={console:{log(){},error(){},warn(){}},JSON,Error,Object,String,Array,Number,Promise,module:{exports:{}},exports:{},crypto:{randomUUID:()=> '11111111-1111-4111-8111-111111111111'},document:{addEventListener(){}},localStorage:{getItem:()=>''},navigator:{onLine:true},location:{hostname:'localhost'}};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync('features/nurse-okan/nurse-okan.js','utf8'),ctx);
+const api=ctx.module.exports;
+const targetUserId='son-b';
+assert.deepStrictEqual(JSON.parse(JSON.stringify(api.targetUiState_({role:'self_record'},[{userId:'self',displayName:'本人'}],'self'))),{visible:false,selectable:false,current:null},'self_record must not show a target UI');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(api.targetUiState_({role:'admin'},[{userId:'son-a',displayName:'長男'}],'son-a'))),{visible:true,selectable:false,current:{userId:'son-a',displayName:'長男'}},'admin with one target must show the current name without a selector');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(api.targetUiState_({role:'admin'},[{userId:'son-a',displayName:'長男'},{userId:'son-b',displayName:'次男'}],'son-b'))),{visible:true,selectable:true,current:{userId:'son-b',displayName:'次男'}},'admin with multiple targets must show a selector for the current target');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(api.targetUiState_({role:'admin'},[{userId:'son-a',displayName:'長男'},{userId:'son-b',displayName:'次男'}],''))),{visible:true,selectable:true,current:null},'admin without a selected target must remain in selection-required state');
+['health.context.get','health.daily.get','health.daily.recordSlot','health.weight.list','health.weight.record'].forEach(action=>{
+  const request=api.buildHealthRequest_(action,targetUserId,{sample:true});
+  assert.strictEqual(request.targetMemberUserId,targetUserId,`${action} lost the target member`);
+});
+const source=fs.readFileSync('features/nurse-okan/nurse-okan.js','utf8');
+assert(source.includes("const detail=event&&event.detail||{},targetUserId=String(detail.targetUserId||'').trim()"),'opened target member is not retained');
+assert(source.includes("targets.length>1?'記録する人を選んでください'"),'multiple targets without selection must show a diagnosable state');
+assert(!source.includes("(targets[0]||{}).userId||state.targetUserId"),'first target must not be selected implicitly');
+console.log('PASS Nurse Okan target propagation and selection-required state');

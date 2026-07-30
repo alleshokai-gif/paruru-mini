@@ -16,7 +16,7 @@ ctx.location.hostname='localhost';
 assert.strictEqual(api.healthInitialLoadFailureMessage_('health.summary.get',new Error('gateway failed')),'Health summary.get取得失敗: gateway failed');
 const source=fs.readFileSync('features/nurse-okan/nurse-okan.js','utf8');
 assert(source.includes("console.error('[Nurse Okan] Health initial load failed'"),'initial Health load failures must use console.error');
-['api:api','message:','stack:','response:'].forEach(fragment=>assert(source.includes(fragment),'Health diagnostic field missing: '+fragment));
+['api:api','code:','message:','stack:','response:'].forEach(fragment=>assert(source.includes(fragment),'Health diagnostic field missing: '+fragment));
 assert(source.includes("callInitialHealth_('health.daily.get'"),'daily initial load must be wrapped for diagnostics');
 assert(source.includes("logHealthInitialLoadError_('resolveNextHealthTask'"),'routine resolver must be wrapped for diagnostics');
 console.log('PASS Nurse Okan initial-load diagnostics');

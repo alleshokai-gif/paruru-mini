@@ -48,6 +48,7 @@ async function nextFor(role, slots) {
 
   const pending = await nextFor('self_record', {});
   assert(pending && pending.slot === 'morning', 'self_record pending slot did not produce one task');
+  assert.strictEqual(pending.targetUserId, 'member-1', 'health task did not retain its target member');
   assert.strictEqual(requests.length, 1, 'self_record pending slot did not call health.daily.get once');
   assert.strictEqual(requests[0].targetMemberUserId, 'member-1', 'health task used a different target member');
 
@@ -62,6 +63,8 @@ async function nextFor(role, slots) {
 
   const handler = appSource.slice(appSource.indexOf('todayParuruList.addEventListener'), appSource.indexOf('todayParuruAllButton.addEventListener'));
   assert(handler.indexOf('item.dataset.healthAction === "daily"') < handler.indexOf('openNotificationDetail'), 'virtual health click can reach Inbox detail/update flow');
+  assert(handler.includes('targetUserId: item.dataset.healthTargetUserId'), 'virtual health task target is not forwarded to Nurse Okan');
+  assert(appSource.includes('data-health-target-user-id='), 'virtual health task target is not rendered into the click payload');
   console.log('PASS health virtual task role gate and virtual click routing');
 })().catch((error) => {
   console.error(error);

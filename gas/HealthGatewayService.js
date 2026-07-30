@@ -11,6 +11,9 @@ function healthGateway_(body) {
     const targets = getActiveSelfRecordMembers_(actor.homeId);
     const canSuperviseHealth = hasRoleCapability_(actor, 'health.supervision.read');
     const canControlHome = hasRoleCapability_(actor, 'home.control');
+    if (input.action === 'health.context.get' && !String(input.targetMemberUserId || '').trim() && canSuperviseHealth && canControlHome) {
+      return json_({ success: true, data: { homeId: actor.homeId, actor: { userId: actor.memberUserId, role: actor.role }, targets: targets }, message: 'ok' });
+    }
     const targetUserId = String(input.targetMemberUserId || (!canSuperviseHealth || !canControlHome ? actor.memberUserId : (targets.length === 1 ? targets[0].userId : ''))).trim();
     if (!targetUserId) throw healthGatewayError_('INVALID_INPUT');
     authorizeTargetOperation_(actor, targetUserId, input.action);

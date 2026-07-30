@@ -407,7 +407,8 @@ async function fetchNextHealthTask_() {
       localDate: new Date().toLocaleDateString("sv-SE", { timeZone: TOKYO_TIME_ZONE }),
       targetMemberUserId: activeMembershipContext.memberUserId,
     });
-    healthTaskCache = resolveNextHealthTask(daily, new Date());
+    const task = resolveNextHealthTask(daily, new Date());
+    healthTaskCache = task ? Object.assign({}, task, { targetUserId: activeMembershipContext.memberUserId }) : null;
     return healthTaskCache;
   } catch (error) {
     debugLog("[Paruru] health task failed", error?.message || error);
@@ -429,6 +430,7 @@ function prependVirtualHealthTask_(items, task) {
     virtual: true,
     healthAction: task.action,
     healthSlot: task.slot,
+    targetUserId: task.targetUserId,
   }, ...(Array.isArray(items) ? items : [])];
 }
 
@@ -496,12 +498,17 @@ async function callAuthenticatedHealth_(action, body = {}) {
   if (!token || !userProfile?.deviceId) {
     throw createHomeControlError("AUTHENTICATION_REQUIRED");
   }
-  return callHomeControlApi({
-    ...(body && typeof body === "object" ? body : {}),
-    action,
-    deviceId: userProfile.deviceId,
-    pairingToken: token,
-  });
+  try {
+    return await callHomeControlApi({
+      ...(body && typeof body === "object" ? body : {}),
+      action,
+      deviceId: userProfile.deviceId,
+      pairingToken: token,
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && !error.code) error.code = "HOME_CONTROL_UNAVAILABLE";
+    throw error;
+  }
 }
 
 function showAuthenticationState(message, state = "locked") {
@@ -1011,6 +1018,7 @@ todayParuruList.addEventListener("click", (event) => {
     switchView("nurse-okan", {
       action: "daily",
       slot: item.dataset.healthSlot,
+      targetUserId: item.dataset.healthTargetUserId,
     });
     return;
   }
@@ -1293,27 +1301,39 @@ async function cancelAgentActionConfirmation(candidate) {
 
 async function callHomeControlApi(payload) {
   if (!GAS_WEB_APP_URL) throw createHomeControlError("HOME_CONTROL_UNAVAILABLE");
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) throw createHomeControlError("HOME_CONTROL_UNAVAILABLE");
+  let response;
+  try {
+    response = await fetch(GAS_WEB_APP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+  } catch (cause) {
+    throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", { cause });
+  }
+  if (!response.ok) throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", { httpStatus: response.status, response: await readHomeControlErrorResponse_(response) });
   let result;
   try {
     result = await response.json();
   } catch (error) {
-    throw createHomeControlError("HOME_CONTROL_UNAVAILABLE");
+    throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", { httpStatus: response.status, cause: error });
   }
   if (!result || result.success !== true) {
-    throw createHomeControlError(String(result?.error?.code || "HOME_CONTROL_FAILED"));
+    throw createHomeControlError(String(result?.error?.code || "HOME_CONTROL_FAILED"), { httpStatus: response.status, response: result, message: result?.message });
   }
   return result.data || {};
 }
 
-function createHomeControlError(code) {
-  const error = new Error("Home control request failed");
+async function readHomeControlErrorResponse_(response) {
+  try { return await response.clone().json(); } catch (_) { return null; }
+}
+
+function createHomeControlError(code, details = {}) {
+  const error = new Error(String(details.message || "Home control request failed"));
   error.code = String(code || "HOME_CONTROL_FAILED");
+  if (Number.isFinite(Number(details.httpStatus))) error.httpStatus = Number(details.httpStatus);
+  if (Object.prototype.hasOwnProperty.call(details, "response")) error.response = details.response;
+  if (details.cause) error.cause = details.cause;
   return error;
 }
 
@@ -2383,7 +2403,7 @@ function renderNotificationItem(item) {
   const level = normalizeNotificationLevel(item.notificationLevel);
   const labels = (item.reasons || []).slice(0, 2).map(renderNotificationReasonLabel).join("");
   const healthAttributes = item.virtual && item.healthAction === "daily"
-    ? ` data-health-action="daily" data-health-slot="${escapeHtml(item.healthSlot || "")}"`
+    ? ` data-health-action="daily" data-health-slot="${escapeHtml(item.healthSlot || "")}" data-health-target-user-id="${escapeHtml(item.targetUserId || "")}"`
     : "";
   return `
     <button class="today-paruru-item today-paruru-${escapeHtml(level)}" type="button" data-notification-id="${escapeHtml(item.id)}"${healthAttributes}>
