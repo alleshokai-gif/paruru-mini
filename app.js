@@ -595,7 +595,7 @@ function initializeNormalPwaOnce() {
   renderProfileForm();
   setParuruState("normal");
   if (buildVersion) {
-    buildVersion.textContent = `PALURU Mini ${APP_VERSION} / Build ${BUILD_VERSION}`;
+    buildVersion.textContent = `アプリVersion: ${APP_VERSION} / Build: ${BUILD_VERSION}`;
   }
   splash?.classList.add("is-hidden");
   loadNotificationCandidates({ force: true });
