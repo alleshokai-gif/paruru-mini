@@ -28,6 +28,7 @@ function createHarness() {
   const handlers = new Map();
   const storage = new Map();
   const requests = [];
+  const logs = [];
   let uuidIndex = 0;
   let responder = (payload) => ({
     success: true,
@@ -36,6 +37,33 @@ function createHarness() {
     clientRequestId: payload.clientRequestId,
   });
   let actionResponder = () => ({ success: true, item: {} });
+  let agentResponseFactory = null;
+
+  function makeResponse(body, options = {}) {
+    const rawBody = Object.prototype.hasOwnProperty.call(options, 'rawBody')
+      ? String(options.rawBody)
+      : JSON.stringify(body);
+    const headerValues = options.headers || { 'content-type': 'application/json; charset=utf-8' };
+    const headers = {
+      forEach(callback) {
+        Object.entries(headerValues).forEach(([key, value]) => callback(value, key));
+      },
+      get(name) {
+        const found = Object.entries(headerValues).find(([key]) => key.toLowerCase() === String(name).toLowerCase());
+        return found ? found[1] : null;
+      },
+    };
+    return {
+      ok: options.ok !== false,
+      status: options.status || 200,
+      url: options.url || 'https://script.googleusercontent.com/macros/echo',
+      redirected: options.redirected === true,
+      type: options.type || 'cors',
+      headers,
+      clone: () => ({ text: async () => rawBody }),
+      json: async () => JSON.parse(rawBody),
+    };
+  }
 
   function element(selector) {
     if (elements.has(selector)) return elements.get(selector);
@@ -86,7 +114,12 @@ function createHarness() {
   ];
 
   const context = {
-    console,
+    console: {
+      info: (...args) => logs.push({ level: 'info', args }),
+      error: (...args) => logs.push({ level: 'error', args }),
+      warn: (...args) => logs.push({ level: 'warn', args }),
+      log: (...args) => logs.push({ level: 'log', args }),
+    },
     Date,
     JSON,
     Math,
@@ -140,7 +173,10 @@ function createHarness() {
       const body = payload
         ? (payload.action === 'agentChat' ? responder(payload) : actionResponder(payload))
         : { success: true, data: [], message: 'listed' };
-      return { ok: true, status: 200, json: async () => body };
+      if (payload?.action === 'agentChat' && agentResponseFactory) {
+        return agentResponseFactory(payload, body, makeResponse);
+      }
+      return makeResponse(body);
     },
   };
   vm.createContext(context);
@@ -152,9 +188,11 @@ function createHarness() {
     handlers,
     storage,
     requests,
+    logs,
     element,
     setResponder(fn) { responder = fn; },
     setActionResponder(fn) { actionResponder = fn; },
+    setAgentResponseFactory(fn) { agentResponseFactory = fn; },
     run(expression) { return vm.runInContext(expression, context); },
     ask(message) {
       element('#memo').value = message;
@@ -890,6 +928,64 @@ test('EVA-03I-2B static action labels are correct before JavaScript runs', () =>
   assert(!html.includes(legacyAskLabel), 'static ask label typo remains');
   assert(html.includes('&#12401;&#12427;&#12427;&#12395;&#38928;&#12369;&#12427;'), 'static save label changed');
   assert(style.includes('grid-template-columns: repeat(2, minmax(0, 1fr))') && style.includes('.paluru-action-buttons button {\n  min-width: 0;\n  white-space: nowrap;'), 'two-button mobile overflow guard changed');
+});
+
+test('agentChat diagnostics correlate the final echo response with clientRequestId', async () => {
+  const harness = createHarness();
+  await harness.run('callAgentChat({ action: "agentChat", message: "test", sessionId: "11111111-1111-4111-8111-111111111111", clientRequestId: "22222222-2222-4222-8222-222222222222" })');
+  const fetchLog = harness.logs.find((entry) => entry.level === 'info' && entry.args[1]?.reason === 'FETCH_RESPONSE');
+  const rawLog = harness.logs.find((entry) => entry.level === 'info' && entry.args[1]?.reason === 'RAW_RESPONSE');
+  const jsonLog = harness.logs.find((entry) => entry.level === 'info' && entry.args[1]?.reason === 'JSON_RESPONSE');
+  assert(fetchLog?.args[1]?.clientRequestId === '22222222-2222-4222-8222-222222222222', 'response log lost clientRequestId');
+  assert(fetchLog?.args[1]?.responseUrl.includes('script.googleusercontent.com'), 'final echo URL was not logged');
+  assert(fetchLog?.args[1]?.status === 200 && fetchLog.args[1]?.ok === true, 'HTTP response metadata missing');
+  assert(rawLog?.args[1]?.bodyFormat === 'json' && rawLog.args[1]?.bodyLength > 0, 'raw body diagnostics missing');
+  assert(jsonLog?.args[1]?.success === true && jsonLog.args[1]?.expectedFields.reply, 'parsed JSON diagnostics missing');
+});
+
+test('agentChat logs EMPTY_RESPONSE and JSON_PARSE_FAILED without calling response.json', async () => {
+  const empty = createHarness();
+  empty.setAgentResponseFactory((payload, body, makeResponse) => makeResponse(body, { rawBody: '' }));
+  try {
+    await empty.run('callAgentChat({ action: "agentChat", sessionId: "11111111-1111-4111-8111-111111111111", clientRequestId: "22222222-2222-4222-8222-222222222222" })');
+    throw new Error('empty response unexpectedly succeeded');
+  } catch (error) {
+    assert(error.agentChatReason === 'EMPTY_RESPONSE', 'empty response reason was not preserved');
+  }
+  assert(empty.logs.some((entry) => entry.args[1]?.reason === 'EMPTY_RESPONSE'), 'empty response was not logged');
+
+  const invalid = createHarness();
+  invalid.setAgentResponseFactory((payload, body, makeResponse) => makeResponse(body, { rawBody: '<html>gateway error</html>', headers: { 'content-type': 'text/html' } }));
+  try {
+    await invalid.run('callAgentChat({ action: "agentChat", sessionId: "11111111-1111-4111-8111-111111111111", clientRequestId: "22222222-2222-4222-8222-222222222222" })');
+    throw new Error('HTML response unexpectedly succeeded');
+  } catch (error) {
+    assert(error.agentChatReason === 'JSON_PARSE_FAILED', 'parse failure reason was not preserved');
+  }
+  const parseLog = invalid.logs.find((entry) => entry.args[1]?.reason === 'JSON_PARSE_FAILED');
+  assert(parseLog?.args[1]?.rawResponse.includes('<html>'), 'parse log omitted raw response preview');
+  assert(parseLog?.args[1]?.responseUrl.includes('script.googleusercontent.com'), 'parse log omitted final URL');
+});
+
+test('agentChat logs API_SUCCESS_FALSE and fetch rejection with the same request context', async () => {
+  const apiFailure = createHarness();
+  apiFailure.setResponder(() => ({ success: false, error: { code: 'INVALID_INPUT', message: 'bad request' } }));
+  try {
+    await apiFailure.run('callAgentChat({ action: "agentChat", sessionId: "11111111-1111-4111-8111-111111111111", clientRequestId: "22222222-2222-4222-822222222222" })');
+  } catch (_) {}
+  const apiLog = apiFailure.logs.find((entry) => entry.args[1]?.reason === 'API_SUCCESS_FALSE');
+  assert(apiLog?.args[1]?.code === 'INVALID_INPUT', 'API error code was not logged');
+
+  const rejected = createHarness();
+  rejected.setAgentResponseFactory(() => Promise.reject(new Error('CORS blocked final echo')));
+  try {
+    await rejected.run('callAgentChat({ action: "agentChat", sessionId: "11111111-1111-4111-8111-111111111111", clientRequestId: "22222222-2222-4222-8222-222222222222" })');
+    throw new Error('fetch rejection unexpectedly succeeded');
+  } catch (error) {
+    assert(error.agentChatReason === 'FETCH_FAILED', 'fetch failure reason was not preserved');
+  }
+  const fetchFailure = rejected.logs.find((entry) => entry.args[1]?.reason === 'FETCH_FAILED');
+  assert(fetchFailure?.args[1]?.action === 'agentChat' && fetchFailure.args[1]?.clientRequestId, 'fetch failure was not correlated');
 });
 
 test('I JavaScript syntax and J cache versions', () => {

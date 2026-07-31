@@ -1185,35 +1185,175 @@ async function callAgentChat(payload) {
     throw new Error("PALURU Mini Gateway is unavailable");
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify(payload),
-  });
+  const diagnostic = createAgentChatDiagnosticContext_(payload);
+  logAgentChatDiagnostic_("info", "REQUEST_START", diagnostic, {});
+  let response;
+  try {
+    response = await fetch(GAS_WEB_APP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    logAgentChatDiagnostic_("error", "FETCH_FAILED", diagnostic, {
+      message: error?.message || String(error),
+      stack: error?.stack || "",
+    });
+    throw createAgentChatClientError("AGENT_UNAVAILABLE", "FETCH_FAILED");
+  }
+
+  const responseDetails = getAgentChatResponseDetails_(response);
+  logAgentChatDiagnostic_("info", "FETCH_RESPONSE", diagnostic, responseDetails);
 
   if (!response.ok) {
-    throw createAgentChatClientError("AGENT_UNAVAILABLE");
+    logAgentChatDiagnostic_("error", "HTTP_NOT_OK", diagnostic, responseDetails);
+    throw createAgentChatClientError("AGENT_UNAVAILABLE", "HTTP_NOT_OK");
   }
+
+  let rawResponse;
   let result;
   try {
-    result = await response.json();
+    rawResponse = await response.clone().text();
   } catch (error) {
-    throw createAgentChatClientError("AGENT_UNAVAILABLE");
+    logAgentChatDiagnostic_("error", "BODY_READ_FAILED", diagnostic, {
+      ...responseDetails,
+      message: error?.message || String(error),
+      stack: error?.stack || "",
+    });
+    throw createAgentChatClientError("AGENT_UNAVAILABLE", "BODY_READ_FAILED");
   }
+
+  const bodyDetails = getAgentChatResponseBodyDetails_(rawResponse, responseDetails.contentType);
+  logAgentChatDiagnostic_("info", "RAW_RESPONSE", diagnostic, {
+    ...responseDetails,
+    ...bodyDetails,
+  });
+  if (bodyDetails.isEmpty) {
+    logAgentChatDiagnostic_("error", "EMPTY_RESPONSE", diagnostic, {
+      ...responseDetails,
+      ...bodyDetails,
+    });
+    throw createAgentChatClientError("AGENT_UNAVAILABLE", "EMPTY_RESPONSE");
+  }
+
+  try {
+    result = JSON.parse(rawResponse);
+  } catch (error) {
+    logAgentChatDiagnostic_("error", "JSON_PARSE_FAILED", diagnostic, {
+      ...responseDetails,
+      rawResponse: bodyDetails.preview,
+      message: error?.message || String(error),
+      stack: error?.stack || "",
+    });
+    throw createAgentChatClientError("AGENT_UNAVAILABLE", "JSON_PARSE_FAILED");
+  }
+
+  if (!result || typeof result !== "object") {
+    logAgentChatDiagnostic_("error", "INVALID_RESPONSE_SHAPE", diagnostic, {
+      ...responseDetails,
+      response: result,
+    });
+    throw createAgentChatClientError("AGENT_ERROR", "INVALID_RESPONSE_SHAPE");
+  }
+
+  logAgentChatDiagnostic_("info", "JSON_RESPONSE", diagnostic, {
+    ...responseDetails,
+    success: result.success,
+    code: result.code || result.error?.code || "",
+    message: result.message || result.error?.message || "",
+    expectedFields: {
+      reply: typeof result.reply === "string" && result.reply.trim() !== "",
+      followup: Boolean(result.followup),
+      actionConfirmation: Boolean(result.actionConfirmation),
+      sessionId: Boolean(result.sessionId),
+      clientRequestId: Boolean(result.clientRequestId),
+    },
+    response: result,
+  });
   if (!result || result.success !== true) {
     const code = String(result && result.error && result.error.code || "AGENT_ERROR");
+    logAgentChatDiagnostic_("error", "API_SUCCESS_FALSE", diagnostic, {
+      ...responseDetails,
+      code,
+      message: result?.message || result?.error?.message || "",
+      response: result,
+    });
     throw createAgentChatClientError([
       "AGENT_UNAVAILABLE", "AGENT_ERROR", "CONFIGURATION_ERROR", "INVALID_INPUT"
-    ].includes(code) ? code : "AGENT_ERROR");
+    ].includes(code) ? code : "AGENT_ERROR", "API_SUCCESS_FALSE");
   }
-  return validateAgentChatResponse(result, payload);
+  try {
+    return validateAgentChatResponse(result, payload);
+  } catch (error) {
+    const reason = error?.agentChatReason || "INVALID_RESPONSE_SHAPE";
+    logAgentChatDiagnostic_("error", reason, diagnostic, {
+      ...responseDetails,
+      message: error?.message || String(error),
+      stack: error?.stack || "",
+      response: result,
+    });
+    throw createAgentChatClientError("AGENT_ERROR", reason);
+  }
 }
 
-function createAgentChatClientError(code) {
+function createAgentChatDiagnosticContext_(payload) {
+  return {
+    action: String(payload?.action || "agentChat"),
+    clientRequestId: String(payload?.clientRequestId || ""),
+    requestStartedAt: new Date().toISOString(),
+  };
+}
+
+function getAgentChatResponseDetails_(response) {
+  const headers = {};
+  try {
+    response?.headers?.forEach?.((value, key) => {
+      headers[String(key)] = String(value);
+    });
+  } catch (error) {
+    headers.readError = error?.message || String(error);
+  }
+  return {
+    responseUrl: String(response?.url || ""),
+    status: Number(response?.status || 0),
+    ok: response?.ok === true,
+    redirected: response?.redirected === true,
+    type: String(response?.type || ""),
+    headers,
+    contentType: String(response?.headers?.get?.("content-type") || headers["content-type"] || ""),
+  };
+}
+
+function getAgentChatResponseBodyDetails_(rawResponse, contentType) {
+  const body = String(rawResponse || "");
+  const trimmed = body.trim();
+  const looksLikeHtml = /^<!doctype html|^<html[\s>]/i.test(trimmed);
+  const looksLikeJson = /^[{\[]/.test(trimmed);
+  return {
+    contentType: String(contentType || ""),
+    bodyLength: body.length,
+    isEmpty: trimmed.length === 0,
+    bodyFormat: looksLikeHtml ? "html" : looksLikeJson ? "json" : "text",
+    preview: body.slice(0, 500),
+  };
+}
+
+function logAgentChatDiagnostic_(level, reason, diagnostic, details = {}) {
+  const output = {
+    ...diagnostic,
+    reason,
+    ...details,
+  };
+  const logger = level === "error" ? console.error : console.info;
+  logger("[PALURU agentChat]", output);
+}
+
+function createAgentChatClientError(code, agentChatReason = "") {
   const error = new Error("Agent Gateway request failed");
   error.code = code;
+  error.agentChatReason = agentChatReason;
   return error;
 }
 
@@ -1590,15 +1730,31 @@ async function approveHomeControlPairing() {
   }
   if (homeControlApproveButton) homeControlApproveButton.disabled = true;
   try {
-    await callHomeControlApi({ action: "devicePairingApprove", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(), code, membershipTemplate });
+    const response = await callHomeControlApi({ action: "devicePairingApprove", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(), code, membershipTemplate });
+    logDevicePairingApprovalResult_({ action: "devicePairingApprove", pairingCode: code, membershipTemplate, deviceId: profile.deviceId, success: true, errorCode: "", message: "", response });
     if (homeControlApproveCode) homeControlApproveCode.value = "";
     setHomeControlMessage("新しい端末を承認したで。", "success");
     await renderHomeControlSettings();
   } catch (error) {
+    logDevicePairingApprovalResult_({ action: "devicePairingApprove", pairingCode: code, membershipTemplate, deviceId: profile.deviceId, success: false, errorCode: String(error?.response?.error?.code || error?.code || ""), message: String(error?.response?.message || error?.message || ""), response: error?.response || null });
     setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
   } finally {
     if (homeControlApproveButton) homeControlApproveButton.disabled = false;
   }
+}
+
+function logDevicePairingApprovalResult_(details) {
+  const entry = {
+    action: String(details?.action || "devicePairingApprove"),
+    pairingCode: String(details?.pairingCode || ""),
+    membershipTemplate: String(details?.membershipTemplate || ""),
+    deviceId: String(details?.deviceId || ""),
+    success: Boolean(details?.success),
+    errorCode: String(details?.errorCode || ""),
+    message: String(details?.message || ""),
+    response: details?.response || null,
+  };
+  (entry.success ? console.info : console.error)("[Paruru] devicePairingApprove", entry);
 }
 
 function canApproveHomeControlPairing_() {
@@ -1771,6 +1927,7 @@ async function submitAgentChatQuery(messageText, options = {}) {
   setSending(true, loadingMessage, "ask");
   setParuruSpeech("idle", loadingMessage);
   renderHomeAgentLoading(loadingMessage);
+  const requestStartedAt = new Date().toISOString();
 
   try {
     const result = await callAgentChat(payload);
@@ -1796,13 +1953,18 @@ async function submitAgentChatQuery(messageText, options = {}) {
       }
     }
     if (result.followup) {
-      renderFollowupPanel("home", {
-        id: result.followup.itemId,
-        needsFollowup: true,
-        followupQuestion: result.followup.question,
-        followupInputType: result.followup.inputType,
-        followupOrigin: "agentChat",
-      });
+      try {
+        renderFollowupPanel("home", {
+          id: result.followup.itemId,
+          needsFollowup: true,
+          followupQuestion: result.followup.question,
+          followupInputType: result.followup.inputType,
+          followupOrigin: "agentChat",
+        });
+      } catch (error) {
+        error.agentChatReason = "FOLLOWUP_FAILED";
+        throw error;
+      }
     } else if (request.purpose === "memo") {
       hideFollowupPanel("home");
     }
@@ -1811,6 +1973,15 @@ async function submitAgentChatQuery(messageText, options = {}) {
     revealPanelIfNeeded(homeAgentCard);
   } catch (error) {
     const retryable = error && error.code === "AGENT_UNAVAILABLE";
+    logAgentChatDiagnostic_("error", error?.agentChatReason || "UI_OR_RESULT_PROCESSING_FAILED", {
+      action: String(request.action || "agentChat"),
+      clientRequestId: String(request.clientRequestId || ""),
+      requestStartedAt,
+    }, {
+      message: error?.message || String(error),
+      stack: error?.stack || "",
+      uiMessageBranch: retryable ? "TRANSIENT_AGENT_ERROR" : "今はこの確認を完了できんかった",
+    });
     const errorMessage = retryable
       ? "一時的に確認先へつながらんかった。少し待ってからもう一回試して。"
       : "今はこの確認を完了できんかった。繰り返しても直らん場合は設定を確認してな。";
@@ -1831,11 +2002,18 @@ function validateAgentChatResponse(response, request) {
     response.sessionId !== request.sessionId ||
     response.clientRequestId !== request.clientRequestId
   ) {
-    throw new Error("Invalid Agent Gateway response");
+    const error = new Error("Invalid Agent Gateway response");
+    error.agentChatReason = "INVALID_RESPONSE_SHAPE";
+    throw error;
   }
   const result = { reply, sessionId: request.sessionId, clientRequestId: request.clientRequestId };
   if (Object.prototype.hasOwnProperty.call(response, "followup")) {
-    result.followup = validateAgentFollowup(response.followup);
+    try {
+      result.followup = validateAgentFollowup(response.followup);
+    } catch (error) {
+      error.agentChatReason = "FOLLOWUP_FAILED";
+      throw error;
+    }
   }
   if (Object.prototype.hasOwnProperty.call(response, "actionConfirmation")) {
     result.actionConfirmation = validateAgentActionConfirmation(response.actionConfirmation);

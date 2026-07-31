@@ -24,8 +24,10 @@ function element(value = '') { return { value, hidden: false, disabled: false, t
 function createHarness(options = {}) {
   const requests = [];
   const messages = [];
+  const logs = [];
   const context = {
     String, Array, Object, Promise, Boolean,
+    console: { info: (...args) => logs.push({ level: 'info', args }), error: (...args) => logs.push({ level: 'error', args }) },
     homeControlApproveCode: element(options.code || '123456'),
     homeControlMembershipTemplate: element(options.template || ''),
     homeControlApproveButton: element(),
@@ -39,12 +41,17 @@ function createHarness(options = {}) {
     escapeHtml: (value) => String(value),
     renderHomeControlDeviceList() {},
     setHomeControlMessage(message, type) { messages.push({ message, type }); },
-    callHomeControlApi: async (payload) => { requests.push(payload); return payload.action === 'devicePairingList' ? { devices: [] } : {}; },
+    getHomeControlPublicMessage: (code) => String(code || ''),
+    callHomeControlApi: async (payload) => {
+      requests.push(payload);
+      if (payload.action === 'devicePairingApprove' && options.approvalError) throw options.approvalError;
+      return payload.action === 'devicePairingList' ? { devices: [] } : { diagnostics: { stages: {} } };
+    },
     renderHomeControlSettings: async () => {},
   };
   vm.createContext(context);
   vm.runInContext(`let appAuthenticationState = ${JSON.stringify(options.state || 'active_member')}; let activeMembershipContext = ${JSON.stringify({ role: options.role || 'admin' })}; ${approveSource}\n${revokeSource}\n${renderSource}\n${deviceListSource}\nglobalThis.setRole_ = (role) => { activeMembershipContext = { role }; };`, context);
-  return { context, requests, messages };
+  return { context, requests, messages, logs };
 }
 
 (async () => {
@@ -56,7 +63,26 @@ function createHarness(options = {}) {
     assert.deepStrictEqual(Object.keys(payload).sort(), ['action', 'code', 'deviceId', 'membershipTemplate', 'pairingToken'].sort());
     assert.strictEqual(payload.membershipTemplate, template);
     assert(!Object.hasOwn(payload, 'userId') && !Object.hasOwn(payload, 'role') && !Object.hasOwn(payload, 'homeId') && !Object.hasOwn(payload, 'capability'));
+    const log = h.logs.find((entry) => entry.args[0] === '[Paruru] devicePairingApprove');
+    assert(log && log.level === 'info', 'successful approval must be logged');
+    assert.deepStrictEqual(Object.keys(log.args[1]).sort(), ['action', 'deviceId', 'errorCode', 'membershipTemplate', 'message', 'pairingCode', 'response', 'success'].sort());
+    assert.strictEqual(log.args[1].pairingCode, '123456');
+    assert.strictEqual(log.args[1].membershipTemplate, template);
   }
+
+  const rejected = createHarness({
+    template: 'second_son_initial',
+    approvalError: Object.assign(new Error('server rejected'), {
+      code: 'HOME_CONTROL_FAILED',
+      response: { error: { code: 'MEMBERSHIP_CONFLICT' }, message: 'membership conflict', diagnostics: { stages: { conflict: 'detected' } } },
+    }),
+  });
+  await rejected.context.approveHomeControlPairing();
+  const errorLog = rejected.logs.find((entry) => entry.args[0] === '[Paruru] devicePairingApprove');
+  assert(errorLog && errorLog.level === 'error', 'failed approval must be logged');
+  assert.strictEqual(errorLog.args[1].errorCode, 'MEMBERSHIP_CONFLICT');
+  assert.strictEqual(errorLog.args[1].message, 'membership conflict');
+  assert.deepStrictEqual(errorLog.args[1].response.diagnostics.stages, { conflict: 'detected' });
 
   const blank = createHarness();
   await blank.context.approveHomeControlPairing();

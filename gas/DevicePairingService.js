@@ -67,6 +67,7 @@ function devicePairingBegin_(body) {
 }
 
 function devicePairingApprove_(body) {
+  const diagnostics = createDevicePairingApprovalDiagnostics_();
   try {
     const input = validateDevicePairingApproveInput_(body || {});
     const result = withHomeControlRegistryLock_(function(registry, deps) {
@@ -85,6 +86,7 @@ function devicePairingApprove_(body) {
         if (rate.count >= HOME_CONTROL_APPROVE_MAX_FAILURES) throw homeControlPairingError_('PAIRING_CODE_RATE_LIMITED');
         throw homeControlPairingError_('INVALID_PAIRING_CODE');
       }
+      setDevicePairingApprovalStage_(diagnostics, 'pendingRequest', 'resolved', { kind: approval.kind });
       if (rate.count) delete registry.approveAttempts[input.deviceId];
       const request = approval.request;
       const targetDevice = registry.devices[request.deviceId];
@@ -99,13 +101,15 @@ function devicePairingApprove_(body) {
         // resolvePendingApprovalRequestByCode_ normalizes complete legacy requests.
         throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
       }
-      provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, targetDevice.deviceId, input.membershipTemplate, request.requestId, homeControlIso_(now));
+      setDevicePairingApprovalStage_(diagnostics, 'registryDevice', 'verified', { requestKind: approval.kind });
+      provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, targetDevice.deviceId, input.membershipTemplate, request.requestId, homeControlIso_(now), diagnostics);
       if (approval.kind === 'pairing') {
         targetDevice.status = 'active';
         targetDevice.registeredAt = homeControlIso_(now);
         targetDevice.lastUsedAt = homeControlIso_(now);
         targetDevice.revokedAt = null;
       }
+      setDevicePairingApprovalStage_(diagnostics, 'registryActivation', approval.kind === 'pairing' ? 'active' : 'not_required');
       request.status = 'approved';
       request.approvedAt = homeControlIso_(now);
       request.approvedByDeviceId = input.deviceId;
@@ -113,10 +117,38 @@ function devicePairingApprove_(body) {
       request.codeExpiresAt = null;
       return { requestId: request.requestId, deviceName: targetDevice.displayName, status: 'approved' };
     });
-    return json_({ success: true, data: result, warnings: [] });
+    return json_({ success: true, data: result, warnings: [], diagnostics: diagnostics });
   } catch (error) {
-    return json_(homeControlPairingFailure_(error && error.code));
+    setDevicePairingApprovalFailure_(diagnostics, error && error.code);
+    return json_(devicePairingApprovalFailure_(error && error.code, diagnostics));
   }
+}
+
+function createDevicePairingApprovalDiagnostics_() {
+  return {
+    operation: 'devicePairingApprove',
+    stages: {
+      pendingRequest: 'not_started', registryDevice: 'not_started', registryActivation: 'not_started',
+      secondSonPolicy: 'not_started', homeMembers: 'not_started', deviceMemberships: 'not_started', conflict: 'not_checked',
+    },
+  };
+}
+
+function setDevicePairingApprovalStage_(diagnostics, name, status, details) {
+  if (!diagnostics || !diagnostics.stages || !Object.prototype.hasOwnProperty.call(diagnostics.stages, name)) return;
+  diagnostics.stages[name] = status;
+  if (details) diagnostics[name] = details;
+}
+
+function setDevicePairingApprovalFailure_(diagnostics, code) {
+  if (!diagnostics) return;
+  diagnostics.errorCode = String(code || 'PAIRING_FAILED');
+}
+
+function devicePairingApprovalFailure_(code, diagnostics) {
+  const failure = homeControlPairingFailure_(code);
+  failure.diagnostics = diagnostics;
+  return failure;
 }
 
 function membershipRegistrationBegin_(body) {

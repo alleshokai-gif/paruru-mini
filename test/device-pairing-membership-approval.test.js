@@ -114,6 +114,25 @@ test('new pairing requests persist kind pairing and both fixed templates provisi
   }
 });
 
+test('approval replies carry safe stage diagnostics before generic client messaging', () => {
+  const success = createHarness(); success.seedParent();
+  const started = success.begin();
+  const approved = success.approve(started.data.code, 'second_son_initial');
+  assert.strictEqual(approved.diagnostics.operation, 'devicePairingApprove');
+  assert.strictEqual(approved.diagnostics.stages.pendingRequest, 'resolved');
+  assert.strictEqual(approved.diagnostics.stages.registryDevice, 'verified');
+  assert.strictEqual(approved.diagnostics.stages.registryActivation, 'active');
+
+  const failed = createHarness(); failed.seedParent();
+  const pending = failed.begin(); failed.setProvisionFailure(true);
+  const rejected = failed.approve(pending.data.code, 'second_son_initial');
+  expectCode(rejected, 'MEMBERSHIP_CONFLICT');
+  assert.strictEqual(rejected.diagnostics.operation, 'devicePairingApprove');
+  assert.strictEqual(rejected.diagnostics.errorCode, 'MEMBERSHIP_CONFLICT');
+  assert.strictEqual(rejected.diagnostics.stages.pendingRequest, 'resolved');
+  assert.strictEqual(rejected.diagnostics.stages.registryDevice, 'verified');
+});
+
 test('complete legacy pending requests without kind remain pairing-compatible', () => {
   const h = createHarness(); h.seedParent(); const started = h.begin();
   const saved = h.registry(); delete saved.requests[started.data.requestId].kind;
