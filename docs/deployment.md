@@ -24,7 +24,7 @@ GASはヘッダー不足を末尾追加します。既存列の並べ替えや�
 ## GitHub Pages / PWA
 
 1. `APP_VERSION` はアプリの区切り版です
-2. `BUILD_VERSION` / `ASSET_VERSION` はキャッシュ更新用のビルド番号です
+2. `build.js` の `BUILD_ID` はService Workerキャッシュと設定画面表示で共通のビルド番号です
 3. `index.html`、`manifest.json`、`sw.js` の参照版数を揃えます
 4. GitHubへpushします
 5. Android PWAで設定画面のBuild表記を確認します

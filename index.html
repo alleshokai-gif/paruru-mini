@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#5C6BC0">
     <title>Paruru Mini</title>
-    <link rel="manifest" href="./manifest.json?v=20260727-pwa-hotfix">
-  <link rel="icon" href="./assets/icons/favicon.png?v=20260727-pwa-hotfix" type="image/png">
-  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png?v=20260727-pwa-hotfix">
-  <link rel="stylesheet" href="./style.css?v=20260727-pwa-hotfix">
+    <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./assets/icons/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+  <link rel="stylesheet" href="./style.css">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
-      <img class="splash-icon" src="./assets/character/paluru/official/paruru_face.png?v=20260727-pwa-hotfix" alt="&#12401;&#12427;&#12427;">
+      <img class="splash-icon" src="./assets/character/paluru/official/paruru_face.png" alt="&#12401;&#12427;&#12427;">
       <p class="splash-logo">Paruru</p>
       <p class="splash-loading">端末を確認中…</p>
     </div>
@@ -55,7 +55,7 @@
 
         <section class="paruru-hero" aria-label="&#12401;&#12427;&#12427;&#20250;&#35441;">
           <div class="paruru-character">
-        <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_bust.png?v=20260727-pwa-hotfix" alt="&#12401;&#12427;&#12427;">
+        <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_bust.png" alt="&#12401;&#12427;&#12427;">
           </div>
           <div class="paruru-speech-column">
             <div id="paruruSpeech" class="paruru-bubble paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</div>
@@ -115,9 +115,23 @@
           </fieldset>
 
           <div class="paluru-action-buttons">
-            <button id="askPaluruButton" class="secondary-button" type="button">&#12401;&#12427;&#12427;&#12395;&#38972;&#12416;</button>
-            <button id="saveToPaluruButton" type="button">&#12401;&#12427;&#12427;&#12395;&#38928;&#12369;&#12427;</button>
+            <div class="paluru-action-option">
+              <button id="askPaluruButton" class="secondary-button" type="button" data-home-input-route="consult"></button>
+              <p id="consultActionHint" class="paluru-action-hint"></p>
+            </div>
+            <div class="paluru-action-option">
+              <button id="saveToPaluruButton" type="button" data-home-input-route="register"></button>
+              <p id="registerActionHint" class="paluru-action-hint"></p>
+            </div>
           </div>
+          <section id="homeIntentConfirm" class="home-intent-confirm is-hidden" aria-live="polite" aria-label="入力内容の確認">
+            <p id="homeIntentConfirmMessage"></p>
+            <div class="home-intent-confirm-actions">
+              <button id="homeIntentConfirmSwitch" type="button"></button>
+              <button id="homeIntentConfirmKeep" class="secondary-button" type="button"></button>
+              <button id="homeIntentConfirmCancel" class="secondary-button" type="button">キャンセル</button>
+            </div>
+          </section>
         </form>
 
         <section id="homeFollowup" class="followup-panel is-hidden" aria-live="polite">
@@ -435,9 +449,10 @@
       </div>
     </dialog>
 
-    <script src="./features/nurse-okan/health-routine.js?v=20260727-pwa-hotfix" defer></script>
-    <script src="./app.js?v=20260727-pwa-hotfix" defer></script>
-    <script src="./features/nurse-okan/nurse-okan.js?v=20260727-pwa-hotfix" defer></script>
+    <script src="./build.js" defer></script>
+    <script src="./features/nurse-okan/health-routine.js" defer></script>
+    <script src="./app.js" defer></script>
+    <script src="./features/nurse-okan/nurse-okan.js" defer></script>
   </body>
 </html>
 

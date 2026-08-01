@@ -67,7 +67,7 @@ function createHarness() {
 
   function element(selector) {
     if (elements.has(selector)) return elements.get(selector);
-    const hidden = ['#homeAgentCard', '#homeAgentRetryButton', '#homeFollowup', '#detailFollowup'].includes(selector) ? ['is-hidden'] : [];
+    const hidden = ['#homeAgentCard', '#homeAgentRetryButton', '#homeFollowup', '#detailFollowup', '#homeIntentConfirm'].includes(selector) ? ['is-hidden'] : [];
     const value = {
       value: '',
       textContent: '',
@@ -356,7 +356,7 @@ test('EVA-03F Calendar read questions route only to agentChat', async () => {
   }
 });
 
-test('EVA-03F Calendar writes never reach the read Tool route', async () => {
+test('consult button asks before redirecting calendar-write input and never reaches the read Tool', async () => {
   const cases = [
     '明日10時に歯医者を登録して',
     'カレンダーに追加して',
@@ -369,7 +369,8 @@ test('EVA-03F Calendar writes never reach the read Tool route', async () => {
     await harness.submit(message);
     const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
     assert(!actions.includes('agentChat'), message + ' reached Calendar Agent route');
-    assert(actions.length === 1 && ['createWithAI', 'homeAgent'].includes(actions[0]), message + ' lost its existing safe route');
+    assert(actions.length === 0, message + ' sent an API request before intent confirmation');
+    assert(!harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), message + ' did not show intent confirmation');
   }
 });
 
@@ -497,17 +498,15 @@ test('B8 manual close button behavior remains', () => {
   assert(harness.elements.get('#message').textContent === '', 'manual close left Agent form message');
 });
 
-test('EVA-03J save button always saves a climate or Calendar question with explicit overrides', async () => {
+test('register button asks before redirecting a consultation-like input', async () => {
   const harness = createHarness();
   harness.elements.get('#category').value = '開発';
   await harness.run('categoryExplicitlySelected = true');
   harness.element('input[name="priority"][value="High"]').checked = true;
   await harness.run('priorityExplicitlySelected = true');
   await harness.save('今日の予定は？');
-  const payload = harness.requests.find((entry) => entry.payload?.action === 'createWithAI').payload;
-  assert(payload.memo === '今日の予定は？', 'save message changed');
-  assert(payload.category === '開発' && payload.priority === 'High', 'save overrides were not forwarded');
-  assert(!harness.requests.some((entry) => entry.payload?.action === 'agentChat' || entry.payload?.action === 'homeAgent'), 'save escaped into a query route');
+  assert(harness.requests.length === 0, 'register sent an API request before intent confirmation');
+  assert(!harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'register confirmation was not shown');
 });
 
 test('EVA-03J ask button sends an otherwise normal request to Agent without save overrides', async () => {
@@ -528,12 +527,14 @@ test('EVA-03J buttons disable together while retaining fixed labels', async () =
   const pending = harness.ask('書斎暑い？');
   await Promise.resolve();
   assert(harness.elements.get('#askPaluruButton').disabled && harness.elements.get('#saveToPaluruButton').disabled, 'both buttons were not disabled');
-  assert(harness.elements.get('#askPaluruButton').textContent === 'ぱるるに頼む', 'ask button label changed while processing');
-  assert(harness.elements.get('#saveToPaluruButton').textContent === 'ぱるるに預ける', 'save button label changed while processing');
-  assert(!appSource.includes('ぱるるに預' + 'む'), 'legacy ask-button typo remains');
+  assert(harness.elements.get('#askPaluruButton').textContent === '💬 確認中…', 'consult button loading label changed');
+  assert(harness.elements.get('#saveToPaluruButton').textContent === '📝 登録する', 'register button label changed while consult is processing');
+  assert(!appSource.includes('ぱるるに頼' + 'む'), 'legacy consult-button label remains');
   release();
   await pending;
   assert(!harness.elements.get('#askPaluruButton').disabled && !harness.elements.get('#saveToPaluruButton').disabled, 'buttons remained disabled');
+  assert(harness.elements.get('#askPaluruButton').textContent === '💬 相談する', 'consult button did not restore after loading');
+  assert(harness.elements.get('#saveToPaluruButton').textContent === '📝 登録する', 'register button did not restore after loading');
 });
 
 test('EVA-03J save success resets only save overrides while ask success keeps them', async () => {
@@ -548,7 +549,7 @@ test('EVA-03J save success resets only save overrides while ask success keeps th
   await save.run('categoryExplicitlySelected = true');
   save.element('input[name="priority"][value="High"]').checked = true;
   await save.run('priorityExplicitlySelected = true');
-  await save.save('予定表示を改行する');
+  await save.save('普通のメモ');
   assert(save.elements.get('#category').value === '', 'save success did not reset category to AI selection');
   assert(save.element('input[name="priority"][value=""]').checked, 'save success did not reset priority to AI selection');
 });
@@ -920,14 +921,60 @@ test('EVA-03H1 pairing UI uses explicit onboarding actions and has no manual tok
   assert(appSource.includes('crypto?.getRandomValues') && appSource.includes('crypto?.subtle') && appSource.includes('crypto.subtle.digest'), 'PWA token generation is not Web Crypto based');
 });
 
-test('EVA-03I-2B static action labels are correct before JavaScript runs', () => {
+test('home action labels are centralized in JavaScript and mobile grid stays two-column', () => {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const style = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
-  const legacyAskLabel = ['&#12401;', '&#12427;', '&#12427;', '&#12395;', '&#38928;', '&#12416;'].join('');
-  assert(html.includes('&#12401;&#12427;&#12427;&#12395;&#38972;&#12416;'), 'static ask label is not 頼む');
-  assert(!html.includes(legacyAskLabel), 'static ask label typo remains');
-  assert(html.includes('&#12401;&#12427;&#12427;&#12395;&#38928;&#12369;&#12427;'), 'static save label changed');
-  assert(style.includes('grid-template-columns: repeat(2, minmax(0, 1fr))') && style.includes('.paluru-action-buttons button {\n  min-width: 0;\n  white-space: nowrap;'), 'two-button mobile overflow guard changed');
+  const legacyLabels = [
+    ['ぱるるに頼', 'む'].join(''),
+    ['ぱるるに預け', 'る'].join(''),
+  ];
+  legacyLabels.forEach((legacy) => assert(!html.includes(legacy) && !style.includes(legacy) && !appSource.includes(legacy), legacy + ' remains in UI source'));
+  assert(appSource.includes('label: "💬 相談する"') && appSource.includes('label: "📝 登録する"'), 'new action labels missing');
+  assert(style.includes('grid-template-columns: repeat(2, minmax(0, 1fr))') && style.includes('white-space: nowrap;'), 'two-button mobile overflow guard changed');
+});
+
+test('home input asks before changing a consultation into registration, and switching does not loop', async () => {
+  const harness = createHarness();
+  const memo = '牛乳を買う';
+  await harness.ask(memo);
+  assert(harness.requests.length === 0, 'consult sent an API request before registration confirmation');
+  assert(!harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'consult-to-register confirmation was not shown');
+  assert(harness.elements.get('#homeIntentConfirmMessage').textContent.includes('登録する内容っぽいで'), 'consult-to-register message changed');
+  assert(harness.elements.get('#homeIntentConfirmSwitch').textContent === '📝 登録する', 'switch action label is wrong');
+
+  await harness.handlers.get('#homeIntentConfirmSwitch:click')();
+  const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
+  assert(actions.includes('createWithAI') && !actions.includes('agentChat'), 'confirmed register switch did not use the existing registration path');
+  assert(harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'confirmation stayed open after switching');
+});
+
+test('home input asks before changing registration into consultation', async () => {
+  const harness = createHarness();
+  await harness.save('今日の気温を教えて');
+  assert(harness.requests.length === 0, 'register sent an API request before consultation confirmation');
+  assert(!harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'register-to-consult confirmation was not shown');
+  assert(harness.elements.get('#homeIntentConfirmMessage').textContent.includes('相談したら'), 'register-to-consult message changed');
+  assert(harness.elements.get('#homeIntentConfirmKeep').textContent === '📝 登録のまま進む', 'keep-registration label is wrong');
+
+  await harness.handlers.get('#homeIntentConfirmSwitch:click')();
+  assert(harness.requests.some((entry) => entry.payload?.action === 'agentChat'), 'confirmed consult switch did not use the existing consultation path');
+  assert(harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'consult confirmation looped after switching');
+});
+
+test('ambiguous input preserves the selected route and cancel sends nothing', async () => {
+  const consult = createHarness();
+  await consult.ask('メロンパン');
+  assert(consult.requests.some((entry) => entry.payload?.action === 'agentChat'), 'ambiguous consult input did not stay on consult');
+
+  const register = createHarness();
+  await register.save('メロンパン');
+  assert(register.requests.some((entry) => entry.payload?.action === 'createWithAI'), 'ambiguous register input did not stay on register');
+
+  const cancel = createHarness();
+  await cancel.ask('牛乳を買う');
+  await cancel.handlers.get('#homeIntentConfirmCancel:click')();
+  assert(cancel.requests.length === 0, 'cancel sent an API request');
+  assert(cancel.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'cancel did not close confirmation');
 });
 
 test('agentChat diagnostics correlate the final echo response with clientRequestId', async () => {
@@ -992,16 +1039,18 @@ test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
   const expected = 'v20260727-pwa-hotfix';
-  assert(appSource.includes('const ASSET_VERSION = "' + expected + '"'), 'app version mismatch');
-  assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const ASSET_VERSION = "' + expected + '"'), 'SW version mismatch');
-  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('app.js?v=' + expected.slice(1)), 'HTML app version mismatch');
+  const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
+  assert(buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID mismatch');
+  assert(appSource.includes('globalThis.BUILD_ID'), 'app does not use BUILD_ID');
+  assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('importScripts("./build.js")') && fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('globalThis.BUILD_ID'), 'SW does not use BUILD_ID');
+  assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('<script src="./build.js" defer></script>'), 'HTML does not load BUILD_ID');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');
   const manifest = JSON.parse(manifestSource);
-  assert(manifest.icons.every((icon) => icon.src.includes('v=' + expected.slice(1))), 'manifest icon version mismatch');
-  const versionedAssets = [appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
+  assert(manifest.icons.every((icon) => !icon.src.includes('?v=')), 'manifest duplicates BUILD_ID');
+  const versionedAssets = [buildSource, appSource, swSource, fs.readFileSync(path.join(root, 'index.html'), 'utf8'), manifestSource].join('\n');
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
   assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');
   assert(!versionedAssets.includes('20260719-10'), 'previous PWA asset reference remains');

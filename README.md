@@ -31,10 +31,10 @@ Legacy `homeAgentAction` remains protected for old PWA compatibility. Pause/resu
 
 | 最上位意図 | 現在の経路 |
 |---|---|
-| 「ぱるるに頼む」 | 読み取り、依頼、操作候補、一般会話を質問として送る。Climate・エアコン状態・Calendar読取は `agentChat` -> Agent Tool、給食・学校・天気・旧Home Agent専用対象は `homeAgent` |
-| 「ぱるるに預ける」 | 本文を常に既存`createWithAI`へ保存。質問文でも照会せず、AI分類・Follow-upを使う |
+| 「💬 相談する」 | 読み取り、依頼、操作候補、一般会話を質問として送る。Climate・エアコン状態・Calendar読取は `agentChat` -> Agent Tool、給食・学校・天気・旧Home Agent専用対象は `homeAgent` |
+| 「📝 登録する」 | 本文を既存`createWithAI`へ保存し、AI分類・Follow-upを使う。相談らしい内容では確認してから経路を選ぶ |
 
-「頼む」で明示的な保存依頼（「覚えといて」「メモして」「記録しといて」等）を送った場合だけは、既存の `agentChat` -> Agent `create_memo` 経路を維持します。Calendar書込み要求は読取Toolへ送らず、既存の安全な `homeAgent` 経路へ送ります。カテゴリと優先度の初期値は「AIにおまかせ」で、「預ける」の保存成功時だけ初期状態へ戻ります。
+「💬 相談する」で明示的な保存依頼（「覚えといて」「メモして」「記録しといて」等）を送った場合だけは、既存の `agentChat` -> Agent `create_memo` 経路を維持します。Calendar書込み要求は読取Toolへ送らず、既存の安全な `homeAgent` 経路へ送ります。カテゴリと優先度の初期値は「AIにおまかせ」で、「📝 登録する」の保存成功時だけ初期状態へ戻ります。
 
 Agent経由でClimate実測回答、Calendar実予定回答、Inbox保存、構造化Follow-up中継を利用できます。既存Inbox、通知、Calendar登録、`createWithAI`、`answerFollowup`、旧Home Agentは後方互換のため残しています。
 
@@ -74,7 +74,7 @@ Home Agent Platform全体の正本文書は `../HomeSignage/docs/` に置く。P
 
 ## 概要
 
-PALURU Miniは、雑なメモをAI秘書ぱるるへ預けるスマホ向けPWAです。
+PALURU Miniは、雑なメモをAI秘書ぱるるへ記録するスマホ向けPWAです。
 ぱるるがメモを解析し、分類、日時抽出、Follow-up質問、予定登録まで手伝います。
 
 キャッチコピー:

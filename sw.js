@@ -1,11 +1,12 @@
-const ASSET_VERSION = "v20260727-pwa-hotfix";
-const CACHE_NAME = `paruru-mini-${ASSET_VERSION}`;
-const versioned = (path) => `${path}?v=${ASSET_VERSION}`;
+importScripts("./build.js");
+const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
+const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
 
 const APP_SHELL_RUNTIME_ASSETS = [
   "./",
   "index.html",
+  versioned("build.js"),
   versioned("style.css"),
   versioned("app.js"),
   versioned("features/nurse-okan/nurse-okan.js"),
@@ -27,7 +28,7 @@ const STATIC_IMAGE_ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  debugLog("[Paruru SW] install", ASSET_VERSION);
+  debugLog("[Paruru SW] install", globalThis.BUILD_ID);
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_IMAGE_ASSETS))
@@ -35,7 +36,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  debugLog("[Paruru SW] activate", ASSET_VERSION);
+  debugLog("[Paruru SW] activate", globalThis.BUILD_ID);
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.map((key) => {

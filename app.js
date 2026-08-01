@@ -1,12 +1,10 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.1.0";
-const ASSET_VERSION = "v20260727-pwa-hotfix";
-const BUILD_VERSION = ASSET_VERSION;
 const DEBUG = false;
 const DEFAULT_PRIORITY = "";
 const CHARACTER_BASE_PATH = "assets/character/paluru";
-const assetUrl = (path) => `${path}?v=${ASSET_VERSION}`;
+const assetUrl = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const PROFILE_STORAGE_KEY = "paruru-mini-profile";
 const AGENT_CHAT_SESSION_STORAGE_KEY = "paruru-mini-agent-chat-session-v1";
 const HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY = "paruru-mini-home-agent-pairing-v1";
@@ -74,6 +72,11 @@ const CALENDAR_WRITE_PATTERN = /(?:予定|スケジュール|カレンダー|予
 const CALENDAR_READ_TOPIC_PATTERN = /予定|スケジュール|カレンダー|何かある|忙しい|何時から/;
 const CALENDAR_READ_CONTEXT_PATTERN = /今日|明日|今週|今後|これから|一週間|1週間|７日間?|7日間?|家族|みんな|全員|自分|私|父/;
 const CALENDAR_NEXT_SEVEN_DAYS_PATTERN = /(?:これから|今後)?\s*(?:一週間|1週間|７日間?|7日間?)(?:の予定|のスケジュール)?/;
+const HOME_INPUT_ACTIONS = Object.freeze({
+  consult: Object.freeze({ label: "💬 相談する", sendingLabel: "💬 確認中…", hint: "確認・質問・操作" }),
+  register: Object.freeze({ label: "📝 登録する", sendingLabel: "📝 登録中…", hint: "予定・タスク・メモ" }),
+});
+const HOME_INPUT_INTENTS = Object.freeze({ CONSULT_LIKELY: "CONSULT_LIKELY", REGISTER_LIKELY: "REGISTER_LIKELY", AMBIGUOUS: "AMBIGUOUS" });
 const DEFAULT_PROFILE = {
   userId: "father",
   displayName: "父",
@@ -273,6 +276,13 @@ const paruruImage = document.querySelector("#paruruImage");
 const paruruLine = document.querySelector("#paruruSpeech") || document.querySelector(".paruru-line");
 const askPaluruButton = document.querySelector("#askPaluruButton");
 const saveToPaluruButton = document.querySelector("#saveToPaluruButton");
+const consultActionHint = document.querySelector("#consultActionHint");
+const registerActionHint = document.querySelector("#registerActionHint");
+const homeIntentConfirm = document.querySelector("#homeIntentConfirm");
+const homeIntentConfirmMessage = document.querySelector("#homeIntentConfirmMessage");
+const homeIntentConfirmSwitch = document.querySelector("#homeIntentConfirmSwitch");
+const homeIntentConfirmKeep = document.querySelector("#homeIntentConfirmKeep");
+const homeIntentConfirmCancel = document.querySelector("#homeIntentConfirmCancel");
 const message = document.querySelector("#message");
 const splash = document.querySelector("#splash");
 const authLock = document.querySelector("#authLock");
@@ -384,6 +394,7 @@ const homeAgentCloseButton = document.querySelector("#homeAgentCloseButton");
 let homeAgentConversationContext = {};
 let pendingHomeAgentActionCandidate = null;
 let pendingHomeAgentRetry = null;
+let pendingHomeInputIntentConfirmation = null;
 let homeControlPollTimer = null;
 let membershipRegistrationPollTimer = null;
 let activeMembershipContext = null;
@@ -439,7 +450,7 @@ setParuruState("loading");
 if ("serviceWorker" in navigator) {
   let refreshingForNewServiceWorker = false;
 
-  debugLog("[Paruru] build version", { appVersion: APP_VERSION, buildVersion: BUILD_VERSION });
+  debugLog("[Paruru] build version", { appVersion: APP_VERSION, buildId: globalThis.BUILD_ID });
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     debugLog("[Paruru] controllerchange");
@@ -595,7 +606,7 @@ function initializeNormalPwaOnce() {
   renderProfileForm();
   setParuruState("normal");
   if (buildVersion) {
-    buildVersion.textContent = `アプリVersion: ${APP_VERSION} / Build: ${BUILD_VERSION}`;
+    buildVersion.textContent = `アプリVersion: ${APP_VERSION} / Build: ${globalThis.BUILD_ID}`;
   }
   splash?.classList.add("is-hidden");
   loadNotificationCandidates({ force: true });
@@ -764,6 +775,9 @@ priorityInputs.forEach((input) => {
 });
 
 memoInput.addEventListener("input", () => {
+  if (pendingHomeInputIntentConfirmation) {
+    hideHomeInputIntentConfirmation();
+  }
   if (activeView !== "home" || isSubmitting) {
     return;
   }
@@ -776,26 +790,121 @@ form.addEventListener("submit", async (event) => {
 });
 
 askPaluruButton.addEventListener("click", async () => {
-  await submitPaluruRequest();
+  await submitHomeInput("consult");
 });
 
 saveToPaluruButton.addEventListener("click", async () => {
-  await savePaluruMemo();
+  await submitHomeInput("register");
 });
 
-async function submitPaluruRequest() {
+homeIntentConfirmSwitch.addEventListener("click", async () => {
+  const pending = pendingHomeInputIntentConfirmation;
+  if (!pending) return;
+  hideHomeInputIntentConfirmation();
+  await submitHomeInput(pending.suggestedRoute, { memo: pending.memo, intentConfirmed: true });
+});
+
+homeIntentConfirmKeep.addEventListener("click", async () => {
+  const pending = pendingHomeInputIntentConfirmation;
+  if (!pending) return;
+  hideHomeInputIntentConfirmation();
+  await submitHomeInput(pending.selectedRoute, { memo: pending.memo, intentConfirmed: true });
+});
+
+homeIntentConfirmCancel.addEventListener("click", () => {
+  hideHomeInputIntentConfirmation();
+});
+
+renderHomeInputActionButtons();
+
+async function submitHomeInput(route, options = {}) {
   if (isSubmitting) {
     return;
   }
 
-  const memo = memoInput.value.trim();
+  const memo = String(options.memo || memoInput.value || "").trim();
   if (!memo) {
     setParuruState("empty", { showStatus: true });
     memoInput.focus();
     return;
   }
 
+  const selectedRoute = route === "register" ? "register" : "consult";
+  if (!options.intentConfirmed) {
+    const intent = classifyHomeInputIntent(memo);
+    const suggestedRoute = getSuggestedHomeInputRoute(intent);
+    if (suggestedRoute && suggestedRoute !== selectedRoute) {
+      renderHomeInputIntentConfirmation({ memo, selectedRoute, suggestedRoute });
+      return;
+    }
+  }
+
+  if (selectedRoute === "register") {
+    await savePaluruMemo(memo);
+    return;
+  }
   await routePaluruRequest(memo);
+}
+
+function classifyHomeInputIntent(memo) {
+  const value = String(memo || "").trim();
+  if (!value) return HOME_INPUT_INTENTS.AMBIGUOUS;
+  if (isExplicitAgentMemoRequest(value)) return HOME_INPUT_INTENTS.CONSULT_LIKELY;
+  if (isCalendarWriteRequest(value) || isRegisterLikelyHomeInput(value)) return HOME_INPUT_INTENTS.REGISTER_LIKELY;
+  if (isConsultLikelyHomeInput(value)) return HOME_INPUT_INTENTS.CONSULT_LIKELY;
+  return HOME_INPUT_INTENTS.AMBIGUOUS;
+}
+
+function isRegisterLikelyHomeInput(value) {
+  return /(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー).*(?:登録|追加|入れて|入れといて|作成|保存|残して)|(?:登録|追加|入れて|入れといて|作成|保存|残して).*(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー)|(?:買う|購入|提出|持っていく|やること)/.test(value);
+}
+
+function isConsultLikelyHomeInput(value) {
+  return isAutomationControlRequest(value) || isAirconOperationRequest(value) ||
+    isLegacyHomeAgentPriorityQuery(value) || isCalendarReadQuery(value) ||
+    isAirconReadQuery(value) || isLikelyAgentChatQuery(value) || isLikelyHomeAgentQuery(value) ||
+    /[？?]\s*$|(?:教えて|調べて|検索して|相談|確認して|どう|なに|何)/.test(value);
+}
+
+function getSuggestedHomeInputRoute(intent) {
+  if (intent === HOME_INPUT_INTENTS.CONSULT_LIKELY) return "consult";
+  if (intent === HOME_INPUT_INTENTS.REGISTER_LIKELY) return "register";
+  return "";
+}
+
+function renderHomeInputIntentConfirmation(options) {
+  const selectedRoute = options?.selectedRoute === "register" ? "register" : "consult";
+  const suggestedRoute = options?.suggestedRoute === "register" ? "register" : "consult";
+  pendingHomeInputIntentConfirmation = {
+    memo: String(options?.memo || ""),
+    selectedRoute,
+    suggestedRoute,
+  };
+  const isRegisterSuggestion = suggestedRoute === "register";
+  homeIntentConfirmMessage.textContent = isRegisterSuggestion
+    ? "登録する内容っぽいで。予定やタスクとして登録する？"
+    : "これは相談したら、今ここで答えられそうやで。";
+  homeIntentConfirmSwitch.textContent = HOME_INPUT_ACTIONS[suggestedRoute].label;
+  homeIntentConfirmKeep.textContent = selectedRoute === "consult" ? "💬 相談のまま進む" : "📝 登録のまま進む";
+  homeIntentConfirm.classList.remove("is-hidden");
+  revealPanelIfNeeded(homeIntentConfirm);
+}
+
+function hideHomeInputIntentConfirmation() {
+  pendingHomeInputIntentConfirmation = null;
+  homeIntentConfirm.classList.add("is-hidden");
+}
+
+function renderHomeInputActionButtons(sendingRoute = "") {
+  ["consult", "register"].forEach((route) => {
+    const action = HOME_INPUT_ACTIONS[route];
+    const button = route === "consult" ? askPaluruButton : saveToPaluruButton;
+    const hint = route === "consult" ? consultActionHint : registerActionHint;
+    const isSendingRoute = sendingRoute === route;
+    button.textContent = isSendingRoute ? action.sendingLabel : action.label;
+    button.setAttribute("aria-label", action.label + "。" + action.hint);
+    hint.textContent = action.hint;
+  });
 }
 
 async function routePaluruRequest(memo) {
@@ -844,12 +953,12 @@ async function routePaluruRequest(memo) {
   await submitAgentChatQuery(memo, { purpose: "general" });
 }
 
-async function savePaluruMemo() {
+async function savePaluruMemo(memoOverride = "") {
   if (isSubmitting) {
     return;
   }
 
-  const memo = memoInput.value.trim();
+  const memo = String(memoOverride || memoInput.value || "").trim();
   if (!memo) {
     setParuruState("empty", { showStatus: true });
     memoInput.focus();
@@ -2998,12 +3107,11 @@ function getShoppingDueDate(timing, customDate, todayParts = getTodayTokyoParts(
   return "";
 }
 
-function setSending(isSending) {
+function setSending(isSending, statusText = "", route = "") {
   isSubmitting = isSending;
   askPaluruButton.disabled = isSending;
   saveToPaluruButton.disabled = isSending;
-  askPaluruButton.textContent = "ぱるるに頼む";
-  saveToPaluruButton.textContent = "ぱるるに預ける";
+  renderHomeInputActionButtons(isSending ? (route === "save" ? "register" : "consult") : "");
 }
 
 function setParuruState(stateName, options = {}) {
