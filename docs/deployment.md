@@ -25,9 +25,18 @@ GASはヘッダー不足を末尾追加します。既存列の並べ替えや�
 
 1. `APP_VERSION` はアプリの区切り版です
 2. `build.js` の `BUILD_ID` はService Workerキャッシュと設定画面表示で共通のビルド番号です
-3. `index.html`、`manifest.json`、`sw.js` の参照版数を揃えます
+3. `app.js` と `sw.js` は `globalThis.BUILD_ID` を参照し、Build文字列を重複定義しません
 4. GitHubへpushします
 5. Android PWAで設定画面のBuild表記を確認します
+
+### デプロイ前Buildチェック
+
+- [ ] PWA実行コードを変更した場合は、`build.js` の `BUILD_ID` を必ず更新した
+- [ ] `git diff` で `BUILD_ID` の変更を確認した
+- [ ] `app.js` と `sw.js` が `globalThis.BUILD_ID` を参照している
+- [ ] `node scripts/check-build-version.js` が成功する
+- [ ] 公開後、設定画面のBuild表示を確認する
+- [ ] DevToolsのCache Storageで最新 `BUILD_ID` のcacheだけが有効であることを確認する
 
 ## キャッシュ更新確認
 

@@ -1038,11 +1038,11 @@ test('agentChat logs API_SUCCESS_FALSE and fetch rejection with the same request
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260727-pwa-hotfix';
+  const expected = 'v20260801-pwa-update-1';
   const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
-  assert(buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID mismatch');
-  assert(appSource.includes('globalThis.BUILD_ID'), 'app does not use BUILD_ID');
-  assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('importScripts("./build.js")') && fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('globalThis.BUILD_ID'), 'SW does not use BUILD_ID');
+  assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID must have one definition');
+  assert(appSource.includes('Build: ${globalThis.BUILD_ID}') && !/const\s+(?:ASSET_VERSION|BUILD_VERSION|BUILD_ID)\s*=/.test(appSource), 'app does not use BUILD_ID as the only Build display source');
+  assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('importScripts("./build.js")') && fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`') && !/const\s+ASSET_VERSION\s*=/.test(fs.readFileSync(path.join(root, 'sw.js'), 'utf8')), 'SW does not use BUILD_ID for CACHE_NAME');
   assert(fs.readFileSync(path.join(root, 'index.html'), 'utf8').includes('<script src="./build.js" defer></script>'), 'HTML does not load BUILD_ID');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
@@ -1054,6 +1054,7 @@ test('I JavaScript syntax and J cache versions', () => {
   assert(!versionedAssets.includes('20260718-04'), 'old PWA build reference remains');
   assert(!/v=20260719-0[0-3]/.test(versionedAssets), 'older July PWA asset reference remains');
   assert(!versionedAssets.includes('20260719-10'), 'previous PWA asset reference remains');
+  assert(!versionedAssets.includes('v20260727-pwa-hotfix'), 'old Build value remains in PWA runtime');
 });
 
 (async () => {

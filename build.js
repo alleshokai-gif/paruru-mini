@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260727-pwa-hotfix";
+globalThis.BUILD_ID = "v20260801-pwa-update-1";
