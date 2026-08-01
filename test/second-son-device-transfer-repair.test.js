@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -35,6 +36,8 @@ const deviceHeaders = ['deviceId', 'homeId', 'memberUserId', 'status', 'assigned
 const OLD = '11111111-1111-4111-8111-111111111111';
 const NEW = '22222222-2222-4222-8222-222222222222';
 const REQUEST = '33333333-3333-4333-8333-333333333333';
+const PAIRING_CODE = '123456';
+const PAIRING_CODE_HASH = crypto.createHash('sha256').update(PAIRING_CODE).digest('hex');
 
 function createHarness(options = {}) {
   const spreadsheet = {
@@ -65,19 +68,24 @@ function createHarness(options = {}) {
       [NEW]: { deviceId: NEW, status: options.newStatus || 'pending', tokenHash: 'b'.repeat(64), registeredAt: null, lastUsedAt: null, revokedAt: null },
     },
     requests: {
-      [REQUEST]: { requestId: REQUEST, deviceId: NEW, displayName: '次男Chrome', tokenHash: 'b'.repeat(64), requestSecretHash: 'c'.repeat(64), codeHash: 'd'.repeat(64), kind: 'pairing', status: options.requestStatus || 'pending', createdAt: '2026-07-31T21:40:00+09:00', expiresAt: '2026-08-01T21:40:00+09:00', codeExpiresAt: '2026-08-01T21:40:00+09:00', approvedAt: null, approvedByDeviceId: null },
+      [REQUEST]: { requestId: REQUEST, deviceId: NEW, displayName: '次男Chrome', tokenHash: 'b'.repeat(64), requestSecretHash: 'c'.repeat(64), codeHash: PAIRING_CODE_HASH, kind: 'pairing', status: options.requestStatus || 'pending', createdAt: '2026-07-31T21:40:00+09:00', expiresAt: '2026-08-01T21:40:00+09:00', codeExpiresAt: '2026-08-01T21:40:00+09:00', approvedAt: null, approvedByDeviceId: null },
     },
     approveAttempts: {},
   };
   const properties = { PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1: JSON.stringify(registry) };
+  const logs = [];
   const lock = { waitLock() {}, releaseLock() {} };
   const context = {
     Array, Boolean, Date, Error, JSON, Math, Number, Object, RegExp, String,
-    console: { log() {} },
+    console: { log: (...args) => logs.push(args) },
     SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (name) => properties[name] || '', setProperty: (name, value) => { setCalls += 1; properties[name] = value; } }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (name) => properties[name] || '', setProperty: (name, value) => { setCalls += 1; properties[name] = value; }, deleteProperty: (name) => { setCalls += 1; delete properties[name]; } }) },
     LockService: { getScriptLock: () => lock },
-    Utilities: { formatDate: () => '2026-07-31T22:00:00+09:00', getUuid: () => REQUEST },
+    Utilities: {
+      formatDate: () => '2026-07-31T22:00:00+09:00', getUuid: () => REQUEST,
+      DigestAlgorithm: { SHA_256: 'SHA_256' }, Charset: { UTF_8: 'UTF_8' },
+      computeDigest: (_algorithm, value) => Array.from(crypto.createHash('sha256').update(String(value)).digest()).map((byte) => byte > 127 ? byte - 256 : byte),
+    },
     homeControlPairingError_: (code) => Object.assign(new Error(code), { code }),
   };
   vm.createContext(context);
@@ -89,13 +97,15 @@ function createHarness(options = {}) {
   spreadsheet.sheets.Home_Members.values[3][2] = secondSonDisplayName;
   const input = { homeId: 'paluru-home', memberUserId: 'second_son', oldDeviceId: OLD, newDeviceId: NEW, pendingRequestId: REQUEST };
   return {
-    context, spreadsheet, input,
+    context, spreadsheet, input, properties, logs,
     getRegistry: () => JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1),
     setRegistry: (value) => { properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(value); },
     setRepairInput: () => {
       properties.PALURU_SECOND_SON_TRANSFER_OLD_DEVICE_ID = OLD;
-      properties.PALURU_SECOND_SON_TRANSFER_NEW_DEVICE_ID = NEW;
-      properties.PALURU_SECOND_SON_TRANSFER_PENDING_REQUEST_ID = REQUEST;
+      properties.PALURU_SECOND_SON_TRANSFER_PAIRING_CODE = PAIRING_CODE;
+    },
+    setPreflightInput: () => {
+      properties.PALURU_SECOND_SON_TRANSFER_OLD_DEVICE_ID = OLD;
     },
     setFailRestore(value) { failRestore = value; },
     setCalls: () => setCalls,
@@ -113,16 +123,76 @@ function secondSonRows(harness) {
 
 {
   const h = createHarness();
-  h.setRepairInput();
-  const report = h.context.repairSecondSonDeviceTransferDryRun_();
-  assert.strictEqual(report.canRepair, true);
+  h.setPreflightInput();
+  const report = h.context.repairSecondSonDeviceTransferPreflight_();
+  assert.strictEqual(report.canStartTransfer, true);
   assert.strictEqual(report.oldRegistryStatus, 'revoked');
-  assert.strictEqual(report.newRegistryStatus, 'pending');
-  assert.strictEqual(report.pendingRequestDeviceId, NEW);
   assert.strictEqual(report.homeMemberCount, 1);
-  assert.strictEqual(h.setCalls(), 0, 'dry-run wrote Registry');
-  assert.deepStrictEqual(secondSonRows(h).map((row) => row[0]), [OLD], 'dry-run changed memberships');
+  assert(report.instructions.includes('6桁コードを発行'), 'preflight did not provide the next safe step');
+  assert.strictEqual(h.setCalls(), 0, 'preflight wrote Registry');
+  assert.deepStrictEqual(secondSonRows(h).map((row) => row[0]), [OLD], 'preflight changed memberships');
 }
+
+[
+  {
+    name: 'preflight rejects non-revoked old Registry',
+    change(h) { const registry = h.getRegistry(); registry.devices[OLD].status = 'active'; h.setRegistry(registry); },
+    reason: 'OLD_REGISTRY_NOT_REVOKED',
+  },
+  {
+    name: 'preflight rejects an existing second-son membership conflict',
+    change(h) { h.spreadsheet.sheets.Device_Memberships.values.push(['another-device', 'paluru-home', 'second_son', 'disabled', 'unexpected', '', '']); },
+    reason: 'DEVICE_MEMBERSHIP_CONFLICT',
+  },
+].forEach((testCase) => {
+  const h = createHarness();
+  h.setPreflightInput();
+  testCase.change(h);
+  const beforeRegistry = JSON.stringify(h.getRegistry());
+  const beforeMemberships = JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values);
+  const report = h.context.repairSecondSonDeviceTransferPreflight_();
+  assert.strictEqual(report.canStartTransfer, false, testCase.name + ' unexpectedly passed');
+  assert(report.blockingReasons.includes(testCase.reason), testCase.name + ' reason missing');
+  assert.strictEqual(h.setCalls(), 0, testCase.name + ' wrote Registry');
+  assert.strictEqual(JSON.stringify(h.getRegistry()), beforeRegistry, testCase.name + ' changed Registry');
+  assert.strictEqual(JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values), beforeMemberships, testCase.name + ' changed memberships');
+});
+
+[
+  {
+    name: 'expired pairing code is rejected',
+    change(h) { const registry = h.getRegistry(); registry.requests[REQUEST].codeExpiresAt = '2020-01-01T00:00:00+09:00'; h.setRegistry(registry); },
+    reason: 'PAIRING_REQUEST_EXPIRED_OR_NOT_PENDING',
+  },
+  {
+    name: 'membership pairing code is rejected',
+    change(h) { const registry = h.getRegistry(); registry.requests[REQUEST].kind = 'membership'; h.setRegistry(registry); },
+    reason: 'PAIRING_REQUEST_KIND_INVALID',
+  },
+  {
+    name: 'multiple pairing-code matches are rejected',
+    change(h) { const registry = h.getRegistry(); registry.requests['44444444-4444-4444-8444-444444444444'] = Object.assign({}, registry.requests[REQUEST], { requestId: '44444444-4444-4444-8444-444444444444' }); h.setRegistry(registry); },
+    reason: 'PAIRING_CODE_MULTIPLE_MATCHES',
+  },
+  {
+    name: 'resolved request must point to a pending Registry device',
+    change(h) { const registry = h.getRegistry(); registry.devices[NEW].status = 'active'; h.setRegistry(registry); },
+    reason: 'NEW_REGISTRY_NOT_PENDING',
+  },
+].forEach((testCase) => {
+  const h = createHarness();
+  h.setRepairInput();
+  testCase.change(h);
+  const beforeRegistry = JSON.stringify(h.getRegistry());
+  const beforeMemberships = JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values);
+  const report = h.context.repairSecondSonDeviceTransferDryRun_();
+  assert.strictEqual(report.canRepair, false, testCase.name + ' dry-run unexpectedly passed');
+  assert(report.blockingReasons.includes(testCase.reason), testCase.name + ' reason missing');
+  expectCode(() => h.context.repairSecondSonDeviceTransfer_(), 'DEVICE_TRANSFER_PRECONDITION_FAILED');
+  assert.strictEqual(JSON.stringify(h.getRegistry()), beforeRegistry, testCase.name + ' wrote Registry');
+  assert.strictEqual(JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values), beforeMemberships, testCase.name + ' changed memberships');
+  assert(!JSON.stringify(report).includes(PAIRING_CODE), testCase.name + ' exposed pairing code');
+});
 
 [
   {
@@ -182,7 +252,9 @@ function secondSonRows(harness) {
 
 {
   const h = createHarness();
-  const result = h.context.repairSecondSonDeviceTransfer_(h.input);
+  h.setRepairInput();
+  assert.strictEqual(h.context.repairSecondSonDeviceTransferPreflight_().canStartTransfer, true);
+  const result = h.context.repairSecondSonDeviceTransfer_();
   assert.strictEqual(result.success, true);
   assert.strictEqual(result.alreadyRepaired, false);
   assert.deepStrictEqual(secondSonRows(h).map((row) => [row[0], row[3]]), [[OLD, 'disabled'], [NEW, 'active']]);
@@ -191,6 +263,7 @@ function secondSonRows(harness) {
   assert.strictEqual(saved.devices[NEW].status, 'active');
   assert.strictEqual(saved.requests[REQUEST].status, 'approved');
   assert.strictEqual(saved.requests[REQUEST].codeHash, '');
+  assert.strictEqual(h.properties.PALURU_SECOND_SON_TRANSFER_PAIRING_CODE, undefined, 'successful repair did not clear pairing-code property');
   assert.strictEqual(h.spreadsheet.sheets.Home_Members.values.filter((row) => row[0] === 'paluru-home' && row[1] === 'second_son').length, 1);
   assert.deepStrictEqual(h.spreadsheet.sheets.Device_Memberships.values[1], ['father-device', 'paluru-home', 'father', 'active', 'bootstrap', '', '']);
   assert.deepStrictEqual(h.spreadsheet.sheets.Device_Memberships.values[3], ['other-device', 'other-home', 'second_son', 'active', 'other', '', '']);
@@ -198,6 +271,22 @@ function secondSonRows(harness) {
   assert.strictEqual(h.context.getDeviceMembership_(NEW).memberUserId, 'second_son', 'new active membership cannot resolve the Chrome actor');
   const rerun = h.context.repairSecondSonDeviceTransfer_(h.input);
   assert.strictEqual(rerun.alreadyRepaired, true, 'completed repair was not idempotent');
+  assert(!JSON.stringify(h.logs).includes(PAIRING_CODE), 'repair log exposed pairing code');
+}
+
+{
+  const h = createHarness();
+  h.setRepairInput();
+  assert.strictEqual(h.context.repairSecondSonDeviceTransferPreflight_().canStartTransfer, true);
+  const registry = h.getRegistry();
+  registry.devices[OLD].status = 'active';
+  h.setRegistry(registry);
+  const beforeRegistry = JSON.stringify(h.getRegistry());
+  const beforeMemberships = JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values);
+  expectCode(() => h.context.repairSecondSonDeviceTransfer_(), 'DEVICE_TRANSFER_PRECONDITION_FAILED');
+  assert.strictEqual(JSON.stringify(h.getRegistry()), beforeRegistry, 'state-change rejection wrote Registry');
+  assert.strictEqual(JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values), beforeMemberships, 'state-change rejection changed memberships');
+  assert.strictEqual(h.properties.PALURU_SECOND_SON_TRANSFER_PAIRING_CODE, PAIRING_CODE, 'failed repair cleared pairing-code property needed for investigation');
 }
 
 {

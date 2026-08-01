@@ -2,11 +2,22 @@
 // intentionally not routed from Code.js and must be run only in the Apps Script editor.
 const SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES = Object.freeze({
   oldDeviceId: 'PALURU_SECOND_SON_TRANSFER_OLD_DEVICE_ID',
-  newDeviceId: 'PALURU_SECOND_SON_TRANSFER_NEW_DEVICE_ID',
-  pendingRequestId: 'PALURU_SECOND_SON_TRANSFER_PENDING_REQUEST_ID',
+  pairingCode: 'PALURU_SECOND_SON_TRANSFER_PAIRING_CODE',
 });
 const SECOND_SON_DEVICE_TRANSFER_HOME_ID = 'paluru-home';
 const SECOND_SON_DEVICE_TRANSFER_MEMBER_USER_ID = 'second_son';
+
+function repairSecondSonDeviceTransferPreflight_(input) {
+  const config = resolveSecondSonDeviceTransferPreflightInput_(input);
+  const deps = getHomeControlPairingDependencies_();
+  deps.lock.waitLock(5000);
+  try {
+    // Do not use withHomeControlRegistryLock_: preflight must never persist Registry.
+    return inspectSecondSonDeviceTransferPreflight_(config, loadHomeControlRegistry_(deps));
+  } finally {
+    deps.lock.releaseLock();
+  }
+}
 
 function repairSecondSonDeviceTransferDryRun_(input) {
   const config = resolveSecondSonDeviceTransferRepairInput_(input);
@@ -16,7 +27,7 @@ function repairSecondSonDeviceTransferDryRun_(input) {
     // Deliberately do not use withHomeControlRegistryLock_: it persists the Registry
     // even for a read-only callback. A dry-run must perform no writes at all.
     const registry = loadHomeControlRegistry_(deps);
-    return inspectSecondSonDeviceTransferRepair_(config, registry, deps.now());
+    return inspectSecondSonDeviceTransferRepairFromInput_(config, registry, deps, deps.now());
   } finally {
     deps.lock.releaseLock();
   }
@@ -29,7 +40,20 @@ function repairSecondSonDeviceTransfer_(input) {
   let repaired = false;
   const result = withHomeControlRegistryLock_(function(registry, deps) {
     const now = deps.now();
-    const before = inspectSecondSonDeviceTransferRepair_(config, registry, now);
+    if (config.inputMode === 'direct_internal') {
+      const directBefore = inspectSecondSonDeviceTransferRepair_(config, registry, now);
+      if (directBefore.alreadyRepaired) return createHomeControlRegistryCommitResult_({
+        success: true,
+        alreadyRepaired: true,
+        summary: directBefore,
+      });
+    }
+    const preflight = inspectSecondSonDeviceTransferPreflight_(config, registry);
+    if (!preflight.canStartTransfer) throw homeMembershipError_('DEVICE_TRANSFER_PRECONDITION_FAILED');
+    const resolved = resolveSecondSonDeviceTransferRepairRequest_(config, registry, deps, now);
+    if (!resolved.success) throw homeMembershipError_('DEVICE_TRANSFER_PRECONDITION_FAILED');
+    const resolvedConfig = resolved.config;
+    const before = inspectSecondSonDeviceTransferRepair_(resolvedConfig, registry, now);
     if (before.alreadyRepaired) return createHomeControlRegistryCommitResult_({
       success: true,
       alreadyRepaired: true,
@@ -38,14 +62,14 @@ function repairSecondSonDeviceTransfer_(input) {
     if (!before.canRepair) throw homeMembershipError_('DEVICE_TRANSFER_PRECONDITION_FAILED');
 
     registrySnapshot = cloneSecondSonDeviceTransferValue_(registry);
-    membershipSnapshot = snapshotSecondSonDeviceTransferMemberships_(config);
+    membershipSnapshot = snapshotSecondSonDeviceTransferMemberships_(resolvedConfig);
     try {
       const timestamp = homeControlIso_(now);
       disableSecondSonTransferOldMembership_(membershipSnapshot, timestamp);
-      createSecondSonTransferNewMembership_(config, timestamp);
+      createSecondSonTransferNewMembership_(resolvedConfig, timestamp);
 
-      const newRegistryDevice = registry.devices[config.newDeviceId];
-      const pendingRequest = registry.requests[config.pendingRequestId];
+      const newRegistryDevice = registry.devices[resolvedConfig.newDeviceId];
+      const pendingRequest = registry.requests[resolvedConfig.pendingRequestId];
       newRegistryDevice.status = 'active';
       newRegistryDevice.registeredAt = timestamp;
       newRegistryDevice.lastUsedAt = timestamp;
@@ -56,9 +80,9 @@ function repairSecondSonDeviceTransfer_(input) {
       pendingRequest.codeHash = '';
       pendingRequest.codeExpiresAt = null;
 
-      const after = inspectSecondSonDeviceTransferRepair_(config, registry, now);
+      const after = inspectSecondSonDeviceTransferRepair_(resolvedConfig, registry, now);
       if (!after.alreadyRepaired) throw homeMembershipError_('DEVICE_TRANSFER_VERIFICATION_FAILED');
-      assertSecondSonDeviceTransferPostconditions_(config);
+      assertSecondSonDeviceTransferPostconditions_(resolvedConfig);
       repaired = true;
       return createHomeControlRegistryCommitResult_({
         success: true,
@@ -77,15 +101,30 @@ function repairSecondSonDeviceTransfer_(input) {
     }
   });
   if (repaired) {
+    PropertiesService.getScriptProperties().deleteProperty(SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES.pairingCode);
     console.log('[PALURU device-transfer-repair] ' + JSON.stringify({
       event: 'second_son_device_transfer',
       oldDeviceId: config.oldDeviceId,
-      newDeviceId: config.newDeviceId,
-      pendingRequestId: config.pendingRequestId,
+      newDeviceId: result.summary.pendingRequestDeviceId,
+      pendingRequestId: result.summary.pendingRequestId,
       result: result.summary,
     }));
   }
   return result;
+}
+
+function resolveSecondSonDeviceTransferPreflightInput_(input) {
+  const properties = PropertiesService.getScriptProperties();
+  const source = input || {};
+  const config = {
+    homeId: String(source.homeId || SECOND_SON_DEVICE_TRANSFER_HOME_ID).trim(),
+    memberUserId: String(source.memberUserId || SECOND_SON_DEVICE_TRANSFER_MEMBER_USER_ID).trim(),
+    oldDeviceId: String(source.oldDeviceId || properties.getProperty(SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES.oldDeviceId) || '').trim(),
+  };
+  if (config.homeId !== SECOND_SON_DEVICE_TRANSFER_HOME_ID || config.memberUserId !== SECOND_SON_DEVICE_TRANSFER_MEMBER_USER_ID || !config.oldDeviceId) {
+    throw homeMembershipError_('DEVICE_TRANSFER_INVALID_INPUT');
+  }
+  return config;
 }
 
 function assertSecondSonDeviceTransferPostconditions_(config) {
@@ -108,14 +147,105 @@ function resolveSecondSonDeviceTransferRepairInput_(input) {
     homeId: String(source.homeId || SECOND_SON_DEVICE_TRANSFER_HOME_ID).trim(),
     memberUserId: String(source.memberUserId || SECOND_SON_DEVICE_TRANSFER_MEMBER_USER_ID).trim(),
     oldDeviceId: String(source.oldDeviceId || properties.getProperty(SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES.oldDeviceId) || '').trim(),
-    newDeviceId: String(source.newDeviceId || properties.getProperty(SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES.newDeviceId) || '').trim(),
-    pendingRequestId: String(source.pendingRequestId || properties.getProperty(SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES.pendingRequestId) || '').trim(),
+    newDeviceId: String(source.newDeviceId || '').trim(),
+    pendingRequestId: String(source.pendingRequestId || '').trim(),
+    pairingCode: String(source.pairingCode || properties.getProperty(SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES.pairingCode) || '').trim(),
   };
-  if (config.homeId !== SECOND_SON_DEVICE_TRANSFER_HOME_ID || config.memberUserId !== SECOND_SON_DEVICE_TRANSFER_MEMBER_USER_ID ||
-      !config.oldDeviceId || !config.newDeviceId || config.oldDeviceId === config.newDeviceId || !isSecondSonDeviceTransferRequestId_(config.pendingRequestId)) {
+  const hasDirectInternalInput = Boolean(config.newDeviceId && config.pendingRequestId);
+  if (config.homeId !== SECOND_SON_DEVICE_TRANSFER_HOME_ID || config.memberUserId !== SECOND_SON_DEVICE_TRANSFER_MEMBER_USER_ID || !config.oldDeviceId ||
+      (hasDirectInternalInput && (config.oldDeviceId === config.newDeviceId || !isSecondSonDeviceTransferRequestId_(config.pendingRequestId))) ||
+      (!hasDirectInternalInput && !/^\d{6}$/.test(config.pairingCode))) {
     throw homeMembershipError_('DEVICE_TRANSFER_INVALID_INPUT');
   }
+  config.inputMode = hasDirectInternalInput ? 'direct_internal' : 'pairing_code';
   return config;
+}
+
+function inspectSecondSonDeviceTransferPreflight_(config, registry) {
+  const membershipState = readSecondSonDeviceTransferMembershipState_(Object.assign({}, config, { newDeviceId: '' }));
+  const oldRegistry = registry.devices[config.oldDeviceId] || null;
+  const policyMember = membershipState.homeMembers[0] || null;
+  const activeMemberships = membershipState.deviceMemberships.filter(function(row) { return row.status === 'active'; });
+  const oldDeviceRows = membershipState.oldDeviceRows;
+  const blockingReasons = [];
+  const hasAlreadyRepairedState = oldDeviceRows.length === 1 && oldDeviceRows[0].status === 'disabled' &&
+    activeMemberships.length === 1 && activeMemberships[0].deviceId !== config.oldDeviceId;
+
+  if (membershipState.homeMemberCount !== 1 || !policyMember || policyMember.status !== 'active' || !membershipState.homeMemberPolicyMatch) blockingReasons.push('HOME_MEMBER_INVALID');
+  if (!oldRegistry || oldRegistry.status !== 'revoked') blockingReasons.push('OLD_REGISTRY_NOT_REVOKED');
+  if (hasAlreadyRepairedState) blockingReasons.push('TRANSFER_ALREADY_REPAIRED');
+  if (oldDeviceRows.length !== 1 || oldDeviceRows[0].status !== 'active') blockingReasons.push('OLD_DEVICE_MEMBERSHIP_INVALID');
+  if (activeMemberships.length !== 1 || activeMemberships[0].deviceId !== config.oldDeviceId) blockingReasons.push('ACTIVE_DEVICE_MEMBERSHIPS_INVALID');
+  if (membershipState.deviceMemberships.some(function(row) { return row.deviceId !== config.oldDeviceId; })) blockingReasons.push('DEVICE_MEMBERSHIP_CONFLICT');
+  if (oldDeviceRows.length === 1 && oldDeviceRows[0].status === 'disabled' && !hasAlreadyRepairedState) blockingReasons.push('TRANSFER_ROLLBACK_PENDING');
+
+  return {
+    canStartTransfer: blockingReasons.length === 0,
+    blockingReasons: blockingReasons,
+    oldRegistryStatus: oldRegistry ? String(oldRegistry.status || '') : 'missing',
+    homeMemberCount: membershipState.homeMemberCount,
+    activeDeviceMemberships: activeMemberships.map(secondSonDeviceTransferMembershipSummary_),
+    instructions: blockingReasons.length === 0
+      ? '次男Chromeで新しい6桁コードを発行してください'
+      : 'blockingReasonsを解消してから、もう一度Preflightを実行してください',
+  };
+}
+
+function inspectSecondSonDeviceTransferRepairFromInput_(config, registry, deps, now) {
+  const resolved = resolveSecondSonDeviceTransferRepairRequest_(config, registry, deps, now);
+  if (!resolved.success) return createSecondSonDeviceTransferResolutionFailureReport_(config, registry, resolved);
+  const report = inspectSecondSonDeviceTransferRepair_(resolved.config, registry, now);
+  report.pendingRequestId = resolved.config.pendingRequestId;
+  report.pairingCode = maskSecondSonTransferPairingCode_(config.pairingCode);
+  return report;
+}
+
+function resolveSecondSonDeviceTransferRepairRequest_(config, registry, deps, now) {
+  if (config.inputMode === 'direct_internal') return { success: true, config: config };
+  const matches = findHomeControlRequestsByCode_(registry, config.pairingCode, deps);
+  if (matches.length !== 1) return { success: false, reason: matches.length > 1 ? 'PAIRING_CODE_MULTIPLE_MATCHES' : 'PAIRING_CODE_NOT_FOUND' };
+  const request = matches[0];
+  if (request.kind !== 'pairing') return { success: false, reason: 'PAIRING_REQUEST_KIND_INVALID', request: request };
+  if (request.status !== 'pending' || !homeControlFutureIso_(request.expiresAt, now) || !homeControlFutureIso_(request.codeExpiresAt, now)) {
+    return { success: false, reason: 'PAIRING_REQUEST_EXPIRED_OR_NOT_PENDING', request: request };
+  }
+  if (!isHomeControlUuid_(request.requestId) || !isHomeControlDeviceId_(request.deviceId) || request.deviceId === config.oldDeviceId) {
+    return { success: false, reason: 'PAIRING_REQUEST_DEVICE_INVALID', request: request };
+  }
+  const newRegistry = registry.devices[request.deviceId];
+  if (!newRegistry || newRegistry.status !== 'pending') return { success: false, reason: 'NEW_REGISTRY_NOT_PENDING', request: request };
+  return { success: true, config: Object.assign({}, config, { newDeviceId: request.deviceId, pendingRequestId: request.requestId }) };
+}
+
+function createSecondSonDeviceTransferResolutionFailureReport_(config, registry, resolved) {
+  const membershipState = readSecondSonDeviceTransferMembershipState_(Object.assign({}, config, { newDeviceId: '' }));
+  const request = resolved.request || null;
+  const policyMember = membershipState.homeMembers[0] || null;
+  return {
+    oldRegistryStatus: registry.devices[config.oldDeviceId] ? String(registry.devices[config.oldDeviceId].status || '') : 'missing',
+    newRegistryStatus: request && registry.devices[request.deviceId] ? String(registry.devices[request.deviceId].status || '') : 'missing',
+    pendingRequestStatus: request ? String(request.status || '') : 'missing',
+    pendingRequestDeviceId: request ? String(request.deviceId || '') : '',
+    pendingRequestId: request ? String(request.requestId || '') : '',
+    pairingCode: maskSecondSonTransferPairingCode_(config.pairingCode),
+    homeMemberCount: membershipState.homeMemberCount,
+    homeMemberStatus: policyMember ? String(policyMember.status || '') : 'missing',
+    activeDeviceMemberships: membershipState.deviceMemberships.filter(function(row) { return row.status === 'active'; }).map(secondSonDeviceTransferMembershipSummary_),
+    disabledDeviceMemberships: membershipState.deviceMemberships.filter(function(row) { return row.status === 'disabled'; }).map(secondSonDeviceTransferMembershipSummary_),
+    canRepair: false,
+    alreadyRepaired: false,
+    blockingReasons: [resolved.reason],
+  };
+}
+
+function maskSecondSonTransferPairingCode_(code) {
+  const value = String(code || '');
+  return value ? '***' + value.slice(-2) : '';
+}
+
+function clearSecondSonDeviceTransferPairingCode_() {
+  PropertiesService.getScriptProperties().deleteProperty(SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES.pairingCode);
+  return { success: true, pairingCodeCleared: true };
 }
 
 function inspectSecondSonDeviceTransferRepair_(config, registry, now) {
@@ -148,6 +278,8 @@ function inspectSecondSonDeviceTransferRepair_(config, registry, now) {
     newRegistryStatus: newRegistry ? String(newRegistry.status || '') : 'missing',
     pendingRequestStatus: pendingRequest ? String(pendingRequest.status || '') : 'missing',
     pendingRequestDeviceId: pendingRequest ? String(pendingRequest.deviceId || '') : '',
+    pendingRequestId: pendingRequest ? String(pendingRequest.requestId || '') : '',
+    pairingCode: maskSecondSonTransferPairingCode_(config.pairingCode),
     homeMemberCount: membershipState.homeMemberCount,
     homeMemberStatus: policyMember ? String(policyMember.status || '') : 'missing',
     activeDeviceMemberships: activeMemberships.map(secondSonDeviceTransferMembershipSummary_),
