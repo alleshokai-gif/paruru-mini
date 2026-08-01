@@ -331,18 +331,43 @@ function withHomeControlRegistryLock_(callback, dependencies) {
   deps.lock.waitLock(5000);
   try {
     const registry = loadHomeControlRegistry_(deps);
+    const registryBeforeCallback = JSON.stringify(registry);
+    let commitResult = null;
     try {
-      const result = callback(registry, deps);
+      const callbackResult = callback(registry, deps);
+      commitResult = isHomeControlRegistryCommitResult_(callbackResult) ? callbackResult : null;
+      const result = commitResult ? commitResult.result : callbackResult;
       saveHomeControlRegistry_(registry, deps);
       return result;
     } catch (error) {
+      if (commitResult && typeof commitResult.rollbackOnSaveFailure === 'function') {
+        try {
+          commitResult.rollbackOnSaveFailure(error);
+        } catch (rollbackError) {
+          throw homeControlPairingError_('DEVICE_TRANSFER_ROLLBACK_PENDING');
+        }
+        try {
+          saveHomeControlRegistry_(registry, deps);
+        } catch (rollbackSaveError) {
+          throw homeControlPairingError_('DEVICE_TRANSFER_ROLLBACK_PENDING');
+        }
+        throw error;
+      }
       // Failed code attempts are part of the security state and must survive the rejected request.
-      saveHomeControlRegistry_(registry, deps);
+      if (JSON.stringify(registry) !== registryBeforeCallback) saveHomeControlRegistry_(registry, deps);
       throw error;
     }
   } finally {
     deps.lock.releaseLock();
   }
+}
+
+function createHomeControlRegistryCommitResult_(result, rollbackOnSaveFailure) {
+  return { __homeControlRegistryCommitResult: true, result: result, rollbackOnSaveFailure: rollbackOnSaveFailure || null };
+}
+
+function isHomeControlRegistryCommitResult_(value) {
+  return Boolean(value && value.__homeControlRegistryCommitResult === true && Object.prototype.hasOwnProperty.call(value, 'result'));
 }
 
 function loadHomeControlRegistry_(deps) {

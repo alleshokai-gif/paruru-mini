@@ -2,14 +2,34 @@ const PALURU_AGENT_SCHEMA_VERSION = 'agent-chat-1.0';
 const PALURU_AGENT_MAX_MESSAGE_CHARACTERS = 1000;
 const PALURU_AGENT_URL_PROPERTY = 'PALURU_AGENT_URL';
 const PALURU_AGENT_TOKEN_PROPERTY = 'PALURU_AGENT_TOKEN';
+const PALURU_AGENT_DIAGNOSTICS_PROPERTY = 'PALURU_AGENT_DIAGNOSTICS_ENABLED';
 
 function agentChat_(body) {
   try {
-    const actor = resolveHomeAgentReadActor_(body || {});
-    const input = validateAgentChatInput_(body || {}, actor);
-    const config = getPaluruAgentConfig_();
+    let actor;
+    try {
+      actor = resolveHomeAgentReadActor_(body || {});
+    } catch (error) {
+      throw annotateAgentGatewayError_(error, 'HOME_CONTEXT_FAILED', 'ACTOR_RESOLUTION_FAILED');
+    }
+    let input;
+    try {
+      input = validateAgentChatInput_(body || {}, actor);
+    } catch (error) {
+      throw annotateAgentGatewayError_(error, 'REQUEST_INVALID', 'INPUT_VALIDATION_FAILED');
+    }
+    let config;
+    try {
+      config = getPaluruAgentConfig_();
+    } catch (error) {
+      throw annotateAgentGatewayError_(error, 'PROMPT_BUILD_FAILED', 'AGENT_CONFIGURATION_UNAVAILABLE');
+    }
     const response = callPaluruAgent_(config, input);
-    return json_(buildAgentChatSuccess_(response, input));
+    try {
+      return json_(buildAgentChatSuccess_(response, input));
+    } catch (error) {
+      throw annotateAgentGatewayError_(error, 'RESPONSE_PARSE_FAILED', 'RESPONSE_BUILD_FAILED');
+    }
   } catch (error) {
     return json_(buildAgentChatError_(error));
   }
@@ -87,42 +107,67 @@ function getPaluruAgentConfig_() {
 }
 
 function callPaluruAgent_(config, input) {
+  const requestPayload = {
+    action: 'agent.chat',
+    message: input.message,
+    sessionId: input.sessionId,
+    clientRequestId: input.clientRequestId,
+    actor: input.actor,
+    authToken: config.token,
+  };
+  logPaluruAgentTransport_('REQUEST', {
+    url: config.url,
+    requestPayload: requestPayload,
+  });
   let response;
   try {
     response = UrlFetchApp.fetch(config.url, {
       method: 'post',
       contentType: 'text/plain;charset=utf-8',
-      payload: JSON.stringify({
-        action: 'agent.chat',
-        message: input.message,
-        sessionId: input.sessionId,
-        clientRequestId: input.clientRequestId,
-        actor: input.actor,
-        authToken: config.token,
-      }),
+      payload: JSON.stringify(requestPayload),
       muteHttpExceptions: true,
     });
   } catch (error) {
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE');
+    logPaluruAgentTransport_('FETCH_FAILED', {
+      url: config.url,
+      exception: error,
+    });
+    throw createAgentGatewayError_('AGENT_UNAVAILABLE', 'MODEL_FAILED', 'URLFETCH_FAILED', error);
   }
 
   const status = response.getResponseCode();
+  let responseText = '';
+  try {
+    responseText = response.getContentText();
+  } catch (error) {
+    logPaluruAgentTransport_('RESPONSE_BODY_READ_FAILED', {
+      url: config.url,
+      httpStatus: status,
+      exception: error,
+    });
+    throw createAgentGatewayError_('AGENT_UNAVAILABLE', 'RESPONSE_PARSE_FAILED', 'UPSTREAM_BODY_READ_FAILED', error);
+  }
+  logPaluruAgentTransport_('RESPONSE', {
+    url: config.url,
+    httpStatus: status,
+    responseBody: responseText,
+  });
   if (status < 200 || status >= 300) {
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE');
+    throw createAgentGatewayError_('AGENT_UNAVAILABLE', 'MODEL_FAILED', 'UPSTREAM_HTTP_' + status);
   }
 
   let parsed;
   try {
-    parsed = JSON.parse(response.getContentText());
+    parsed = JSON.parse(responseText);
   } catch (error) {
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE');
+    throw createAgentGatewayError_('AGENT_UNAVAILABLE', 'RESPONSE_PARSE_FAILED', 'UPSTREAM_JSON_PARSE_FAILED', error);
   }
 
   if (!parsed || parsed.success !== true) {
-    throw createAgentGatewayError_('AGENT_ERROR');
+    throw createAgentGatewayError_('AGENT_ERROR', 'UPSTREAM_AGENT_FAILED', String(parsed && parsed.error && parsed.error.code || parsed && parsed.code || 'UPSTREAM_SUCCESS_FALSE'));
   }
   if (parsed.schemaVersion !== PALURU_AGENT_SCHEMA_VERSION) {
-    throw createAgentGatewayError_('AGENT_ERROR');
+    throw createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'SCHEMA_VERSION_MISMATCH');
   }
   return parsed;
 }
@@ -131,7 +176,7 @@ function buildAgentChatSuccess_(response, input) {
   const data = response.data || {};
   const reply = String(data.reply || '').trim();
   if (!reply) {
-    throw createAgentGatewayError_('AGENT_ERROR');
+    throw createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'REPLY_MISSING');
   }
 
   const result = {
@@ -260,7 +305,7 @@ function callPaluruAgentActionCancel_(config, input) {
 
 function sanitizeAgentFollowup_(followup) {
   if (!followup || Array.isArray(followup) || typeof followup !== 'object') {
-    throw createAgentGatewayError_('AGENT_ERROR');
+    throw createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'FOLLOWUP_INVALID');
   }
   const itemId = String(followup.itemId || '').trim();
   const question = String(followup.question || '').trim();
@@ -268,7 +313,7 @@ function sanitizeAgentFollowup_(followup) {
   const allowedTypes = { date: true, datetime: true, time: true, text: true, yesno: true };
   if (followup.required !== true || !isUuid_(itemId) || !question
       || Array.from(question).length > 300 || !allowedTypes[inputType]) {
-    throw createAgentGatewayError_('AGENT_ERROR');
+    throw createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'FOLLOWUP_INVALID');
   }
   return {
     required: true,
@@ -280,7 +325,7 @@ function sanitizeAgentFollowup_(followup) {
 
 function sanitizeAgentActionConfirmation_(confirmation) {
   if (!confirmation || Array.isArray(confirmation) || typeof confirmation !== 'object') {
-    throw createAgentGatewayError_('AGENT_ERROR');
+    throw createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'ACTION_CONFIRMATION_INVALID');
   }
   const confirmationId = String(confirmation.confirmationId || '').trim();
   const command = String(confirmation.command || '').trim();
@@ -292,7 +337,7 @@ function sanitizeAgentActionConfirmation_(confirmation) {
       || !roomLabel || Array.from(roomLabel).length > 40
       || !summary || Array.from(summary).length > 200
       || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(expiresAt)) {
-    throw createAgentGatewayError_('AGENT_ERROR');
+    throw createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'ACTION_CONFIRMATION_INVALID');
   }
   return {
     required: true,
@@ -406,11 +451,92 @@ function buildAgentChatError_(error) {
     AGENT_ERROR: 'Agentの処理を完了できませんでした。',
     INTERNAL_ERROR: '内部エラーが発生しました。',
   };
-  return { success: false, error: { code: code, message: messages[code] } };
+  const result = { success: false, error: { code: code, message: messages[code] } };
+  if (isAgentGatewayDiagnosticsEnabled_()) {
+    const diagnostic = error && error.agentDiagnostics || {};
+    result.diagnostics = {
+      stage: String(diagnostic.stage || 'AGENT_CHAT_UNHANDLED'),
+      reason: String(diagnostic.reason || error && error.code || 'UNKNOWN'),
+      exception: {
+        message: String(error && error.message || '').slice(0, 1000),
+        stack: String(error && error.stack || '').slice(0, 4000),
+      },
+    };
+  }
+  return result;
 }
 
-function createAgentGatewayError_(code) {
+function isAgentGatewayDiagnosticsEnabled_() {
+  return String(PropertiesService.getScriptProperties().getProperty(PALURU_AGENT_DIAGNOSTICS_PROPERTY) || '').trim().toLowerCase() === 'true';
+}
+
+function logPaluruAgentTransport_(event, details) {
+  if (!isAgentGatewayDiagnosticsEnabled_() || typeof Logger === 'undefined' || typeof Logger.log !== 'function') return;
+  const entry = {
+    event: String(event || ''),
+    url: redactPaluruAgentUrl_(details && details.url),
+    httpStatus: Number.isFinite(Number(details && details.httpStatus)) ? Number(details.httpStatus) : null,
+    requestPayload: details && details.requestPayload ? redactPaluruAgentTransportValue_(details.requestPayload) : null,
+    responseBody: Object.prototype.hasOwnProperty.call(details || {}, 'responseBody')
+      ? redactPaluruAgentResponseBody_(details.responseBody)
+      : null,
+    exception: details && details.exception ? {
+      message: String(details.exception.message || details.exception).slice(0, 1000),
+      stack: String(details.exception.stack || '').slice(0, 4000),
+    } : null,
+  };
+  Logger.log('[PALURU agentChat transport] ' + JSON.stringify(entry));
+}
+
+function redactPaluruAgentUrl_(value) {
+  const text = String(value || '');
+  const queryIndex = text.indexOf('?');
+  if (queryIndex < 0) return text;
+  return text.slice(0, queryIndex) + '?[redacted]';
+}
+
+function redactPaluruAgentResponseBody_(body) {
+  const text = String(body || '');
+  try {
+    return redactPaluruAgentTransportValue_(JSON.parse(text));
+  } catch (error) {
+    return '[non_json_response_omitted:length=' + text.length + ']';
+  }
+}
+
+function redactPaluruAgentTransportValue_(value, keyName) {
+  const key = String(keyName || '').toLowerCase();
+  if (/(token|secret|authorization|api[_-]?key|password|message|memo|reply|question|summary)/.test(key)) return '[redacted]';
+  if (Array.isArray(value)) return value.map(function(item) { return redactPaluruAgentTransportValue_(item); });
+  if (value && typeof value === 'object') {
+    return Object.keys(value).reduce(function(result, property) {
+      result[property] = redactPaluruAgentTransportValue_(value[property], property);
+      return result;
+    }, {});
+  }
+  return typeof value === 'string' && value.length > 1000 ? value.slice(0, 1000) + '…' : value;
+}
+
+function annotateAgentGatewayError_(error, stage, reason) {
+  const source = error instanceof Error ? error : new Error(String(error || 'Agent Gateway error'));
+  if (!source.code) source.code = 'AGENT_ERROR';
+  if (!source.agentDiagnostics) {
+    source.agentDiagnostics = { stage: String(stage || 'AGENT_CHAT_UNHANDLED'), reason: String(reason || source.code || 'UNKNOWN') };
+  }
+  return source;
+}
+
+function createAgentGatewayError_(code, stage, reason, cause) {
   const error = new Error(code);
   error.code = code;
+  error.agentDiagnostics = {
+    stage: String(stage || 'AGENT_CHAT_UNHANDLED'),
+    reason: String(reason || code || 'UNKNOWN'),
+  };
+  if (cause) {
+    error.cause = cause;
+    error.message = String(cause.message || code);
+    if (cause.stack) error.stack = String(cause.stack);
+  }
   return error;
 }

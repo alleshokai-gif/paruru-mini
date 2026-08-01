@@ -19,6 +19,7 @@ let controlActorCalls = 0;
 
 const context = {
   console: { log: (...args) => logs.push(args.join(' ')) },
+  Logger: { log: (...args) => logs.push(args.join(' ')) },
   Date, JSON, Math, Number, Object, Array, String, RegExp, Error,
   PropertiesService: {
     getScriptProperties: () => ({ getProperty: (name) => properties[name] || '' }),
@@ -192,6 +193,50 @@ test('Agent error and schema mismatch are hidden', () => {
   const wrongSchema = agentResponse('reply'); wrongSchema.schemaVersion = 'unexpected';
   mockFetch(200, wrongSchema);
   assert(post(valid()).error.code === 'AGENT_ERROR', 'schema mismatch accepted');
+});
+
+test('development diagnostics identify the Agent Gateway failure stage without changing public codes', () => {
+  configure();
+  properties.PALURU_AGENT_DIAGNOSTICS_ENABLED = 'true';
+  mockFetch(200, { success: false, error: { code: 'TOOL_FAILED', message: 'internal tool failed' } });
+  let result = post(valid());
+  assert(result.error.code === 'AGENT_ERROR', 'upstream Agent code changed');
+  assert(result.diagnostics.stage === 'UPSTREAM_AGENT_FAILED' && result.diagnostics.reason === 'TOOL_FAILED', 'upstream Agent diagnostic missing');
+  assert(result.diagnostics.exception && typeof result.diagnostics.exception.stack === 'string', 'development exception details missing');
+
+  fetchImpl = () => { throw new Error('transport unavailable'); };
+  result = post(valid());
+  assert(result.error.code === 'AGENT_UNAVAILABLE', 'transport code changed');
+  assert(result.diagnostics.stage === 'MODEL_FAILED' && result.diagnostics.reason === 'URLFETCH_FAILED', 'transport diagnostic missing');
+  assert(result.diagnostics.exception.message === 'transport unavailable', 'transport exception message missing');
+
+  reset(); configure(); properties.PALURU_AGENT_DIAGNOSTICS_ENABLED = 'true';
+  readActorError = 'MEMBERSHIP_NOT_FOUND';
+  result = post(valid());
+  assert(result.diagnostics.stage === 'HOME_CONTEXT_FAILED' && result.diagnostics.reason === 'ACTOR_RESOLUTION_FAILED', 'home context diagnostic missing');
+});
+
+test('Agent Gateway diagnostics are absent unless development mode is explicitly enabled', () => {
+  configure();
+  mockFetch(200, { success: false, error: { code: 'TOOL_FAILED' } });
+  const result = post(valid());
+  assert(!Object.prototype.hasOwnProperty.call(result, 'diagnostics'), 'production response exposed diagnostics');
+});
+
+test('development transport logs include redacted request payload and response metadata', () => {
+  configure();
+  properties.PALURU_AGENT_DIAGNOSTICS_ENABLED = 'true';
+  mockFetch(200, agentResponse('private reply'));
+  const result = post(valid());
+  assert(result.success, 'Agent response failed');
+  const transportLogs = logs.filter((line) => line.includes('[PALURU agentChat transport]'));
+  assert(transportLogs.length === 2, 'request and response transport logs missing');
+  const combined = transportLogs.join('\n');
+  assert(combined.includes('"event":"REQUEST"') && combined.includes('"event":"RESPONSE"'), 'transport event names missing');
+  assert(combined.includes('"httpStatus":200'), 'HTTP status missing');
+  assert(combined.includes('"authToken":"[redacted]"') && combined.includes('"message":"[redacted]"'), 'request secrets were not redacted');
+  assert(combined.includes('"reply":"[redacted]"'), 'response reply was not redacted');
+  assert(!combined.includes(secretToken) && !combined.includes(secretMessage) && !combined.includes('private reply'), 'transport logs leaked sensitive content');
 });
 
 test('invalid input', () => {
