@@ -7,16 +7,49 @@ const SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES = Object.freeze({
 const SECOND_SON_DEVICE_TRANSFER_HOME_ID = 'paluru-home';
 const SECOND_SON_DEVICE_TRANSFER_MEMBER_USER_ID = 'second_son';
 
-function repairSecondSonDeviceTransferPreflight_(input) {
+function repairSecondSonDeviceTransferPreflight(input) {
   const config = resolveSecondSonDeviceTransferPreflightInput_(input);
   const deps = getHomeControlPairingDependencies_();
   deps.lock.waitLock(5000);
   try {
     // Do not use withHomeControlRegistryLock_: preflight must never persist Registry.
-    return inspectSecondSonDeviceTransferPreflight_(config, loadHomeControlRegistry_(deps));
+    const report = inspectSecondSonDeviceTransferPreflight_(config, loadHomeControlRegistry_(deps));
+    logSecondSonDeviceTransferPreflight_(report);
+    return report;
   } finally {
     deps.lock.releaseLock();
   }
+}
+
+function logSecondSonDeviceTransferPreflight_(report) {
+  const reasons = Array.isArray(report && report.blockingReasons) ? report.blockingReasons : [];
+  const activeMemberships = Array.isArray(report && report.activeDeviceMemberships) ? report.activeDeviceMemberships : [];
+  console.log('[SecondSonTransfer Preflight] JSON\n' + JSON.stringify(report));
+  if (report && report.canStartTransfer) {
+    console.log([
+      '[SecondSonTransfer Preflight]',
+      'RESULT: READY',
+      'canStartTransfer: true',
+      'blockingReasons: none',
+      'oldRegistryStatus: ' + String(report.oldRegistryStatus || 'missing'),
+      'homeMemberCount: ' + String(report.homeMemberCount || 0),
+      'activeDeviceMemberships: ' + String(activeMemberships.length),
+      '',
+      'NEXT:',
+      String(report.instructions || '次男Chromeで新しい6桁コードを発行してください'),
+    ].join('\n'));
+    return;
+  }
+  console.log([
+    '[SecondSonTransfer Preflight]',
+    'RESULT: BLOCKED',
+    'canStartTransfer: false',
+    '',
+    'REASONS:',
+    reasons.length ? reasons.map(function(reason) { return '- ' + reason; }).join('\n') : '- UNKNOWN',
+    '',
+    '次男にはまだコード発行を依頼しないでください。',
+  ].join('\n'));
 }
 
 function repairSecondSonDeviceTransferDryRun_(input) {
@@ -31,6 +64,36 @@ function repairSecondSonDeviceTransferDryRun_(input) {
   } finally {
     deps.lock.releaseLock();
   }
+}
+
+// Public Apps Script editor entry point. Keep the mutable implementation private so
+// tests can supply controlled input without exposing it in the manual function picker.
+function repairSecondSonDeviceTransfer() {
+  try {
+    const result = repairSecondSonDeviceTransfer_();
+    logSecondSonDeviceTransferExecution_(result);
+    return result;
+  } catch (error) {
+    const code = String(error && error.code || 'DEVICE_TRANSFER_FAILED');
+    logSecondSonDeviceTransferExecution_({ success: false, error: { code: code } });
+    throw error;
+  }
+}
+
+function logSecondSonDeviceTransferExecution_(result) {
+  const success = Boolean(result && result.success);
+  const alreadyRepaired = Boolean(result && result.alreadyRepaired);
+  const code = String(result && result.error && result.error.code || '');
+  console.log('[SecondSonTransfer Execute] JSON\n' + JSON.stringify(result || { success: false }));
+  console.log([
+    '[SecondSonTransfer Execute]',
+    'RESULT: ' + (success ? (alreadyRepaired ? 'ALREADY_REPAIRED' : 'COMPLETED') : 'BLOCKED'),
+    'success: ' + String(success),
+    success ? 'pairingCodeProperty: cleared' : 'errorCode: ' + (code || 'DEVICE_TRANSFER_FAILED'),
+    success
+      ? 'NEXT: 次男Chromeを再表示して、active_memberとして起動することを確認してください。'
+      : '次男には追加操作を依頼せず、実行ログのerrorCodeを確認してください。',
+  ].join('\n'));
 }
 
 function repairSecondSonDeviceTransfer_(input) {

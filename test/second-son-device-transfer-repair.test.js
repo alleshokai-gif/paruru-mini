@@ -124,13 +124,16 @@ function secondSonRows(harness) {
 {
   const h = createHarness();
   h.setPreflightInput();
-  const report = h.context.repairSecondSonDeviceTransferPreflight_();
+  const report = h.context.repairSecondSonDeviceTransferPreflight();
   assert.strictEqual(report.canStartTransfer, true);
   assert.strictEqual(report.oldRegistryStatus, 'revoked');
   assert.strictEqual(report.homeMemberCount, 1);
   assert(report.instructions.includes('6桁コードを発行'), 'preflight did not provide the next safe step');
   assert.strictEqual(h.setCalls(), 0, 'preflight wrote Registry');
   assert.deepStrictEqual(secondSonRows(h).map((row) => row[0]), [OLD], 'preflight changed memberships');
+  const preflightLog = h.logs.map((entry) => entry.join(' ')).join('\n');
+  assert(preflightLog.includes(JSON.stringify(report)), 'preflight did not log the full JSON report');
+  assert(preflightLog.includes('RESULT: READY') && preflightLog.includes('NEXT:'), 'preflight ready summary is missing');
 }
 
 [
@@ -150,12 +153,13 @@ function secondSonRows(harness) {
   testCase.change(h);
   const beforeRegistry = JSON.stringify(h.getRegistry());
   const beforeMemberships = JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values);
-  const report = h.context.repairSecondSonDeviceTransferPreflight_();
+  const report = h.context.repairSecondSonDeviceTransferPreflight();
   assert.strictEqual(report.canStartTransfer, false, testCase.name + ' unexpectedly passed');
   assert(report.blockingReasons.includes(testCase.reason), testCase.name + ' reason missing');
   assert.strictEqual(h.setCalls(), 0, testCase.name + ' wrote Registry');
   assert.strictEqual(JSON.stringify(h.getRegistry()), beforeRegistry, testCase.name + ' changed Registry');
   assert.strictEqual(JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values), beforeMemberships, testCase.name + ' changed memberships');
+  assert(h.logs.map((entry) => entry.join(' ')).join('\n').includes('RESULT: BLOCKED'), testCase.name + ' blocked summary is missing');
 });
 
 [
@@ -253,8 +257,8 @@ function secondSonRows(harness) {
 {
   const h = createHarness();
   h.setRepairInput();
-  assert.strictEqual(h.context.repairSecondSonDeviceTransferPreflight_().canStartTransfer, true);
-  const result = h.context.repairSecondSonDeviceTransfer_();
+  assert.strictEqual(h.context.repairSecondSonDeviceTransferPreflight().canStartTransfer, true);
+  const result = h.context.repairSecondSonDeviceTransfer();
   assert.strictEqual(result.success, true);
   assert.strictEqual(result.alreadyRepaired, false);
   assert.deepStrictEqual(secondSonRows(h).map((row) => [row[0], row[3]]), [[OLD, 'disabled'], [NEW, 'active']]);
@@ -264,6 +268,9 @@ function secondSonRows(harness) {
   assert.strictEqual(saved.requests[REQUEST].status, 'approved');
   assert.strictEqual(saved.requests[REQUEST].codeHash, '');
   assert.strictEqual(h.properties.PALURU_SECOND_SON_TRANSFER_PAIRING_CODE, undefined, 'successful repair did not clear pairing-code property');
+  const executionLog = h.logs.map((entry) => entry.join(' ')).join('\n');
+  assert(executionLog.includes(JSON.stringify(result)), 'successful repair did not log full JSON result');
+  assert(executionLog.includes('RESULT: COMPLETED') && executionLog.includes('pairingCodeProperty: cleared'), 'successful repair summary is missing');
   assert.strictEqual(h.spreadsheet.sheets.Home_Members.values.filter((row) => row[0] === 'paluru-home' && row[1] === 'second_son').length, 1);
   assert.deepStrictEqual(h.spreadsheet.sheets.Device_Memberships.values[1], ['father-device', 'paluru-home', 'father', 'active', 'bootstrap', '', '']);
   assert.deepStrictEqual(h.spreadsheet.sheets.Device_Memberships.values[3], ['other-device', 'other-home', 'second_son', 'active', 'other', '', '']);
@@ -277,16 +284,17 @@ function secondSonRows(harness) {
 {
   const h = createHarness();
   h.setRepairInput();
-  assert.strictEqual(h.context.repairSecondSonDeviceTransferPreflight_().canStartTransfer, true);
+  assert.strictEqual(h.context.repairSecondSonDeviceTransferPreflight().canStartTransfer, true);
   const registry = h.getRegistry();
   registry.devices[OLD].status = 'active';
   h.setRegistry(registry);
   const beforeRegistry = JSON.stringify(h.getRegistry());
   const beforeMemberships = JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values);
-  expectCode(() => h.context.repairSecondSonDeviceTransfer_(), 'DEVICE_TRANSFER_PRECONDITION_FAILED');
+  expectCode(() => h.context.repairSecondSonDeviceTransfer(), 'DEVICE_TRANSFER_PRECONDITION_FAILED');
   assert.strictEqual(JSON.stringify(h.getRegistry()), beforeRegistry, 'state-change rejection wrote Registry');
   assert.strictEqual(JSON.stringify(h.spreadsheet.sheets.Device_Memberships.values), beforeMemberships, 'state-change rejection changed memberships');
   assert.strictEqual(h.properties.PALURU_SECOND_SON_TRANSFER_PAIRING_CODE, PAIRING_CODE, 'failed repair cleared pairing-code property needed for investigation');
+  assert(h.logs.map((entry) => entry.join(' ')).join('\n').includes('RESULT: BLOCKED'), 'failed repair summary is missing');
 }
 
 {
