@@ -55,3 +55,26 @@ const MAIL_ALLOWED_CLASSIFICATION_VALUES = Object.freeze({
   importance: Object.freeze(Object.keys(MAIL_IMPORTANCE).map(function(key) { return MAIL_IMPORTANCE[key]; })),
   actionType: Object.freeze(Object.keys(MAIL_ACTION_TYPE).map(function(key) { return MAIL_ACTION_TYPE[key]; })),
 });
+
+const MAIL_DRY_RUN_PROPERTY_KEYS = Object.freeze({
+  lookbackHours: 'MAIL_LOOKBACK_HOURS',
+  searchLimit: 'MAIL_SEARCH_LIMIT',
+  batchSize: 'MAIL_BATCH_SIZE',
+  diagnostic: 'MAIL_DRY_RUN_DIAGNOSTIC',
+});
+
+const MAIL_DRY_RUN_DEFAULTS = Object.freeze({
+  lookbackHours: 24,
+  searchLimit: 100,
+  batchSize: 50,
+  diagnostic: false,
+});
+
+const MAIL_DRY_RUN_LIMITS = Object.freeze({
+  lookbackHours: Object.freeze({ min: 1, max: 168 }),
+  searchLimit: Object.freeze({ min: 1, max: 500 }),
+  batchSize: Object.freeze({ min: 1, max: 100 }),
+  diagnosticMaxItems: 20,
+  snippetMaxLength: 500,
+  subjectPreviewMaxLength: 30,
+});

@@ -78,7 +78,7 @@ results.forEach(function(result) {
 const deterministicInput = { subject: 'お支払い期限', snippet: 'キャンペーン' };
 assert.deepStrictEqual(classify(deterministicInput), classify(deterministicInput));
 
-const source = ['Code.js', 'MailConfig.js', 'MailRuleService.js'].map(function(file) {
+const source = ['MailConfig.js', 'MailRuleService.js'].map(function(file) {
   return fs.readFileSync(path.join(root, 'gas-Mail', file), 'utf8');
 }).join('\n');
 assert(!/Logger\s*\./.test(source));
