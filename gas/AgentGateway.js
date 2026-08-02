@@ -678,7 +678,7 @@ function appendAgentTraceEntries_(trace, entries) {
   const allowed = [
     'event', 'clientRequestIdSuffix', 'deploymentId', 'version', 'action', 'httpStatus',
     'errorCode', 'stage', 'reason', 'elapsedMs', 'openAiCallCount', 'serviceCallCount',
-    'intent', 'service'
+    'intent', 'service', 'openAiErrorType', 'openAiErrorCode', 'openAiErrorMessage'
   ];
   entries.slice(0, 32).forEach(function(entry) {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;

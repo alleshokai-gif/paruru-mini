@@ -17,7 +17,10 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'openAiCallCount',
   'serviceCallCount',
   'intent',
-  'service'
+  'service',
+  'openAiErrorType',
+  'openAiErrorCode',
+  'openAiErrorMessage'
 ];
 
 function persistAgentTrace_(trace) {
@@ -81,7 +84,10 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     openAiCallCount: sanitizeAgentTraceLedgerNumber_(value.openAiCallCount),
     serviceCallCount: sanitizeAgentTraceLedgerNumber_(value.serviceCallCount),
     intent: sanitizeAgentTraceLedgerText_(value.intent),
-    service: sanitizeAgentTraceLedgerText_(value.service)
+    service: sanitizeAgentTraceLedgerText_(value.service),
+    openAiErrorType: sanitizeAgentTraceLedgerText_(value.openAiErrorType),
+    openAiErrorCode: sanitizeAgentTraceLedgerText_(value.openAiErrorCode),
+    openAiErrorMessage: sanitizeAgentTraceLedgerMessage_(value.openAiErrorMessage)
   };
 }
 
@@ -91,15 +97,48 @@ function ensureAgentTraceHeaders_(sheet) {
   const hasExpectedHeaders = PALURU_AGENT_TRACE_HEADERS.every(function(header, index) {
     return current[index] === header;
   });
-  if (!hasExpectedHeaders) {
-    if (sheet.getLastRow() > 0 || current.some(Boolean)) throw new Error('TRACE_SCHEMA_MISMATCH');
-    sheet.getRange(1, 1, 1, PALURU_AGENT_TRACE_HEADERS.length).setValues([PALURU_AGENT_TRACE_HEADERS]);
-    sheet.setFrozenRows(1);
+  if (hasExpectedHeaders) return;
+
+  // The three OpenAI 400 diagnostic columns are an append-only extension of
+  // the original trace ledger.  Preserve prior incident rows and never reorder
+  // or replace an existing header row.
+  const legacyHeaders = PALURU_AGENT_TRACE_HEADERS.slice(0, -3);
+  const isLegacyHeaderRow = legacyHeaders.every(function(header, index) {
+    return current[index] === header;
+  });
+  if (isLegacyHeaderRow) {
+    const extensions = PALURU_AGENT_TRACE_HEADERS.slice(legacyHeaders.length);
+    let presentExtensions = 0;
+    while (presentExtensions < extensions.length && current[legacyHeaders.length + presentExtensions] === extensions[presentExtensions]) {
+      presentExtensions += 1;
+    }
+    const hasUnexpectedTail = current.slice(legacyHeaders.length + presentExtensions).some(Boolean);
+    if (!hasUnexpectedTail) {
+      const missingExtensions = extensions.slice(presentExtensions);
+      if (missingExtensions.length) {
+        sheet.getRange(1, legacyHeaders.length + presentExtensions + 1, 1, missingExtensions.length)
+          .setValues([missingExtensions]);
+      }
+      return;
+    }
   }
+
+  if (sheet.getLastRow() > 0 || current.some(Boolean)) throw new Error('TRACE_SCHEMA_MISMATCH');
+  sheet.getRange(1, 1, 1, PALURU_AGENT_TRACE_HEADERS.length).setValues([PALURU_AGENT_TRACE_HEADERS]);
+  sheet.setFrozenRows(1);
 }
 
 function sanitizeAgentTraceLedgerText_(value) {
   return String(value || '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 100);
+}
+
+function sanitizeAgentTraceLedgerMessage_(value) {
+  return String(value || '')
+    .replace(/(?:sk|rk)-[A-Za-z0-9_-]{8,}/g, '[REDACTED]')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]')
+    .replace(/(?:api[_-]?key|authorization)\s*[:=]\s*[^\s,;]+/gi, '[REDACTED_CREDENTIAL]')
+    .replace(/[\r\n\t]+/g, ' ')
+    .slice(0, 500);
 }
 
 function sanitizeAgentTraceLedgerNumber_(value) {

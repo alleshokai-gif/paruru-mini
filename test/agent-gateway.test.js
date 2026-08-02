@@ -32,7 +32,7 @@ function createTraceSheet() {
         },
         setValues: (values) => {
           if (row === 1) {
-            sheet.headers = values[0].slice();
+            values[0].forEach((value, index) => { sheet.headers[column - 1 + index] = value; });
           } else {
             values.forEach((value) => sheet.rows.push(value.slice()));
           }
@@ -148,7 +148,9 @@ test('Mini persists a safe combined trace ledger without exposing it to PWA', ()
     event: 'OPENAI_REQUEST_FAILED', clientRequestIdSuffix: clientRequestId.slice(-8),
     deploymentId: 'agent-deployment', version: 'v1', action: 'agent.chat', httpStatus: 503,
     errorCode: 'AGENT_UNAVAILABLE', stage: 'OPENAI_REQUEST', reason: 'UPSTREAM_HTTP_503',
-    elapsedMs: 12, openAiCallCount: 1, serviceCallCount: 0, intent: '', service: ''
+    elapsedMs: 12, openAiCallCount: 1, serviceCallCount: 0, intent: '', service: '',
+    openAiErrorType: 'invalid_request_error', openAiErrorCode: 'invalid_json_schema',
+    openAiErrorMessage: 'Invalid schema; sk-test-secret-123456789 must not be logged.'
   }];
   mockFetch(200, upstream);
   const result = post(valid());
@@ -159,8 +161,32 @@ test('Mini persists a safe combined trace ledger without exposing it to PWA', ()
   assert(traceSheet.rows.some((row) => row[sourceColumn] === 'mini'), 'Mini trace rows were not stored');
   assert(traceSheet.rows.some((row) => row[sourceColumn] === 'agent'), 'Agent trace rows were not stored');
   assert(traceSheet.rows.every((row) => row[suffixColumn] === clientRequestId.slice(-8)), 'trace ledger request suffix changed');
+  const openAiTypeColumn = traceSheet.headers.indexOf('openAiErrorType');
+  const openAiCodeColumn = traceSheet.headers.indexOf('openAiErrorCode');
+  const openAiMessageColumn = traceSheet.headers.indexOf('openAiErrorMessage');
+  const openAi400Row = traceSheet.rows.find((row) => row[sourceColumn] === 'agent');
+  assert(openAiTypeColumn >= 0 && openAiCodeColumn >= 0 && openAiMessageColumn >= 0, 'OpenAI 400 trace columns were not created');
+  assert(openAi400Row[openAiTypeColumn] === 'invalid_request_error' && openAi400Row[openAiCodeColumn] === 'invalid_json_schema', 'OpenAI 400 type/code were not persisted');
+  assert(openAi400Row[openAiMessageColumn] === 'Invalid schema; [REDACTED] must not be logged.', 'OpenAI 400 message was not safely persisted');
   const serialized = JSON.stringify(traceSheet.rows);
-  assert(!serialized.includes(secretMessage) && !serialized.includes('private-agent-reply') && !serialized.includes(secretToken) && !serialized.includes('server-device'), 'trace ledger stored private data');
+  assert(!serialized.includes(secretMessage) && !serialized.includes('private-agent-reply') && !serialized.includes(secretToken) && !serialized.includes('server-device') && !serialized.includes('sk-test-secret-123456789'), 'trace ledger stored private data');
+});
+
+test('Mini appends OpenAI 400 trace headers without changing existing trace rows', () => {
+  reset();
+  traceSheet = createTraceSheet();
+  const legacyHeaders = vm.runInContext('PALURU_AGENT_TRACE_HEADERS.slice(0, -3)', context);
+  traceSheet.headers = Array.from(legacyHeaders);
+  traceSheet.rows = [legacyHeaders.map(() => 'prior-row')];
+  context.__legacyTrace = {
+    entries: [{ event: 'REQUEST_RECEIVED', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat' }],
+    agentEntries: []
+  };
+  vm.runInContext('persistAgentTrace_(__legacyTrace)', context);
+  const expectedHeaders = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(expectedHeaders), 'new trace headers were not appended in order');
+  assert(traceSheet.rows[0][0] === 'prior-row', 'existing trace row was changed');
+  assert(traceSheet.rows.length === 2, 'new trace row was not appended after the existing row');
 });
 
 test('Mini persists Agent failure trace events before returning a safe error', () => {
