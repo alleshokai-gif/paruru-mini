@@ -6,9 +6,10 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const gasDir = path.join(root, 'gas');
-const files = ['Code.js', 'AgentGateway.js'];
+const files = ['Code.js', 'AgentTraceLogService.js', 'AgentGateway.js'];
 const properties = {};
 const logs = [];
+let traceSheet = null;
 let fetchImpl = () => { throw new Error('live network forbidden'); };
 let readActor = null;
 let readActorError = null;
@@ -16,6 +17,32 @@ let readActorCalls = 0;
 let controlActor = null;
 let controlActorError = null;
 let controlActorCalls = 0;
+
+function createTraceSheet() {
+  const sheet = {
+    headers: [],
+    rows: [],
+    getLastColumn() { return this.headers.length; },
+    getLastRow() { return this.headers.length ? this.rows.length + 1 : 0; },
+    getRange(row, column, numRows, numColumns) {
+      return {
+        getValues: () => {
+          if (row === 1) return [Array.from({ length: numColumns }, (_, index) => sheet.headers[column - 1 + index] || '')];
+          return [];
+        },
+        setValues: (values) => {
+          if (row === 1) {
+            sheet.headers = values[0].slice();
+          } else {
+            values.forEach((value) => sheet.rows.push(value.slice()));
+          }
+        }
+      };
+    },
+    setFrozenRows() {}
+  };
+  return sheet;
+}
 
 const context = {
   console: { log: (...args) => logs.push(args.join(' ')) },
@@ -25,6 +52,12 @@ const context = {
     getScriptProperties: () => ({ getProperty: (name) => properties[name] || '' }),
   },
   UrlFetchApp: { fetch: (...args) => fetchImpl(...args) },
+  SpreadsheetApp: {
+    getActiveSpreadsheet: () => ({
+      getSheetByName: () => traceSheet,
+      insertSheet: () => { traceSheet = createTraceSheet(); return traceSheet; }
+    })
+  },
   ContentService: {
     MimeType: { JSON: 'application/json' },
     createTextOutput: (text) => ({
@@ -87,7 +120,7 @@ function mockFetch(status, body, onCall) {
   };
 }
 function configure() { properties.PALURU_AGENT_URL = secretUrl; properties.PALURU_AGENT_TOKEN = secretToken; }
-function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; controlActor = null; controlActorError = null; controlActorCalls = 0; }
+function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; traceSheet = null; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; controlActor = null; controlActorError = null; controlActorCalls = 0; }
 function assert(value, message) { if (!value) throw new Error(message); }
 
 const tests = [];
@@ -106,6 +139,47 @@ test('tool-free response', () => {
   });
   const result = post(valid({ userId: 'father', userDisplayName: '父', deviceId: 'device' }));
   assert(result.success && result.reply && result.serviceExecutions.length === 0, 'service-free response failed');
+});
+
+test('Mini persists a safe combined trace ledger without exposing it to PWA', () => {
+  configure();
+  const upstream = agentResponse('private-agent-reply');
+  upstream.traceEvents = [{
+    event: 'OPENAI_REQUEST_FAILED', clientRequestIdSuffix: clientRequestId.slice(-8),
+    deploymentId: 'agent-deployment', version: 'v1', action: 'agent.chat', httpStatus: 503,
+    errorCode: 'AGENT_UNAVAILABLE', stage: 'OPENAI_REQUEST', reason: 'UPSTREAM_HTTP_503',
+    elapsedMs: 12, openAiCallCount: 1, serviceCallCount: 0, intent: '', service: ''
+  }];
+  mockFetch(200, upstream);
+  const result = post(valid());
+  assert(result.success && !Object.prototype.hasOwnProperty.call(result, 'traceEvents'), 'internal Agent trace leaked to PWA');
+  assert(traceSheet && traceSheet.headers[0] === 'recordedAt', 'trace ledger header was not created');
+  const sourceColumn = traceSheet.headers.indexOf('source');
+  const suffixColumn = traceSheet.headers.indexOf('clientRequestIdSuffix');
+  assert(traceSheet.rows.some((row) => row[sourceColumn] === 'mini'), 'Mini trace rows were not stored');
+  assert(traceSheet.rows.some((row) => row[sourceColumn] === 'agent'), 'Agent trace rows were not stored');
+  assert(traceSheet.rows.every((row) => row[suffixColumn] === clientRequestId.slice(-8)), 'trace ledger request suffix changed');
+  const serialized = JSON.stringify(traceSheet.rows);
+  assert(!serialized.includes(secretMessage) && !serialized.includes('private-agent-reply') && !serialized.includes(secretToken) && !serialized.includes('server-device'), 'trace ledger stored private data');
+});
+
+test('Mini persists Agent failure trace events before returning a safe error', () => {
+  configure();
+  mockFetch(200, {
+    success: false,
+    error: { code: 'AGENT_UNAVAILABLE', message: 'private upstream reason' },
+    traceEvents: [{
+      event: 'OPENAI_REQUEST_FAILED', clientRequestIdSuffix: clientRequestId.slice(-8),
+      stage: 'OPENAI_REQUEST', errorCode: 'AGENT_UNAVAILABLE', reason: 'UPSTREAM_HTTP_503',
+      elapsedMs: 25, openAiCallCount: 1, serviceCallCount: 0
+    }]
+  });
+  const result = post(valid());
+  assert(!result.success && result.error.code === 'AGENT_UNAVAILABLE', 'safe Agent failure changed');
+  const sourceColumn = traceSheet.headers.indexOf('source');
+  const eventColumn = traceSheet.headers.indexOf('event');
+  assert(traceSheet.rows.some((row) => row[sourceColumn] === 'agent' && row[eventColumn] === 'OPENAI_REQUEST_FAILED'), 'Agent failure trace was not persisted');
+  assert(!JSON.stringify(traceSheet.rows).includes('private upstream reason'), 'Agent failure detail leaked to ledger');
 });
 
 test('request metadata is allowlisted separately from the server-resolved actor', () => {

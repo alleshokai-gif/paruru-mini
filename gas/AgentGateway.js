@@ -36,7 +36,9 @@ function agentChat_(body) {
     try {
       const result = buildAgentChatSuccess_(response, input);
       logMiniAgentTrace_('RESPONSE_SENT', trace, { stage: 'RESPONSE_SENT', httpStatus: 200, intent: result.intent, agentPerformance: response && response.diagnostics });
-      return json_(result);
+      const output = json_(result);
+      persistAgentTrace_(trace);
+      return output;
     } catch (error) {
       setMiniAgentTraceStage_(error, trace, 'AGENT_RESPONSE');
       throw annotateAgentGatewayError_(error, 'RESPONSE_PARSE_FAILED', 'RESPONSE_BUILD_FAILED');
@@ -49,7 +51,9 @@ function agentChat_(body) {
     }
     const result = buildAgentChatError_(error);
     logMiniAgentTrace_('RESPONSE_SENT', trace, { stage: stage, httpStatus: 200, errorCode: result && result.error && result.error.code, reason: error && error.agentDiagnostics && error.agentDiagnostics.reason, agentPerformance: error && error.agentPerformance });
-    return json_(result);
+    const output = json_(result);
+    persistAgentTrace_(trace);
+    return output;
   }
 }
 
@@ -233,6 +237,7 @@ function callPaluruAgent_(config, input, trace) {
     setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_RESPONSE');
     throw gatewayError;
   }
+  appendAgentTraceEntries_(trace, parsed && parsed.traceEvents);
 
   if (!parsed || parsed.success !== true) {
     const error = createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed), 'UPSTREAM_AGENT_FAILED', String(parsed && parsed.error && parsed.error.code || parsed && parsed.code || 'UPSTREAM_SUCCESS_FALSE'));
@@ -614,7 +619,9 @@ function createMiniAgentTrace_(body, action) {
     clientRequestId: String(body && body.clientRequestId || '').trim(),
     action: String(action || 'agentChat'),
     startedAtMs: Date.now(),
-    stage: 'REQUEST_RECEIVED'
+    stage: 'REQUEST_RECEIVED',
+    entries: [],
+    agentEntries: []
   };
 }
 
@@ -641,7 +648,6 @@ function publicMiniAgentTrace_(trace) {
 }
 
 function logMiniAgentTrace_(event, trace, details) {
-  if (typeof Logger === 'undefined' || typeof Logger.log !== 'function') return;
   const source = details || {};
   const performance = source.agentPerformance && typeof source.agentPerformance === 'object' ? source.agentPerformance : {};
   const entry = {
@@ -661,7 +667,28 @@ function logMiniAgentTrace_(event, trace, details) {
     intent: safeMiniAgentTraceText_(source.intent || '') || null,
     service: safeMiniAgentTraceText_(source.service || '') || null
   };
-  Logger.log('[PALURU_TRACE] ' + JSON.stringify(entry));
+  if (trace && Array.isArray(trace.entries)) trace.entries.push(entry);
+  if (typeof Logger !== 'undefined' && typeof Logger.log === 'function') {
+    Logger.log('[PALURU_TRACE] ' + JSON.stringify(entry));
+  }
+}
+
+function appendAgentTraceEntries_(trace, entries) {
+  if (!trace || !Array.isArray(trace.agentEntries) || !Array.isArray(entries)) return;
+  const allowed = [
+    'event', 'clientRequestIdSuffix', 'deploymentId', 'version', 'action', 'httpStatus',
+    'errorCode', 'stage', 'reason', 'elapsedMs', 'openAiCallCount', 'serviceCallCount',
+    'intent', 'service'
+  ];
+  entries.slice(0, 32).forEach(function(entry) {
+    if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;
+    const safe = {};
+    allowed.forEach(function(key) {
+      if (Object.prototype.hasOwnProperty.call(entry, key)) safe[key] = entry[key];
+    });
+    if (String(safe.clientRequestIdSuffix || '') !== String(trace.clientRequestId || '').slice(-8)) return;
+    trace.agentEntries.push(safe);
+  });
 }
 
 function miniAgentTraceDeploymentId_() {
