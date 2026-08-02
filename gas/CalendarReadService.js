@@ -5,8 +5,12 @@ const CalendarReadService = (function() {
   const PERIODS = { today: true, tomorrow: true, this_week: true, next_7_days: true };
   const SCOPES = { mine: true, family: true };
   const ACTOR_MEMBER_KEYS = Object.freeze({
-    father: 'father', mother: 'mother', son1: 'son1', daughter1: 'daughter1',
-    son2: 'son2', daughter2: 'daughter2'
+    father: 'father',
+    mother: 'mother',
+    eldest_son: 'eldest_son',
+    eldest_daughter: 'eldest_daughter',
+    second_son: 'second_son',
+    youngest_daughter: 'youngest_daughter'
   });
 
   function readContext(options) {
@@ -111,9 +115,9 @@ const CalendarReadService = (function() {
   }
 
   function resolveActorMemberKey_(actor) {
-    const userId = String(actor && actor.userId || '').trim();
-    if (!ACTOR_MEMBER_KEYS[userId]) throw calendarReadError_('INVALID_INPUT');
-    return ACTOR_MEMBER_KEYS[userId];
+    const memberUserId = String(actor && actor.memberUserId || '').trim();
+    if (!ACTOR_MEMBER_KEYS[memberUserId]) throw calendarReadError_('INVALID_INPUT');
+    return ACTOR_MEMBER_KEYS[memberUserId];
   }
 
   function toPublicEvent_(event) {

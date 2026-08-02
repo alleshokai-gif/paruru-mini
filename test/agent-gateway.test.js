@@ -107,6 +107,33 @@ test('tool-free response', () => {
   assert(result.success && result.reply && result.toolExecutions.length === 0, 'tool-free response failed');
 });
 
+test('request metadata is allowlisted separately from the server-resolved actor', () => {
+  configure();
+  mockFetch(200, agentResponse('ok'), (url, options) => {
+    const sent = JSON.parse(options.payload);
+    assert(sent.requestMetadata.purpose === 'weather' && sent.requestMetadata.roomHint === 'living', 'advisory routing metadata was not forwarded');
+    assert(sent.requestMetadata.sessionId === sessionId && sent.requestMetadata.clientRequestId === clientRequestId, 'request identifiers were not server normalized');
+    assert(!Object.prototype.hasOwnProperty.call(sent.requestMetadata, 'role') && !Object.prototype.hasOwnProperty.call(sent.requestMetadata, 'actor'), 'identity was mixed into request metadata');
+    assert(sent.actor.memberUserId === 'father' && sent.actor.role === 'admin', 'server actor changed');
+  });
+  const result = post(valid({
+    requestMetadata: {
+      purpose: 'weather', roomHint: 'living', calendarScopeHint: 'family',
+      sessionId: 'spoofed-session', clientRequestId: 'spoofed-request',
+      actor: { role: 'admin' }, role: 'admin', arbitrary: 'drop-me'
+    }
+  }));
+  assert(result.success, 'metadata request failed');
+});
+
+test('safe upstream weather failure remains distinguishable to PWA', () => {
+  configure();
+  mockFetch(200, { success: false, error: { code: 'WEATHER_UNAVAILABLE', message: 'private upstream detail' } });
+  const result = post(valid());
+  assert(!result.success && result.error.code === 'WEATHER_UNAVAILABLE', 'weather failure was collapsed to AGENT_ERROR');
+  assert(!JSON.stringify(result).includes('private upstream detail'), 'upstream detail leaked');
+});
+
 test('read authorization rejects before Agent call and ignores client actor spoofing', () => {
   configure();
   let calls = 0;
@@ -338,7 +365,9 @@ test('agentActionConfirm resolves control actor twice before calling Agent', () 
     assert(sent.action === 'agent.confirmAction', 'wrong Agent action');
     assert(!Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'pairing token sent to Agent');
     assert(!Object.prototype.hasOwnProperty.call(sent, 'operation'), 'operation sent from browser to Agent');
-    assert(!Object.prototype.hasOwnProperty.call(sent, 'actor'), 'client actor sent to Agent');
+    assert(sent.actor && sent.actor.homeId === 'home-a' && sent.actor.memberUserId === 'father'
+      && sent.actor.deviceId === 'server-control-device' && sent.actor.capabilities.includes('home.control'), 'server actor was not sent to Agent');
+    assert(!JSON.stringify(sent.actor).includes('spoofed'), 'client actor spoof reached Agent');
   });
   const result = post({
     action: 'agentActionConfirm',
@@ -413,6 +442,8 @@ test('agentActionCancel resolves control actor and sends only confirmation ident
     assert(sent.action === 'agent.cancelAction', 'wrong Agent action');
     assert(sent.confirmationId === '88888888-8888-4888-8888-888888888888', 'confirmation id missing');
     assert(sent.clientRequestId === clientRequestId, 'clientRequestId missing');
+    assert(sent.actor && sent.actor.homeId === 'home-a' && sent.actor.memberUserId === 'father'
+      && sent.actor.deviceId === 'server-control-device' && sent.actor.capabilities.includes('home.control'), 'server actor was not sent to Agent cancel');
     assert(!Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'pairing token sent to Agent');
     ['operation', 'skill', 'roomId', 'duration', 'durationMinutes', 'confirmed', 'payload'].forEach((field) => {
       assert(!Object.prototype.hasOwnProperty.call(sent, field), field + ' leaked to Agent cancel');

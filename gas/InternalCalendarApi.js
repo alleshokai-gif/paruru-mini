@@ -42,10 +42,16 @@ function validateInternalCalendarInput_(body) {
   if (!periods[body.period] || !scopes[body.scope] || !actor || Array.isArray(actor) || typeof actor !== 'object') {
     throw internalCalendarError_('INVALID_INPUT');
   }
-  if (Object.keys(actor).some(function(key) { return key !== 'userId'; })) throw internalCalendarError_('INVALID_INPUT');
-  const userId = String(actor.userId || '').trim();
-  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(userId)) throw internalCalendarError_('INVALID_INPUT');
-  return { period: body.period, scope: body.scope, actor: { userId: userId } };
+  const allowedActorKeys = ['homeId', 'memberUserId', 'displayName', 'role', 'capabilities', 'deviceId'];
+  if (Object.keys(actor).some(function(key) { return allowedActorKeys.indexOf(key) < 0; })) throw internalCalendarError_('INVALID_INPUT');
+  const homeId = String(actor.homeId || '').trim();
+  const memberUserId = String(actor.memberUserId || '').trim();
+  if (!/^[a-zA-Z0-9_-]{1,200}$/.test(homeId) || !/^[a-zA-Z0-9_-]{1,100}$/.test(memberUserId)) {
+    throw internalCalendarError_('INVALID_INPUT');
+  }
+  const member = getHomeMember_(homeId, memberUserId);
+  if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member)) throw internalCalendarError_('UNAUTHORIZED');
+  return { period: body.period, scope: body.scope, actor: { memberUserId: memberUserId } };
 }
 
 function constantTimeEqualsCalendar_(leftValue, rightValue) {

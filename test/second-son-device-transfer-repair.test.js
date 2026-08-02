@@ -40,6 +40,9 @@ const PAIRING_CODE = '123456';
 const PAIRING_CODE_HASH = crypto.createHash('sha256').update(PAIRING_CODE).digest('hex');
 
 function createHarness(options = {}) {
+  const fixtureNowMs = Date.now();
+  const fixtureCreatedAt = new Date(fixtureNowMs - 60000).toISOString();
+  const fixtureExpiresAt = new Date(fixtureNowMs + 60 * 60 * 1000).toISOString();
   const spreadsheet = {
     sheets: {},
     getSheetByName(name) { return this.sheets[name] || null; },
@@ -68,7 +71,7 @@ function createHarness(options = {}) {
       [NEW]: { deviceId: NEW, status: options.newStatus || 'pending', tokenHash: 'b'.repeat(64), registeredAt: null, lastUsedAt: null, revokedAt: null },
     },
     requests: {
-      [REQUEST]: { requestId: REQUEST, deviceId: NEW, displayName: '次男Chrome', tokenHash: 'b'.repeat(64), requestSecretHash: 'c'.repeat(64), codeHash: PAIRING_CODE_HASH, kind: 'pairing', status: options.requestStatus || 'pending', createdAt: '2026-07-31T21:40:00+09:00', expiresAt: '2026-08-01T21:40:00+09:00', codeExpiresAt: '2026-08-01T21:40:00+09:00', approvedAt: null, approvedByDeviceId: null },
+      [REQUEST]: { requestId: REQUEST, deviceId: NEW, displayName: '次男Chrome', tokenHash: 'b'.repeat(64), requestSecretHash: 'c'.repeat(64), codeHash: PAIRING_CODE_HASH, kind: 'pairing', status: options.requestStatus || 'pending', createdAt: fixtureCreatedAt, expiresAt: fixtureExpiresAt, codeExpiresAt: fixtureExpiresAt, approvedAt: null, approvedByDeviceId: null },
     },
     approveAttempts: {},
   };

@@ -88,6 +88,30 @@ function validateAgentChatInput_(body, actor) {
       homeId: String(actor && actor.homeId || '').trim().slice(0, 200),
       deviceId: String(actor && actor.deviceId || '').trim().slice(0, 200),
     },
+    requestMetadata: sanitizeAgentRequestMetadata_(body.requestMetadata, sessionId, clientRequestId),
+  };
+}
+
+function sanitizeAgentRequestMetadata_(value, sessionId, clientRequestId) {
+  const source = value && !Array.isArray(value) && typeof value === 'object' ? value : {};
+  const memoSource = source.memoAttributes && !Array.isArray(source.memoAttributes) && typeof source.memoAttributes === 'object'
+    ? source.memoAttributes : {};
+  const roomHint = String(source.roomHint || '').trim();
+  const calendarScopeHint = String(source.calendarScopeHint || '').trim();
+  const allowedRooms = { living: true, bedroom: true, kids_room: true, study: true };
+  const allowedScopes = { mine: true, family: true };
+  return {
+    sessionId: sessionId,
+    clientRequestId: clientRequestId,
+    purpose: String(source.purpose || '').trim().slice(0, 80),
+    intent: String(source.intent || '').trim().slice(0, 80),
+    roomHint: allowedRooms[roomHint] ? roomHint : null,
+    calendarScopeHint: allowedScopes[calendarScopeHint] ? calendarScopeHint : null,
+    memoAttributes: {
+      visibility: String(memoSource.visibility || '').trim().slice(0, 40),
+      category: String(memoSource.category || '').trim().slice(0, 80),
+      priority: String(memoSource.priority || '').trim().slice(0, 40),
+    },
   };
 }
 
@@ -113,6 +137,7 @@ function callPaluruAgent_(config, input) {
     sessionId: input.sessionId,
     clientRequestId: input.clientRequestId,
     actor: input.actor,
+    requestMetadata: input.requestMetadata,
     authToken: config.token,
   };
   logPaluruAgentTransport_('REQUEST', {
@@ -164,12 +189,31 @@ function callPaluruAgent_(config, input) {
   }
 
   if (!parsed || parsed.success !== true) {
-    throw createAgentGatewayError_('AGENT_ERROR', 'UPSTREAM_AGENT_FAILED', String(parsed && parsed.error && parsed.error.code || parsed && parsed.code || 'UPSTREAM_SUCCESS_FALSE'));
+    throw createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed), 'UPSTREAM_AGENT_FAILED', String(parsed && parsed.error && parsed.error.code || parsed && parsed.code || 'UPSTREAM_SUCCESS_FALSE'));
   }
   if (parsed.schemaVersion !== PALURU_AGENT_SCHEMA_VERSION) {
     throw createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'SCHEMA_VERSION_MISMATCH');
   }
   return parsed;
+}
+
+function safeUpstreamAgentErrorCode_(payload) {
+  const sourceCode = String(payload && payload.error && payload.error.code || payload && payload.code || 'AGENT_ERROR');
+  const allowed = {
+    ACTOR_CONTRACT_INVALID: true,
+    TOOL_DISABLED: true,
+    CLIMATE_UNAVAILABLE: true,
+    WEATHER_UNAVAILABLE: true,
+    CALENDAR_UNAVAILABLE: true,
+    ROOM_NOT_FOUND: true,
+    FOLLOWUP_REQUIRED: true,
+    ACTION_NOT_ALLOWED: true,
+    CONFIRMATION_EXPIRED: true,
+    CONFIRMATION_ACTOR_MISMATCH: true,
+    AGENT_UNAVAILABLE: true,
+    INVALID_INPUT: true,
+  };
+  return allowed[sourceCode] ? sourceCode : 'AGENT_ERROR';
 }
 
 function buildAgentChatSuccess_(response, input) {
@@ -208,6 +252,9 @@ function validateAgentActionConfirmInput_(body, actor) {
     actor: {
       homeId: String(actor.homeId || '').trim().slice(0, 200),
       memberUserId: String(actor.memberUserId || '').trim().slice(0, 100),
+      displayName: String(actor.displayName || '').trim().slice(0, 100),
+      role: String(actor.role || '').trim().slice(0, 100),
+      capabilities: Array.isArray(actor.capabilities) ? actor.capabilities.slice() : [],
       deviceId: String(actor.deviceId || '').trim().slice(0, 200),
     },
   };
@@ -249,6 +296,7 @@ function callPaluruAgentActionConfirm_(config, input) {
         action: 'agent.confirmAction',
         confirmationId: input.confirmationId,
         clientRequestId: input.clientRequestId,
+        actor: input.actor,
         authToken: config.token,
       }),
       muteHttpExceptions: true,
@@ -266,7 +314,7 @@ function callPaluruAgentActionConfirm_(config, input) {
     throw createAgentGatewayError_('AGENT_UNAVAILABLE');
   }
   if (!parsed || parsed.success !== true || parsed.schemaVersion !== PALURU_AGENT_SCHEMA_VERSION) {
-    throw createAgentGatewayError_('AGENT_ERROR');
+    throw createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed));
   }
   return parsed;
 }
@@ -281,6 +329,7 @@ function callPaluruAgentActionCancel_(config, input) {
         action: 'agent.cancelAction',
         confirmationId: input.confirmationId,
         clientRequestId: input.clientRequestId,
+        actor: input.actor,
         authToken: config.token,
       }),
       muteHttpExceptions: true,
@@ -298,7 +347,7 @@ function callPaluruAgentActionCancel_(config, input) {
     throw createAgentGatewayError_('AGENT_UNAVAILABLE');
   }
   if (!parsed || parsed.success !== true || parsed.schemaVersion !== PALURU_AGENT_SCHEMA_VERSION) {
-    throw createAgentGatewayError_('AGENT_ERROR');
+    throw createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed));
   }
   return parsed;
 }
@@ -398,6 +447,9 @@ function buildAgentActionConfirmError_(error) {
     MEMBERSHIP_NOT_FOUND: true,
     HOME_AGENT_ACTIONS_DISABLED: true,
     AGENT_ACTION_RATE_LIMITED: true,
+    ACTION_NOT_ALLOWED: true,
+    CONFIRMATION_EXPIRED: true,
+    CONFIRMATION_ACTOR_MISMATCH: true,
   };
   const code = error && allowedCodes[error.code] ? error.code : 'INTERNAL_ERROR';
   return { success: false, error: { code: code, message: getAgentActionPublicErrorMessage_(code) } };
@@ -409,6 +461,9 @@ function getAgentActionPublicErrorMessage_(code) {
   if (code === 'AGENT_ACTION_RATE_LIMITED') return 'too many action requests';
   if (code === 'CONFIGURATION_ERROR') return 'Agent connection is not configured';
   if (code === 'AGENT_UNAVAILABLE') return 'Agent is unavailable';
+  if (code === 'ACTION_NOT_ALLOWED') return 'この端末では操作を実行できません';
+  if (code === 'CONFIRMATION_EXPIRED') return '確認の有効期限が切れました。もう一度相談してください';
+  if (code === 'CONFIRMATION_ACTOR_MISMATCH') return '確認を作成した端末と一致しません';
   return 'action confirmation failed';
 }
 
@@ -442,6 +497,16 @@ function buildAgentChatError_(error) {
     CONFIGURATION_ERROR: true,
     AGENT_UNAVAILABLE: true,
     AGENT_ERROR: true,
+    ACTOR_CONTRACT_INVALID: true,
+    TOOL_DISABLED: true,
+    CLIMATE_UNAVAILABLE: true,
+    WEATHER_UNAVAILABLE: true,
+    CALENDAR_UNAVAILABLE: true,
+    ROOM_NOT_FOUND: true,
+    FOLLOWUP_REQUIRED: true,
+    ACTION_NOT_ALLOWED: true,
+    CONFIRMATION_EXPIRED: true,
+    CONFIRMATION_ACTOR_MISMATCH: true,
   };
   const code = error && allowedCodes[error.code] ? error.code : 'INTERNAL_ERROR';
   const messages = {
@@ -449,6 +514,16 @@ function buildAgentChatError_(error) {
     CONFIGURATION_ERROR: 'Agent接続設定が未完了です。',
     AGENT_UNAVAILABLE: '現在Agentへ接続できません。',
     AGENT_ERROR: 'Agentの処理を完了できませんでした。',
+    ACTOR_CONTRACT_INVALID: '端末の利用情報を確認できませんでした。',
+    TOOL_DISABLED: 'この相談機能は現在利用できません。',
+    CLIMATE_UNAVAILABLE: '室温・湿度を取得できませんでした。',
+    WEATHER_UNAVAILABLE: '外の天気を取得できませんでした。',
+    CALENDAR_UNAVAILABLE: '予定を取得できませんでした。',
+    ROOM_NOT_FOUND: '指定された部屋を見つけられませんでした。',
+    FOLLOWUP_REQUIRED: '確認に必要な情報が足りません。',
+    ACTION_NOT_ALLOWED: 'この端末では操作を実行できません。',
+    CONFIRMATION_EXPIRED: '確認の有効期限が切れました。もう一度相談してください。',
+    CONFIRMATION_ACTOR_MISMATCH: '確認を作成した端末と一致しません。',
     INTERNAL_ERROR: '内部エラーが発生しました。',
   };
   const result = { success: false, error: { code: code, message: messages[code] } };

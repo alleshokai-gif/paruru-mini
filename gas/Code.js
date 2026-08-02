@@ -96,6 +96,10 @@ function doPost(e) {
       return calendarContextInternal_(body, 'POST');
     }
 
+    if (action === 'weatherContextInternal') {
+      return weatherContextInternal_(body, 'POST');
+    }
+
     if (action === 'agentChat') {
       return agentChat_(body);
     }
@@ -1366,10 +1370,10 @@ function normalizeCalendarMemberToken_(value) {
     '父ちゃん': 'father',
     '母': 'mother',
     '母ちゃん': 'mother',
-    '長男': 'son1',
-    '長女': 'daughter1',
-    '次男': 'son2',
-    '次女': 'daughter2',
+    '長男': 'eldest_son',
+    '長女': 'eldest_daughter',
+    '次男': 'second_son',
+    '次女': 'youngest_daughter',
     '家族': 'family',
     '全員': 'family',
   };
@@ -1380,10 +1384,10 @@ function getCalendarMemberMap_() {
   return {
     father: { key: 'father', label: '父' },
     mother: { key: 'mother', label: '母' },
-    son1: { key: 'son1', label: '長男' },
-    daughter1: { key: 'daughter1', label: '長女' },
-    son2: { key: 'son2', label: '次男' },
-    daughter2: { key: 'daughter2', label: '次女' },
+    eldest_son: { key: 'eldest_son', label: '長男' },
+    eldest_daughter: { key: 'eldest_daughter', label: '長女' },
+    second_son: { key: 'second_son', label: '次男' },
+    youngest_daughter: { key: 'youngest_daughter', label: '次女' },
     family: { key: 'family', label: '家族' },
     unknown: { key: 'unknown', label: '未分類' },
   };

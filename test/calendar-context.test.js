@@ -55,10 +55,13 @@ const context = {
   CalendarApp: { getCalendarById: () => null },
 };
 vm.createContext(context);
-['Code.js', 'CalendarReadService.js', 'InternalCalendarApi.js'].forEach((name) => {
+['Code.js', 'CalendarReadService.js', 'InternalCalendarApi.js', 'InternalWeatherApi.js'].forEach((name) => {
   new vm.Script(fs.readFileSync(path.join(gas, name), 'utf8'), { filename: name }).runInContext(context);
 });
 vm.runInContext('this.CalendarReadServiceTest = CalendarReadService', context);
+context.getHomeMember_ = (homeId, memberUserId) => homeId === 'home_test' && memberUserId === 'father'
+  ? { homeId, memberUserId, displayName: '父', role: 'admin', status: 'active' } : null;
+context.isHomeMemberPolicyMatch_ = (member) => Boolean(member && member.memberUserId === 'father');
 function read(options, events) {
   calendarCalls = 0;
   return vm.runInContext(`CalendarReadService.readContext(${JSON.stringify(options)})`, context, {
@@ -72,7 +75,8 @@ function callRead(options, events) {
 function parse(output) { return JSON.parse(output.getContent()); }
 function assert(value, message) { if (!value) throw new Error(message); }
 const tests = []; function test(name, fn) { tests.push({ name, fn }); }
-const actor = { userId: 'father' };
+const actor = { memberUserId: 'father' };
+const internalActor = { homeId: 'home_test', memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.read', 'home.control'], deviceId: 'mini-test-1' };
 
 test('period boundaries cover today, tomorrow, this_week and next_7_days', () => {
   const now = '2026-07-18T12:00:00+09:00';
@@ -130,8 +134,8 @@ test('prefix and suffix tags support mine while family returns all', () => {
 test('unknown actor and arbitrary period are rejected before calendar read', () => {
   calendarCalls = 0; context.__calendar = calendar([]);
   let codes = [];
-  try { vm.runInContext("CalendarReadService.readContext({period:'today',scope:'mine',actor:{userId:'unknown'},calendar:__calendar})", context); } catch (error) { codes.push(error.code); }
-  try { vm.runInContext("CalendarReadService.readContext({period:'30_days',scope:'family',actor:{userId:'father'},calendar:__calendar})", context); } catch (error) { codes.push(error.code); }
+  try { vm.runInContext("CalendarReadService.readContext({period:'today',scope:'mine',actor:{memberUserId:'unknown'},calendar:__calendar})", context); } catch (error) { codes.push(error.code); }
+  try { vm.runInContext("CalendarReadService.readContext({period:'30_days',scope:'family',actor:{memberUserId:'father'},calendar:__calendar})", context); } catch (error) { codes.push(error.code); }
   assert(codes.join(',') === 'INVALID_INPUT,INVALID_INPUT' && calendarCalls === 0, 'invalid input reached calendar');
 });
 
@@ -156,18 +160,45 @@ test('maximum 100 events sets truncation warning', () => {
 test('internal API authenticates before service execution', () => {
   let calls = 0;
   const service = { readContext: () => { calls += 1; return { data: { events: [] }, warnings: [] }; } };
-  const missing = parse(context.calendarContextInternal_({ action: 'calendarContextInternal', period: 'today', scope: 'mine', actor }, 'POST', { calendarReadService: service }));
-  const wrong = parse(context.calendarContextInternal_({ action: 'calendarContextInternal', internalToken: 'wrong', period: 'today', scope: 'mine', actor }, 'POST', { calendarReadService: service }));
+  const missing = parse(context.calendarContextInternal_({ action: 'calendarContextInternal', period: 'today', scope: 'mine', actor: internalActor }, 'POST', { calendarReadService: service }));
+  const wrong = parse(context.calendarContextInternal_({ action: 'calendarContextInternal', internalToken: 'wrong', period: 'today', scope: 'mine', actor: internalActor }, 'POST', { calendarReadService: service }));
   assert(missing.error.code === 'UNAUTHORIZED' && wrong.error.code === 'UNAUTHORIZED' && calls === 0, 'auth did not short-circuit');
 });
 
 test('internal API success and GET rejection keep schema', () => {
   const service = { readContext: () => ({ data: { status: 'current', events: [] }, warnings: [] }) };
-  const body = { action: 'calendarContextInternal', internalToken: 'calendar-test-token', period: 'today', scope: 'mine', actor };
+  const body = { action: 'calendarContextInternal', internalToken: 'calendar-test-token', period: 'today', scope: 'mine', actor: internalActor };
   const ok = parse(context.calendarContextInternal_(body, 'POST', { calendarReadService: service }));
   const get = parse(context.calendarContextInternal_(body, 'GET', { calendarReadService: service }));
   assert(ok.success && ok.schemaVersion === 'calendar-context-internal-1.0', 'internal success contract wrong');
   assert(!get.success && get.error.code === 'METHOD_NOT_ALLOWED', 'GET was accepted');
+});
+
+test('weather internal API authenticates first and returns only observed weather data', () => {
+  let calls = 0;
+  context.getWeatherSummarySkill_ = (options) => {
+    calls += 1;
+    assert(options.parameters.date === '2026-08-02' && options.useMocks === false && options.allowActiveSpreadsheetFallback === false, 'weather source options changed');
+    return {
+      success: true,
+      data: {
+        date: '2026-08-02', weather: '晴れ', weatherText: '晴れ',
+        currentTemperature: 30, maxTemperature: 33, minTemperature: 25,
+        precipitationProbability: 0, umbrellaRecommended: false,
+        forecastDate: '2026-08-02', updatedAt: '2026-08-02T09:00:00+09:00'
+      },
+      warnings: []
+    };
+  };
+  const unauthorized = parse(context.weatherContextInternal_({ action: 'weatherContextInternal', internalToken: 'wrong', date: '2026-08-02' }, 'POST'));
+  assert(!unauthorized.success && unauthorized.error.code === 'UNAUTHORIZED' && calls === 0, 'weather auth did not short-circuit');
+  const result = parse(context.weatherContextInternal_({ action: 'weatherContextInternal', internalToken: 'calendar-test-token', date: '2026-08-02' }, 'POST'));
+  assert(result.success && result.schemaVersion === 'weather-context-internal-1.0', 'weather internal schema changed');
+  assert(result.data.currentTemperature === 30 && result.data.weather === '晴れ' && calls === 1, 'weather observation was not returned');
+
+  context.getWeatherSummarySkill_ = () => ({ success: true, data: { date: '2026-08-02' }, warnings: [] });
+  const unavailable = parse(context.weatherContextInternal_({ action: 'weatherContextInternal', internalToken: 'calendar-test-token', date: '2026-08-02' }, 'POST'));
+  assert(!unavailable.success && unavailable.error.code === 'WEATHER_UNAVAILABLE', 'empty weather data was treated as a forecast');
 });
 
 test('notification and Home Agent wrappers preserve legacy shapes', () => {

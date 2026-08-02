@@ -240,6 +240,32 @@ test('A climate question routes only to agentChat and renders reply', async () =
   assert(!harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'non-followup Agent reply was auto-closed');
 });
 
+test('A1 living climate query forwards only advisory room metadata to Agent', async () => {
+  const harness = createHarness();
+  await harness.submit('リビングのおんどは？');
+  const payload = harness.requests.find((entry) => entry.payload && entry.payload.action === 'agentChat').payload;
+  assert(payload.requestMetadata.roomHint === 'living', 'living room hint was not forwarded');
+  assert(payload.requestMetadata.purpose === 'home-state', 'climate purpose changed unexpectedly');
+  assert(!Object.prototype.hasOwnProperty.call(payload, 'userId') && !Object.prototype.hasOwnProperty.call(payload, 'role'), 'client identity leaked into Agent request');
+});
+
+test('A2 weather query routes to Agent with weather purpose', async () => {
+  const harness = createHarness();
+  await harness.submit('外気温何度？');
+  const payload = harness.requests.find((entry) => entry.payload && entry.payload.action === 'agentChat').payload;
+  assert(payload.requestMetadata.purpose === 'weather', 'weather purpose was not forwarded');
+  assert(payload.requestMetadata.roomHint === null, 'weather query acquired a room hint');
+});
+
+test('A3 implicit dated appointment asks to switch to registration before any API call', async () => {
+  const harness = createHarness();
+  await harness.submit('明日17時に歯医者');
+  const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
+  assert(actions.length === 0, 'dated appointment was sent before route confirmation');
+  assert(!harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'registration route confirmation was not shown');
+  assert(harness.elements.get('#homeIntentConfirmSwitch').textContent.includes('登録する'), 'wrong route was suggested');
+});
+
 test('B save button always sends a normal memo to createWithAI', async () => {
   const harness = createHarness();
   await harness.save('牛乳買う');
@@ -248,18 +274,18 @@ test('B save button always sends a normal memo to createWithAI', async () => {
   assert(!actions.includes('agentChat'), 'normal memo reached agentChat');
 });
 
-test('B1 explicit save request routes to agentChat', async () => {
+test('B1 explicit save request asks to switch to registration before any API call', async () => {
   const harness = createHarness();
   await harness.submit('牛乳買うの覚えといて');
   const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
-  assert(JSON.stringify(actions) === JSON.stringify(['agentChat']), 'explicit save request route changed');
+  assert(actions.length === 0 && !harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'explicit save request was sent to Agent');
 });
 
-test('B1b explicit record wording routes to agentChat', async () => {
+test('B1b explicit record wording asks to switch to registration before any API call', async () => {
   const harness = createHarness();
   await harness.submit('これ記録しといて');
   const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
-  assert(JSON.stringify(actions) === JSON.stringify(['agentChat']), 'record request did not reach Agent');
+  assert(actions.length === 0 && !harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'record request was sent to Agent');
 });
 
 test('B2 non-climate question stays on legacy homeAgent', async () => {
@@ -270,18 +296,18 @@ test('B2 non-climate question stays on legacy homeAgent', async () => {
   assert(!actions.includes('agentChat') && !actions.includes('createWithAI'), 'legacy question was misrouted');
 });
 
-test('B3 lunch priority stays on legacy homeAgent even with save wording', async () => {
+test('B3 explicit save wording asks for registration even when it mentions lunch', async () => {
   const harness = createHarness();
   await harness.submit('今日の給食を覚えといて');
   const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
-  assert(actions.includes('homeAgent') && !actions.includes('agentChat'), 'lunch priority was stolen by memo Agent');
+  assert(actions.length === 0 && !harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'explicit save wording bypassed registration confirmation');
 });
 
-test('B3b operation request stays on legacy homeAgent', async () => {
+test('B3b aircon operation request routes to Agent', async () => {
   const harness = createHarness();
   await harness.submit('冷房を弱めて');
   const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
-  assert(actions.includes('homeAgent') && !actions.includes('agentChat'), 'operation route changed');
+  assert(JSON.stringify(actions) === JSON.stringify(['agentChat']), 'operation did not use Agent');
 });
 
 test('P1.5 aircon state reads route only to the new Agent', async () => {
@@ -374,20 +400,23 @@ test('consult button asks before redirecting calendar-write input and never reac
   }
 });
 
-test('EVA-03F explicit memo and Home Agent priorities beat Calendar read', async () => {
+test('EVA-03F explicit registration is separated from legacy school and new control routes', async () => {
+  for (const message of ['明日の予定を覚えといて', '今日の給食を覚えといて']) {
+    const harness = createHarness();
+    await harness.submit(message);
+    const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
+    assert(actions.length === 0 && !harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), message + ' bypassed registration confirmation');
+  }
   const cases = [
-    { message: '明日の予定を覚えといて', action: 'agentChat' },
-    { message: '今日の給食を覚えといて', action: 'homeAgent' },
     { message: '明日の学校予定は？', action: 'homeAgent' },
-    { message: '書斎の自動制御を止めて', action: 'homeAgent' },
-    { message: '冷房を弱めて', action: 'homeAgent' },
+    { message: '書斎の自動制御を止めて', action: 'agentChat' },
+    { message: '冷房を弱めて', action: 'agentChat' },
   ];
   for (const item of cases) {
     const harness = createHarness();
     await harness.submit(item.message);
     const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
-    const expected = /自動制御|閾ｪ蜍募宛蠕｡/.test(item.message) ? 'agentChat' : item.action;
-    assert(JSON.stringify(actions) === JSON.stringify([expected]), item.message + ' priority changed');
+    assert(JSON.stringify(actions) === JSON.stringify([item.action]), item.message + ' priority changed');
   }
 });
 
@@ -436,7 +465,7 @@ test('B4 Agent followup renders existing UI and answer updates same item', async
     clientRequestId: payload.clientRequestId,
     followup: { required: true, itemId, question: '締切はいつ？', inputType: 'date' }
   }));
-  await harness.submit('病院の予定をメモして');
+  await harness.run('submitAgentChatQuery("温度を確認して", { purpose: "home-state" })');
   const panel = harness.elements.get('#homeFollowup');
   assert(!panel.classList.contains('is-hidden') && panel.dataset.itemId === itemId, 'existing followup UI not shown');
   assert(harness.elements.get('#homeFollowupQuestion').textContent === '締切はいつ？', 'question not rendered');
@@ -465,7 +494,7 @@ test('B6 answerFollowup failure keeps the existing answer and row target', async
   const harness = createHarness();
   const itemId = '77777777-7777-4777-8777-777777777777';
   harness.setResponder((payload) => ({ success: true, reply: 'いつにする？', sessionId: payload.sessionId, clientRequestId: payload.clientRequestId, followup: { required: true, itemId, question: 'いつにする？', inputType: 'text' } }));
-  await harness.submit('予定を覚えといて');
+  await harness.run('submitAgentChatQuery("温度を確認して", { purpose: "home-state" })');
   const answerInput = { value: '来週' };
   harness.elements.get('#homeFollowupFields').querySelector = (selector) => selector === '[data-followup-answer-text]' ? answerInput : null;
   harness.setActionResponder((payload) => payload.action === 'answerFollowup' ? { success: false, error: { code: 'FAILED' } } : { success: true, item: {} });

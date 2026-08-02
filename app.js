@@ -39,7 +39,7 @@ const HOME_AGENT_MEMO_PRIORITY_PATTERNS = [
   /授業参観|面談|会議|歯医者|病院/,
 ];
 const AGENT_CHAT_HOME_STATE_PATTERNS = [
-  /暑い|寒い|蒸し|蒸す|温度|湿度|室温/,
+  /暑い|寒い|蒸し|蒸す|温度|おんど|湿度|室温/,
   /家の温度どう|家の中暑くない|部屋大丈夫|家の中どんな感じ/,
   /冷房効いてる|冷房効いとる|設定温度まで下がりそう|ちゃんと冷え|ぬるい/,
 ];
@@ -50,7 +50,7 @@ const AGENT_CHAT_AIRCON_READ_PATTERNS = [
   /(?:一時停止中|停止中).*(?:自動制御)/,
 ];
 const HOME_AGENT_AIRCON_COMMAND_PATTERNS = [
-  /(?:エアコン|冷房|暖房).*(?:つけて|入れて|消して|止めて|切って|設定して|上げて|下げて|強くして|弱くして)/,
+  /(?:エアコン|冷房|暖房).*(?:つけて|入れて|消して|止めて|切って|設定して|上げて|下げて|強くして|弱くして|強めて|弱めて)/,
   /(?:つけて|入れて|消して|止めて|切って).*(?:エアコン|冷房|暖房)/,
   /(?:1度|一度).*(?:下げて|上げて)/,
   /(?:除湿|冷房|暖房).*(?:にして|切り替えて)/,
@@ -69,6 +69,8 @@ const LEGACY_HOME_AGENT_PRIORITY_PATTERNS = [
 ];
 const EXPLICIT_AGENT_MEMO_REQUEST_PATTERN = /(?:覚え(?:て|といて|ておいて)|メモ(?:して|しといて|っといて)|記録(?:して|しといて|っといて)|控え(?:て|といて)|保存(?:して|しといて)|残し(?:て|といて))\s*[。．.!！…]*$/;
 const CALENDAR_WRITE_PATTERN = /(?:予定|スケジュール|カレンダー|予約|会議|面談|歯医者|病院).*(?:登録|追加|入れて|入れといて|作成|変更|移動|削除|キャンセル)|(?:登録|追加|作成|変更|移動|削除|キャンセル).*(?:予定|スケジュール|カレンダー)/;
+const CALENDAR_IMPLICIT_WRITE_PATTERN = /(?:今日|明日|あした|明後日|あさって|\d{1,2}月\d{1,2}日)\s*\d{1,2}(?:時|:|：)\d{0,2}.*(?:歯医者|病院|会議|面談|予約|授業参観|予定)/;
+const WEATHER_QUERY_PATTERN = /(?:外気温|外の(?:気温|天気)|天気|最高気温|最低気温|雨(?:降る|降り)|傘(?:いる|必要)|何度)/;
 const CALENDAR_READ_TOPIC_PATTERN = /予定|スケジュール|カレンダー|何かある|忙しい|何時から/;
 const CALENDAR_READ_CONTEXT_PATTERN = /今日|明日|今週|今後|これから|一週間|1週間|７日間?|7日間?|家族|みんな|全員|自分|私|父/;
 const CALENDAR_NEXT_SEVEN_DAYS_PATTERN = /(?:これから|今後)?\s*(?:一週間|1週間|７日間?|7日間?)(?:の予定|のスケジュール)?/;
@@ -849,14 +851,15 @@ async function submitHomeInput(route, options = {}) {
 function classifyHomeInputIntent(memo) {
   const value = String(memo || "").trim();
   if (!value) return HOME_INPUT_INTENTS.AMBIGUOUS;
-  if (isExplicitAgentMemoRequest(value)) return HOME_INPUT_INTENTS.CONSULT_LIKELY;
   if (isCalendarWriteRequest(value) || isRegisterLikelyHomeInput(value)) return HOME_INPUT_INTENTS.REGISTER_LIKELY;
   if (isConsultLikelyHomeInput(value)) return HOME_INPUT_INTENTS.CONSULT_LIKELY;
   return HOME_INPUT_INTENTS.AMBIGUOUS;
 }
 
 function isRegisterLikelyHomeInput(value) {
-  return /(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー).*(?:登録|追加|入れて|入れといて|作成|保存|残して)|(?:登録|追加|入れて|入れといて|作成|保存|残して).*(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー)|(?:買う|購入|提出|持っていく|やること)/.test(value);
+  return isExplicitAgentMemoRequest(value)
+    || CALENDAR_IMPLICIT_WRITE_PATTERN.test(value)
+    || /(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー).*(?:登録|追加|入れて|入れといて|作成|保存|残して)|(?:登録|追加|入れて|入れといて|作成|保存|残して).*(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー)|(?:買う|購入|提出|持っていく|やること)/.test(value);
 }
 
 function isConsultLikelyHomeInput(value) {
@@ -926,12 +929,7 @@ async function routePaluruRequest(memo) {
   const calendarWriteRequest = isCalendarWriteRequest(memo);
 
   if (calendarWriteRequest) {
-    await submitHomeAgentQuery(memo);
-    return;
-  }
-
-  if (isExplicitAgentMemoRequest(memo)) {
-    await submitAgentChatQuery(memo, { purpose: "memo" });
+    await submitAgentChatQuery(memo, { purpose: "calendar-write-guidance" });
     return;
   }
 
@@ -942,6 +940,11 @@ async function routePaluruRequest(memo) {
 
   if (isAirconReadQuery(memo)) {
     await submitAgentChatQuery(memo, { purpose: "aircon-status" });
+    return;
+  }
+
+  if (isWeatherQuery(memo)) {
+    await submitAgentChatQuery(memo, { purpose: "weather" });
     return;
   }
 
@@ -1390,7 +1393,10 @@ async function callAgentChat(payload) {
       response: result,
     });
     throw createAgentChatClientError([
-      "AGENT_UNAVAILABLE", "AGENT_ERROR", "CONFIGURATION_ERROR", "INVALID_INPUT"
+      "ACTOR_CONTRACT_INVALID", "TOOL_DISABLED", "CLIMATE_UNAVAILABLE", "WEATHER_UNAVAILABLE",
+      "CALENDAR_UNAVAILABLE", "ROOM_NOT_FOUND", "FOLLOWUP_REQUIRED", "ACTION_NOT_ALLOWED",
+      "CONFIRMATION_EXPIRED", "CONFIRMATION_ACTOR_MISMATCH", "AGENT_UNAVAILABLE", "AGENT_ERROR",
+      "CONFIGURATION_ERROR", "INVALID_INPUT"
     ].includes(code) ? code : "AGENT_ERROR", "API_SUCCESS_FALSE");
   }
   try {
@@ -1999,10 +2005,47 @@ function buildAgentChatPayload(messageText, options = {}) {
     message: String(messageText || "").trim(),
     sessionId,
     clientRequestId,
-    userId: profile.userId,
-    userDisplayName: profile.displayName,
     deviceId: profile.deviceId,
     pairingToken: getHomeAgentPairingToken(),
+    requestMetadata: buildAgentRequestMetadata(messageText, {
+      purpose: options.purpose,
+      sessionId,
+      clientRequestId,
+      memoAttributes: options.memoAttributes,
+    }),
+  };
+}
+
+function buildAgentRequestMetadata(messageText, options = {}) {
+  const text = String(messageText || "").trim();
+  const roomHint = resolveAgentRoomHint(text);
+  const familyScope = /家族|みんな|全員/.test(text);
+  return {
+    sessionId: String(options.sessionId || ""),
+    clientRequestId: String(options.clientRequestId || ""),
+    purpose: String(options.purpose || "home-state").slice(0, 80),
+    intent: classifyHomeInputIntent(text),
+    roomHint,
+    calendarScopeHint: familyScope ? "family" : "mine",
+    memoAttributes: normalizeAgentMemoAttributes(options.memoAttributes),
+  };
+}
+
+function resolveAgentRoomHint(text) {
+  const value = String(text || "");
+  if (/リビング|居間/.test(value)) return "living";
+  if (/寝室/.test(value)) return "bedroom";
+  if (/子ども部屋|子供部屋|キッズ/.test(value)) return "kids_room";
+  if (/書斎|仕事部屋/.test(value)) return "study";
+  return null;
+}
+
+function normalizeAgentMemoAttributes(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    visibility: String(source.visibility || "").slice(0, 40),
+    category: String(source.category || "").slice(0, 80),
+    priority: String(source.priority || "").slice(0, 40),
   };
 }
 
@@ -2010,17 +2053,16 @@ async function submitAgentChatQuery(messageText, options = {}) {
   const request = options.request || {
     type: "agentChat",
     purpose: options.purpose || "home-state",
-    ...buildAgentChatPayload(messageText),
+    ...buildAgentChatPayload(messageText, options),
   };
   const payload = {
     action: request.action,
     message: request.message,
     sessionId: request.sessionId,
     clientRequestId: request.clientRequestId,
-    userId: request.userId,
-    userDisplayName: request.userDisplayName,
     deviceId: request.deviceId,
     pairingToken: request.pairingToken,
+    requestMetadata: request.requestMetadata,
   };
   pendingHomeAgentRetry = request;
   const loadingMessage = request.purpose === "calendar"
@@ -2091,15 +2133,33 @@ async function submitAgentChatQuery(messageText, options = {}) {
       stack: error?.stack || "",
       uiMessageBranch: retryable ? "TRANSIENT_AGENT_ERROR" : "今はこの確認を完了できんかった",
     });
-    const errorMessage = retryable
-      ? "一時的に確認先へつながらんかった。少し待ってからもう一回試して。"
-      : "今はこの確認を完了できんかった。繰り返しても直らん場合は設定を確認してな。";
+    const errorMessage = getAgentChatUserMessage(error?.code, retryable);
     renderHomeAgentError({ retryable, message: errorMessage });
     setParuruState("error");
     revealPanelIfNeeded(homeAgentCard);
   } finally {
     setSending(false);
   }
+}
+
+function getAgentChatUserMessage(code, retryable = false) {
+  if (retryable || code === "AGENT_UNAVAILABLE") {
+    return "一時的に確認先へつながらんかった。少し待ってからもう一回試して。";
+  }
+  const messages = {
+    ACTOR_CONTRACT_INVALID: "この端末の利用情報を確認できんかった。端末の登録状態を確認してな。",
+    TOOL_DISABLED: "この相談機能は今は使えんようにしとる。",
+    CLIMATE_UNAVAILABLE: "室温・湿度を今は取得できんかった。",
+    WEATHER_UNAVAILABLE: "外の天気を今は取得できんかった。",
+    CALENDAR_UNAVAILABLE: "予定を今は取得できんかった。",
+    ROOM_NOT_FOUND: "指定された部屋を見つけられんかった。",
+    FOLLOWUP_REQUIRED: "確認に必要な情報が足りんかった。部屋や日時を教えてな。",
+    ACTION_NOT_ALLOWED: "この端末ではその操作はできん。",
+    CONFIRMATION_EXPIRED: "確認の期限が切れとる。もう一度相談してな。",
+    CONFIRMATION_ACTOR_MISMATCH: "確認を作った端末と違うため実行できん。",
+    INVALID_INPUT: "入力内容を確認してな。",
+  };
+  return messages[code] || "今はこの確認を完了できんかった。繰り返しても直らん場合は設定を確認してな。";
 }
 
 function validateAgentChatResponse(response, request) {
@@ -3288,6 +3348,10 @@ function isCalendarReadQuery(text) {
     return subject.length >= 2;
   }
   return false;
+}
+
+function isWeatherQuery(text) {
+  return WEATHER_QUERY_PATTERN.test(String(text || "").trim());
 }
 
 function isLegacyHomeAgentPriorityQuery(text) {
