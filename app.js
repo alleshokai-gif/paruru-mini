@@ -55,6 +55,7 @@ const HOME_AGENT_AIRCON_COMMAND_PATTERNS = [
   /(?:1度|一度).*(?:下げて|上げて)/,
   /(?:除湿|冷房|暖房).*(?:にして|切り替えて)/,
   /風量.*(?:強く|弱く|上げて|下げて|して)/,
+  /(?:リビング|居間|寝室|子ども部屋|子供部屋|書斎).*(?:温度|おんど).*(?:下げて|上げて)/,
   /自動制御.*(?:止めて|停止して|一時停止して|再開して|戻して|解除して)/,
   /通常運転.*(?:戻して|再開して)/,
 ];
@@ -65,7 +66,6 @@ const AGENT_AUTOMATION_CONTROL_PATTERNS = [
 const LEGACY_HOME_AGENT_PRIORITY_PATTERNS = [
   /給食|傘|持ち物|出発/,
   /学校|授業|部活|登校|下校/,
-  /強めて|弱めて|除湿して|暖かくして|涼しくして|冷やして|温めて/,
 ];
 const EXPLICIT_AGENT_MEMO_REQUEST_PATTERN = /(?:覚え(?:て|といて|ておいて)|メモ(?:して|しといて|っといて)|記録(?:して|しといて|っといて)|控え(?:て|といて)|保存(?:して|しといて)|残し(?:て|といて))\s*[。．.!！…]*$/;
 const CALENDAR_WRITE_PATTERN = /(?:予定|スケジュール|カレンダー|予約|会議|面談|歯医者|病院).*(?:登録|追加|入れて|入れといて|作成|変更|移動|削除|キャンセル)|(?:登録|追加|作成|変更|移動|削除|キャンセル).*(?:予定|スケジュール|カレンダー)/;
@@ -933,6 +933,11 @@ async function routePaluruRequest(memo) {
     return;
   }
 
+  if (isTodayParuruQuery(memo)) {
+    await submitAgentChatQuery(memo, { purpose: "today-paruru" });
+    return;
+  }
+
   if (isCalendarReadQuery(memo)) {
     await submitAgentChatQuery(memo, { purpose: "calendar" });
     return;
@@ -1309,10 +1314,7 @@ async function callAgentChat(payload) {
       body: JSON.stringify(payload),
     });
   } catch (error) {
-    logAgentChatDiagnostic_("error", "FETCH_FAILED", diagnostic, {
-      message: error?.message || String(error),
-      stack: error?.stack || "",
-    });
+    logAgentChatDiagnostic_("error", "FETCH_FAILED", diagnostic);
     throw createAgentChatClientError("AGENT_UNAVAILABLE", "FETCH_FAILED");
   }
 
@@ -1329,16 +1331,12 @@ async function callAgentChat(payload) {
   try {
     rawResponse = await response.clone().text();
   } catch (error) {
-    logAgentChatDiagnostic_("error", "BODY_READ_FAILED", diagnostic, {
-      ...responseDetails,
-      message: error?.message || String(error),
-      stack: error?.stack || "",
-    });
+    logAgentChatDiagnostic_("error", "BODY_READ_FAILED", diagnostic, responseDetails);
     throw createAgentChatClientError("AGENT_UNAVAILABLE", "BODY_READ_FAILED");
   }
 
   const bodyDetails = getAgentChatResponseBodyDetails_(rawResponse, responseDetails.contentType);
-  logAgentChatDiagnostic_("info", "RAW_RESPONSE", diagnostic, {
+  logAgentChatDiagnostic_("info", "RESPONSE_BODY", diagnostic, {
     ...responseDetails,
     ...bodyDetails,
   });
@@ -1355,9 +1353,7 @@ async function callAgentChat(payload) {
   } catch (error) {
     logAgentChatDiagnostic_("error", "JSON_PARSE_FAILED", diagnostic, {
       ...responseDetails,
-      rawResponse: bodyDetails.preview,
-      message: error?.message || String(error),
-      stack: error?.stack || "",
+      ...bodyDetails,
     });
     throw createAgentChatClientError("AGENT_UNAVAILABLE", "JSON_PARSE_FAILED");
   }
@@ -1365,7 +1361,6 @@ async function callAgentChat(payload) {
   if (!result || typeof result !== "object") {
     logAgentChatDiagnostic_("error", "INVALID_RESPONSE_SHAPE", diagnostic, {
       ...responseDetails,
-      response: result,
     });
     throw createAgentChatClientError("AGENT_ERROR", "INVALID_RESPONSE_SHAPE");
   }
@@ -1374,29 +1369,21 @@ async function callAgentChat(payload) {
     ...responseDetails,
     success: result.success,
     code: result.code || result.error?.code || "",
-    message: result.message || result.error?.message || "",
-    expectedFields: {
-      reply: typeof result.reply === "string" && result.reply.trim() !== "",
-      followup: Boolean(result.followup),
-      actionConfirmation: Boolean(result.actionConfirmation),
-      sessionId: Boolean(result.sessionId),
-      clientRequestId: Boolean(result.clientRequestId),
-    },
-    response: result,
+    diagnostics: result.diagnostics,
   });
   if (!result || result.success !== true) {
     const code = String(result && result.error && result.error.code || "AGENT_ERROR");
     logAgentChatDiagnostic_("error", "API_SUCCESS_FALSE", diagnostic, {
       ...responseDetails,
       code,
-      message: result?.message || result?.error?.message || "",
-      response: result,
+      diagnostics: result.diagnostics,
     });
     throw createAgentChatClientError([
       "ACTOR_CONTRACT_INVALID", "TOOL_DISABLED", "CLIMATE_UNAVAILABLE", "WEATHER_UNAVAILABLE",
       "CALENDAR_UNAVAILABLE", "ROOM_NOT_FOUND", "FOLLOWUP_REQUIRED", "ACTION_NOT_ALLOWED",
       "CONFIRMATION_EXPIRED", "CONFIRMATION_ACTOR_MISMATCH", "AGENT_UNAVAILABLE", "AGENT_ERROR",
-      "CONFIGURATION_ERROR", "INVALID_INPUT"
+      "CONFIGURATION_ERROR", "INVALID_INPUT", "TODAY_PARURU_UNAVAILABLE", "AUTOMATION_UPSTREAM_ERROR",
+      "UPSTREAM_ERROR"
     ].includes(code) ? code : "AGENT_ERROR", "API_SUCCESS_FALSE");
   }
   try {
@@ -1405,9 +1392,6 @@ async function callAgentChat(payload) {
     const reason = error?.agentChatReason || "INVALID_RESPONSE_SHAPE";
     logAgentChatDiagnostic_("error", reason, diagnostic, {
       ...responseDetails,
-      message: error?.message || String(error),
-      stack: error?.stack || "",
-      response: result,
     });
     throw createAgentChatClientError("AGENT_ERROR", reason);
   }
@@ -1416,28 +1400,15 @@ async function callAgentChat(payload) {
 function createAgentChatDiagnosticContext_(payload) {
   return {
     action: String(payload?.action || "agentChat"),
-    clientRequestId: String(payload?.clientRequestId || ""),
-    requestStartedAt: new Date().toISOString(),
+    clientRequestIdSuffix: String(payload?.clientRequestId || "").slice(-8),
+    startedAtMs: Date.now(),
   };
 }
 
 function getAgentChatResponseDetails_(response) {
-  const headers = {};
-  try {
-    response?.headers?.forEach?.((value, key) => {
-      headers[String(key)] = String(value);
-    });
-  } catch (error) {
-    headers.readError = error?.message || String(error);
-  }
   return {
-    responseUrl: String(response?.url || ""),
-    status: Number(response?.status || 0),
-    ok: response?.ok === true,
-    redirected: response?.redirected === true,
-    type: String(response?.type || ""),
-    headers,
-    contentType: String(response?.headers?.get?.("content-type") || headers["content-type"] || ""),
+    httpStatus: Number(response?.status || 0),
+    contentType: String(response?.headers?.get?.("content-type") || ""),
   };
 }
 
@@ -1448,21 +1419,42 @@ function getAgentChatResponseBodyDetails_(rawResponse, contentType) {
   const looksLikeJson = /^[{\[]/.test(trimmed);
   return {
     contentType: String(contentType || ""),
-    bodyLength: body.length,
+    responseLength: body.length,
     isEmpty: trimmed.length === 0,
-    bodyFormat: looksLikeHtml ? "html" : looksLikeJson ? "json" : "text",
-    preview: body.slice(0, 500),
+    reason: looksLikeHtml ? "HTML_RESPONSE" : looksLikeJson ? "JSON_RESPONSE" : "TEXT_RESPONSE",
   };
 }
 
 function logAgentChatDiagnostic_(level, reason, diagnostic, details = {}) {
+  const responseLength = Number(details.responseLength);
+  const performance = sanitizeAgentPerformanceDiagnostic_(details.diagnostics);
   const output = {
-    ...diagnostic,
-    reason,
-    ...details,
+    event: String(diagnostic?.action || "agentChat"),
+    action: String(diagnostic?.action || "agentChat"),
+    clientRequestIdSuffix: String(diagnostic?.clientRequestIdSuffix || ""),
+    reason: String(reason || details.reason || "UNKNOWN").replace(/[^A-Z0-9_.-]/gi, "").slice(0, 80),
+    httpStatus: Number.isFinite(Number(details.httpStatus)) ? Number(details.httpStatus) : null,
+    errorCode: String(details.code || "").replace(/[^A-Z0-9_]/g, "").slice(0, 80) || null,
+    responseLength: Number.isFinite(responseLength) && responseLength >= 0 ? responseLength : null,
+    elapsedMs: Math.max(0, Date.now() - Number(diagnostic?.startedAtMs || Date.now())),
+    buildId: typeof BUILD_ID === "string" ? BUILD_ID : "",
   };
+  if (performance) output.performance = performance;
   const logger = level === "error" ? console.error : console.info;
   logger("[PALURU agentChat]", output);
+}
+
+function sanitizeAgentPerformanceDiagnostic_(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  if (!source) return null;
+  const keys = ["routerMs", "serviceMs", "totalMs", "openAiCallCount", "serviceCallCount"];
+  const result = {};
+  for (const key of keys) {
+    const numeric = Number(source[key]);
+    if (!Number.isFinite(numeric) || numeric < 0) return null;
+    result[key] = numeric;
+  }
+  return result;
 }
 
 function createAgentChatClientError(code, agentChatReason = "") {
@@ -2018,6 +2010,7 @@ function buildAgentChatPayload(messageText, options = {}) {
 
 function buildAgentRequestMetadata(messageText, options = {}) {
   const text = String(messageText || "").trim();
+  const profile = getCurrentProfile();
   const roomHint = resolveAgentRoomHint(text);
   const familyScope = /家族|みんな|全員/.test(text);
   return {
@@ -2027,6 +2020,12 @@ function buildAgentRequestMetadata(messageText, options = {}) {
     intent: classifyHomeInputIntent(text),
     roomHint,
     calendarScopeHint: familyScope ? "family" : "mine",
+    todayParuruSettings: {
+      selectedMemberKeys: resolveCalendarMemberKeysForServer(profile.selectedCalendarMemberKeys),
+      includeUnknown: profile.includeUnknownCalendarEvents === true,
+      tomorrowScheduleStartTime: getTomorrowScheduleStartTime(profile),
+      scope: familyScope ? "family" : "mine",
+    },
     memoAttributes: normalizeAgentMemoAttributes(options.memoAttributes),
   };
 }
@@ -2067,6 +2066,8 @@ async function submitAgentChatQuery(messageText, options = {}) {
   pendingHomeAgentRetry = request;
   const loadingMessage = request.purpose === "calendar"
     ? "ぱるるが予定を確認中…"
+    : request.purpose === "today-paruru"
+      ? "ぱるるが予定を確認中…（今日の予定とタスク）"
     : request.purpose === "aircon-status"
       ? "ぱるるがエアコンの状態を確認中…"
     : request.purpose === "automation-action"
@@ -2129,8 +2130,6 @@ async function submitAgentChatQuery(messageText, options = {}) {
       clientRequestId: String(request.clientRequestId || ""),
       requestStartedAt,
     }, {
-      message: error?.message || String(error),
-      stack: error?.stack || "",
       uiMessageBranch: retryable ? "TRANSIENT_AGENT_ERROR" : "今はこの確認を完了できんかった",
     });
     const errorMessage = getAgentChatUserMessage(error?.code, retryable);
@@ -2152,9 +2151,12 @@ function getAgentChatUserMessage(code, retryable = false) {
     CLIMATE_UNAVAILABLE: "室温・湿度を今は取得できんかった。",
     WEATHER_UNAVAILABLE: "外の天気を今は取得できんかった。",
     CALENDAR_UNAVAILABLE: "予定を今は取得できんかった。",
+    TODAY_PARURU_UNAVAILABLE: "今日の予定とタスクを今はまとめて確認できんかった。",
     ROOM_NOT_FOUND: "指定された部屋を見つけられんかった。",
     FOLLOWUP_REQUIRED: "確認に必要な情報が足りんかった。部屋や日時を教えてな。",
     ACTION_NOT_ALLOWED: "この端末ではその操作はできん。",
+    AUTOMATION_UPSTREAM_ERROR: "家電・自動制御の確認先につながらんかった。実行はしてないで。",
+    UPSTREAM_ERROR: "確認先のサービスにつながらんかった。実行や保存はしてないで。",
     CONFIRMATION_EXPIRED: "確認の期限が切れとる。もう一度相談してな。",
     CONFIRMATION_ACTOR_MISMATCH: "確認を作った端末と違うため実行できん。",
     INVALID_INPUT: "入力内容を確認してな。",
@@ -2356,8 +2358,8 @@ if (typeof document.addEventListener === "function") {
 
 async function fetchNotificationCandidates() {
   const profile = getCurrentProfile();
-  const plan = getRollingCalendarRequestPlan(Date.now(), getTomorrowScheduleStartTime(profile));
   if (!GAS_WEB_APP_URL) {
+    const plan = getRollingCalendarRequestPlan(Date.now(), getTomorrowScheduleStartTime(profile));
     return buildRollingNotificationResult(
       await dummyNotificationCandidates(profile.userId),
       null,
@@ -2366,21 +2368,18 @@ async function fetchNotificationCandidates() {
     );
   }
 
-  const todayRequest = fetchNotificationCandidatesForDate(profile, plan.today);
-  const tomorrowRequest = plan.includeTomorrow
-    ? fetchNotificationCandidatesForDate(profile, plan.tomorrow)
-    : Promise.resolve(null);
-  const [todayOutcome, tomorrowOutcome] = await Promise.allSettled([todayRequest, tomorrowRequest]);
-  if (todayOutcome.status === "rejected") throw todayOutcome.reason;
-  const tomorrowFailed = tomorrowOutcome.status === "rejected";
-  const result = buildRollingNotificationResult(
-    todayOutcome.value,
-    tomorrowFailed ? null : tomorrowOutcome.value,
-    plan,
-    Date.now()
-  );
-  if (tomorrowFailed) result.warnings.push("tomorrow_notifications_unavailable");
-  return result;
+  const response = await fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      ...buildMemoCredentialPayload("todayParuruContext"),
+      selectedMemberKeys: resolveCalendarMemberKeysForServer(profile.selectedCalendarMemberKeys).join(","),
+      includeUnknown: profile.includeUnknownCalendarEvents ? "true" : "false",
+      tomorrowScheduleStartTime: getTomorrowScheduleStartTime(profile),
+    }),
+  });
+  return parseApiResponse(response);
 }
 
 async function fetchNotificationCandidatesForDate(profile, targetDate) {
@@ -2392,7 +2391,7 @@ async function fetchNotificationCandidatesForDate(profile, targetDate) {
       ...buildMemoCredentialPayload("notificationCandidates"),
       limit: "50",
       date: targetDate,
-      selectedMemberKeys: normalizeCalendarMemberSelection(profile.selectedCalendarMemberKeys).join(","),
+      selectedMemberKeys: resolveCalendarMemberKeysForServer(profile.selectedCalendarMemberKeys).join(","),
       includeUnknown: profile.includeUnknownCalendarEvents ? "true" : "false",
     }),
   });
@@ -3350,16 +3349,22 @@ function isCalendarReadQuery(text) {
   return false;
 }
 
+function isTodayParuruQuery(text) {
+  const value = String(text || "").trim();
+  if (!value || isCalendarWriteRequest(value)) return false;
+  return /今日\s*(?:の)?\s*(?:予定|やること|何(?:が|か)?ある)/.test(value);
+}
+
 function isWeatherQuery(text) {
   return WEATHER_QUERY_PATTERN.test(String(text || "").trim());
 }
 
 function isLegacyHomeAgentPriorityQuery(text) {
   const value = String(text || "").trim();
-  return Boolean(value) && (
-    isAirconCommandRequest(value)
-    || LEGACY_HOME_AGENT_PRIORITY_PATTERNS.some((pattern) => pattern.test(value))
-  );
+  // Air-conditioner requests are always routed through Agent Chat.  The
+  // remaining legacy path is intentionally limited to the out-of-scope
+  // school/lunch helpers until they are migrated separately.
+  return Boolean(value) && LEGACY_HOME_AGENT_PRIORITY_PATTERNS.some((pattern) => pattern.test(value));
 }
 
 function normalizeHomeAgentResult(response) {
@@ -4847,6 +4852,15 @@ function normalizeCalendarMemberSelection(value) {
     .map((entry) => String(entry || "").trim())
     .filter((entry) => allowed.includes(entry));
   return selected.length > 0 ? [...new Set(selected)] : [...DEFAULT_PROFILE.selectedCalendarMemberKeys];
+}
+
+function resolveCalendarMemberKeysForServer(value) {
+  const aliases = {
+    father: "father", mother: "mother", son1: "eldest_son", eldest_son: "eldest_son",
+    daughter1: "eldest_daughter", eldest_daughter: "eldest_daughter", son2: "second_son", second_son: "second_son",
+    daughter2: "youngest_daughter", youngest_daughter: "youngest_daughter", family: "family",
+  };
+  return [...new Set(normalizeCalendarMemberSelection(value).map((entry) => aliases[entry]).filter(Boolean))];
 }
 
 function renderCalendarMemberSelection(profile) {

@@ -67,6 +67,16 @@ const CalendarReadService = (function() {
     });
   }
 
+  // Today Paruru may need both today and tomorrow after the shared evening
+  // rollover.  Read the inclusive range once, then let its single
+  // aggregator split occurrences by display date.
+  function readNormalizedDateRange(startDate, endDateExclusive, calendar) {
+    const start = parseDateOnly_(startDate);
+    const end = parseDateOnly_(endDateExclusive);
+    if (end.getTime() <= start.getTime()) throw calendarReadError_('INVALID_INPUT');
+    return readNormalizedRange_(start, end, calendar);
+  }
+
   function readNormalizedRange_(start, end, suppliedCalendar) {
     const calendar = suppliedCalendar || getCalendarByConfig_(getCalendarConfig_('family'));
     return (calendar.getEvents(start, end) || []).filter(function(event) {
@@ -209,6 +219,7 @@ const CalendarReadService = (function() {
   return {
     readContext: readContext,
     readNormalizedDay: readNormalizedDay,
+    readNormalizedDateRange: readNormalizedDateRange,
     normalizeEvent: normalizeEvent_
   };
 })();

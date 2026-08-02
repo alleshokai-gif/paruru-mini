@@ -232,32 +232,27 @@ test('boundary scheduler uses one-shot timeout for the nearest boundary', () => 
   assert(next > exactNow, 'reached boundary was scheduled again');
 });
 
-test('two-day requests start in parallel', async () => {
+test('Home uses one shared Today Paruru aggregate request after the switch time', async () => {
   useAlwaysTomorrowProfile();
   const starters = [];
   const resolvers = [];
   fetchImpl = (url, options) => new Promise((resolve) => {
-    starters.push(memoRequestDate(url, options));
+    starters.push(JSON.parse(options.body));
     resolvers.push(() => resolve(response(result([]))));
   });
   const pending = call('fetchNotificationCandidates');
   await Promise.resolve();
-  assert(starters.length === 2, 'today and tomorrow did not start in parallel');
+  assert(starters.length === 1, 'Home made more than one aggregate request');
+  assert(starters[0].action === 'todayParuruContext', 'Home did not use the shared aggregate action');
   resolvers.forEach((resolve) => resolve());
   await pending;
 });
 
-test('tomorrow failure keeps today result and adds a safe warning', async () => {
-  useAlwaysTomorrowProfile();
-  const plan = call('getRollingCalendarRequestPlan', Date.now(), '00:00');
-  fetchImpl = async (url, options) => {
-    const date = memoRequestDate(url, options);
-    if (date === plan.tomorrow) throw new Error('mock tomorrow failure');
-    return response(result([{ id: 'today-task', sourceType: 'paluru', title: 'today' }]));
-  };
+test('shared aggregate response is returned unchanged by Home', async () => {
+  fetchImpl = async () => response({ success: true, items: [{ id: 'today-task', sourceType: 'paluru', title: 'today' }], count: 1, includeTomorrow: true, warnings: ['calendar_events_unavailable'] });
   const output = await call('fetchNotificationCandidates');
-  assert(output.items.some((item) => item.id === 'today-task'), 'today result was discarded');
-  assert(output.warnings.includes('tomorrow_notifications_unavailable'), 'partial warning absent');
+  assert(output.items.length === 1 && output.items[0].id === 'today-task', 'aggregate item was changed');
+  assert(output.warnings.includes('calendar_events_unavailable'), 'aggregate warning was lost');
 });
 
 test('today failure preserves previous display and retry UI', async () => {
@@ -278,7 +273,7 @@ test('today failure preserves previous display and retry UI', async () => {
   assert(element('#todayParuruList').innerHTML.includes('data-notification-refresh'), 'retry UI missing');
 });
 
-test('visibility resume forces a refetch and request dates never exceed today plus tomorrow', async () => {
+test('visibility resume forces one aggregate refetch', async () => {
   vm.runInContext('normalPwaInitialized = true', context);
   requests.length = 0;
   fetchImpl = async (url, options) => {
@@ -291,10 +286,10 @@ test('visibility resume forces a refetch and request dates never exceed today pl
   await new Promise((resolve) => setImmediate(resolve));
   assert(requests.length >= 1, 'resume did not refetch');
   requests.forEach((request) => {
-    const date = JSON.parse(request).body ? JSON.parse(JSON.parse(request).body).date : '';
-    assert(/^\d{4}-\d{2}-\d{2}$/.test(date), 'request date missing');
+    const body = JSON.parse(JSON.parse(request).body || '{}');
+    assert(body.action === 'todayParuruContext', 'resume bypassed aggregate service');
   });
-  assert(requests.length <= 2, 'more than today plus tomorrow was requested');
+  assert(requests.length === 1, 'resume made duplicate aggregate requests');
 });
 
 test('static regressions retain Inbox, Follow-up, Agent routing, Calendar sync and PWA lifecycle', () => {

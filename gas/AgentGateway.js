@@ -88,11 +88,11 @@ function validateAgentChatInput_(body, actor) {
       homeId: String(actor && actor.homeId || '').trim().slice(0, 200),
       deviceId: String(actor && actor.deviceId || '').trim().slice(0, 200),
     },
-    requestMetadata: sanitizeAgentRequestMetadata_(body.requestMetadata, sessionId, clientRequestId),
+    requestMetadata: sanitizeAgentRequestMetadata_(body.requestMetadata, sessionId, clientRequestId, actor),
   };
 }
 
-function sanitizeAgentRequestMetadata_(value, sessionId, clientRequestId) {
+function sanitizeAgentRequestMetadata_(value, sessionId, clientRequestId, actor) {
   const source = value && !Array.isArray(value) && typeof value === 'object' ? value : {};
   const memoSource = source.memoAttributes && !Array.isArray(source.memoAttributes) && typeof source.memoAttributes === 'object'
     ? source.memoAttributes : {};
@@ -100,6 +100,7 @@ function sanitizeAgentRequestMetadata_(value, sessionId, clientRequestId) {
   const calendarScopeHint = String(source.calendarScopeHint || '').trim();
   const allowedRooms = { living: true, bedroom: true, kids_room: true, study: true };
   const allowedScopes = { mine: true, family: true };
+  const todaySettings = sanitizeTodayParuruSettings_(source.todayParuruSettings, actor, calendarScopeHint);
   return {
     sessionId: sessionId,
     clientRequestId: clientRequestId,
@@ -107,11 +108,42 @@ function sanitizeAgentRequestMetadata_(value, sessionId, clientRequestId) {
     intent: String(source.intent || '').trim().slice(0, 80),
     roomHint: allowedRooms[roomHint] ? roomHint : null,
     calendarScopeHint: allowedScopes[calendarScopeHint] ? calendarScopeHint : null,
+    todayParuruSettings: todaySettings,
     memoAttributes: {
       visibility: String(memoSource.visibility || '').trim().slice(0, 40),
       category: String(memoSource.category || '').trim().slice(0, 80),
       priority: String(memoSource.priority || '').trim().slice(0, 40),
     },
+  };
+}
+
+function sanitizeTodayParuruSettings_(value, actor, calendarScopeHint) {
+  const source = value && !Array.isArray(value) && typeof value === 'object' ? value : {};
+  const aliases = {
+    father: 'father', mother: 'mother', son1: 'eldest_son', eldest_son: 'eldest_son',
+    daughter1: 'eldest_daughter', eldest_daughter: 'eldest_daughter', son2: 'second_son', second_son: 'second_son',
+    daughter2: 'youngest_daughter', youngest_daughter: 'youngest_daughter', family: 'family'
+  };
+  const seen = {};
+  const raw = Array.isArray(source.selectedMemberKeys) ? source.selectedMemberKeys : String(source.selectedMemberKeys || '').split(',');
+  const selected = raw.map(function(value) { return aliases[String(value || '').trim()] || ''; }).filter(function(value) {
+    if (!value || seen[value]) return false;
+    seen[value] = true;
+    return true;
+  });
+  const actorMember = aliases[String(actor && actor.memberUserId || '').trim()] || '';
+  if (!selected.length) {
+    if (actorMember) selected.push(actorMember);
+    selected.push('family');
+  }
+  const startTime = String(source.tomorrowScheduleStartTime || '').trim();
+  const normalizedStart = /^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) ? startTime : '18:00';
+  const scope = selected.length === 1 && selected[0] === actorMember ? 'mine' : 'family';
+  return {
+    selectedMemberKeys: selected,
+    includeUnknown: source.includeUnknown === true || String(source.includeUnknown || '').toLowerCase() === 'true',
+    tomorrowScheduleStartTime: normalizedStart,
+    scope: scope
   };
 }
 
@@ -189,7 +221,9 @@ function callPaluruAgent_(config, input) {
   }
 
   if (!parsed || parsed.success !== true) {
-    throw createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed), 'UPSTREAM_AGENT_FAILED', String(parsed && parsed.error && parsed.error.code || parsed && parsed.code || 'UPSTREAM_SUCCESS_FALSE'));
+    const error = createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed), 'UPSTREAM_AGENT_FAILED', String(parsed && parsed.error && parsed.error.code || parsed && parsed.code || 'UPSTREAM_SUCCESS_FALSE'));
+    if (parsed && parsed.diagnostics) error.agentPerformance = sanitizeAgentPerformanceDiagnostics_(parsed.diagnostics);
+    throw error;
   }
   if (parsed.schemaVersion !== PALURU_AGENT_SCHEMA_VERSION) {
     throw createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'SCHEMA_VERSION_MISMATCH');
@@ -205,11 +239,15 @@ function safeUpstreamAgentErrorCode_(payload) {
     CLIMATE_UNAVAILABLE: true,
     WEATHER_UNAVAILABLE: true,
     CALENDAR_UNAVAILABLE: true,
+    TODAY_PARURU_UNAVAILABLE: true,
     ROOM_NOT_FOUND: true,
     FOLLOWUP_REQUIRED: true,
     ACTION_NOT_ALLOWED: true,
     CONFIRMATION_EXPIRED: true,
     CONFIRMATION_ACTOR_MISMATCH: true,
+    AUTOMATION_UPSTREAM_ERROR: true,
+    UPSTREAM_ERROR: true,
+    UPSTREAM_ERROR: true,
     AGENT_UNAVAILABLE: true,
     INVALID_INPUT: true,
   };
@@ -228,9 +266,12 @@ function buildAgentChatSuccess_(response, input) {
     reply: reply,
     sessionId: input.sessionId,
     clientRequestId: input.clientRequestId,
-    toolExecutions: sanitizeToolExecutions_(data.toolExecutions),
+    serviceExecutions: sanitizeServiceExecutions_(data.serviceExecutions),
     usage: sanitizeAgentUsage_(data.usage),
   };
+  if (isAgentGatewayDiagnosticsEnabled_() && data.diagnostics) {
+    result.diagnostics = sanitizeAgentPerformanceDiagnostics_(data.diagnostics);
+  }
   if (Object.prototype.hasOwnProperty.call(data, 'followup')) {
     result.followup = sanitizeAgentFollowup_(data.followup);
   }
@@ -467,11 +508,11 @@ function getAgentActionPublicErrorMessage_(code) {
   return 'action confirmation failed';
 }
 
-function sanitizeToolExecutions_(executions) {
+function sanitizeServiceExecutions_(executions) {
   if (!Array.isArray(executions)) return [];
   return executions.map(function(execution) {
     return {
-      tool: String(execution && execution.tool || ''),
+      service: String(execution && execution.service || ''),
       status: String(execution && execution.status || ''),
       durationMs: normalizeNullableNumber_(execution && execution.durationMs),
     };
@@ -502,11 +543,14 @@ function buildAgentChatError_(error) {
     CLIMATE_UNAVAILABLE: true,
     WEATHER_UNAVAILABLE: true,
     CALENDAR_UNAVAILABLE: true,
+    TODAY_PARURU_UNAVAILABLE: true,
     ROOM_NOT_FOUND: true,
     FOLLOWUP_REQUIRED: true,
     ACTION_NOT_ALLOWED: true,
     CONFIRMATION_EXPIRED: true,
     CONFIRMATION_ACTOR_MISMATCH: true,
+    AUTOMATION_UPSTREAM_ERROR: true,
+    UPSTREAM_ERROR: true,
   };
   const code = error && allowedCodes[error.code] ? error.code : 'INTERNAL_ERROR';
   const messages = {
@@ -519,11 +563,14 @@ function buildAgentChatError_(error) {
     CLIMATE_UNAVAILABLE: '室温・湿度を取得できませんでした。',
     WEATHER_UNAVAILABLE: '外の天気を取得できませんでした。',
     CALENDAR_UNAVAILABLE: '予定を取得できませんでした。',
+    TODAY_PARURU_UNAVAILABLE: '今日の予定とタスクを取得できませんでした。',
     ROOM_NOT_FOUND: '指定された部屋を見つけられませんでした。',
     FOLLOWUP_REQUIRED: '確認に必要な情報が足りません。',
     ACTION_NOT_ALLOWED: 'この端末では操作を実行できません。',
     CONFIRMATION_EXPIRED: '確認の有効期限が切れました。もう一度相談してください。',
     CONFIRMATION_ACTOR_MISMATCH: '確認を作成した端末と一致しません。',
+    AUTOMATION_UPSTREAM_ERROR: '家電・自動制御の確認先へつながりませんでした。',
+    UPSTREAM_ERROR: '確認先のサービスへつながりませんでした。',
     INTERNAL_ERROR: '内部エラーが発生しました。',
   };
   const result = { success: false, error: { code: code, message: messages[code] } };
@@ -532,11 +579,8 @@ function buildAgentChatError_(error) {
     result.diagnostics = {
       stage: String(diagnostic.stage || 'AGENT_CHAT_UNHANDLED'),
       reason: String(diagnostic.reason || error && error.code || 'UNKNOWN'),
-      exception: {
-        message: String(error && error.message || '').slice(0, 1000),
-        stack: String(error && error.stack || '').slice(0, 4000),
-      },
     };
+    if (error && error.agentPerformance) result.diagnostics.performance = sanitizeAgentPerformanceDiagnostics_(error.agentPerformance);
   }
   return result;
 }
@@ -549,18 +593,26 @@ function logPaluruAgentTransport_(event, details) {
   if (!isAgentGatewayDiagnosticsEnabled_() || typeof Logger === 'undefined' || typeof Logger.log !== 'function') return;
   const entry = {
     event: String(event || ''),
-    url: redactPaluruAgentUrl_(details && details.url),
     httpStatus: Number.isFinite(Number(details && details.httpStatus)) ? Number(details.httpStatus) : null,
-    requestPayload: details && details.requestPayload ? redactPaluruAgentTransportValue_(details.requestPayload) : null,
-    responseBody: Object.prototype.hasOwnProperty.call(details || {}, 'responseBody')
-      ? redactPaluruAgentResponseBody_(details.responseBody)
-      : null,
-    exception: details && details.exception ? {
-      message: String(details.exception.message || details.exception).slice(0, 1000),
-      stack: String(details.exception.stack || '').slice(0, 4000),
-    } : null,
+    stage: String(details && details.stage || event || '').replace(/[^A-Z0-9_.-]/gi, '').slice(0, 80),
+    reason: String(details && details.reason || '').replace(/[^A-Z0-9_.-]/gi, '').slice(0, 80),
   };
   Logger.log('[PALURU agentChat transport] ' + JSON.stringify(entry));
+}
+
+function sanitizeAgentPerformanceDiagnostics_(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  function number(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
+  }
+  return {
+    routerMs: number(source.routerMs),
+    serviceMs: number(source.serviceMs),
+    totalMs: number(source.totalMs),
+    openAiCallCount: number(source.openAiCallCount),
+    serviceCallCount: number(source.serviceCallCount)
+  };
 }
 
 function redactPaluruAgentUrl_(value) {

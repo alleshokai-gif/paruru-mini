@@ -80,6 +80,12 @@ function doPost(e) {
       return notificationCandidates_(body, resolveMemoActor_(body, 'memo.self.read'));
     }
 
+    // The Home screen and Agent both consume this single aggregation.  Do not
+    // add another Calendar/Inbox merger at either caller.
+    if (action === 'todayParuruContext') {
+      return todayParuruContext_(body, resolveMemoActor_(body, 'memo.self.read'));
+    }
+
     if (action === 'createWithAI') {
       return createItemWithAI_(body);
     }
@@ -98,6 +104,10 @@ function doPost(e) {
 
     if (action === 'weatherContextInternal') {
       return weatherContextInternal_(body, 'POST');
+    }
+
+    if (action === 'todayParuruContextInternal') {
+      return todayParuruContextInternal_(body, 'POST');
     }
 
     if (action === 'agentChat') {
@@ -989,10 +999,14 @@ function listInboxItems_(actor) {
 }
 
 function notificationCandidates_(params, actor) {
+  return json_(buildNotificationCandidatesResponse_(params, actor));
+}
+
+function buildNotificationCandidatesResponse_(params, actor, options) {
   const targetDate = parseNotificationTargetDate_(params.date);
   const limit = normalizeNotificationLimit_(params.limit);
   const settings = buildTodayCalendarSettings_(params);
-  const items = readOwnedInboxItems_(actor);
+  const items = options && Array.isArray(options.items) ? options.items : readOwnedInboxItems_(actor);
   const warnings = [];
   const paluruCandidates = buildNotificationCandidates_(items, {
     targetDate: targetDate,
@@ -1003,7 +1017,11 @@ function notificationCandidates_(params, actor) {
   let calendarCandidates = [];
 
   try {
-    calendarCandidates = getTodayCalendarEvents_(targetDate, settings)
+    const suppliedCalendar = options && Object.prototype.hasOwnProperty.call(options, 'calendarCandidates')
+      ? options.calendarCandidates : null;
+    calendarCandidates = (Array.isArray(suppliedCalendar)
+      ? getTodayCalendarEventsFromNormalized_(suppliedCalendar, targetDate, settings)
+      : getTodayCalendarEvents_(targetDate, settings))
       .filter(function(event) {
         return isCalendarEventVisible_(event, settings);
       })
@@ -1011,20 +1029,21 @@ function notificationCandidates_(params, actor) {
         return buildCalendarNotificationCandidate_(event, index);
       });
   } catch (error) {
-    warnings.push('calendar_events_unavailable');
+    warnings.push.apply(warnings, options && Array.isArray(options.calendarWarnings)
+      ? options.calendarWarnings : ['calendar_events_unavailable']);
     debugLog_('[notificationCandidates] calendar read failed: ' + sanitizeCalendarError_(error));
   }
 
   const candidates = mergeTodayCandidates_(paluruCandidates, calendarCandidates)
     .slice(0, limit);
 
-  return json_({
+  return {
     success: true,
     targetDate: targetDate,
     count: candidates.length,
     items: candidates,
     warnings: warnings,
-  });
+  };
 }
 
 function readInboxItemsForEngine_() {
@@ -1260,7 +1279,11 @@ function buildTodayCalendarSettings_(params) {
 }
 
 function getTodayCalendarEvents_(targetDate, settings) {
-  return CalendarReadService.readNormalizedDay(targetDate)
+  return getTodayCalendarEventsFromNormalized_(CalendarReadService.readNormalizedDay(targetDate), targetDate, settings);
+}
+
+function getTodayCalendarEventsFromNormalized_(normalizedEvents, targetDate, settings) {
+  return (Array.isArray(normalizedEvents) ? normalizedEvents : [])
     .map(function(normalizedEvent) {
       return buildCalendarEventModel_(normalizedEvent, targetDate, settings);
     })

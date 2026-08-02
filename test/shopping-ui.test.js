@@ -46,7 +46,9 @@ const context = {
   fetch: async (url, options = {}) => {
     const payload = options.body ? JSON.parse(options.body) : null;
     requests.push({ url: String(url), payload });
-    const body = payload ? { success: true, item: {} } : (String(url).includes('notificationCandidates')
+    const body = payload && payload.action === 'todayParuruContext'
+      ? { success: true, items: [], count: 0, warnings: [] }
+      : payload ? { success: true, item: {} } : (String(url).includes('notificationCandidates')
       ? { success: true, items: [], count: 0, warnings: [] }
       : { success: true, data: [] });
     return { ok: true, status: 200, json: async () => body };
@@ -120,7 +122,7 @@ test('successful edit refreshes Inbox and notification candidates', async () => 
   await handlers.get('#editForm:submit')({ preventDefault() {} });
   assert(requests.some((entry) => entry.payload && entry.payload.action === 'update'), 'update missing');
   assert(requests.some((entry) => entry.payload && entry.payload.action === 'list'), 'Inbox was not refreshed');
-  assert(requests.some((entry) => entry.payload && entry.payload.action === 'notificationCandidates'), 'notifications were not refreshed');
+  assert(requests.some((entry) => entry.payload && entry.payload.action === 'todayParuruContext'), 'notifications were not refreshed');
 });
 
 let failures = 0;

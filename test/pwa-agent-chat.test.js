@@ -441,7 +441,7 @@ test('EVA-03F Calendar loading, failure and retry preserve request identity', as
   const pending = harness.submit('今日の予定は？');
   await Promise.resolve();
   assert(harness.elements.get('#homeAgentContent').innerHTML.includes('ぱるるが予定を確認中…'), 'Calendar loading message missing');
-  assert(harness.run('pendingHomeAgentRetry.purpose') === 'calendar', 'Calendar retry purpose missing');
+  assert(harness.run('pendingHomeAgentRetry.purpose') === 'today-paruru', 'Today Paruru retry purpose missing');
   resolveResponse();
   await pending;
 
@@ -702,6 +702,19 @@ test('EVA-03I-2B automation and aircon operation requests route to Agent', async
     const actions = harness.requests.map((entry) => entry.payload?.action).filter(Boolean);
     assert(actions[0] === item.expected, item.message + ' routed to ' + actions.join(','));
   }
+});
+
+test('Today Paruru and living temperature-down use their dedicated Agent purposes', async () => {
+  const today = createHarness();
+  await today.submit('今日の予定は？');
+  const todayPayload = today.requests.find((entry) => entry.payload)?.payload;
+  assert(todayPayload?.requestMetadata?.purpose === 'today-paruru', 'today query did not select the shared aggregate route');
+
+  const aircon = createHarness();
+  await aircon.submit('リビングの温度を下げて');
+  const airconPayload = aircon.requests.find((entry) => entry.payload)?.payload;
+  assert(airconPayload?.requestMetadata?.purpose === 'aircon-action', 'living temperature-down did not select aircon preparation');
+  assert(airconPayload?.requestMetadata?.roomHint === 'living', 'living room hint was not preserved');
 });
 
 test('EVA-03I-2B aircon confirmation uses the existing safe card and immutable confirm body', async () => {
@@ -1006,17 +1019,30 @@ test('ambiguous input preserves the selected route and cancel sends nothing', as
   assert(cancel.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'cancel did not close confirmation');
 });
 
-test('agentChat diagnostics correlate the final echo response with clientRequestId', async () => {
+test('agentChat diagnostics retain only safe correlation and transport metadata', async () => {
   const harness = createHarness();
   await harness.run('callAgentChat({ action: "agentChat", message: "test", sessionId: "11111111-1111-4111-8111-111111111111", clientRequestId: "22222222-2222-4222-8222-222222222222" })');
   const fetchLog = harness.logs.find((entry) => entry.level === 'info' && entry.args[1]?.reason === 'FETCH_RESPONSE');
-  const rawLog = harness.logs.find((entry) => entry.level === 'info' && entry.args[1]?.reason === 'RAW_RESPONSE');
+  const rawLog = harness.logs.find((entry) => entry.level === 'info' && entry.args[1]?.reason === 'RESPONSE_BODY');
   const jsonLog = harness.logs.find((entry) => entry.level === 'info' && entry.args[1]?.reason === 'JSON_RESPONSE');
-  assert(fetchLog?.args[1]?.clientRequestId === '22222222-2222-4222-8222-222222222222', 'response log lost clientRequestId');
-  assert(fetchLog?.args[1]?.responseUrl.includes('script.googleusercontent.com'), 'final echo URL was not logged');
-  assert(fetchLog?.args[1]?.status === 200 && fetchLog.args[1]?.ok === true, 'HTTP response metadata missing');
-  assert(rawLog?.args[1]?.bodyFormat === 'json' && rawLog.args[1]?.bodyLength > 0, 'raw body diagnostics missing');
-  assert(jsonLog?.args[1]?.success === true && jsonLog.args[1]?.expectedFields.reply, 'parsed JSON diagnostics missing');
+  assert(fetchLog?.args[1]?.clientRequestIdSuffix === '22222222', 'safe request suffix was not retained');
+  assert(fetchLog?.args[1]?.httpStatus === 200 && Number.isFinite(fetchLog.args[1]?.elapsedMs), 'safe HTTP diagnostics missing');
+  assert(rawLog?.args[1]?.responseLength > 0, 'response length diagnostics missing');
+  assert(jsonLog?.args[1]?.errorCode === null, 'unexpected response error code');
+  const serialized = JSON.stringify(harness.logs);
+  assert(!serialized.includes('script.googleusercontent.com') && !serialized.includes('"test"') && !serialized.includes('reply'), 'diagnostics leaked URL, request, or reply text');
+});
+
+test('development performance diagnostics are numeric-only and never rendered into the PWA', async () => {
+  const harness = createHarness();
+  harness.setResponder((payload) => ({
+    success: true, reply: '室温を確認したで。', sessionId: payload.sessionId, clientRequestId: payload.clientRequestId,
+    diagnostics: { routerMs: 12, serviceMs: 34, totalMs: 56, openAiCallCount: 1, serviceCallCount: 1 }
+  }));
+  await harness.ask('リビングのおんど');
+  const log = harness.logs.find((entry) => entry.args[1]?.reason === 'JSON_RESPONSE');
+  assert(JSON.stringify(log?.args[1]?.performance) === JSON.stringify({ routerMs: 12, serviceMs: 34, totalMs: 56, openAiCallCount: 1, serviceCallCount: 1 }), 'numeric performance diagnostics were not logged');
+  assert(!harness.elements.get('#homeAgentContent').innerHTML.includes('routerMs'), 'performance diagnostics leaked into the PWA UI');
 });
 
 test('agentChat logs EMPTY_RESPONSE and JSON_PARSE_FAILED without calling response.json', async () => {
@@ -1039,8 +1065,8 @@ test('agentChat logs EMPTY_RESPONSE and JSON_PARSE_FAILED without calling respon
     assert(error.agentChatReason === 'JSON_PARSE_FAILED', 'parse failure reason was not preserved');
   }
   const parseLog = invalid.logs.find((entry) => entry.args[1]?.reason === 'JSON_PARSE_FAILED');
-  assert(parseLog?.args[1]?.rawResponse.includes('<html>'), 'parse log omitted raw response preview');
-  assert(parseLog?.args[1]?.responseUrl.includes('script.googleusercontent.com'), 'parse log omitted final URL');
+  assert(parseLog?.args[1]?.responseLength > 0 && parseLog.args[1]?.httpStatus === 200, 'parse log omitted safe transport metadata');
+  assert(!JSON.stringify(parseLog).includes('<html>') && !JSON.stringify(parseLog).includes('script.googleusercontent.com'), 'parse log leaked body or URL');
 });
 
 test('agentChat logs API_SUCCESS_FALSE and fetch rejection with the same request context', async () => {
@@ -1050,7 +1076,7 @@ test('agentChat logs API_SUCCESS_FALSE and fetch rejection with the same request
     await apiFailure.run('callAgentChat({ action: "agentChat", sessionId: "11111111-1111-4111-8111-111111111111", clientRequestId: "22222222-2222-4222-822222222222" })');
   } catch (_) {}
   const apiLog = apiFailure.logs.find((entry) => entry.args[1]?.reason === 'API_SUCCESS_FALSE');
-  assert(apiLog?.args[1]?.code === 'INVALID_INPUT', 'API error code was not logged');
+  assert(apiLog?.args[1]?.errorCode === 'INVALID_INPUT', 'API error code was not logged');
 
   const rejected = createHarness();
   rejected.setAgentResponseFactory(() => Promise.reject(new Error('CORS blocked final echo')));
@@ -1061,7 +1087,7 @@ test('agentChat logs API_SUCCESS_FALSE and fetch rejection with the same request
     assert(error.agentChatReason === 'FETCH_FAILED', 'fetch failure reason was not preserved');
   }
   const fetchFailure = rejected.logs.find((entry) => entry.args[1]?.reason === 'FETCH_FAILED');
-  assert(fetchFailure?.args[1]?.action === 'agentChat' && fetchFailure.args[1]?.clientRequestId, 'fetch failure was not correlated');
+  assert(fetchFailure?.args[1]?.action === 'agentChat' && fetchFailure.args[1]?.clientRequestIdSuffix === '22222222', 'fetch failure was not correlated safely');
 });
 
 test('I JavaScript syntax and J cache versions', () => {

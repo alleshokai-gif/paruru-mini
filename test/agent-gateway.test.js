@@ -67,14 +67,14 @@ function post(body) {
 function valid(overrides) {
   return Object.assign({ action: 'agentChat', message: secretMessage, sessionId, clientRequestId }, overrides || {});
 }
-function agentResponse(reply, toolExecutions) {
+function agentResponse(reply, serviceExecutions) {
   return {
     success: true,
     schemaVersion: 'agent-chat-1.0',
     requestId: 'internal-agent-request-id',
     data: {
       reply,
-      toolExecutions: toolExecutions || [],
+      serviceExecutions: serviceExecutions || [],
       usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
       rawToolData: { temperature: 28.3 },
     },
@@ -104,7 +104,7 @@ test('tool-free response', () => {
     assert(!Object.prototype.hasOwnProperty.call(sent.actor, 'userId') && !Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'client actor or pairing token leaked downstream');
   });
   const result = post(valid({ userId: 'father', userDisplayName: '父', deviceId: 'device' }));
-  assert(result.success && result.reply && result.toolExecutions.length === 0, 'tool-free response failed');
+  assert(result.success && result.reply && result.serviceExecutions.length === 0, 'service-free response failed');
 });
 
 test('request metadata is allowlisted separately from the server-resolved actor', () => {
@@ -113,17 +113,32 @@ test('request metadata is allowlisted separately from the server-resolved actor'
     const sent = JSON.parse(options.payload);
     assert(sent.requestMetadata.purpose === 'weather' && sent.requestMetadata.roomHint === 'living', 'advisory routing metadata was not forwarded');
     assert(sent.requestMetadata.sessionId === sessionId && sent.requestMetadata.clientRequestId === clientRequestId, 'request identifiers were not server normalized');
+    assert(JSON.stringify(sent.requestMetadata.todayParuruSettings) === JSON.stringify({
+      selectedMemberKeys: ['mother', 'family'], includeUnknown: true, tomorrowScheduleStartTime: '18:00', scope: 'family'
+    }), 'Today Paruru settings were not server normalized');
     assert(!Object.prototype.hasOwnProperty.call(sent.requestMetadata, 'role') && !Object.prototype.hasOwnProperty.call(sent.requestMetadata, 'actor'), 'identity was mixed into request metadata');
     assert(sent.actor.memberUserId === 'father' && sent.actor.role === 'admin', 'server actor changed');
   });
   const result = post(valid({
     requestMetadata: {
       purpose: 'weather', roomHint: 'living', calendarScopeHint: 'family',
+      todayParuruSettings: { selectedMemberKeys: ['mother', 'family', 'invalid'], includeUnknown: true, tomorrowScheduleStartTime: '18:00', scope: 'family' },
       sessionId: 'spoofed-session', clientRequestId: 'spoofed-request',
       actor: { role: 'admin' }, role: 'admin', arbitrary: 'drop-me'
     }
   }));
   assert(result.success, 'metadata request failed');
+});
+
+test('Today Paruru scope is derived from the server actor and selected members, not the client scope hint', () => {
+  const mine = context.sanitizeAgentRequestMetadata_({
+    todayParuruSettings: { selectedMemberKeys: ['father'], scope: 'family' }
+  }, sessionId, clientRequestId, { memberUserId: 'father' });
+  const family = context.sanitizeAgentRequestMetadata_({
+    todayParuruSettings: { selectedMemberKeys: ['father', 'family'], scope: 'mine' }
+  }, sessionId, clientRequestId, { memberUserId: 'father' });
+  assert(mine.todayParuruSettings.scope === 'mine', 'single actor selection was not resolved as mine');
+  assert(family.todayParuruSettings.scope === 'family', 'family selection trusted a spoofed mine scope');
 });
 
 test('safe upstream weather failure remains distinguishable to PWA', () => {
@@ -132,6 +147,21 @@ test('safe upstream weather failure remains distinguishable to PWA', () => {
   const result = post(valid());
   assert(!result.success && result.error.code === 'WEATHER_UNAVAILABLE', 'weather failure was collapsed to AGENT_ERROR');
   assert(!JSON.stringify(result).includes('private upstream detail'), 'upstream detail leaked');
+});
+
+test('automation and Today Paruru failures retain their safe source codes', () => {
+  configure();
+  mockFetch(200, { success: false, error: { code: 'AUTOMATION_UPSTREAM_ERROR', message: 'private adapter detail' } });
+  let result = post(valid());
+  assert(!result.success && result.error.code === 'AUTOMATION_UPSTREAM_ERROR', 'automation failure was collapsed');
+  mockFetch(200, { success: false, error: { code: 'TODAY_PARURU_UNAVAILABLE', message: 'private aggregate detail' } });
+  result = post(valid({ requestMetadata: { purpose: 'today-paruru' } }));
+  assert(!result.success && result.error.code === 'TODAY_PARURU_UNAVAILABLE', 'Today Paruru failure was collapsed');
+  assert(!JSON.stringify(result).includes('private aggregate detail'), 'private upstream detail leaked');
+  mockFetch(200, { success: false, error: { code: 'UPSTREAM_ERROR', message: 'private route detail' } });
+  result = post(valid());
+  assert(!result.success && result.error.code === 'UPSTREAM_ERROR', 'generic upstream failure was collapsed');
+  assert(!JSON.stringify(result).includes('private route detail'), 'generic upstream detail leaked');
 });
 
 test('read authorization rejects before Agent call and ignores client actor spoofing', () => {
@@ -149,18 +179,18 @@ test('read authorization rejects before Agent call and ignores client actor spoo
   assert(!rejected.success && calls === 1 && readActorCalls === 1, 'unauthorized request reached Agent');
 });
 
-test('climate tool response is sanitized', () => {
+test('climate service response is sanitized', () => {
   configure();
-  mockFetch(200, agentResponse('書斎はちょい暑いで。', [{ tool: 'get_home_climate_context', status: 'success', durationMs: 9451, raw: { temperature: 28.3 } }]));
+  mockFetch(200, agentResponse('書斎はちょい暑いで。', [{ service: 'home-climate-context', status: 'success', durationMs: 9451, raw: { temperature: 28.3 } }]));
   const result = post(valid());
-  assert(result.toolExecutions[0].durationMs === 9451, 'tool audit missing');
+  assert(result.serviceExecutions[0].durationMs === 9451, 'service audit missing');
   assert(!JSON.stringify(result).includes('28.3') && !JSON.stringify(result).includes('internal-agent-request-id'), 'internal data leaked');
   assert(!Object.prototype.hasOwnProperty.call(result, 'followup'), 'climate response contract changed');
 });
 
 test('structured followup is allowlisted for PWA', () => {
   configure();
-  const response = agentResponse('覚えたで。締切はいつ？', [{ tool: 'create_memo', status: 'success', durationMs: 20 }]);
+  const response = agentResponse('覚えたで。締切はいつ？', [{ service: 'registration-guidance', status: 'success', durationMs: 20 }]);
   response.data.followup = {
     required: true,
     itemId: '77777777-7777-4777-8777-777777777777',
@@ -229,13 +259,13 @@ test('development diagnostics identify the Agent Gateway failure stage without c
   let result = post(valid());
   assert(result.error.code === 'AGENT_ERROR', 'upstream Agent code changed');
   assert(result.diagnostics.stage === 'UPSTREAM_AGENT_FAILED' && result.diagnostics.reason === 'TOOL_FAILED', 'upstream Agent diagnostic missing');
-  assert(result.diagnostics.exception && typeof result.diagnostics.exception.stack === 'string', 'development exception details missing');
+  assert(!Object.prototype.hasOwnProperty.call(result.diagnostics, 'exception'), 'development diagnostics exposed exception details');
 
   fetchImpl = () => { throw new Error('transport unavailable'); };
   result = post(valid());
   assert(result.error.code === 'AGENT_UNAVAILABLE', 'transport code changed');
   assert(result.diagnostics.stage === 'MODEL_FAILED' && result.diagnostics.reason === 'URLFETCH_FAILED', 'transport diagnostic missing');
-  assert(result.diagnostics.exception.message === 'transport unavailable', 'transport exception message missing');
+  assert(!Object.prototype.hasOwnProperty.call(result.diagnostics, 'exception'), 'transport exception details leaked');
 
   reset(); configure(); properties.PALURU_AGENT_DIAGNOSTICS_ENABLED = 'true';
   readActorError = 'MEMBERSHIP_NOT_FOUND';
@@ -250,7 +280,7 @@ test('Agent Gateway diagnostics are absent unless development mode is explicitly
   assert(!Object.prototype.hasOwnProperty.call(result, 'diagnostics'), 'production response exposed diagnostics');
 });
 
-test('development transport logs include redacted request payload and response metadata', () => {
+test('development transport logs retain only safe event, status, stage, and reason metadata', () => {
   configure();
   properties.PALURU_AGENT_DIAGNOSTICS_ENABLED = 'true';
   mockFetch(200, agentResponse('private reply'));
@@ -261,8 +291,7 @@ test('development transport logs include redacted request payload and response m
   const combined = transportLogs.join('\n');
   assert(combined.includes('"event":"REQUEST"') && combined.includes('"event":"RESPONSE"'), 'transport event names missing');
   assert(combined.includes('"httpStatus":200'), 'HTTP status missing');
-  assert(combined.includes('"authToken":"[redacted]"') && combined.includes('"message":"[redacted]"'), 'request secrets were not redacted');
-  assert(combined.includes('"reply":"[redacted]"'), 'response reply was not redacted');
+  assert(!combined.includes('requestPayload') && !combined.includes('responseBody') && !combined.includes('exception'), 'transport logs retained body or exception fields');
   assert(!combined.includes(secretToken) && !combined.includes(secretMessage) && !combined.includes('private reply'), 'transport logs leaked sensitive content');
 });
 

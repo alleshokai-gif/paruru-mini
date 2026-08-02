@@ -34,3 +34,10 @@
 - 画像・キャラクター素材はcache first
 - `updateViaCache: "none"`、`registration.update()`、`skipWaiting()`、`clients.claim()` を維持する
 - Build番号を更新し、設定画面で確認できる状態を維持する
+
+## Agent consultation acceptance contract
+
+- Home card and Agent Today Paruru must use the same server-normalized input conditions: selected calendar members, unknown-event policy, cutover time, target dates, scope, Calendar, and Inbox.
+- Do not write request text, replies, raw responses, Calendar, Inbox, health data, tokens, or secrets to diagnostics. Keep only safe event metadata, code, stage, reason, size, elapsed time, request-id suffix, and Build ID.
+- Preserve known upstream error codes through Mini, Agent, and OS. Do not collapse them to `AGENT_ERROR`; only unknown failures may use the generic code.
+- Every `agentChat` change must retain the one-OpenAI-call plus deterministic GAS-service architecture and must measure `routerMs`, `serviceMs`, `totalMs`, `openAiCallCount`, and `serviceCallCount` on both success and failure.
