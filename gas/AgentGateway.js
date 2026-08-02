@@ -5,33 +5,51 @@ const PALURU_AGENT_TOKEN_PROPERTY = 'PALURU_AGENT_TOKEN';
 const PALURU_AGENT_DIAGNOSTICS_PROPERTY = 'PALURU_AGENT_DIAGNOSTICS_ENABLED';
 
 function agentChat_(body) {
+  const trace = createMiniAgentTrace_(body, 'agentChat');
+  logMiniAgentTrace_('REQUEST_RECEIVED', trace, { stage: 'REQUEST_RECEIVED' });
   try {
     let actor;
     try {
       actor = resolveHomeAgentReadActor_(body || {});
     } catch (error) {
+      setMiniAgentTraceStage_(error, trace, 'ACTOR_RESOLUTION');
+      logMiniAgentTrace_('ACTOR_RESOLUTION_FAILED', trace, { stage: 'ACTOR_RESOLUTION', errorCode: error && error.code, reason: 'ACTOR_RESOLUTION_FAILED' });
       throw annotateAgentGatewayError_(error, 'HOME_CONTEXT_FAILED', 'ACTOR_RESOLUTION_FAILED');
     }
+    logMiniAgentTrace_('ACTOR_RESOLVED', trace, { stage: 'ACTOR_RESOLUTION' });
     let input;
     try {
       input = validateAgentChatInput_(body || {}, actor);
+      trace.clientRequestId = input.clientRequestId;
     } catch (error) {
+      setMiniAgentTraceStage_(error, trace, 'INPUT_VALIDATION');
       throw annotateAgentGatewayError_(error, 'REQUEST_INVALID', 'INPUT_VALIDATION_FAILED');
     }
     let config;
     try {
       config = getPaluruAgentConfig_();
     } catch (error) {
+      setMiniAgentTraceStage_(error, trace, 'AGENT_CONFIGURATION');
       throw annotateAgentGatewayError_(error, 'PROMPT_BUILD_FAILED', 'AGENT_CONFIGURATION_UNAVAILABLE');
     }
-    const response = callPaluruAgent_(config, input);
+    const response = callPaluruAgent_(config, input, trace);
     try {
-      return json_(buildAgentChatSuccess_(response, input));
+      const result = buildAgentChatSuccess_(response, input);
+      logMiniAgentTrace_('RESPONSE_SENT', trace, { stage: 'RESPONSE_SENT', httpStatus: 200, intent: result.intent, agentPerformance: response && response.diagnostics });
+      return json_(result);
     } catch (error) {
+      setMiniAgentTraceStage_(error, trace, 'AGENT_RESPONSE');
       throw annotateAgentGatewayError_(error, 'RESPONSE_PARSE_FAILED', 'RESPONSE_BUILD_FAILED');
     }
   } catch (error) {
-    return json_(buildAgentChatError_(error));
+    const stage = String(error && error.agentTrace && error.agentTrace.stage || error && error.agentTraceStage || 'UNHANDLED_ERROR');
+    setMiniAgentTraceStage_(error, trace, stage);
+    if (stage === 'UNHANDLED_ERROR') {
+      logMiniAgentTrace_('UNHANDLED_ERROR', trace, { stage: stage, errorCode: error && error.code });
+    }
+    const result = buildAgentChatError_(error);
+    logMiniAgentTrace_('RESPONSE_SENT', trace, { stage: stage, httpStatus: 200, errorCode: result && result.error && result.error.code, reason: error && error.agentDiagnostics && error.agentDiagnostics.reason, agentPerformance: error && error.agentPerformance });
+    return json_(result);
   }
 }
 
@@ -162,7 +180,7 @@ function getPaluruAgentConfig_() {
   return { url: url, token: token };
 }
 
-function callPaluruAgent_(config, input) {
+function callPaluruAgent_(config, input, trace) {
   const requestPayload = {
     action: 'agent.chat',
     message: input.message,
@@ -172,10 +190,10 @@ function callPaluruAgent_(config, input) {
     requestMetadata: input.requestMetadata,
     authToken: config.token,
   };
-  logPaluruAgentTransport_('REQUEST', {
-    url: config.url,
-    requestPayload: requestPayload,
-  });
+  if (requestPayload.clientRequestId !== input.clientRequestId) {
+    throw createAgentGatewayError_('AGENT_ERROR', 'AGENT_REQUEST', 'CLIENT_REQUEST_ID_MISMATCH');
+  }
+  logMiniAgentTrace_('AGENT_REQUEST_START', trace, { stage: 'AGENT_REQUEST' });
   let response;
   try {
     response = UrlFetchApp.fetch(config.url, {
@@ -185,48 +203,48 @@ function callPaluruAgent_(config, input) {
       muteHttpExceptions: true,
     });
   } catch (error) {
-    logPaluruAgentTransport_('FETCH_FAILED', {
-      url: config.url,
-      exception: error,
-    });
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE', 'MODEL_FAILED', 'URLFETCH_FAILED', error);
+    logMiniAgentTrace_('AGENT_FETCH_FAILED', trace, { stage: 'AGENT_REQUEST', errorCode: 'AGENT_UNAVAILABLE', reason: 'URLFETCH_FAILED' });
+    const gatewayError = createAgentGatewayError_('AGENT_UNAVAILABLE', 'MODEL_FAILED', 'URLFETCH_FAILED', error);
+    setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_REQUEST');
+    throw gatewayError;
   }
 
   const status = response.getResponseCode();
+  logMiniAgentTrace_('AGENT_HTTP_RESPONSE', trace, { stage: 'AGENT_REQUEST', httpStatus: status });
   let responseText = '';
   try {
     responseText = response.getContentText();
   } catch (error) {
-    logPaluruAgentTransport_('RESPONSE_BODY_READ_FAILED', {
-      url: config.url,
-      httpStatus: status,
-      exception: error,
-    });
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE', 'RESPONSE_PARSE_FAILED', 'UPSTREAM_BODY_READ_FAILED', error);
+    const gatewayError = createAgentGatewayError_('AGENT_UNAVAILABLE', 'RESPONSE_PARSE_FAILED', 'UPSTREAM_BODY_READ_FAILED', error);
+    setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_RESPONSE');
+    throw gatewayError;
   }
-  logPaluruAgentTransport_('RESPONSE', {
-    url: config.url,
-    httpStatus: status,
-    responseBody: responseText,
-  });
   if (status < 200 || status >= 300) {
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE', 'MODEL_FAILED', 'UPSTREAM_HTTP_' + status);
+    const gatewayError = createAgentGatewayError_('AGENT_UNAVAILABLE', 'MODEL_FAILED', 'UPSTREAM_HTTP_' + status);
+    setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_REQUEST');
+    throw gatewayError;
   }
 
   let parsed;
   try {
     parsed = JSON.parse(responseText);
   } catch (error) {
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE', 'RESPONSE_PARSE_FAILED', 'UPSTREAM_JSON_PARSE_FAILED', error);
+    const gatewayError = createAgentGatewayError_('AGENT_UNAVAILABLE', 'RESPONSE_PARSE_FAILED', 'UPSTREAM_JSON_PARSE_FAILED', error);
+    setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_RESPONSE');
+    throw gatewayError;
   }
 
   if (!parsed || parsed.success !== true) {
     const error = createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed), 'UPSTREAM_AGENT_FAILED', String(parsed && parsed.error && parsed.error.code || parsed && parsed.code || 'UPSTREAM_SUCCESS_FALSE'));
     if (parsed && parsed.diagnostics) error.agentPerformance = sanitizeAgentPerformanceDiagnostics_(parsed.diagnostics);
+    const upstreamTrace = parsed && parsed.trace;
+    setMiniAgentTraceStage_(error, trace, String(upstreamTrace && upstreamTrace.stage || 'AGENT_RESPONSE'));
     throw error;
   }
   if (parsed.schemaVersion !== PALURU_AGENT_SCHEMA_VERSION) {
-    throw createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'SCHEMA_VERSION_MISMATCH');
+    const gatewayError = createAgentGatewayError_('AGENT_ERROR', 'RESPONSE_PARSE_FAILED', 'SCHEMA_VERSION_MISMATCH');
+    setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_RESPONSE');
+    throw gatewayError;
   }
   return parsed;
 }
@@ -574,6 +592,8 @@ function buildAgentChatError_(error) {
     INTERNAL_ERROR: '内部エラーが発生しました。',
   };
   const result = { success: false, error: { code: code, message: messages[code] } };
+  const trace = publicMiniAgentTrace_(error && error.agentTrace);
+  if (trace) result.trace = trace;
   if (isAgentGatewayDiagnosticsEnabled_()) {
     const diagnostic = error && error.agentDiagnostics || {};
     result.diagnostics = {
@@ -589,15 +609,79 @@ function isAgentGatewayDiagnosticsEnabled_() {
   return String(PropertiesService.getScriptProperties().getProperty(PALURU_AGENT_DIAGNOSTICS_PROPERTY) || '').trim().toLowerCase() === 'true';
 }
 
-function logPaluruAgentTransport_(event, details) {
-  if (!isAgentGatewayDiagnosticsEnabled_() || typeof Logger === 'undefined' || typeof Logger.log !== 'function') return;
-  const entry = {
-    event: String(event || ''),
-    httpStatus: Number.isFinite(Number(details && details.httpStatus)) ? Number(details.httpStatus) : null,
-    stage: String(details && details.stage || event || '').replace(/[^A-Z0-9_.-]/gi, '').slice(0, 80),
-    reason: String(details && details.reason || '').replace(/[^A-Z0-9_.-]/gi, '').slice(0, 80),
+function createMiniAgentTrace_(body, action) {
+  return {
+    clientRequestId: String(body && body.clientRequestId || '').trim(),
+    action: String(action || 'agentChat'),
+    startedAtMs: Date.now(),
+    stage: 'REQUEST_RECEIVED'
   };
-  Logger.log('[PALURU agentChat transport] ' + JSON.stringify(entry));
+}
+
+function setMiniAgentTraceStage_(error, trace, stage) {
+  const safeStage = safeMiniAgentTraceText_(stage || 'UNHANDLED_ERROR');
+  if (trace) trace.stage = safeStage;
+  if (error && typeof error === 'object') {
+    error.agentTraceStage = safeStage;
+    error.agentTrace = {
+      clientRequestId: String(trace && trace.clientRequestId || '').trim(),
+      stage: safeStage
+    };
+  }
+  return error;
+}
+
+function publicMiniAgentTrace_(trace) {
+  const clientRequestId = String(trace && trace.clientRequestId || '').trim();
+  if (!isUuid_(clientRequestId)) return null;
+  return {
+    clientRequestId: clientRequestId,
+    stage: safeMiniAgentTraceText_(trace && trace.stage || 'UNHANDLED_ERROR')
+  };
+}
+
+function logMiniAgentTrace_(event, trace, details) {
+  if (typeof Logger === 'undefined' || typeof Logger.log !== 'function') return;
+  const source = details || {};
+  const performance = source.agentPerformance && typeof source.agentPerformance === 'object' ? source.agentPerformance : {};
+  const entry = {
+    timestamp: new Date().toISOString(),
+    event: safeMiniAgentTraceText_(event),
+    clientRequestIdSuffix: String(trace && trace.clientRequestId || '').slice(-8),
+    deploymentId: miniAgentTraceDeploymentId_(),
+    version: null,
+    action: safeMiniAgentTraceText_(trace && trace.action || 'agentChat'),
+    httpStatus: Number.isFinite(Number(source.httpStatus)) ? Number(source.httpStatus) : null,
+    errorCode: safeMiniAgentTraceText_(source.errorCode || '' ) || null,
+    stage: safeMiniAgentTraceText_(source.stage || trace && trace.stage || ''),
+    reason: safeMiniAgentTraceText_(source.reason || '') || null,
+    elapsedMs: Math.max(0, Date.now() - Number(trace && trace.startedAtMs || Date.now())),
+    openAiCallCount: traceMetricNumber_(performance.openAiCallCount),
+    serviceCallCount: traceMetricNumber_(performance.serviceCallCount),
+    intent: safeMiniAgentTraceText_(source.intent || '') || null,
+    service: safeMiniAgentTraceText_(source.service || '') || null
+  };
+  Logger.log('[PALURU_TRACE] ' + JSON.stringify(entry));
+}
+
+function miniAgentTraceDeploymentId_() {
+  try {
+    if (typeof ScriptApp === 'undefined' || !ScriptApp.getService) return null;
+    const url = String(ScriptApp.getService().getUrl() || '');
+    const match = url.match(/\/s\/([^/?]+)\//);
+    return match ? match[1] : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function traceMetricNumber_(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function safeMiniAgentTraceText_(value) {
+  return String(value || '').replace(/[^A-Z0-9_.-]/gi, '').slice(0, 100);
 }
 
 function sanitizeAgentPerformanceDiagnostics_(value) {

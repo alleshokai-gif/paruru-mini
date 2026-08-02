@@ -1322,7 +1322,7 @@ async function callAgentChat(payload) {
   logAgentChatDiagnostic_("info", "FETCH_RESPONSE", diagnostic, responseDetails);
 
   if (!response.ok) {
-    logAgentChatDiagnostic_("error", "HTTP_NOT_OK", diagnostic, responseDetails);
+    logAgentChatDiagnostic_("error", "API_ERROR", diagnostic, { ...responseDetails, code: "AGENT_UNAVAILABLE" });
     throw createAgentChatClientError("AGENT_UNAVAILABLE", "HTTP_NOT_OK");
   }
 
@@ -1331,53 +1331,31 @@ async function callAgentChat(payload) {
   try {
     rawResponse = await response.clone().text();
   } catch (error) {
-    logAgentChatDiagnostic_("error", "BODY_READ_FAILED", diagnostic, responseDetails);
+    logAgentChatDiagnostic_("error", "API_ERROR", diagnostic, { ...responseDetails, code: "AGENT_UNAVAILABLE" });
     throw createAgentChatClientError("AGENT_UNAVAILABLE", "BODY_READ_FAILED");
   }
 
   const bodyDetails = getAgentChatResponseBodyDetails_(rawResponse, responseDetails.contentType);
-  logAgentChatDiagnostic_("info", "RESPONSE_BODY", diagnostic, {
-    ...responseDetails,
-    ...bodyDetails,
-  });
   if (bodyDetails.isEmpty) {
-    logAgentChatDiagnostic_("error", "EMPTY_RESPONSE", diagnostic, {
-      ...responseDetails,
-      ...bodyDetails,
-    });
+    logAgentChatDiagnostic_("error", "API_ERROR", diagnostic, { ...responseDetails, code: "AGENT_UNAVAILABLE" });
     throw createAgentChatClientError("AGENT_UNAVAILABLE", "EMPTY_RESPONSE");
   }
 
   try {
     result = JSON.parse(rawResponse);
   } catch (error) {
-    logAgentChatDiagnostic_("error", "JSON_PARSE_FAILED", diagnostic, {
-      ...responseDetails,
-      ...bodyDetails,
-    });
+    logAgentChatDiagnostic_("error", "API_ERROR", diagnostic, { ...responseDetails, code: "AGENT_UNAVAILABLE" });
     throw createAgentChatClientError("AGENT_UNAVAILABLE", "JSON_PARSE_FAILED");
   }
 
   if (!result || typeof result !== "object") {
-    logAgentChatDiagnostic_("error", "INVALID_RESPONSE_SHAPE", diagnostic, {
-      ...responseDetails,
-    });
+    logAgentChatDiagnostic_("error", "API_ERROR", diagnostic, { ...responseDetails, code: "AGENT_ERROR" });
     throw createAgentChatClientError("AGENT_ERROR", "INVALID_RESPONSE_SHAPE");
   }
 
-  logAgentChatDiagnostic_("info", "JSON_RESPONSE", diagnostic, {
-    ...responseDetails,
-    success: result.success,
-    code: result.code || result.error?.code || "",
-    diagnostics: result.diagnostics,
-  });
   if (!result || result.success !== true) {
     const code = String(result && result.error && result.error.code || "AGENT_ERROR");
-    logAgentChatDiagnostic_("error", "API_SUCCESS_FALSE", diagnostic, {
-      ...responseDetails,
-      code,
-      diagnostics: result.diagnostics,
-    });
+    logAgentChatDiagnostic_("error", "API_ERROR", diagnostic, { ...responseDetails, code });
     throw createAgentChatClientError([
       "ACTOR_CONTRACT_INVALID", "TOOL_DISABLED", "CLIMATE_UNAVAILABLE", "WEATHER_UNAVAILABLE",
       "CALENDAR_UNAVAILABLE", "ROOM_NOT_FOUND", "FOLLOWUP_REQUIRED", "ACTION_NOT_ALLOWED",
@@ -1387,12 +1365,12 @@ async function callAgentChat(payload) {
     ].includes(code) ? code : "AGENT_ERROR", "API_SUCCESS_FALSE");
   }
   try {
-    return validateAgentChatResponse(result, payload);
+    const validated = validateAgentChatResponse(result, payload);
+    logAgentChatDiagnostic_("info", "RESPONSE_OK", diagnostic, responseDetails);
+    return validated;
   } catch (error) {
     const reason = error?.agentChatReason || "INVALID_RESPONSE_SHAPE";
-    logAgentChatDiagnostic_("error", reason, diagnostic, {
-      ...responseDetails,
-    });
+    logAgentChatDiagnostic_("error", "API_ERROR", diagnostic, { ...responseDetails, code: "AGENT_ERROR" });
     throw createAgentChatClientError("AGENT_ERROR", reason);
   }
 }
@@ -1426,20 +1404,15 @@ function getAgentChatResponseBodyDetails_(rawResponse, contentType) {
 }
 
 function logAgentChatDiagnostic_(level, reason, diagnostic, details = {}) {
-  const responseLength = Number(details.responseLength);
-  const performance = sanitizeAgentPerformanceDiagnostic_(details.diagnostics);
   const output = {
-    event: String(diagnostic?.action || "agentChat"),
+    event: String(reason || "API_ERROR"),
     action: String(diagnostic?.action || "agentChat"),
     clientRequestIdSuffix: String(diagnostic?.clientRequestIdSuffix || ""),
-    reason: String(reason || details.reason || "UNKNOWN").replace(/[^A-Z0-9_.-]/gi, "").slice(0, 80),
     httpStatus: Number.isFinite(Number(details.httpStatus)) ? Number(details.httpStatus) : null,
     errorCode: String(details.code || "").replace(/[^A-Z0-9_]/g, "").slice(0, 80) || null,
-    responseLength: Number.isFinite(responseLength) && responseLength >= 0 ? responseLength : null,
     elapsedMs: Math.max(0, Date.now() - Number(diagnostic?.startedAtMs || Date.now())),
     buildId: typeof BUILD_ID === "string" ? BUILD_ID : "",
   };
-  if (performance) output.performance = performance;
   const logger = level === "error" ? console.error : console.info;
   logger("[PALURU agentChat]", output);
 }
@@ -2125,12 +2098,12 @@ async function submitAgentChatQuery(messageText, options = {}) {
     revealPanelIfNeeded(homeAgentCard);
   } catch (error) {
     const retryable = error && error.code === "AGENT_UNAVAILABLE";
-    logAgentChatDiagnostic_("error", error?.agentChatReason || "UI_OR_RESULT_PROCESSING_FAILED", {
+    logAgentChatDiagnostic_("error", "API_ERROR", {
       action: String(request.action || "agentChat"),
       clientRequestId: String(request.clientRequestId || ""),
-      requestStartedAt,
+      startedAtMs: Date.parse(requestStartedAt),
     }, {
-      uiMessageBranch: retryable ? "TRANSIENT_AGENT_ERROR" : "今はこの確認を完了できんかった",
+      code: String(error?.code || "AGENT_ERROR"),
     });
     const errorMessage = getAgentChatUserMessage(error?.code, retryable);
     renderHomeAgentError({ retryable, message: errorMessage });

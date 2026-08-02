@@ -99,6 +99,7 @@ test('tool-free response', () => {
     const sent = JSON.parse(options.payload);
     assert(url === secretUrl && sent.authToken === secretToken, 'server credentials not used');
     assert(options.contentType === 'text/plain;charset=utf-8', 'wrong content type');
+    assert(sent.clientRequestId === clientRequestId, 'clientRequestId did not reach Agent unchanged');
     assert(!('userId' in sent) && sent.action === 'agent.chat', 'wrong upstream contract');
     assert(sent.actor.memberUserId === 'father' && sent.actor.displayName === '父' && sent.actor.deviceId === 'server-device', 'server actor not forwarded');
     assert(!Object.prototype.hasOwnProperty.call(sent.actor, 'userId') && !Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'client actor or pairing token leaked downstream');
@@ -280,19 +281,39 @@ test('Agent Gateway diagnostics are absent unless development mode is explicitly
   assert(!Object.prototype.hasOwnProperty.call(result, 'diagnostics'), 'production response exposed diagnostics');
 });
 
-test('development transport logs retain only safe event, status, stage, and reason metadata', () => {
+test('Mini emits structured request tracing without sensitive payload fields', () => {
   configure();
-  properties.PALURU_AGENT_DIAGNOSTICS_ENABLED = 'true';
   mockFetch(200, agentResponse('private reply'));
   const result = post(valid());
   assert(result.success, 'Agent response failed');
-  const transportLogs = logs.filter((line) => line.includes('[PALURU agentChat transport]'));
-  assert(transportLogs.length === 2, 'request and response transport logs missing');
+  const transportLogs = logs.filter((line) => line.includes('[PALURU_TRACE]'));
+  assert(transportLogs.length >= 5, 'Mini trace lifecycle logs missing');
   const combined = transportLogs.join('\n');
-  assert(combined.includes('"event":"REQUEST"') && combined.includes('"event":"RESPONSE"'), 'transport event names missing');
+  ['REQUEST_RECEIVED', 'ACTOR_RESOLVED', 'AGENT_REQUEST_START', 'AGENT_HTTP_RESPONSE', 'RESPONSE_SENT'].forEach((event) => {
+    assert(combined.includes('"event":"' + event + '"'), 'trace event missing: ' + event);
+  });
+  assert(combined.includes('"clientRequestIdSuffix":"4fd430c8"'), 'trace request suffix missing');
   assert(combined.includes('"httpStatus":200'), 'HTTP status missing');
-  assert(!combined.includes('requestPayload') && !combined.includes('responseBody') && !combined.includes('exception'), 'transport logs retained body or exception fields');
-  assert(!combined.includes(secretToken) && !combined.includes(secretMessage) && !combined.includes('private reply'), 'transport logs leaked sensitive content');
+  assert(!combined.includes('requestPayload') && !combined.includes('responseBody') && !combined.includes('exception'), 'trace retained body or exception fields');
+  assert(!combined.includes(secretToken) && !combined.includes(secretMessage) && !combined.includes('private reply') && !combined.includes('server-device'), 'trace logs leaked sensitive content');
+});
+
+test('Mini preserves Agent trace stage on a public failure response', () => {
+  configure();
+  mockFetch(200, { success: false, error: { code: 'AGENT_UNAVAILABLE' }, trace: { clientRequestId, stage: 'OPENAI_REQUEST' } });
+  const result = post(valid());
+  assert(result.trace && result.trace.clientRequestId === clientRequestId, 'clientRequestId trace was not preserved');
+  assert(result.trace.stage === 'OPENAI_REQUEST', 'Agent trace stage was not preserved');
+});
+
+test('Mini records connection failures at AGENT_REQUEST and returns a safe trace', () => {
+  configure();
+  fetchImpl = () => { throw new Error('network details must stay internal'); };
+  const result = post(valid());
+  assert(result.error.code === 'AGENT_UNAVAILABLE', 'connection failure code changed');
+  assert(result.trace && result.trace.clientRequestId === clientRequestId && result.trace.stage === 'AGENT_REQUEST', 'connection failure trace is incomplete');
+  const combined = logs.join('\n');
+  assert(combined.includes('"event":"AGENT_FETCH_FAILED"') && combined.includes('"stage":"AGENT_REQUEST"'), 'connection failure was not traced at Agent request stage');
 });
 
 test('invalid input', () => {
