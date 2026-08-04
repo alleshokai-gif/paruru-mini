@@ -12,7 +12,8 @@ function todayParuruContextInternal_(body, method, dependencies) {
       selectedMemberKeys: input.selectedMemberKeys.join(','),
       includeUnknown: input.includeUnknown ? 'true' : 'false',
       tomorrowScheduleStartTime: input.tomorrowScheduleStartTime,
-      scope: input.scope
+      scope: input.scope,
+      period: input.period
     }, input.actor, dependencies);
     return json_({
       success: true,
@@ -31,7 +32,7 @@ function todayParuruContextInternal_(body, method, dependencies) {
 }
 
 function validateInternalTodayParuruInput_(body) {
-  const allowed = ['action', 'internalToken', 'actor', 'todayParuruSettings'];
+  const allowed = ['action', 'internalToken', 'actor', 'period', 'todayParuruSettings'];
   if (Object.keys(body).some(function(key) { return allowed.indexOf(key) < 0; })) throw internalTodayParuruError_('INVALID_INPUT');
   const actor = body.actor;
   const allowedActor = ['homeId', 'memberUserId', 'displayName', 'role', 'capabilities', 'deviceId'];
@@ -50,6 +51,8 @@ function validateInternalTodayParuruInput_(body) {
     homeId: homeId,
     memberUserId: memberUserId
   });
+  const period = String(body.period || '').trim();
+  if (period !== 'today' && period !== 'tomorrow') throw internalTodayParuruError_('INVALID_INPUT');
   return {
     actor: {
       homeId: homeId,
@@ -62,7 +65,8 @@ function validateInternalTodayParuruInput_(body) {
     selectedMemberKeys: settings.selectedMemberKeys,
     includeUnknown: settings.includeUnknown,
     tomorrowScheduleStartTime: settings.tomorrowScheduleStartTime,
-    scope: settings.scope
+    scope: settings.scope,
+    period: period
   };
 }
 

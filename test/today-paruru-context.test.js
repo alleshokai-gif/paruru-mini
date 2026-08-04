@@ -113,11 +113,45 @@ test('server-normalized selection and includeUnknown are identical for Home and 
   context.isHomeMemberPolicyMatch_ = () => true;
   inboxReads = 0; calendarReads = 0; aggregateCalls = []; aggregateParams = [];
   const internal = JSON.parse(context.todayParuruContextInternal_({
-    action: 'todayParuruContextInternal', internalToken: 'test', actor, todayParuruSettings: settings
+    action: 'todayParuruContextInternal', internalToken: 'test', actor, period: 'today', todayParuruSettings: settings
   }, 'POST', { now: new Date('2026-07-18T17:59:00+09:00'), inboxItems: [{ id: 'inbox-source' }], calendarCandidates: [] }).getContent()).data;
   assert(internal.count === home.count, 'Home and Agent internal contexts differ in count');
   assert(aggregateParams[0].selectedMemberKeys === 'mother,family' && aggregateParams[0].includeUnknown === 'true', 'Agent internal settings were not normalized identically');
   assert(homeParams.selectedMemberKeys === 'mother,family' && homeParams.includeUnknown === 'true', 'Home settings were not normalized identically');
+});
+
+test('Agent period selects the requested day for both Calendar and Inbox without changing the evening switch', () => {
+  context.authenticateInternalCalendar_ = () => {};
+  context.getHomeMember_ = () => ({ status: 'active' });
+  context.isHomeMemberPolicyMatch_ = () => true;
+  const settings = { selectedMemberKeys: ['father', 'family'], includeUnknown: false, tomorrowScheduleStartTime: '18:00', scope: 'family' };
+  sourceByDate = {
+    '2026-07-18': [calendar('today-event', '2026-07-18 20:00', '2026-07-18 21:00'), inbox('today-task')],
+    '2026-07-19': [calendar('tomorrow-event', '2026-07-19 09:00', '2026-07-19 10:00'), inbox('tomorrow-task')]
+  };
+  inboxReads = 0; calendarReads = 0; aggregateCalls = []; aggregateParams = [];
+  const tomorrow = JSON.parse(context.todayParuruContextInternal_({
+    action: 'todayParuruContextInternal', internalToken: 'test', actor, period: 'tomorrow', todayParuruSettings: settings
+  }, 'POST', { now: new Date('2026-07-18T18:00:00+09:00'), inboxItems: [{ id: 'inbox-source' }], calendarCandidates: [] }).getContent()).data;
+  assert(tomorrow.targetDate === '2026-07-19' && tomorrow.includeTomorrow === false, 'tomorrow did not select only tomorrow');
+  assert(aggregateCalls.join(',') === '2026-07-19', 'tomorrow aggregate did not use the requested date');
+  assert(tomorrow.items.some((item) => item.id === 'tomorrow-event') && tomorrow.items.some((item) => item.id === 'tomorrow-task'), 'tomorrow Calendar and Inbox were not aggregated');
+  assert(!tomorrow.items.some((item) => item.id === 'today-event' || item.id === 'today-task'), 'today data leaked into tomorrow');
+
+  inboxReads = 0; calendarReads = 0; aggregateCalls = []; aggregateParams = [];
+  const today = JSON.parse(context.todayParuruContextInternal_({
+    action: 'todayParuruContextInternal', internalToken: 'test', actor, period: 'today', todayParuruSettings: settings
+  }, 'POST', { now: new Date('2026-07-18T18:00:00+09:00'), inboxItems: [{ id: 'inbox-source' }], calendarCandidates: [] }).getContent()).data;
+  assert(today.targetDate === '2026-07-18' && today.includeTomorrow === false, 'today did not select only today');
+  assert(aggregateCalls.join(',') === '2026-07-18', 'today aggregate did not use the requested date');
+  assert(today.items.some((item) => item.id === 'today-event') && today.items.some((item) => item.id === 'today-task'), 'today Calendar and Inbox were not aggregated');
+});
+
+test('Agent internal Today Paruru rejects a missing period', () => {
+  const response = JSON.parse(context.todayParuruContextInternal_({
+    action: 'todayParuruContextInternal', internalToken: 'test', actor, todayParuruSettings: {}
+  }, 'POST', {}).getContent());
+  assert(response.success === false && response.error.code === 'INVALID_INPUT', 'missing period was accepted');
 });
 
 let failures = 0;

@@ -13,7 +13,7 @@ function buildTodayParuruContextData_(params, actor, dependencies) {
   const deps = dependencies || {};
   const now = deps.now instanceof Date ? deps.now : new Date();
   const settings = resolveTodayParuruSettings_(source, actor);
-  const plan = buildTodayParuruRequestPlan_(now, settings.tomorrowScheduleStartTime);
+  const plan = buildTodayParuruRequestPlan_(now, settings.tomorrowScheduleStartTime, source.period);
   const aggregationParams = {
     selectedMemberKeys: settings.selectedMemberKeys.join(','),
     includeUnknown: settings.includeUnknown ? 'true' : 'false',
@@ -83,11 +83,15 @@ function resolveTodayParuruSettings_(params, actor) {
   };
 }
 
-function buildTodayParuruRequestPlan_(now, startTime) {
+function buildTodayParuruRequestPlan_(now, startTime, requestedPeriod) {
   const current = now instanceof Date ? now : new Date(now);
   const today = Utilities.formatDate(current, 'Asia/Tokyo', 'yyyy-MM-dd');
   const tomorrow = addTodayParuruDays_(today, 1);
   const threshold = normalizeTodayParuruClock_(startTime) || PALURU_TODAY_PARURU_DEFAULT_SWITCH_TIME;
+  if (requestedPeriod === 'today') return { today: today, tomorrow: tomorrow, includeTomorrow: false, threshold: threshold };
+  if (requestedPeriod === 'tomorrow') return {
+    today: tomorrow, tomorrow: addTodayParuruDays_(tomorrow, 1), includeTomorrow: false, threshold: threshold
+  };
   const time = Utilities.formatDate(current, 'Asia/Tokyo', 'HH:mm');
   return { today: today, tomorrow: tomorrow, includeTomorrow: time >= threshold, threshold: threshold };
 }
