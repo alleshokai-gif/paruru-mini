@@ -150,7 +150,8 @@ test('Mini persists a safe combined trace ledger without exposing it to PWA', ()
     errorCode: 'AGENT_UNAVAILABLE', stage: 'OPENAI_REQUEST', reason: 'UPSTREAM_HTTP_503',
     elapsedMs: 12, openAiCallCount: 1, serviceCallCount: 0, intent: '', service: '',
     openAiErrorType: 'invalid_request_error', openAiErrorCode: 'invalid_json_schema',
-    openAiErrorMessage: 'Invalid schema; sk-test-secret-123456789 must not be logged.'
+    openAiErrorMessage: 'Invalid schema; sk-test-secret-123456789 must not be logged.',
+    validationField: 'period', validationReason: 'TODAY_PARURU_PERIOD_UNSUPPORTED'
   }];
   mockFetch(200, upstream);
   const result = post(valid());
@@ -168,14 +169,18 @@ test('Mini persists a safe combined trace ledger without exposing it to PWA', ()
   assert(openAiTypeColumn >= 0 && openAiCodeColumn >= 0 && openAiMessageColumn >= 0, 'OpenAI 400 trace columns were not created');
   assert(openAi400Row[openAiTypeColumn] === 'invalid_request_error' && openAi400Row[openAiCodeColumn] === 'invalid_json_schema', 'OpenAI 400 type/code were not persisted');
   assert(openAi400Row[openAiMessageColumn] === 'Invalid schema; [REDACTED] must not be logged.', 'OpenAI 400 message was not safely persisted');
+  const validationFieldColumn = traceSheet.headers.indexOf('validationField');
+  const validationReasonColumn = traceSheet.headers.indexOf('validationReason');
+  assert(validationFieldColumn >= 0 && validationReasonColumn >= 0, 'validation trace columns were not created');
+  assert(openAi400Row[validationFieldColumn] === 'period' && openAi400Row[validationReasonColumn] === 'TODAY_PARURU_PERIOD_UNSUPPORTED', 'validation trace values were not persisted');
   const serialized = JSON.stringify(traceSheet.rows);
   assert(!serialized.includes(secretMessage) && !serialized.includes('private-agent-reply') && !serialized.includes(secretToken) && !serialized.includes('server-device') && !serialized.includes('sk-test-secret-123456789'), 'trace ledger stored private data');
 });
 
-test('Mini appends OpenAI 400 trace headers without changing existing trace rows', () => {
+test('Mini appends validation trace headers without changing existing trace rows', () => {
   reset();
   traceSheet = createTraceSheet();
-  const legacyHeaders = vm.runInContext('PALURU_AGENT_TRACE_HEADERS.slice(0, -3)', context);
+  const legacyHeaders = vm.runInContext('PALURU_AGENT_TRACE_HEADERS.slice(0, -2)', context);
   traceSheet.headers = Array.from(legacyHeaders);
   traceSheet.rows = [legacyHeaders.map(() => 'prior-row')];
   context.__legacyTrace = {
@@ -187,6 +192,36 @@ test('Mini appends OpenAI 400 trace headers without changing existing trace rows
   assert(JSON.stringify(traceSheet.headers) === JSON.stringify(expectedHeaders), 'new trace headers were not appended in order');
   assert(traceSheet.rows[0][0] === 'prior-row', 'existing trace row was changed');
   assert(traceSheet.rows.length === 2, 'new trace row was not appended after the existing row');
+});
+
+test('Mini does not duplicate existing validation trace headers', () => {
+  reset();
+  traceSheet = createTraceSheet();
+  const expectedHeaders = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  traceSheet.headers = Array.from(expectedHeaders);
+  traceSheet.rows = [expectedHeaders.map(() => 'prior-row')];
+  context.__existingHeaderTrace = {
+    entries: [{ event: 'REQUEST_RECEIVED', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat' }],
+    agentEntries: []
+  };
+  vm.runInContext('persistAgentTrace_(__existingHeaderTrace)', context);
+  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(expectedHeaders), 'existing trace headers were duplicated or reordered');
+  assert(traceSheet.rows[0][0] === 'prior-row', 'existing trace row was changed');
+});
+
+test('Mini keeps only allowlisted validation trace values', () => {
+  reset();
+  const trace = { clientRequestId, agentEntries: [] };
+  vm.runInContext(`appendAgentTraceEntries_(__validationTrace, [{
+    event: 'INTENT_VALIDATION_FAILED', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    validationField: 'period', validationReason: 'TODAY_PARURU_PERIOD_UNSUPPORTED'
+  }, {
+    event: 'INTENT_VALIDATION_FAILED', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    validationField: 'private-user-input', validationReason: 'private reply text'
+  }])`, Object.assign(context, { __validationTrace: trace }));
+  assert(trace.agentEntries[0].validationField === 'period', 'allowlisted validation field was dropped');
+  assert(trace.agentEntries[0].validationReason === 'TODAY_PARURU_PERIOD_UNSUPPORTED', 'allowlisted validation reason was dropped');
+  assert(trace.agentEntries[1].validationField === '' && trace.agentEntries[1].validationReason === '', 'free-form validation data was retained');
 });
 
 test('Mini persists Agent failure trace events before returning a safe error', () => {

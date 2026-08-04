@@ -20,7 +20,9 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'service',
   'openAiErrorType',
   'openAiErrorCode',
-  'openAiErrorMessage'
+  'openAiErrorMessage',
+  'validationField',
+  'validationReason'
 ];
 
 function persistAgentTrace_(trace) {
@@ -87,7 +89,9 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     service: sanitizeAgentTraceLedgerText_(value.service),
     openAiErrorType: sanitizeAgentTraceLedgerText_(value.openAiErrorType),
     openAiErrorCode: sanitizeAgentTraceLedgerText_(value.openAiErrorCode),
-    openAiErrorMessage: sanitizeAgentTraceLedgerMessage_(value.openAiErrorMessage)
+    openAiErrorMessage: sanitizeAgentTraceLedgerMessage_(value.openAiErrorMessage),
+    validationField: sanitizeAgentTraceValidationField_(value.validationField),
+    validationReason: sanitizeAgentTraceValidationReason_(value.validationReason)
   };
 }
 
@@ -99,28 +103,20 @@ function ensureAgentTraceHeaders_(sheet) {
   });
   if (hasExpectedHeaders) return;
 
-  // The three OpenAI 400 diagnostic columns are an append-only extension of
-  // the original trace ledger.  Preserve prior incident rows and never reorder
-  // or replace an existing header row.
-  const legacyHeaders = PALURU_AGENT_TRACE_HEADERS.slice(0, -3);
-  const isLegacyHeaderRow = legacyHeaders.every(function(header, index) {
-    return current[index] === header;
-  });
-  if (isLegacyHeaderRow) {
-    const extensions = PALURU_AGENT_TRACE_HEADERS.slice(legacyHeaders.length);
-    let presentExtensions = 0;
-    while (presentExtensions < extensions.length && current[legacyHeaders.length + presentExtensions] === extensions[presentExtensions]) {
-      presentExtensions += 1;
+  // Header upgrades are append-only.  A known historical prefix may receive
+  // only the missing tail; existing columns and rows are never rewritten.
+  let presentHeaders = 0;
+  while (presentHeaders < PALURU_AGENT_TRACE_HEADERS.length
+    && current[presentHeaders] === PALURU_AGENT_TRACE_HEADERS[presentHeaders]) {
+    presentHeaders += 1;
+  }
+  const hasUnexpectedTail = current.slice(presentHeaders).some(Boolean);
+  if (!hasUnexpectedTail) {
+    const missingHeaders = PALURU_AGENT_TRACE_HEADERS.slice(presentHeaders);
+    if (missingHeaders.length) {
+      sheet.getRange(1, presentHeaders + 1, 1, missingHeaders.length).setValues([missingHeaders]);
     }
-    const hasUnexpectedTail = current.slice(legacyHeaders.length + presentExtensions).some(Boolean);
-    if (!hasUnexpectedTail) {
-      const missingExtensions = extensions.slice(presentExtensions);
-      if (missingExtensions.length) {
-        sheet.getRange(1, legacyHeaders.length + presentExtensions + 1, 1, missingExtensions.length)
-          .setValues([missingExtensions]);
-      }
-      return;
-    }
+    return;
   }
 
   if (sheet.getLastRow() > 0 || current.some(Boolean)) throw new Error('TRACE_SCHEMA_MISMATCH');
@@ -139,6 +135,21 @@ function sanitizeAgentTraceLedgerMessage_(value) {
     .replace(/(?:api[_-]?key|authorization)\s*[:=]\s*[^\s,;]+/gi, '[REDACTED_CREDENTIAL]')
     .replace(/[\r\n\t]+/g, ' ')
     .slice(0, 500);
+}
+
+function sanitizeAgentTraceValidationField_(value) {
+  const allowed = { period: true, scope: true };
+  const normalized = String(value || '').trim();
+  return allowed[normalized] ? normalized : '';
+}
+
+function sanitizeAgentTraceValidationReason_(value) {
+  const allowed = {
+    TODAY_PARURU_PERIOD_UNSUPPORTED: true,
+    TODAY_PARURU_SCOPE_REQUIRED: true
+  };
+  const normalized = String(value || '').trim();
+  return allowed[normalized] ? normalized : '';
 }
 
 function sanitizeAgentTraceLedgerNumber_(value) {

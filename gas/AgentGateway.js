@@ -678,13 +678,23 @@ function appendAgentTraceEntries_(trace, entries) {
   const allowed = [
     'event', 'clientRequestIdSuffix', 'deploymentId', 'version', 'action', 'httpStatus',
     'errorCode', 'stage', 'reason', 'elapsedMs', 'openAiCallCount', 'serviceCallCount',
-    'intent', 'service', 'openAiErrorType', 'openAiErrorCode', 'openAiErrorMessage'
+    'intent', 'service', 'openAiErrorType', 'openAiErrorCode', 'openAiErrorMessage',
+    'validationField', 'validationReason'
   ];
   entries.slice(0, 32).forEach(function(entry) {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;
     const safe = {};
     allowed.forEach(function(key) {
-      if (Object.prototype.hasOwnProperty.call(entry, key)) safe[key] = entry[key];
+      if (!Object.prototype.hasOwnProperty.call(entry, key)) return;
+      if (key === 'validationField') {
+        safe[key] = sanitizeAgentTraceValidationField_(entry[key]);
+        return;
+      }
+      if (key === 'validationReason') {
+        safe[key] = sanitizeAgentTraceValidationReason_(entry[key]);
+        return;
+      }
+      safe[key] = entry[key];
     });
     if (String(safe.clientRequestIdSuffix || '') !== String(trace.clientRequestId || '').slice(-8)) return;
     trace.agentEntries.push(safe);
