@@ -202,3 +202,15 @@ Codexはコード作成者であり、設計者・レビュー担当・完成判
 - Do not write request text, replies, raw responses, Calendar, Inbox, health data, tokens, or secrets to diagnostics. Keep only safe event metadata, code, stage, reason, size, elapsed time, request-id suffix, and Build ID.
 - Preserve known upstream error codes through Mini, Agent, and OS. Do not collapse them to `AGENT_ERROR`; only unknown failures may use the generic code.
 - Every `agentChat` change must retain the one-OpenAI-call plus deterministic GAS-service architecture and must measure `routerMs`, `serviceMs`, `totalMs`, `openAiCallCount`, and `serviceCallCount` on both success and failure.
+# Agent Internal Context Contracts
+
+- Agent-only internal APIs must explicitly validate required routing fields and
+  pass them to the shared aggregate Service. Do not silently use a Home-card
+  default when Agent supplied a validated value.
+- The Home card may retain its own no-period behavior, including the existing
+  18:00 rollover. An explicit Agent `period` selects its requested target day
+  and must not change the Home-card rollover rule.
+- For a day-targeted aggregate, test the returned Calendar and Inbox together
+  for `today` and `tomorrow`, and test that a missing target field is rejected.
+- Do not add a Calendar-only fallback: Today Paruru remains the single shared
+  Calendar-plus-Inbox aggregation path.

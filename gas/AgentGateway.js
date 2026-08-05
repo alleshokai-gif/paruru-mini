@@ -679,7 +679,8 @@ function appendAgentTraceEntries_(trace, entries) {
     'event', 'clientRequestIdSuffix', 'deploymentId', 'version', 'action', 'httpStatus',
     'errorCode', 'stage', 'reason', 'elapsedMs', 'openAiCallCount', 'serviceCallCount',
     'intent', 'service', 'openAiErrorType', 'openAiErrorCode', 'openAiErrorMessage',
-    'validationField', 'validationReason'
+    'validationField', 'validationReason', 'period', 'scope', 'roomId', 'operation',
+    'boundary', 'boundaryHash', 'from', 'field', 'value', 'before', 'after'
   ];
   entries.slice(0, 32).forEach(function(entry) {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;
@@ -694,11 +695,51 @@ function appendAgentTraceEntries_(trace, entries) {
         safe[key] = sanitizeAgentTraceValidationReason_(entry[key]);
         return;
       }
+      if (key === 'period' || key === 'scope' || key === 'roomId' || key === 'operation'
+          || key === 'value' || key === 'before' || key === 'after') {
+        safe[key] = sanitizeAgentTraceBoundaryValue_(key, entry[key]);
+        return;
+      }
+      if (key === 'boundary') {
+        safe[key] = sanitizeAgentTraceBoundary_(entry[key]);
+        return;
+      }
+      if (key === 'from') {
+        safe[key] = sanitizeAgentTraceBoundary_(entry[key]);
+        return;
+      }
+      if (key === 'boundaryHash') {
+        safe[key] = /^[a-f0-9]{8}$/i.test(String(entry[key] || '')) ? String(entry[key]).toLowerCase() : '';
+        return;
+      }
+      if (key === 'field') {
+        safe[key] = { period: true, scope: true, roomId: true, operation: true }[String(entry[key] || '')] ? String(entry[key]) : '';
+        return;
+      }
       safe[key] = entry[key];
     });
     if (String(safe.clientRequestIdSuffix || '') !== String(trace.clientRequestId || '').slice(-8)) return;
     trace.agentEntries.push(safe);
   });
+}
+
+function sanitizeAgentTraceBoundary_(value) {
+  const normalized = String(value || '').trim();
+  return { OpenAI: true, Canonical: true, Router: true, Service: true, Adapter: true }[normalized] ? normalized : '';
+}
+
+function sanitizeAgentTraceBoundaryValue_(field, value) {
+  const normalized = String(value || '').trim();
+  const allowed = {
+    period: { today: true, tomorrow: true, this_week: true, next_7_days: true },
+    scope: { mine: true, family: true },
+    roomId: { living: true, bedroom: true, kids_room: true, outside: true },
+    operation: { power: true, apply_settings: true, pause: true, resume: true }
+  };
+  if (field === 'value' || field === 'before' || field === 'after') {
+    return Object.keys(allowed).some(function(key) { return allowed[key][normalized] === true; }) ? normalized : '';
+  }
+  return allowed[field] && allowed[field][normalized] ? normalized : '';
 }
 
 function miniAgentTraceDeploymentId_() {

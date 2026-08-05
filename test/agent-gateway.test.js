@@ -224,6 +224,29 @@ test('Mini keeps only allowlisted validation trace values', () => {
   assert(trace.agentEntries[1].validationField === '' && trace.agentEntries[1].validationReason === '', 'free-form validation data was retained');
 });
 
+test('Mini persists only allowlisted boundary trace fields and the append-only header tail', () => {
+  reset();
+  const trace = { clientRequestId, agentEntries: [] };
+  vm.runInContext(`appendAgentTraceEntries_(__boundaryTrace, [{
+    event: 'BOUNDARY_TRACE', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    boundary: 'Adapter', boundaryHash: '87f263e1', period: 'tomorrow', scope: 'mine', roomId: 'living', operation: 'power',
+    field: 'roomId', value: 'living', before: 'living', after: 'living', privateText: 'must-not-persist'
+  }])`, Object.assign(context, { __boundaryTrace: trace }));
+  assert(trace.agentEntries.length === 1, 'boundary trace was dropped');
+  const entry = trace.agentEntries[0];
+  assert(entry.boundary === 'Adapter' && entry.boundaryHash === '87f263e1', 'boundary identity was not retained');
+  assert(entry.period === 'tomorrow' && entry.scope === 'mine' && entry.roomId === 'living' && entry.operation === 'power', 'safe boundary fields were not retained');
+  assert(!Object.prototype.hasOwnProperty.call(entry, 'privateText'), 'free text was retained in boundary trace');
+  traceSheet = createTraceSheet();
+  context.__boundaryPersistTrace = { entries: [], agentEntries: trace.agentEntries };
+  vm.runInContext('persistAgentTrace_(__boundaryPersistTrace)', context);
+  ['period', 'scope', 'roomId', 'operation', 'boundary', 'boundaryHash', 'from', 'field', 'value', 'before', 'after'].forEach((header) => {
+    assert(traceSheet.headers.indexOf(header) >= 0, 'missing trace header: ' + header);
+  });
+  const roomColumn = traceSheet.headers.indexOf('roomId');
+  assert(traceSheet.rows[0][roomColumn] === 'living', 'roomId was not persisted');
+});
+
 test('Mini persists Agent failure trace events before returning a safe error', () => {
   configure();
   mockFetch(200, {

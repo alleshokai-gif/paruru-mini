@@ -22,7 +22,18 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'openAiErrorCode',
   'openAiErrorMessage',
   'validationField',
-  'validationReason'
+  'validationReason',
+  'period',
+  'scope',
+  'roomId',
+  'operation',
+  'boundary',
+  'boundaryHash',
+  'from',
+  'field',
+  'value',
+  'before',
+  'after'
 ];
 
 function persistAgentTrace_(trace) {
@@ -91,8 +102,33 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     openAiErrorCode: sanitizeAgentTraceLedgerText_(value.openAiErrorCode),
     openAiErrorMessage: sanitizeAgentTraceLedgerMessage_(value.openAiErrorMessage),
     validationField: sanitizeAgentTraceValidationField_(value.validationField),
-    validationReason: sanitizeAgentTraceValidationReason_(value.validationReason)
+    validationReason: sanitizeAgentTraceValidationReason_(value.validationReason),
+    period: sanitizeAgentTraceLedgerEnum_(value.period, { today: true, tomorrow: true, this_week: true, next_7_days: true }),
+    scope: sanitizeAgentTraceLedgerEnum_(value.scope, { mine: true, family: true }),
+    roomId: sanitizeAgentTraceLedgerEnum_(value.roomId, { living: true, bedroom: true, kids_room: true, outside: true }),
+    operation: sanitizeAgentTraceLedgerEnum_(value.operation, { power: true, apply_settings: true, pause: true, resume: true }),
+    boundary: sanitizeAgentTraceLedgerEnum_(value.boundary, { OpenAI: true, Canonical: true, Router: true, Service: true, Adapter: true }),
+    boundaryHash: /^[a-f0-9]{8}$/i.test(String(value.boundaryHash || '')) ? String(value.boundaryHash).toLowerCase() : '',
+    from: sanitizeAgentTraceLedgerEnum_(value.from, { OpenAI: true, Canonical: true, Router: true, Service: true, Adapter: true }),
+    field: sanitizeAgentTraceLedgerEnum_(value.field, { period: true, scope: true, roomId: true, operation: true }),
+    value: sanitizeAgentTraceLedgerBoundaryValue_(value.value),
+    before: sanitizeAgentTraceLedgerBoundaryValue_(value.before),
+    after: sanitizeAgentTraceLedgerBoundaryValue_(value.after)
   };
+}
+
+function sanitizeAgentTraceLedgerEnum_(value, allowed) {
+  const normalized = String(value || '').trim();
+  return allowed[normalized] ? normalized : '';
+}
+
+function sanitizeAgentTraceLedgerBoundaryValue_(value) {
+  const normalized = String(value || '').trim();
+  return {
+    today: true, tomorrow: true, this_week: true, next_7_days: true,
+    mine: true, family: true, living: true, bedroom: true, kids_room: true,
+    outside: true, power: true, apply_settings: true, pause: true, resume: true
+  }[normalized] ? normalized : '';
 }
 
 function ensureAgentTraceHeaders_(sheet) {
