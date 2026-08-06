@@ -679,8 +679,12 @@ function appendAgentTraceEntries_(trace, entries) {
     'event', 'clientRequestIdSuffix', 'deploymentId', 'version', 'action', 'httpStatus',
     'errorCode', 'stage', 'reason', 'elapsedMs', 'openAiCallCount', 'serviceCallCount',
     'intent', 'service', 'openAiErrorType', 'openAiErrorCode', 'openAiErrorMessage',
-    'validationField', 'validationReason', 'period', 'scope', 'roomId', 'operation',
-    'boundary', 'boundaryHash', 'from', 'field', 'value', 'before', 'after'
+    'validationField', 'validationReason', 'period', 'scope', 'roomId', 'operation', 'state',
+    'boundary', 'boundaryHash', 'from', 'field', 'value', 'before', 'after',
+    'sourceType', 'sourceSystem', 'sourceReason', 'freshness', 'sourceSelected',
+    'sourceFallbackUsed', 'sourceObservedAt', 'sourceRecordCount', 'sourceSelectedCount',
+    'calendarRecordCount', 'inboxRecordCount', 'sourceHttpStatus', 'sourceResultCode'
+    ,'actionSource', 'actionResult', 'stateBefore', 'stateAfter'
   ];
   entries.slice(0, 32).forEach(function(entry) {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;
@@ -700,6 +704,10 @@ function appendAgentTraceEntries_(trace, entries) {
         safe[key] = sanitizeAgentTraceBoundaryValue_(key, entry[key]);
         return;
       }
+      if (key === 'state') {
+        safe[key] = { OFF: true, ON: true, COOL: true, HEAT: true, AUTO: true, UNKNOWN: true }[String(entry[key] || '')] ? String(entry[key]) : '';
+        return;
+      }
       if (key === 'boundary') {
         safe[key] = sanitizeAgentTraceBoundary_(entry[key]);
         return;
@@ -716,11 +724,50 @@ function appendAgentTraceEntries_(trace, entries) {
         safe[key] = { period: true, scope: true, roomId: true, operation: true }[String(entry[key] || '')] ? String(entry[key]) : '';
         return;
       }
+      if (key.indexOf('source') === 0 || key === 'freshness') {
+        safe[key] = sanitizeAgentSourceTraceValue_(key, entry[key]);
+        return;
+      }
+      if (key === 'actionSource' || key === 'actionResult' || key === 'stateBefore' || key === 'stateAfter') {
+        safe[key] = sanitizeAgentActionTraceValue_(key, entry[key]);
+        return;
+      }
       safe[key] = entry[key];
     });
     if (String(safe.clientRequestIdSuffix || '') !== String(trace.clientRequestId || '').slice(-8)) return;
     trace.agentEntries.push(safe);
   });
+}
+
+function sanitizeAgentActionTraceValue_(key, value) {
+  const normalized = String(value || '').trim();
+  const allowed = {
+    actionSource: { confirmation_created: true, confirmation_executed: true, confirmation_rejected: true, followup_required: true, room_not_found: true, outside_not_allowed: true },
+    actionResult: { OK: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true },
+    stateBefore: { OFF: true, ON: true, COOL: true, HEAT: true, AUTO: true, UNKNOWN: true },
+    stateAfter: { OFF: true, ON: true, COOL: true, HEAT: true, AUTO: true, UNKNOWN: true }
+  };
+  return allowed[key] && allowed[key][normalized] ? normalized : '';
+}
+
+function sanitizeAgentSourceTraceValue_(key, value) {
+  const text = String(value || '').trim();
+  const enums = {
+    sourceType: { observed: true, forecast: true, calendar: true, inbox: true, calendar_inbox: true, device_state: true, generated: true, none: true },
+    sourceSystem: { switchbot: true, mini_weather: true, google_calendar: true, mini_inbox: true, automation: true, paluru_agent: true, unknown: true },
+    sourceReason: { primary: true, fallback: true, unavailable: true, stale: true, invalid: true, not_applicable: true },
+    freshness: { current: true, stale: true, unknown: true, not_applicable: true },
+    sourceSelected: { switchbot_observed: true, forecast_fallback: true, forecast: true, weather_unavailable: true, room_climate: true, room_not_found: true, climate_invalid_response: true, today_paruru_aggregate: true, aircon_status: true, confirmation_created: true, followup_required: true, outside_not_allowed: true, confirmation_executed: true, confirmation_rejected: true },
+    sourceResultCode: { OK: true, WEATHER_UNAVAILABLE: true, ROOM_NOT_FOUND: true, UPSTREAM_INVALID_RESPONSE: true, CLIMATE_UNAVAILABLE: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true }
+  };
+  if (key === 'sourceFallbackUsed') return value === true;
+  if (key === 'sourceObservedAt') return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(text) ? text : '';
+  if (key === 'sourceRecordCount' || key === 'sourceSelectedCount' || key === 'calendarRecordCount'
+      || key === 'inboxRecordCount' || key === 'sourceHttpStatus') {
+    const number = Number(value);
+    return Number.isInteger(number) && number >= 0 ? number : '';
+  }
+  return enums[key] && enums[key][text] ? text : '';
 }
 
 function sanitizeAgentTraceBoundary_(value) {

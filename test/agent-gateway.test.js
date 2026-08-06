@@ -247,6 +247,50 @@ test('Mini persists only allowlisted boundary trace fields and the append-only h
   assert(traceSheet.rows[0][roomColumn] === 'living', 'roomId was not persisted');
 });
 
+test('Mini preserves only allowlisted Source Trace fields in the append-only header tail', () => {
+  reset();
+  const trace = { clientRequestId, agentEntries: [] };
+  vm.runInContext(`appendAgentTraceEntries_(__sourceTrace, [{
+    event: 'SOURCE_SELECTED', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    sourceType: 'observed', sourceSystem: 'switchbot', sourceReason: 'primary', freshness: 'current',
+    sourceSelected: 'room_climate', sourceFallbackUsed: false, sourceObservedAt: '2026-08-05T09:00:00+09:00',
+    sourceRecordCount: 3, sourceSelectedCount: 1, calendarRecordCount: 2, inboxRecordCount: 1, sourceHttpStatus: 200, sourceResultCode: 'OK',
+    privateText: 'must-not-persist', sourceUrl: 'https://private.example'
+  }, {
+    event: 'SOURCE_SELECTED', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    sourceSelected: 'private free text', sourceResultCode: 'private_error', sourceObservedAt: 'not-a-date'
+  }])`, Object.assign(context, { __sourceTrace: trace }));
+  assert(trace.agentEntries[0].sourceSelected === 'room_climate', 'allowlisted Source Trace value was dropped');
+  assert(trace.agentEntries[1].sourceSelected === '' && trace.agentEntries[1].sourceResultCode === '', 'free-form Source Trace value was retained');
+  assert(!Object.prototype.hasOwnProperty.call(trace.agentEntries[0], 'privateText'), 'free text leaked into Source Trace');
+  traceSheet = createTraceSheet();
+  context.__sourcePersistTrace = { entries: [], agentEntries: trace.agentEntries };
+  vm.runInContext('persistAgentTrace_(__sourcePersistTrace)', context);
+  const selected = traceSheet.headers.indexOf('sourceSelected');
+  const count = traceSheet.headers.indexOf('sourceRecordCount');
+  const calendarCount = traceSheet.headers.indexOf('calendarRecordCount');
+  assert(traceSheet.rows[0][selected] === 'room_climate' && traceSheet.rows[0][count] === 3 && traceSheet.rows[0][calendarCount] === 2, 'Source Trace was not persisted');
+});
+
+test('Mini persists only allowlisted Aircon Action and State Trace values', () => {
+  reset();
+  const trace = { clientRequestId, agentEntries: [] };
+  vm.runInContext(`appendAgentTraceEntries_(__actionTrace, [{
+    event: 'ACTION_TRACE', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    actionSource: 'confirmation_created', actionResult: 'OK', stateBefore: 'OFF', stateAfter: 'ON', privateText: 'must-not-persist'
+  }, {
+    event: 'ACTION_TRACE', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    actionSource: 'free text', actionResult: 'private', stateBefore: '25', stateAfter: 'secret'
+  }])`, Object.assign(context, { __actionTrace: trace }));
+  assert(trace.agentEntries[0].actionSource === 'confirmation_created' && trace.agentEntries[0].stateAfter === 'ON', 'allowlisted Action Trace was dropped');
+  assert(trace.agentEntries[1].actionSource === '' && trace.agentEntries[1].stateBefore === '', 'unsafe Action Trace was retained');
+  traceSheet = createTraceSheet();
+  context.__actionPersistTrace = { entries: [], agentEntries: trace.agentEntries };
+  vm.runInContext('persistAgentTrace_(__actionPersistTrace)', context);
+  assert(traceSheet.rows[0][traceSheet.headers.indexOf('actionSource')] === 'confirmation_created', 'Action Trace was not persisted');
+  assert(traceSheet.rows[0][traceSheet.headers.indexOf('stateAfter')] === 'ON', 'State Trace was not persisted');
+});
+
 test('Mini persists Agent failure trace events before returning a safe error', () => {
   configure();
   mockFetch(200, {

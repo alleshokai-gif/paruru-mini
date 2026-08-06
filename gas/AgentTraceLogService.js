@@ -27,13 +27,19 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'scope',
   'roomId',
   'operation',
+  'state',
   'boundary',
   'boundaryHash',
   'from',
   'field',
   'value',
   'before',
-  'after'
+  'after',
+  'sourceType', 'sourceSystem', 'sourceReason', 'freshness',
+  'sourceSelected', 'sourceFallbackUsed', 'sourceObservedAt',
+  'sourceRecordCount', 'sourceSelectedCount', 'calendarRecordCount', 'inboxRecordCount',
+  'sourceHttpStatus', 'sourceResultCode',
+  'actionSource', 'actionResult', 'stateBefore', 'stateAfter'
 ];
 
 function persistAgentTrace_(trace) {
@@ -107,13 +113,31 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     scope: sanitizeAgentTraceLedgerEnum_(value.scope, { mine: true, family: true }),
     roomId: sanitizeAgentTraceLedgerEnum_(value.roomId, { living: true, bedroom: true, kids_room: true, outside: true }),
     operation: sanitizeAgentTraceLedgerEnum_(value.operation, { power: true, apply_settings: true, pause: true, resume: true }),
+    state: sanitizeAgentTraceLedgerEnum_(value.state, { OFF: true, ON: true, COOL: true, HEAT: true, AUTO: true, UNKNOWN: true }),
     boundary: sanitizeAgentTraceLedgerEnum_(value.boundary, { OpenAI: true, Canonical: true, Router: true, Service: true, Adapter: true }),
     boundaryHash: /^[a-f0-9]{8}$/i.test(String(value.boundaryHash || '')) ? String(value.boundaryHash).toLowerCase() : '',
     from: sanitizeAgentTraceLedgerEnum_(value.from, { OpenAI: true, Canonical: true, Router: true, Service: true, Adapter: true }),
     field: sanitizeAgentTraceLedgerEnum_(value.field, { period: true, scope: true, roomId: true, operation: true }),
     value: sanitizeAgentTraceLedgerBoundaryValue_(value.value),
     before: sanitizeAgentTraceLedgerBoundaryValue_(value.before),
-    after: sanitizeAgentTraceLedgerBoundaryValue_(value.after)
+    after: sanitizeAgentTraceLedgerBoundaryValue_(value.after),
+    sourceType: sanitizeAgentTraceLedgerEnum_(value.sourceType, { observed: true, forecast: true, calendar: true, inbox: true, calendar_inbox: true, device_state: true, generated: true, none: true }),
+    sourceSystem: sanitizeAgentTraceLedgerEnum_(value.sourceSystem, { switchbot: true, mini_weather: true, google_calendar: true, mini_inbox: true, automation: true, paluru_agent: true, unknown: true }),
+    sourceReason: sanitizeAgentTraceLedgerEnum_(value.sourceReason, { primary: true, fallback: true, unavailable: true, stale: true, invalid: true, not_applicable: true }),
+    freshness: sanitizeAgentTraceLedgerEnum_(value.freshness, { current: true, stale: true, unknown: true, not_applicable: true }),
+    sourceSelected: sanitizeAgentTraceLedgerEnum_(value.sourceSelected, { switchbot_observed: true, forecast_fallback: true, forecast: true, weather_unavailable: true, room_climate: true, room_not_found: true, climate_invalid_response: true, today_paruru_aggregate: true, aircon_status: true, confirmation_created: true, followup_required: true, outside_not_allowed: true, confirmation_executed: true, confirmation_rejected: true }),
+    sourceFallbackUsed: value.sourceFallbackUsed === true,
+    sourceObservedAt: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(String(value.sourceObservedAt || '')) ? String(value.sourceObservedAt) : '',
+    sourceRecordCount: sanitizeAgentTraceLedgerNumber_(value.sourceRecordCount),
+    sourceSelectedCount: sanitizeAgentTraceLedgerNumber_(value.sourceSelectedCount),
+    calendarRecordCount: sanitizeAgentTraceLedgerNumber_(value.calendarRecordCount),
+    inboxRecordCount: sanitizeAgentTraceLedgerNumber_(value.inboxRecordCount),
+    sourceHttpStatus: sanitizeAgentTraceLedgerNumber_(value.sourceHttpStatus),
+    sourceResultCode: sanitizeAgentTraceLedgerEnum_(value.sourceResultCode, { OK: true, WEATHER_UNAVAILABLE: true, ROOM_NOT_FOUND: true, UPSTREAM_INVALID_RESPONSE: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true })
+    ,actionSource: sanitizeAgentTraceLedgerEnum_(value.actionSource, { confirmation_created: true, confirmation_executed: true, confirmation_rejected: true, followup_required: true, room_not_found: true, outside_not_allowed: true })
+    ,actionResult: sanitizeAgentTraceLedgerEnum_(value.actionResult, { OK: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true })
+    ,stateBefore: sanitizeAgentTraceLedgerEnum_(value.stateBefore, { OFF: true, ON: true, COOL: true, HEAT: true, AUTO: true, UNKNOWN: true })
+    ,stateAfter: sanitizeAgentTraceLedgerEnum_(value.stateAfter, { OFF: true, ON: true, COOL: true, HEAT: true, AUTO: true, UNKNOWN: true })
   };
 }
 
