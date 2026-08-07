@@ -224,6 +224,27 @@ test('Mini keeps only allowlisted validation trace values', () => {
   assert(trace.agentEntries[1].validationField === '' && trace.agentEntries[1].validationReason === '', 'free-form validation data was retained');
 });
 
+test('Mini retains allowlisted Aircon validation trace values at ingress and persistence', () => {
+  reset();
+  const trace = { clientRequestId, agentEntries: [] };
+  vm.runInContext(`appendAgentTraceEntries_(__airconValidationTrace, [{
+    event: 'INTENT_VALIDATION_FAILED', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    validationField: 'settings', validationReason: 'SETTINGS_REQUIRED'
+  }, {
+    event: 'INTENT_VALIDATION_FAILED', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    validationField: 'private-field', validationReason: 'private reason text'
+  }])`, Object.assign(context, { __airconValidationTrace: trace }));
+  assert(trace.agentEntries[0].validationField === 'settings', 'Aircon validation field was dropped at Mini ingress');
+  assert(trace.agentEntries[0].validationReason === 'SETTINGS_REQUIRED', 'Aircon validation reason was dropped at Mini ingress');
+  assert(trace.agentEntries[1].validationField === '' && trace.agentEntries[1].validationReason === '', 'unsafe validation values were retained');
+  traceSheet = createTraceSheet();
+  context.__airconValidationPersistTrace = { entries: [], agentEntries: trace.agentEntries };
+  vm.runInContext('persistAgentTrace_(__airconValidationPersistTrace)', context);
+  const fieldColumn = traceSheet.headers.indexOf('validationField');
+  const reasonColumn = traceSheet.headers.indexOf('validationReason');
+  assert(traceSheet.rows[0][fieldColumn] === 'settings' && traceSheet.rows[0][reasonColumn] === 'SETTINGS_REQUIRED', 'Aircon validation values were not persisted');
+});
+
 test('Mini persists only allowlisted boundary trace fields and the append-only header tail', () => {
   reset();
   const trace = { clientRequestId, agentEntries: [] };

@@ -692,11 +692,11 @@ function appendAgentTraceEntries_(trace, entries) {
     allowed.forEach(function(key) {
       if (!Object.prototype.hasOwnProperty.call(entry, key)) return;
       if (key === 'validationField') {
-        safe[key] = sanitizeAgentTraceValidationField_(entry[key]);
+        safe[key] = sanitizeIncomingAgentTraceValidationField_(entry[key]);
         return;
       }
       if (key === 'validationReason') {
-        safe[key] = sanitizeAgentTraceValidationReason_(entry[key]);
+        safe[key] = sanitizeIncomingAgentTraceValidationReason_(entry[key]);
         return;
       }
       if (key === 'period' || key === 'scope' || key === 'roomId' || key === 'operation'
@@ -737,6 +737,23 @@ function appendAgentTraceEntries_(trace, entries) {
     if (String(safe.clientRequestIdSuffix || '') !== String(trace.clientRequestId || '').slice(-8)) return;
     trace.agentEntries.push(safe);
   });
+}
+
+function sanitizeIncomingAgentTraceValidationField_(value) {
+  const normalized = String(value || '').trim();
+  return { period: true, scope: true, roomId: true, operation: true, settings: true }[normalized] ? normalized : '';
+}
+
+function sanitizeIncomingAgentTraceValidationReason_(value) {
+  const normalized = String(value || '').trim();
+  return {
+    TODAY_PARURU_PERIOD_UNSUPPORTED: true,
+    TODAY_PARURU_SCOPE_REQUIRED: true,
+    ROOM_REQUIRED: true,
+    SETTINGS_REQUIRED: true,
+    OUTSIDE_NOT_ALLOWED: true,
+    OPERATION_UNSUPPORTED: true
+  }[normalized] ? normalized : '';
 }
 
 function sanitizeAgentActionTraceValue_(key, value) {

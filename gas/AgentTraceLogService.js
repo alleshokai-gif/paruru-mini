@@ -198,7 +198,7 @@ function sanitizeAgentTraceLedgerMessage_(value) {
 }
 
 function sanitizeAgentTraceValidationField_(value) {
-  const allowed = { period: true, scope: true };
+  const allowed = { period: true, scope: true, roomId: true, operation: true, settings: true };
   const normalized = String(value || '').trim();
   return allowed[normalized] ? normalized : '';
 }
@@ -206,7 +206,11 @@ function sanitizeAgentTraceValidationField_(value) {
 function sanitizeAgentTraceValidationReason_(value) {
   const allowed = {
     TODAY_PARURU_PERIOD_UNSUPPORTED: true,
-    TODAY_PARURU_SCOPE_REQUIRED: true
+    TODAY_PARURU_SCOPE_REQUIRED: true,
+    ROOM_REQUIRED: true,
+    SETTINGS_REQUIRED: true,
+    OUTSIDE_NOT_ALLOWED: true,
+    OPERATION_UNSUPPORTED: true
   };
   const normalized = String(value || '').trim();
   return allowed[normalized] ? normalized : '';
