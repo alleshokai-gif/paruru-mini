@@ -200,7 +200,14 @@ function sanitizeAgentTraceLedgerMessage_(value) {
 }
 
 function sanitizeAgentTraceValidationField_(value) {
-  const allowed = { period: true, scope: true, roomId: true, operation: true, settings: true };
+  // Mirrors PALURU_VALIDATION_FIELDS in paluru-agent/gas/Code.js.  These are
+  // fixed field names, never caller-provided paths.
+  const allowed = {
+    intent: true, confidence: true, roomId: true, period: true, scope: true, operation: true,
+    settings: true, 'settings.power': true, 'settings.mode': true, 'settings.fan': true,
+    'settings.setpointC': true, 'settings.durationMinutes': true, overrideMinutes: true,
+    needsFollowup: true, followupQuestion: true, reply: true
+  };
   const normalized = String(value || '').trim();
   return allowed[normalized] ? normalized : '';
 }
@@ -209,10 +216,35 @@ function sanitizeAgentTraceValidationReason_(value) {
   const allowed = {
     TODAY_PARURU_PERIOD_UNSUPPORTED: true,
     TODAY_PARURU_SCOPE_REQUIRED: true,
+    CONTRACT_OBJECT_INVALID: true,
+    CONTRACT_FIELDS_INVALID: true,
+    INTENT_INVALID: true,
+    CONFIDENCE_INVALID: true,
+    ENUM_INVALID: true,
+    TEXT_INVALID: true,
+    NEEDS_FOLLOWUP_INVALID: true,
+    FOLLOWUP_CONTRACT_INVALID: true,
+    SETTINGS_OBJECT_INVALID: true,
+    SETTINGS_FIELDS_INVALID: true,
+    SETTINGS_VALUE_INVALID: true,
+    UNUSED_FIELD_NOT_NULL: true,
+    WEATHER_PERIOD_UNSUPPORTED: true,
+    WEATHER_ROOM_REQUIRED: true,
     ROOM_REQUIRED: true,
+    OPERATION_REQUIRED: true,
     SETTINGS_REQUIRED: true,
     OUTSIDE_NOT_ALLOWED: true,
-    OPERATION_UNSUPPORTED: true
+    OPERATION_UNSUPPORTED: true,
+    ROOM_NOT_FOUND: true,
+    OVERRIDE_MINUTES_INVALID: true,
+    POWER_REQUIRED: true,
+    POWER_SETTINGS_CONFLICT: true,
+    MODE_INVALID: true,
+    FAN_INVALID: true,
+    SETPOINT_REQUIRED: true,
+    SETPOINT_NOT_ALLOWED: true,
+    DURATION_REQUIRED: true,
+    DURATION_NOT_ALLOWED: true
   };
   const normalized = String(value || '').trim();
   return allowed[normalized] ? normalized : '';

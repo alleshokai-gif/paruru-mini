@@ -214,3 +214,22 @@ Codexはコード作成者であり、設計者・レビュー担当・完成判
   for `today` and `tomorrow`, and test that a missing target field is rejected.
 - Do not add a Calendar-only fallback: Today Paruru remains the single shared
   Calendar-plus-Inbox aggregation path.
+
+## Agent Trace Log schema migration (mandatory)
+
+`Agent_Trace_Log` is an append-only operational ledger with persisted rows.
+
+- Treat the current persisted header order as immutable.
+- New trace fields must be appended at the end of `PALURU_AGENT_TRACE_HEADERS`.
+- Never insert, remove, rename, or reorder a header before an existing header.
+- `ensureAgentTraceHeaders_()` must preserve its fail-closed behavior for a
+  genuine historical-prefix mismatch; do not relax it to mask a migration bug.
+- Before changing trace headers, create a test fixture using the immediately
+  previous persisted header list and at least one existing row. Verify that:
+  1. the previous headers are an unchanged prefix of the new headers;
+  2. missing headers are appended only;
+  3. existing row values retain their column meanings; and
+  4. a new row has exactly the same width as the expanded header list.
+- A caught trace-persistence error does not make the trace system healthy.
+  Verify the actual `Agent_Trace_Log` receives a new row after deployment
+  before reporting trace persistence as working.

@@ -286,6 +286,47 @@ test('Mini retains allowlisted Aircon validation trace values at ingress and per
   assert(traceSheet.rows[0][fieldColumn] === 'settings' && traceSheet.rows[0][reasonColumn] === 'SETTINGS_REQUIRED', 'Aircon validation values were not persisted');
 });
 
+test('Mini preserves every current Agent validation enum through ingress and trace storage', () => {
+  reset();
+  const cases = [
+    ['reply', 'UNUSED_FIELD_NOT_NULL'],
+    ['confidence', 'CONFIDENCE_INVALID'],
+    ['followupQuestion', 'FOLLOWUP_CONTRACT_INVALID'],
+    ['settings', 'SETTINGS_FIELDS_INVALID'],
+    ['settings.power', 'POWER_REQUIRED'],
+    ['period', 'TODAY_PARURU_PERIOD_UNSUPPORTED'],
+    ['roomId', 'WEATHER_ROOM_REQUIRED'],
+    ['operation', 'OPERATION_UNSUPPORTED']
+  ];
+  const entries = cases.map((item) => ({
+    event: 'INTENT_VALIDATION_FAILED', clientRequestIdSuffix: clientRequestId.slice(-8),
+    validationField: item[0], validationReason: item[1]
+  })).concat([{
+    event: 'INTENT_VALIDATION_FAILED', clientRequestIdSuffix: clientRequestId.slice(-8),
+    validationField: 'settings.untrusted', validationReason: 'PRIVATE_REASON_TEXT'
+  }]);
+  const trace = { clientRequestId, agentEntries: [] };
+  context.__currentValidationTrace = trace;
+  context.__currentValidationEntries = entries;
+  vm.runInContext('appendAgentTraceEntries_(__currentValidationTrace, __currentValidationEntries)', context);
+  cases.forEach((item, index) => {
+    assert(trace.agentEntries[index].validationField === item[0], 'field dropped at ingress: ' + item[0]);
+    assert(trace.agentEntries[index].validationReason === item[1], 'reason dropped at ingress: ' + item[1]);
+  });
+  const unknown = trace.agentEntries[trace.agentEntries.length - 1];
+  assert(unknown.validationField === '' && unknown.validationReason === '', 'unknown validation values were retained');
+
+  traceSheet = createTraceSheet();
+  context.__currentValidationPersistTrace = { entries: [], agentEntries: trace.agentEntries };
+  vm.runInContext('persistAgentTrace_(__currentValidationPersistTrace)', context);
+  const fieldColumn = traceSheet.headers.indexOf('validationField');
+  const reasonColumn = traceSheet.headers.indexOf('validationReason');
+  cases.forEach((item, index) => {
+    assert(traceSheet.rows[index][fieldColumn] === item[0], 'field dropped at persistence: ' + item[0]);
+    assert(traceSheet.rows[index][reasonColumn] === item[1], 'reason dropped at persistence: ' + item[1]);
+  });
+});
+
 test('Mini persists only allowlisted boundary trace fields and the append-only header tail', () => {
   reset();
   const trace = { clientRequestId, agentEntries: [] };
