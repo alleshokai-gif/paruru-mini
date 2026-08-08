@@ -209,6 +209,47 @@ test('Mini does not duplicate existing validation trace headers', () => {
   assert(traceSheet.rows[0][0] === 'prior-row', 'existing trace row was changed');
 });
 
+test('Mini upgrades the persisted 8/5 32-column trace schema by appending every newer field', () => {
+  reset();
+  traceSheet = createTraceSheet();
+  const legacy32Headers = [
+    'recordedAt', 'source', 'event', 'clientRequestIdSuffix', 'deploymentId', 'version', 'action', 'httpStatus',
+    'errorCode', 'stage', 'reason', 'elapsedMs', 'openAiCallCount', 'serviceCallCount', 'intent', 'service',
+    'openAiErrorType', 'openAiErrorCode', 'openAiErrorMessage', 'validationField', 'validationReason', 'period',
+    'scope', 'roomId', 'operation', 'boundary', 'boundaryHash', 'from', 'field', 'value', 'before', 'after'
+  ];
+  traceSheet.headers = legacy32Headers.slice();
+  traceSheet.rows = [legacy32Headers.map((header) => 'old-' + header)];
+  context.__legacy32Trace = {
+    entries: [{ event: 'REQUEST_RECEIVED', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat' }],
+    agentEntries: []
+  };
+  vm.runInContext('persistAgentTrace_(__legacy32Trace)', context);
+  const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(headers), '8/5 headers were not upgraded by append-only extension');
+  assert(traceSheet.headers.indexOf('boundary') === 25, 'boundary moved from its persisted 26th column');
+  assert(traceSheet.headers.indexOf('state') >= legacy32Headers.length, 'state was not appended after the persisted schema');
+  assert(traceSheet.rows[0].length === legacy32Headers.length, 'existing trace row was widened or changed');
+  assert(traceSheet.rows[0][25] === 'old-boundary', 'existing boundary column meaning changed');
+  assert(traceSheet.rows[1].length === headers.length, 'new trace row does not match the expanded header width');
+});
+
+test('Mini still fails closed when an existing trace header differs within the historical prefix', () => {
+  reset();
+  traceSheet = createTraceSheet();
+  const legacy32Headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS.slice(0, 32)', context);
+  legacy32Headers[25] = 'unexpectedBoundary';
+  traceSheet.headers = legacy32Headers;
+  traceSheet.rows = [legacy32Headers.map(() => 'prior-row')];
+  context.__mismatchedTrace = {
+    entries: [{ event: 'REQUEST_RECEIVED', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat' }],
+    agentEntries: []
+  };
+  vm.runInContext('persistAgentTrace_(__mismatchedTrace)', context);
+  assert(traceSheet.rows.length === 1, 'schema mismatch unexpectedly wrote a trace row');
+  assert(logs.some((line) => line.includes('TRACE_SCHEMA_MISMATCH')), 'schema mismatch was not retained as a persistence failure');
+});
+
 test('Mini keeps only allowlisted validation trace values', () => {
   reset();
   const trace = { clientRequestId, agentEntries: [] };

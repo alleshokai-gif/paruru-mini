@@ -27,7 +27,6 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'scope',
   'roomId',
   'operation',
-  'state',
   'boundary',
   'boundaryHash',
   'from',
@@ -35,6 +34,9 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'value',
   'before',
   'after',
+  // All fields introduced after the 8/5 boundary-trace schema are append-only.
+  // Do not insert fields above this point: Agent_Trace_Log has persisted rows.
+  'state',
   'sourceType', 'sourceSystem', 'sourceReason', 'freshness',
   'sourceSelected', 'sourceFallbackUsed', 'sourceObservedAt',
   'sourceRecordCount', 'sourceSelectedCount', 'calendarRecordCount', 'inboxRecordCount',
