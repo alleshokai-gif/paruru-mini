@@ -654,8 +654,14 @@ function logMiniAgentTrace_(event, trace, details) {
     timestamp: new Date().toISOString(),
     event: safeMiniAgentTraceText_(event),
     clientRequestIdSuffix: String(trace && trace.clientRequestId || '').slice(-8),
-    deploymentId: miniAgentTraceDeploymentId_(),
+    deploymentId: miniAgentTraceDeploymentSuffix_(),
     version: null,
+    miniDeploymentSuffix: miniAgentTraceDeploymentSuffix_(),
+    miniVersion: null,
+    agentDeploymentSuffix: sanitizeAgentDeploymentSuffix_(source.agentDeploymentSuffix),
+    agentVersion: null,
+    osDeploymentSuffix: sanitizeAgentDeploymentSuffix_(source.osDeploymentSuffix),
+    osVersion: null,
     action: safeMiniAgentTraceText_(trace && trace.action || 'agentChat'),
     httpStatus: Number.isFinite(Number(source.httpStatus)) ? Number(source.httpStatus) : null,
     errorCode: safeMiniAgentTraceText_(source.errorCode || '' ) || null,
@@ -686,7 +692,9 @@ function appendAgentTraceEntries_(trace, entries) {
     'calendarRecordCount', 'inboxRecordCount', 'sourceHttpStatus', 'sourceResultCode'
     ,'actionSource', 'actionResult', 'stateBefore', 'stateAfter',
     'confirmationRoomLabelPresent', 'confirmationSummaryPresent',
-    'confirmationRoomLabelValid', 'confirmationSummaryValid'
+    'confirmationRoomLabelValid', 'confirmationSummaryValid',
+    'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion',
+    'osDeploymentSuffix', 'osVersion'
   ];
   entries.slice(0, 32).forEach(function(entry) {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;
@@ -739,8 +747,36 @@ function appendAgentTraceEntries_(trace, entries) {
         safe[key] = typeof entry[key] === 'boolean' ? entry[key] : '';
         return;
       }
+      if (key === 'agentDeploymentSuffix' || key === 'osDeploymentSuffix') {
+        safe[key] = sanitizeAgentDeploymentSuffix_(entry[key]);
+        return;
+      }
+      if (key === 'deploymentId') {
+        // Legacy column remains, but it may store only the same safe suffix.
+        safe[key] = sanitizeAgentDeploymentSuffix_(entry[key]);
+        return;
+      }
+      if (key === 'version') {
+        safe[key] = null;
+        return;
+      }
+      if (key === 'miniDeploymentSuffix') {
+        // The Mini runtime is the only authority for its own deployment marker.
+        safe[key] = miniAgentTraceDeploymentSuffix_() || '';
+        return;
+      }
+      if (key === 'miniVersion' || key === 'agentVersion' || key === 'osVersion') {
+        safe[key] = null;
+        return;
+      }
       safe[key] = entry[key];
     });
+    // Chain ownership is explicit: Mini stamps itself; Agent/OS markers only
+    // arrive through their strict suffix allowlists above.
+    safe.miniDeploymentSuffix = miniAgentTraceDeploymentSuffix_() || '';
+    safe.miniVersion = null;
+    safe.agentVersion = null;
+    safe.osVersion = null;
     if (String(safe.clientRequestIdSuffix || '') !== String(trace.clientRequestId || '').slice(-8)) return;
     trace.agentEntries.push(safe);
   });
@@ -845,15 +881,21 @@ function sanitizeAgentTraceBoundaryValue_(field, value) {
   return allowed[field] && allowed[field][normalized] ? normalized : '';
 }
 
-function miniAgentTraceDeploymentId_() {
+function miniAgentTraceDeploymentSuffix_() {
   try {
     if (typeof ScriptApp === 'undefined' || !ScriptApp.getService) return null;
     const url = String(ScriptApp.getService().getUrl() || '');
     const match = url.match(/\/s\/([^/?]+)\//);
-    return match ? match[1] : null;
+    return sanitizeAgentDeploymentSuffix_(match ? match[1] : null) || null;
   } catch (error) {
     return null;
   }
+}
+
+function sanitizeAgentDeploymentSuffix_(value) {
+  const deploymentId = String(value || '').trim();
+  if (!/^[A-Za-z0-9_-]{4,}$/.test(deploymentId)) return '';
+  return deploymentId.slice(-4);
 }
 
 function traceMetricNumber_(value) {

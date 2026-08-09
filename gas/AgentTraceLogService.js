@@ -43,7 +43,12 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'sourceHttpStatus', 'sourceResultCode',
   'actionSource', 'actionResult', 'stateBefore', 'stateAfter',
   'confirmationRoomLabelPresent', 'confirmationSummaryPresent',
-  'confirmationRoomLabelValid', 'confirmationSummaryValid'
+  'confirmationRoomLabelValid', 'confirmationSummaryValid',
+  // Deployment Trace is append-only. IDs are represented only by four-char
+  // suffixes; Apps Script has no trustworthy runtime deployment-version API.
+  'miniDeploymentSuffix', 'miniVersion',
+  'agentDeploymentSuffix', 'agentVersion',
+  'osDeploymentSuffix', 'osVersion'
 ];
 
 function persistAgentTrace_(trace) {
@@ -146,6 +151,12 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     ,confirmationSummaryPresent: sanitizeAgentTraceLedgerBoolean_(value.confirmationSummaryPresent)
     ,confirmationRoomLabelValid: sanitizeAgentTraceLedgerBoolean_(value.confirmationRoomLabelValid)
     ,confirmationSummaryValid: sanitizeAgentTraceLedgerBoolean_(value.confirmationSummaryValid)
+    ,miniDeploymentSuffix: sanitizeAgentTraceLedgerDeploymentSuffix_(value.miniDeploymentSuffix)
+    ,miniVersion: null
+    ,agentDeploymentSuffix: sanitizeAgentTraceLedgerDeploymentSuffix_(value.agentDeploymentSuffix)
+    ,agentVersion: null
+    ,osDeploymentSuffix: sanitizeAgentTraceLedgerDeploymentSuffix_(value.osDeploymentSuffix)
+    ,osVersion: null
   };
 }
 
@@ -156,6 +167,11 @@ function sanitizeAgentTraceLedgerEnum_(value, allowed) {
 
 function sanitizeAgentTraceLedgerBoolean_(value) {
   return typeof value === 'boolean' ? value : '';
+}
+
+function sanitizeAgentTraceLedgerDeploymentSuffix_(value) {
+  const suffix = String(value || '').trim();
+  return /^[A-Za-z0-9_-]{4}$/.test(suffix) ? suffix : '';
 }
 
 function sanitizeAgentTraceLedgerBoundaryValue_(value) {

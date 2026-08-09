@@ -394,7 +394,7 @@ test('Mini persists only allowlisted Aircon Action and State Trace values', () =
   assert(traceSheet.rows[0][traceSheet.headers.indexOf('stateAfter')] === 'ON', 'State Trace was not persisted');
 });
 
-test('Mini persists only boolean actionConfirmation contract diagnostics in the append-only tail', () => {
+test('Mini persists only boolean actionConfirmation contract diagnostics before the deployment tail', () => {
   reset();
   const trace = { clientRequestId, agentEntries: [] };
   vm.runInContext(`appendAgentTraceEntries_(__confirmationTrace, [{
@@ -425,11 +425,39 @@ test('Mini persists only boolean actionConfirmation contract diagnostics in the 
   vm.runInContext('persistAgentTrace_(__confirmationPersistTrace)', context);
   const expectedTail = ['confirmationRoomLabelPresent', 'confirmationSummaryPresent', 'confirmationRoomLabelValid', 'confirmationSummaryValid'];
   const configuredHeaders = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
-  assert(JSON.stringify(traceSheet.headers.slice(-4)) === JSON.stringify(expectedTail), 'confirmation headers were not append-only');
-  assert(JSON.stringify(traceSheet.headers.slice(0, -4)) === JSON.stringify(configuredHeaders.slice(0, -4)), 'existing header order changed');
+  const confirmationStart = traceSheet.headers.indexOf('confirmationRoomLabelPresent');
+  assert(JSON.stringify(traceSheet.headers.slice(confirmationStart, confirmationStart + 4)) === JSON.stringify(expectedTail), 'confirmation headers moved from their append-only position');
+  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(configuredHeaders), 'existing header order changed');
   const row = traceSheet.rows[0];
   assert(JSON.stringify(expectedTail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([false, true, false, true]), 'boolean diagnostics were not persisted');
   assert(!JSON.stringify(traceSheet.rows).includes('private-room-label') && !JSON.stringify(traceSheet.rows).includes('private-confirmation-summary'), 'confirmation text leaked to the sheet');
+});
+
+test('Mini persists one request deployment chain using suffixes and null versions only', () => {
+  reset();
+  context.ScriptApp = { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/mini-full-deployment-96/exec' }) };
+  const trace = { clientRequestId, entries: [], agentEntries: [] };
+  vm.runInContext("logMiniAgentTrace_('REQUEST_RECEIVED', __deploymentTrace, { stage: 'REQUEST_RECEIVED' })", Object.assign(context, { __deploymentTrace: trace }));
+  vm.runInContext(`appendAgentTraceEntries_(__deploymentTrace, [{
+    event: 'SOURCE_SELECTED', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    agentDeploymentSuffix: 'ag48', agentVersion: 48,
+    osDeploymentSuffix: 'os34', osVersion: 34,
+    sourceType: 'generated', sourceSystem: 'automation', sourceReason: 'primary', freshness: 'not_applicable',
+    sourceSelected: 'confirmation_created', sourceFallbackUsed: false, sourceSelectedCount: 1, sourceResultCode: 'OK',
+    url: 'https://private.example', deploymentId: 'full-agent-deployment-id'
+  }])`, context);
+  traceSheet = createTraceSheet();
+  context.__deploymentPersistTrace = trace;
+  vm.runInContext('persistAgentTrace_(__deploymentPersistTrace)', context);
+  const headers = traceSheet.headers;
+  assert(JSON.stringify(headers.slice(-6)) === JSON.stringify(['miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion']), 'deployment headers were not appended at the end');
+  const agentRow = traceSheet.rows.find((row) => row[headers.indexOf('source')] === 'agent');
+  assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
+  assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
+  assert(agentRow[headers.indexOf('osDeploymentSuffix')] === 'os34', 'OS deployment suffix was dropped');
+  assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');
+  assert(!JSON.stringify(traceSheet.rows).includes('full-agent-deployment-id') && !JSON.stringify(traceSheet.rows).includes('https://private.example') && !JSON.stringify(traceSheet.rows).includes('mini-full-deployment-96'), 'unsafe deployment metadata leaked into the sheet');
+  delete context.ScriptApp;
 });
 
 test('Mini persists Agent failure trace events before returning a safe error', () => {
