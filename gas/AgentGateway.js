@@ -730,6 +730,8 @@ function appendAgentTraceEntries_(trace, entries) {
     'confirmationRoomLabelValid', 'confirmationSummaryValid',
     'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
     'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation',
+    'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
+    'preparedStatus', 'preparedKeysHash',
     'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion',
     'osDeploymentSuffix', 'osVersion'
   ];
@@ -786,6 +788,19 @@ function appendAgentTraceEntries_(trace, entries) {
           || key === 'osResponseHasActionConfirmation' || key === 'sanitizedHasActionConfirmation'
           || key === 'returnedHasActionConfirmation') {
         safe[key] = typeof entry[key] === 'boolean' ? entry[key] : '';
+        return;
+      }
+      if (key === 'preparedHasFollowupRequired' || key === 'preparedHasActionConfirmation'
+          || key === 'preparedHasSourceTrace' || key === 'preparedHasActionTrace') {
+        safe[key] = typeof entry[key] === 'boolean' ? entry[key] : '';
+        return;
+      }
+      if (key === 'preparedStatus') {
+        safe[key] = { FOLLOWUP_REQUIRED: true, CONFIRMATION_READY: true, TRACE_ONLY: true, EMPTY: true, INVALID: true }[String(entry[key] || '')] ? String(entry[key]) : '';
+        return;
+      }
+      if (key === 'preparedKeysHash') {
+        safe[key] = /^[a-f0-9]{8}$/i.test(String(entry[key] || '')) ? String(entry[key]).toLowerCase() : '';
         return;
       }
       if (key === 'agentDeploymentSuffix' || key === 'osDeploymentSuffix') {

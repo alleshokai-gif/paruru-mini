@@ -50,7 +50,9 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'agentDeploymentSuffix', 'agentVersion',
   'osDeploymentSuffix', 'osVersion',
   'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
-  'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation'
+  'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation',
+  'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
+  'preparedStatus', 'preparedKeysHash'
 ];
 
 function persistAgentTrace_(trace) {
@@ -166,6 +168,12 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     ,osResponseHasActionConfirmation: sanitizeAgentTraceLedgerBoolean_(value.osResponseHasActionConfirmation)
     ,sanitizedHasActionConfirmation: sanitizeAgentTraceLedgerBoolean_(value.sanitizedHasActionConfirmation)
     ,returnedHasActionConfirmation: sanitizeAgentTraceLedgerBoolean_(value.returnedHasActionConfirmation)
+    ,preparedHasFollowupRequired: sanitizeAgentTraceLedgerBoolean_(value.preparedHasFollowupRequired)
+    ,preparedHasActionConfirmation: sanitizeAgentTraceLedgerBoolean_(value.preparedHasActionConfirmation)
+    ,preparedHasSourceTrace: sanitizeAgentTraceLedgerBoolean_(value.preparedHasSourceTrace)
+    ,preparedHasActionTrace: sanitizeAgentTraceLedgerBoolean_(value.preparedHasActionTrace)
+    ,preparedStatus: sanitizeAgentTraceLedgerEnum_(value.preparedStatus, { FOLLOWUP_REQUIRED: true, CONFIRMATION_READY: true, TRACE_ONLY: true, EMPTY: true, INVALID: true })
+    ,preparedKeysHash: /^[a-f0-9]{8}$/i.test(String(value.preparedKeysHash || '')) ? String(value.preparedKeysHash).toLowerCase() : ''
   };
 }
 

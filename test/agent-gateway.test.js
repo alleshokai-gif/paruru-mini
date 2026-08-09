@@ -451,7 +451,7 @@ test('Mini persists one request deployment chain using suffixes and null version
   vm.runInContext('persistAgentTrace_(__deploymentPersistTrace)', context);
   const headers = traceSheet.headers;
   const deploymentHeaders = ['miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion'];
-  assert(JSON.stringify(headers.slice(-13, -7)) === JSON.stringify(deploymentHeaders), 'deployment headers moved from their append-only position');
+  assert(JSON.stringify(headers.slice(-19, -13)) === JSON.stringify(deploymentHeaders), 'deployment headers moved from their append-only position');
   const agentRow = traceSheet.rows.find((row) => row[headers.indexOf('source')] === 'agent');
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
@@ -468,11 +468,16 @@ test('Mini persists only confirmation precheck booleans in the new header tail',
     event: 'CONFIRMATION_PRECHECK', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
     hasActionConfirmation: true, confirmationRequired: false, hasSourceTrace: true, hasActionTrace: false,
     osResponseHasActionConfirmation: true, sanitizedHasActionConfirmation: false, returnedHasActionConfirmation: true,
+    preparedHasFollowupRequired: true, preparedHasActionConfirmation: false,
+    preparedHasSourceTrace: true, preparedHasActionTrace: true,
+    preparedStatus: 'FOLLOWUP_REQUIRED', preparedKeysHash: 'a1b2c3d4',
     confirmationId: 'private-confirmation-id', roomLabel: 'private-room-label', summary: 'private-summary'
   }, {
     event: 'CONFIRMATION_PRECHECK', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
     hasActionConfirmation: 'true', confirmationRequired: 1, hasSourceTrace: null, hasActionTrace: {},
     osResponseHasActionConfirmation: 'true', sanitizedHasActionConfirmation: 0, returnedHasActionConfirmation: null
+    ,preparedHasFollowupRequired: 'true', preparedHasActionConfirmation: 0,
+    preparedHasSourceTrace: null, preparedHasActionTrace: {}, preparedStatus: 'private-status', preparedKeysHash: 'private-hash'
   }])`, Object.assign(context, { __precheckTrace: trace }));
   assert(JSON.stringify([
     trace.agentEntries[0].hasActionConfirmation, trace.agentEntries[0].confirmationRequired,
@@ -496,7 +501,15 @@ test('Mini persists only confirmation precheck booleans in the new header tail',
   context.__precheckPersistTrace = trace;
   vm.runInContext('persistAgentTrace_(__precheckPersistTrace)', context);
   const tail = ['hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace', 'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation'];
-  assert(JSON.stringify(traceSheet.headers.slice(-7)) === JSON.stringify(tail), 'precheck headers were not appended at the end');
+  assert(JSON.stringify([
+    trace.agentEntries[0].preparedHasFollowupRequired, trace.agentEntries[0].preparedHasActionConfirmation,
+    trace.agentEntries[0].preparedHasSourceTrace, trace.agentEntries[0].preparedHasActionTrace,
+    trace.agentEntries[0].preparedStatus, trace.agentEntries[0].preparedKeysHash,
+    trace.agentEntries[1].preparedHasFollowupRequired, trace.agentEntries[1].preparedStatus, trace.agentEntries[1].preparedKeysHash
+  ]) === JSON.stringify([true, false, true, true, 'FOLLOWUP_REQUIRED', 'a1b2c3d4', '', '', '']), 'prepared shape diagnostics were not safely retained');
+  const preparedTail = ['preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace', 'preparedStatus', 'preparedKeysHash'];
+  assert(JSON.stringify(traceSheet.headers.slice(-preparedTail.length)) === JSON.stringify(preparedTail), 'prepared shape headers are not append-only');
+  assert(JSON.stringify(traceSheet.headers.slice(-(tail.length + preparedTail.length), -preparedTail.length)) === JSON.stringify(tail), 'precheck headers moved from their append-only position');
   const row = traceSheet.rows[0];
   assert(JSON.stringify(tail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([true, false, true, false, true, false, true]), 'precheck booleans were not persisted');
   assert(!JSON.stringify(traceSheet.rows).includes('private-confirmation-id') && !JSON.stringify(traceSheet.rows).includes('private-room-label') && !JSON.stringify(traceSheet.rows).includes('private-summary'), 'private confirmation fields leaked to the sheet');
