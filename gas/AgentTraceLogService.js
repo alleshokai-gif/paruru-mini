@@ -41,7 +41,9 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'sourceSelected', 'sourceFallbackUsed', 'sourceObservedAt',
   'sourceRecordCount', 'sourceSelectedCount', 'calendarRecordCount', 'inboxRecordCount',
   'sourceHttpStatus', 'sourceResultCode',
-  'actionSource', 'actionResult', 'stateBefore', 'stateAfter'
+  'actionSource', 'actionResult', 'stateBefore', 'stateAfter',
+  'confirmationRoomLabelPresent', 'confirmationSummaryPresent',
+  'confirmationRoomLabelValid', 'confirmationSummaryValid'
 ];
 
 function persistAgentTrace_(trace) {
@@ -140,12 +142,20 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     ,actionResult: sanitizeAgentTraceLedgerEnum_(value.actionResult, { OK: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true })
     ,stateBefore: sanitizeAgentTraceLedgerEnum_(value.stateBefore, { OFF: true, ON: true, COOL: true, HEAT: true, AUTO: true, UNKNOWN: true })
     ,stateAfter: sanitizeAgentTraceLedgerEnum_(value.stateAfter, { OFF: true, ON: true, COOL: true, HEAT: true, AUTO: true, UNKNOWN: true })
+    ,confirmationRoomLabelPresent: sanitizeAgentTraceLedgerBoolean_(value.confirmationRoomLabelPresent)
+    ,confirmationSummaryPresent: sanitizeAgentTraceLedgerBoolean_(value.confirmationSummaryPresent)
+    ,confirmationRoomLabelValid: sanitizeAgentTraceLedgerBoolean_(value.confirmationRoomLabelValid)
+    ,confirmationSummaryValid: sanitizeAgentTraceLedgerBoolean_(value.confirmationSummaryValid)
   };
 }
 
 function sanitizeAgentTraceLedgerEnum_(value, allowed) {
   const normalized = String(value || '').trim();
   return allowed[normalized] ? normalized : '';
+}
+
+function sanitizeAgentTraceLedgerBoolean_(value) {
+  return typeof value === 'boolean' ? value : '';
 }
 
 function sanitizeAgentTraceLedgerBoundaryValue_(value) {

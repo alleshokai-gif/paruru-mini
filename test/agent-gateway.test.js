@@ -394,6 +394,44 @@ test('Mini persists only allowlisted Aircon Action and State Trace values', () =
   assert(traceSheet.rows[0][traceSheet.headers.indexOf('stateAfter')] === 'ON', 'State Trace was not persisted');
 });
 
+test('Mini persists only boolean actionConfirmation contract diagnostics in the append-only tail', () => {
+  reset();
+  const trace = { clientRequestId, agentEntries: [] };
+  vm.runInContext(`appendAgentTraceEntries_(__confirmationTrace, [{
+    event: 'UNHANDLED_ERROR', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    confirmationRoomLabelPresent: false, confirmationSummaryPresent: true,
+    confirmationRoomLabelValid: false, confirmationSummaryValid: true,
+    roomLabel: 'private-room-label', summary: 'private-confirmation-summary'
+  }, {
+    event: 'UNHANDLED_ERROR', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    confirmationRoomLabelPresent: 'false', confirmationSummaryPresent: 1,
+    confirmationRoomLabelValid: null, confirmationSummaryValid: {}
+  }])`, Object.assign(context, { __confirmationTrace: trace }));
+  assert(JSON.stringify(JSON.parse(JSON.stringify([
+    trace.agentEntries[0].confirmationRoomLabelPresent,
+    trace.agentEntries[0].confirmationSummaryPresent,
+    trace.agentEntries[0].confirmationRoomLabelValid,
+    trace.agentEntries[0].confirmationSummaryValid
+  ]))) === JSON.stringify([false, true, false, true]), 'safe boolean diagnostics were dropped');
+  assert(!Object.prototype.hasOwnProperty.call(trace.agentEntries[0], 'roomLabel') && !Object.prototype.hasOwnProperty.call(trace.agentEntries[0], 'summary'), 'confirmation text leaked at ingress');
+  assert(JSON.stringify(JSON.parse(JSON.stringify([
+    trace.agentEntries[1].confirmationRoomLabelPresent,
+    trace.agentEntries[1].confirmationSummaryPresent,
+    trace.agentEntries[1].confirmationRoomLabelValid,
+    trace.agentEntries[1].confirmationSummaryValid
+  ]))) === JSON.stringify(['', '', '', '']), 'unknown boolean values were retained');
+  traceSheet = createTraceSheet();
+  context.__confirmationPersistTrace = { entries: [], agentEntries: trace.agentEntries };
+  vm.runInContext('persistAgentTrace_(__confirmationPersistTrace)', context);
+  const expectedTail = ['confirmationRoomLabelPresent', 'confirmationSummaryPresent', 'confirmationRoomLabelValid', 'confirmationSummaryValid'];
+  const configuredHeaders = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  assert(JSON.stringify(traceSheet.headers.slice(-4)) === JSON.stringify(expectedTail), 'confirmation headers were not append-only');
+  assert(JSON.stringify(traceSheet.headers.slice(0, -4)) === JSON.stringify(configuredHeaders.slice(0, -4)), 'existing header order changed');
+  const row = traceSheet.rows[0];
+  assert(JSON.stringify(expectedTail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([false, true, false, true]), 'boolean diagnostics were not persisted');
+  assert(!JSON.stringify(traceSheet.rows).includes('private-room-label') && !JSON.stringify(traceSheet.rows).includes('private-confirmation-summary'), 'confirmation text leaked to the sheet');
+});
+
 test('Mini persists Agent failure trace events before returning a safe error', () => {
   configure();
   mockFetch(200, {

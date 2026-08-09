@@ -684,7 +684,9 @@ function appendAgentTraceEntries_(trace, entries) {
     'sourceType', 'sourceSystem', 'sourceReason', 'freshness', 'sourceSelected',
     'sourceFallbackUsed', 'sourceObservedAt', 'sourceRecordCount', 'sourceSelectedCount',
     'calendarRecordCount', 'inboxRecordCount', 'sourceHttpStatus', 'sourceResultCode'
-    ,'actionSource', 'actionResult', 'stateBefore', 'stateAfter'
+    ,'actionSource', 'actionResult', 'stateBefore', 'stateAfter',
+    'confirmationRoomLabelPresent', 'confirmationSummaryPresent',
+    'confirmationRoomLabelValid', 'confirmationSummaryValid'
   ];
   entries.slice(0, 32).forEach(function(entry) {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;
@@ -730,6 +732,11 @@ function appendAgentTraceEntries_(trace, entries) {
       }
       if (key === 'actionSource' || key === 'actionResult' || key === 'stateBefore' || key === 'stateAfter') {
         safe[key] = sanitizeAgentActionTraceValue_(key, entry[key]);
+        return;
+      }
+      if (key === 'confirmationRoomLabelPresent' || key === 'confirmationSummaryPresent'
+          || key === 'confirmationRoomLabelValid' || key === 'confirmationSummaryValid') {
+        safe[key] = typeof entry[key] === 'boolean' ? entry[key] : '';
         return;
       }
       safe[key] = entry[key];
