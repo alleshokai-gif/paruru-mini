@@ -451,7 +451,7 @@ test('Mini persists one request deployment chain using suffixes and null version
   vm.runInContext('persistAgentTrace_(__deploymentPersistTrace)', context);
   const headers = traceSheet.headers;
   const deploymentHeaders = ['miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion'];
-  assert(JSON.stringify(headers.slice(-10, -4)) === JSON.stringify(deploymentHeaders), 'deployment headers moved from their append-only position');
+  assert(JSON.stringify(headers.slice(-13, -7)) === JSON.stringify(deploymentHeaders), 'deployment headers moved from their append-only position');
   const agentRow = traceSheet.rows.find((row) => row[headers.indexOf('source')] === 'agent');
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
@@ -467,26 +467,38 @@ test('Mini persists only confirmation precheck booleans in the new header tail',
   vm.runInContext(`appendAgentTraceEntries_(__precheckTrace, [{
     event: 'CONFIRMATION_PRECHECK', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
     hasActionConfirmation: true, confirmationRequired: false, hasSourceTrace: true, hasActionTrace: false,
+    osResponseHasActionConfirmation: true, sanitizedHasActionConfirmation: false, returnedHasActionConfirmation: true,
     confirmationId: 'private-confirmation-id', roomLabel: 'private-room-label', summary: 'private-summary'
   }, {
     event: 'CONFIRMATION_PRECHECK', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
-    hasActionConfirmation: 'true', confirmationRequired: 1, hasSourceTrace: null, hasActionTrace: {}
+    hasActionConfirmation: 'true', confirmationRequired: 1, hasSourceTrace: null, hasActionTrace: {},
+    osResponseHasActionConfirmation: 'true', sanitizedHasActionConfirmation: 0, returnedHasActionConfirmation: null
   }])`, Object.assign(context, { __precheckTrace: trace }));
   assert(JSON.stringify([
     trace.agentEntries[0].hasActionConfirmation, trace.agentEntries[0].confirmationRequired,
     trace.agentEntries[0].hasSourceTrace, trace.agentEntries[0].hasActionTrace
   ]) === JSON.stringify([true, false, true, false]), 'safe precheck booleans were dropped');
   assert(JSON.stringify([
+    trace.agentEntries[0].osResponseHasActionConfirmation,
+    trace.agentEntries[0].sanitizedHasActionConfirmation,
+    trace.agentEntries[0].returnedHasActionConfirmation
+  ]) === JSON.stringify([true, false, true]), 'confirmation handoff booleans were dropped');
+  assert(JSON.stringify([
     trace.agentEntries[1].hasActionConfirmation, trace.agentEntries[1].confirmationRequired,
     trace.agentEntries[1].hasSourceTrace, trace.agentEntries[1].hasActionTrace
   ]) === JSON.stringify(['', '', '', '']), 'non-boolean precheck values were retained');
+  assert(JSON.stringify([
+    trace.agentEntries[1].osResponseHasActionConfirmation,
+    trace.agentEntries[1].sanitizedHasActionConfirmation,
+    trace.agentEntries[1].returnedHasActionConfirmation
+  ]) === JSON.stringify(['', '', '']), 'non-boolean confirmation handoff values were retained');
   traceSheet = createTraceSheet();
   context.__precheckPersistTrace = trace;
   vm.runInContext('persistAgentTrace_(__precheckPersistTrace)', context);
-  const tail = ['hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace'];
-  assert(JSON.stringify(traceSheet.headers.slice(-4)) === JSON.stringify(tail), 'precheck headers were not appended at the end');
+  const tail = ['hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace', 'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation'];
+  assert(JSON.stringify(traceSheet.headers.slice(-7)) === JSON.stringify(tail), 'precheck headers were not appended at the end');
   const row = traceSheet.rows[0];
-  assert(JSON.stringify(tail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([true, false, true, false]), 'precheck booleans were not persisted');
+  assert(JSON.stringify(tail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([true, false, true, false, true, false, true]), 'precheck booleans were not persisted');
   assert(!JSON.stringify(traceSheet.rows).includes('private-confirmation-id') && !JSON.stringify(traceSheet.rows).includes('private-room-label') && !JSON.stringify(traceSheet.rows).includes('private-summary'), 'private confirmation fields leaked to the sheet');
 });
 
@@ -829,6 +841,80 @@ test('agentActionConfirm resolves control actor twice before calling Agent', () 
     userId: 'spoofed-user', role: 'self_record', capabilities: [], homeId: 'spoofed-home', _authenticatedActor: { deviceId: 'spoofed' },
   });
   assert(result.success && agentCalls === 1 && controlActorCalls === 2 && result.operation === 'pause', 'confirm failed');
+});
+
+test('agentActionConfirm persists its lifecycle and Agent confirmation_executed trace without sensitive confirmation data', () => {
+  reset(); configure();
+  context.getHomeAgentActionDependencies_ = () => ({});
+  context.assertHomeAgentActionsEnabled_ = () => {};
+  context.CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
+  mockFetch(200, {
+    success: true,
+    schemaVersion: 'agent-chat-1.0',
+    diagnostics: { openAiCallCount: 0, serviceCallCount: 1 },
+    traceEvents: [{
+      event: 'ACTION_TRACE', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agent.confirmAction',
+      stage: 'SERVICE_EXECUTION', actionSource: 'confirmation_executed', actionResult: 'OK',
+      elapsedMs: 12, openAiCallCount: 0, serviceCallCount: 1,
+      confirmationId: 'private-confirmation-id', summary: 'private summary'
+    }],
+    data: { status: 'completed', command: 'aircon.power', operation: 'power', roomLabel: '寝室', observed: {} }
+  });
+  const result = post({ action: 'agentActionConfirm', confirmationId: '88888888-8888-4888-8888-888888888888', clientRequestId, deviceId: 'spoofed-device', pairingToken: 'pairing-token-placeholder-000000000001' });
+  assert(result.success && result.status === 'completed', 'confirm success changed');
+  const headers = traceSheet.headers;
+  const eventColumn = headers.indexOf('event');
+  const sourceColumn = headers.indexOf('source');
+  const actionColumn = headers.indexOf('action');
+  const actionSourceColumn = headers.indexOf('actionSource');
+  const actionResultColumn = headers.indexOf('actionResult');
+  const openAiColumn = headers.indexOf('openAiCallCount');
+  const miniEvents = traceSheet.rows.filter((row) => row[sourceColumn] === 'mini').map((row) => row[eventColumn]);
+  ['REQUEST_RECEIVED', 'ACTOR_RESOLVED', 'AGENT_CONFIRM_REQUEST_START', 'AGENT_HTTP_RESPONSE', 'RESPONSE_SENT'].forEach((event) => {
+    assert(miniEvents.includes(event), 'missing confirm lifecycle trace: ' + event);
+  });
+  const actionTrace = traceSheet.rows.find((row) => row[sourceColumn] === 'agent' && row[eventColumn] === 'ACTION_TRACE');
+  assert(actionTrace && actionTrace[actionSourceColumn] === 'confirmation_executed' && actionTrace[actionResultColumn] === 'OK', 'confirmation_executed trace was not persisted');
+  assert(actionTrace[openAiColumn] === 0 && actionTrace[actionColumn] === 'agent.confirmAction', 'confirm trace changed its no-OpenAI contract');
+  const serialized = JSON.stringify(traceSheet.rows);
+  assert(!serialized.includes('private-confirmation-id') && !serialized.includes('private summary') && !serialized.includes('spoofed-device'), 'sensitive confirm data leaked to trace');
+});
+
+test('agentActionConfirm persists confirmation_rejected Agent trace on a safe rejected response', () => {
+  reset(); configure();
+  context.getHomeAgentActionDependencies_ = () => ({});
+  context.assertHomeAgentActionsEnabled_ = () => {};
+  context.CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
+  mockFetch(200, {
+    success: false,
+    schemaVersion: 'agent-chat-1.0',
+    error: { code: 'CONFIRMATION_EXPIRED', message: 'private rejection detail' },
+    traceEvents: [{
+      event: 'ACTION_TRACE', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agent.confirmAction',
+      stage: 'SERVICE_EXECUTION', actionSource: 'confirmation_rejected', actionResult: 'CONFIRMATION_EXPIRED',
+      elapsedMs: 9, openAiCallCount: 0, serviceCallCount: 1
+    }]
+  });
+  const result = post({ action: 'agentActionConfirm', confirmationId: '88888888-8888-4888-8888-888888888888', clientRequestId, deviceId: 'spoofed-device', pairingToken: 'pairing-token-placeholder-000000000001' });
+  assert(!result.success && result.error.code === 'CONFIRMATION_EXPIRED', 'safe confirm rejection changed');
+  const headers = traceSheet.headers;
+  const row = traceSheet.rows.find((entry) => entry[headers.indexOf('source')] === 'agent' && entry[headers.indexOf('event')] === 'ACTION_TRACE');
+  assert(row && row[headers.indexOf('actionSource')] === 'confirmation_rejected' && row[headers.indexOf('actionResult')] === 'CONFIRMATION_EXPIRED', 'confirmation_rejected trace was not persisted');
+  assert(!JSON.stringify(traceSheet.rows).includes('private rejection detail'), 'rejection free text leaked to trace');
+});
+
+test('agentActionConfirm persists Mini trace when Agent HTTP fails', () => {
+  reset(); configure();
+  context.getHomeAgentActionDependencies_ = () => ({});
+  context.assertHomeAgentActionsEnabled_ = () => {};
+  context.CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
+  mockFetch(503, { error: { code: 'private' } });
+  const result = post({ action: 'agentActionConfirm', confirmationId: '88888888-8888-4888-8888-888888888888', clientRequestId, deviceId: 'spoofed-device', pairingToken: 'pairing-token-placeholder-000000000001' });
+  assert(!result.success && result.error.code === 'AGENT_UNAVAILABLE', 'HTTP failure changed its safe public code');
+  const headers = traceSheet.headers;
+  const miniRows = traceSheet.rows.filter((row) => row[headers.indexOf('source')] === 'mini');
+  assert(miniRows.some((row) => row[headers.indexOf('event')] === 'AGENT_HTTP_RESPONSE' && row[headers.indexOf('httpStatus')] === 503), 'HTTP failure response trace was not persisted');
+  assert(miniRows.some((row) => row[headers.indexOf('event')] === 'RESPONSE_SENT' && row[headers.indexOf('errorCode')] === 'AGENT_UNAVAILABLE'), 'HTTP failure final trace was not persisted');
 });
 
 test('agentActionConfirm kill switch and control authorization failures short-circuit Agent', () => {

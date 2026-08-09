@@ -58,17 +58,39 @@ function agentChat_(body) {
 }
 
 function agentActionConfirm_(body) {
+  const trace = createMiniAgentTrace_(body, 'agentActionConfirm');
+  logMiniAgentTrace_('REQUEST_RECEIVED', trace, { stage: 'REQUEST_RECEIVED' });
   try {
-    const actor = resolveHomeAgentControlActor_(body || {});
+    let actor;
+    try {
+      actor = resolveHomeAgentControlActor_(body || {});
+      logMiniAgentTrace_('ACTOR_RESOLVED', trace, { stage: 'ACTOR_RESOLUTION' });
+    } catch (error) {
+      setMiniAgentTraceStage_(error, trace, 'ACTOR_RESOLUTION');
+      throw error;
+    }
     const input = validateAgentActionConfirmInput_(body || {}, actor);
     assertAgentActionsEnabled_();
     enforceAgentActionRateLimit_(actor.deviceId, input.clientRequestId);
     const config = getPaluruAgentConfig_();
     assertSameHomeAgentControlActor_(actor, resolveHomeAgentControlActor_(body || {}));
-    const response = callPaluruAgentActionConfirm_(config, input);
-    return json_(buildAgentActionConfirmSuccess_(response));
+    const response = callPaluruAgentActionConfirm_(config, input, trace);
+    const result = buildAgentActionConfirmSuccess_(response);
+    logMiniAgentTrace_('RESPONSE_SENT', trace, { stage: 'RESPONSE_SENT', httpStatus: 200, agentPerformance: response && response.diagnostics });
+    const output = json_(result);
+    persistAgentTrace_(trace);
+    return output;
   } catch (error) {
-    return json_(buildAgentActionConfirmError_(error));
+    const stage = String(error && error.agentTrace && error.agentTrace.stage || error && error.agentTraceStage || 'UNHANDLED_ERROR');
+    setMiniAgentTraceStage_(error, trace, stage);
+    if (stage === 'UNHANDLED_ERROR') {
+      logMiniAgentTrace_('UNHANDLED_ERROR', trace, { stage: stage, errorCode: error && error.code });
+    }
+    const result = buildAgentActionConfirmError_(error);
+    logMiniAgentTrace_('RESPONSE_SENT', trace, { stage: stage, httpStatus: 200, errorCode: result && result.error && result.error.code });
+    const output = json_(result);
+    persistAgentTrace_(trace);
+    return output;
   }
 }
 
@@ -350,7 +372,8 @@ function enforceAgentActionRateLimit_(deviceId, clientRequestId) {
   }
 }
 
-function callPaluruAgentActionConfirm_(config, input) {
+function callPaluruAgentActionConfirm_(config, input, trace) {
+  logMiniAgentTrace_('AGENT_CONFIRM_REQUEST_START', trace, { stage: 'AGENT_CONFIRM_REQUEST' });
   let response;
   try {
     response = UrlFetchApp.fetch(config.url, {
@@ -366,19 +389,31 @@ function callPaluruAgentActionConfirm_(config, input) {
       muteHttpExceptions: true,
     });
   } catch (error) {
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE');
+    logMiniAgentTrace_('AGENT_FETCH_FAILED', trace, { stage: 'AGENT_CONFIRM_REQUEST', errorCode: 'AGENT_UNAVAILABLE', reason: 'URLFETCH_FAILED' });
+    const gatewayError = createAgentGatewayError_('AGENT_UNAVAILABLE', 'AGENT_CONFIRM_REQUEST', 'URLFETCH_FAILED', error);
+    setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_CONFIRM_REQUEST');
+    throw gatewayError;
   }
-  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE');
+  const status = response.getResponseCode();
+  logMiniAgentTrace_('AGENT_HTTP_RESPONSE', trace, { stage: 'AGENT_CONFIRM_REQUEST', httpStatus: status });
+  if (status < 200 || status >= 300) {
+    const gatewayError = createAgentGatewayError_('AGENT_UNAVAILABLE', 'AGENT_CONFIRM_REQUEST', 'UPSTREAM_HTTP_' + status);
+    setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_CONFIRM_REQUEST');
+    throw gatewayError;
   }
   let parsed;
   try {
     parsed = JSON.parse(response.getContentText());
   } catch (error) {
-    throw createAgentGatewayError_('AGENT_UNAVAILABLE');
+    const gatewayError = createAgentGatewayError_('AGENT_UNAVAILABLE', 'AGENT_CONFIRM_RESPONSE', 'UPSTREAM_JSON_PARSE_FAILED', error);
+    setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_CONFIRM_RESPONSE');
+    throw gatewayError;
   }
+  appendAgentTraceEntries_(trace, parsed && parsed.traceEvents);
   if (!parsed || parsed.success !== true || parsed.schemaVersion !== PALURU_AGENT_SCHEMA_VERSION) {
-    throw createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed));
+    const gatewayError = createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed), 'AGENT_CONFIRM_RESPONSE', String(parsed && parsed.error && parsed.error.code || parsed && parsed.code || 'UPSTREAM_SUCCESS_FALSE'));
+    setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_CONFIRM_RESPONSE');
+    throw gatewayError;
   }
   return parsed;
 }
@@ -694,6 +729,7 @@ function appendAgentTraceEntries_(trace, entries) {
     'confirmationRoomLabelPresent', 'confirmationSummaryPresent',
     'confirmationRoomLabelValid', 'confirmationSummaryValid',
     'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
+    'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation',
     'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion',
     'osDeploymentSuffix', 'osVersion'
   ];
@@ -746,7 +782,9 @@ function appendAgentTraceEntries_(trace, entries) {
       if (key === 'confirmationRoomLabelPresent' || key === 'confirmationSummaryPresent'
           || key === 'confirmationRoomLabelValid' || key === 'confirmationSummaryValid'
           || key === 'hasActionConfirmation' || key === 'confirmationRequired'
-          || key === 'hasSourceTrace' || key === 'hasActionTrace') {
+          || key === 'hasSourceTrace' || key === 'hasActionTrace'
+          || key === 'osResponseHasActionConfirmation' || key === 'sanitizedHasActionConfirmation'
+          || key === 'returnedHasActionConfirmation') {
         safe[key] = typeof entry[key] === 'boolean' ? entry[key] : '';
         return;
       }

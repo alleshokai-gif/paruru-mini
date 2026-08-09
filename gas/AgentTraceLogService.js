@@ -49,7 +49,8 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'miniDeploymentSuffix', 'miniVersion',
   'agentDeploymentSuffix', 'agentVersion',
   'osDeploymentSuffix', 'osVersion',
-  'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace'
+  'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
+  'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation'
 ];
 
 function persistAgentTrace_(trace) {
@@ -162,6 +163,9 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     ,confirmationRequired: sanitizeAgentTraceLedgerBoolean_(value.confirmationRequired)
     ,hasSourceTrace: sanitizeAgentTraceLedgerBoolean_(value.hasSourceTrace)
     ,hasActionTrace: sanitizeAgentTraceLedgerBoolean_(value.hasActionTrace)
+    ,osResponseHasActionConfirmation: sanitizeAgentTraceLedgerBoolean_(value.osResponseHasActionConfirmation)
+    ,sanitizedHasActionConfirmation: sanitizeAgentTraceLedgerBoolean_(value.sanitizedHasActionConfirmation)
+    ,returnedHasActionConfirmation: sanitizeAgentTraceLedgerBoolean_(value.returnedHasActionConfirmation)
   };
 }
 
