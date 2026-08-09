@@ -48,7 +48,8 @@ const PALURU_AGENT_TRACE_HEADERS = [
   // suffixes; Apps Script has no trustworthy runtime deployment-version API.
   'miniDeploymentSuffix', 'miniVersion',
   'agentDeploymentSuffix', 'agentVersion',
-  'osDeploymentSuffix', 'osVersion'
+  'osDeploymentSuffix', 'osVersion',
+  'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace'
 ];
 
 function persistAgentTrace_(trace) {
@@ -157,6 +158,10 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     ,agentVersion: null
     ,osDeploymentSuffix: sanitizeAgentTraceLedgerDeploymentSuffix_(value.osDeploymentSuffix)
     ,osVersion: null
+    ,hasActionConfirmation: sanitizeAgentTraceLedgerBoolean_(value.hasActionConfirmation)
+    ,confirmationRequired: sanitizeAgentTraceLedgerBoolean_(value.confirmationRequired)
+    ,hasSourceTrace: sanitizeAgentTraceLedgerBoolean_(value.hasSourceTrace)
+    ,hasActionTrace: sanitizeAgentTraceLedgerBoolean_(value.hasActionTrace)
   };
 }
 

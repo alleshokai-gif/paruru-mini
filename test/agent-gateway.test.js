@@ -450,7 +450,8 @@ test('Mini persists one request deployment chain using suffixes and null version
   context.__deploymentPersistTrace = trace;
   vm.runInContext('persistAgentTrace_(__deploymentPersistTrace)', context);
   const headers = traceSheet.headers;
-  assert(JSON.stringify(headers.slice(-6)) === JSON.stringify(['miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion']), 'deployment headers were not appended at the end');
+  const deploymentHeaders = ['miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion'];
+  assert(JSON.stringify(headers.slice(-10, -4)) === JSON.stringify(deploymentHeaders), 'deployment headers moved from their append-only position');
   const agentRow = traceSheet.rows.find((row) => row[headers.indexOf('source')] === 'agent');
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
@@ -458,6 +459,35 @@ test('Mini persists one request deployment chain using suffixes and null version
   assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');
   assert(!JSON.stringify(traceSheet.rows).includes('full-agent-deployment-id') && !JSON.stringify(traceSheet.rows).includes('https://private.example') && !JSON.stringify(traceSheet.rows).includes('mini-full-deployment-96'), 'unsafe deployment metadata leaked into the sheet');
   delete context.ScriptApp;
+});
+
+test('Mini persists only confirmation precheck booleans in the new header tail', () => {
+  reset();
+  const trace = { clientRequestId, entries: [], agentEntries: [] };
+  vm.runInContext(`appendAgentTraceEntries_(__precheckTrace, [{
+    event: 'CONFIRMATION_PRECHECK', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    hasActionConfirmation: true, confirmationRequired: false, hasSourceTrace: true, hasActionTrace: false,
+    confirmationId: 'private-confirmation-id', roomLabel: 'private-room-label', summary: 'private-summary'
+  }, {
+    event: 'CONFIRMATION_PRECHECK', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    hasActionConfirmation: 'true', confirmationRequired: 1, hasSourceTrace: null, hasActionTrace: {}
+  }])`, Object.assign(context, { __precheckTrace: trace }));
+  assert(JSON.stringify([
+    trace.agentEntries[0].hasActionConfirmation, trace.agentEntries[0].confirmationRequired,
+    trace.agentEntries[0].hasSourceTrace, trace.agentEntries[0].hasActionTrace
+  ]) === JSON.stringify([true, false, true, false]), 'safe precheck booleans were dropped');
+  assert(JSON.stringify([
+    trace.agentEntries[1].hasActionConfirmation, trace.agentEntries[1].confirmationRequired,
+    trace.agentEntries[1].hasSourceTrace, trace.agentEntries[1].hasActionTrace
+  ]) === JSON.stringify(['', '', '', '']), 'non-boolean precheck values were retained');
+  traceSheet = createTraceSheet();
+  context.__precheckPersistTrace = trace;
+  vm.runInContext('persistAgentTrace_(__precheckPersistTrace)', context);
+  const tail = ['hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace'];
+  assert(JSON.stringify(traceSheet.headers.slice(-4)) === JSON.stringify(tail), 'precheck headers were not appended at the end');
+  const row = traceSheet.rows[0];
+  assert(JSON.stringify(tail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([true, false, true, false]), 'precheck booleans were not persisted');
+  assert(!JSON.stringify(traceSheet.rows).includes('private-confirmation-id') && !JSON.stringify(traceSheet.rows).includes('private-room-label') && !JSON.stringify(traceSheet.rows).includes('private-summary'), 'private confirmation fields leaked to the sheet');
 });
 
 test('Mini persists Agent failure trace events before returning a safe error', () => {

@@ -693,6 +693,7 @@ function appendAgentTraceEntries_(trace, entries) {
     ,'actionSource', 'actionResult', 'stateBefore', 'stateAfter',
     'confirmationRoomLabelPresent', 'confirmationSummaryPresent',
     'confirmationRoomLabelValid', 'confirmationSummaryValid',
+    'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
     'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion',
     'osDeploymentSuffix', 'osVersion'
   ];
@@ -743,7 +744,9 @@ function appendAgentTraceEntries_(trace, entries) {
         return;
       }
       if (key === 'confirmationRoomLabelPresent' || key === 'confirmationSummaryPresent'
-          || key === 'confirmationRoomLabelValid' || key === 'confirmationSummaryValid') {
+          || key === 'confirmationRoomLabelValid' || key === 'confirmationSummaryValid'
+          || key === 'hasActionConfirmation' || key === 'confirmationRequired'
+          || key === 'hasSourceTrace' || key === 'hasActionTrace') {
         safe[key] = typeof entry[key] === 'boolean' ? entry[key] : '';
         return;
       }
