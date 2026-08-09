@@ -291,6 +291,7 @@ function safeUpstreamAgentErrorCode_(payload) {
     CONFIRMATION_EXPIRED: true,
     CONFIRMATION_ACTOR_MISMATCH: true,
     AUTOMATION_UPSTREAM_ERROR: true,
+    PREPARED_CONTRACT_VIOLATION: true,
     UPSTREAM_ERROR: true,
     UPSTREAM_ERROR: true,
     AGENT_UNAVAILABLE: true,
@@ -608,6 +609,7 @@ function buildAgentChatError_(error) {
     CONFIRMATION_EXPIRED: true,
     CONFIRMATION_ACTOR_MISMATCH: true,
     AUTOMATION_UPSTREAM_ERROR: true,
+    PREPARED_CONTRACT_VIOLATION: true,
     UPSTREAM_ERROR: true,
   };
   const code = error && allowedCodes[error.code] ? error.code : 'INTERNAL_ERROR';
@@ -628,6 +630,7 @@ function buildAgentChatError_(error) {
     CONFIRMATION_EXPIRED: '確認の有効期限が切れました。もう一度相談してください。',
     CONFIRMATION_ACTOR_MISMATCH: '確認を作成した端末と一致しません。',
     AUTOMATION_UPSTREAM_ERROR: '家電・自動制御の確認先へつながりませんでした。',
+    PREPARED_CONTRACT_VIOLATION: '操作確認の応答契約が不正です。',
     UPSTREAM_ERROR: '確認先のサービスへつながりませんでした。',
     INTERNAL_ERROR: '内部エラーが発生しました。',
   };
@@ -682,6 +685,8 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
+const PALURU_MINI_BUILD_ID = 'mini-20260809-build-chain-v1';
+
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};
   const performance = source.agentPerformance && typeof source.agentPerformance === 'object' ? source.agentPerformance : {};
@@ -693,10 +698,13 @@ function logMiniAgentTrace_(event, trace, details) {
     version: null,
     miniDeploymentSuffix: miniAgentTraceDeploymentSuffix_(),
     miniVersion: null,
+    miniBuildId: PALURU_MINI_BUILD_ID,
     agentDeploymentSuffix: sanitizeAgentDeploymentSuffix_(source.agentDeploymentSuffix),
     agentVersion: null,
+    agentBuildId: sanitizeAgentBuildId_(source.agentBuildId),
     osDeploymentSuffix: sanitizeAgentDeploymentSuffix_(source.osDeploymentSuffix),
     osVersion: null,
+    osBuildId: sanitizeAgentBuildId_(source.osBuildId),
     action: safeMiniAgentTraceText_(trace && trace.action || 'agentChat'),
     httpStatus: Number.isFinite(Number(source.httpStatus)) ? Number(source.httpStatus) : null,
     errorCode: safeMiniAgentTraceText_(source.errorCode || '' ) || null,
@@ -733,7 +741,7 @@ function appendAgentTraceEntries_(trace, entries) {
     'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
     'preparedStatus', 'preparedKeysHash',
     'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion',
-    'osDeploymentSuffix', 'osVersion'
+    'osDeploymentSuffix', 'osVersion', 'miniBuildId', 'agentBuildId', 'osBuildId'
   ];
   entries.slice(0, 32).forEach(function(entry) {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;
@@ -807,6 +815,10 @@ function appendAgentTraceEntries_(trace, entries) {
         safe[key] = sanitizeAgentDeploymentSuffix_(entry[key]);
         return;
       }
+      if (key === 'miniBuildId' || key === 'agentBuildId' || key === 'osBuildId') {
+        safe[key] = sanitizeAgentBuildId_(entry[key]);
+        return;
+      }
       if (key === 'deploymentId') {
         // Legacy column remains, but it may store only the same safe suffix.
         safe[key] = sanitizeAgentDeploymentSuffix_(entry[key]);
@@ -831,6 +843,7 @@ function appendAgentTraceEntries_(trace, entries) {
     // arrive through their strict suffix allowlists above.
     safe.miniDeploymentSuffix = miniAgentTraceDeploymentSuffix_() || '';
     safe.miniVersion = null;
+    safe.miniBuildId = PALURU_MINI_BUILD_ID;
     safe.agentVersion = null;
     safe.osVersion = null;
     if (String(safe.clientRequestIdSuffix || '') !== String(trace.clientRequestId || '').slice(-8)) return;
@@ -946,6 +959,11 @@ function miniAgentTraceDeploymentSuffix_() {
   } catch (error) {
     return null;
   }
+}
+
+function sanitizeAgentBuildId_(value) {
+  const buildId = String(value || '').trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(buildId) ? buildId : '';
 }
 
 function sanitizeAgentDeploymentSuffix_(value) {

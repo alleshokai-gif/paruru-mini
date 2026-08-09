@@ -49,6 +49,7 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'miniDeploymentSuffix', 'miniVersion',
   'agentDeploymentSuffix', 'agentVersion',
   'osDeploymentSuffix', 'osVersion',
+  'miniBuildId', 'agentBuildId', 'osBuildId',
   'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
   'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation',
   'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
@@ -161,6 +162,9 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     ,agentVersion: null
     ,osDeploymentSuffix: sanitizeAgentTraceLedgerDeploymentSuffix_(value.osDeploymentSuffix)
     ,osVersion: null
+    ,miniBuildId: sanitizeAgentTraceLedgerBuildId_(value.miniBuildId)
+    ,agentBuildId: sanitizeAgentTraceLedgerBuildId_(value.agentBuildId)
+    ,osBuildId: sanitizeAgentTraceLedgerBuildId_(value.osBuildId)
     ,hasActionConfirmation: sanitizeAgentTraceLedgerBoolean_(value.hasActionConfirmation)
     ,confirmationRequired: sanitizeAgentTraceLedgerBoolean_(value.confirmationRequired)
     ,hasSourceTrace: sanitizeAgentTraceLedgerBoolean_(value.hasSourceTrace)
@@ -189,6 +193,11 @@ function sanitizeAgentTraceLedgerBoolean_(value) {
 function sanitizeAgentTraceLedgerDeploymentSuffix_(value) {
   const suffix = String(value || '').trim();
   return /^[A-Za-z0-9_-]{4}$/.test(suffix) ? suffix : '';
+}
+
+function sanitizeAgentTraceLedgerBuildId_(value) {
+  const buildId = String(value || '').trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(buildId) ? buildId : '';
 }
 
 function sanitizeAgentTraceLedgerBoundaryValue_(value) {

@@ -442,6 +442,7 @@ test('Mini persists one request deployment chain using suffixes and null version
     event: 'SOURCE_SELECTED', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
     agentDeploymentSuffix: 'ag48', agentVersion: 48,
     osDeploymentSuffix: 'os34', osVersion: 34,
+    agentBuildId: 'agent-20260809-prepared-contract-v1', osBuildId: 'os-20260809-build-chain-v1',
     sourceType: 'generated', sourceSystem: 'automation', sourceReason: 'primary', freshness: 'not_applicable',
     sourceSelected: 'confirmation_created', sourceFallbackUsed: false, sourceSelectedCount: 1, sourceResultCode: 'OK',
     url: 'https://private.example', deploymentId: 'full-agent-deployment-id'
@@ -451,11 +452,14 @@ test('Mini persists one request deployment chain using suffixes and null version
   vm.runInContext('persistAgentTrace_(__deploymentPersistTrace)', context);
   const headers = traceSheet.headers;
   const deploymentHeaders = ['miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion'];
-  assert(JSON.stringify(headers.slice(-19, -13)) === JSON.stringify(deploymentHeaders), 'deployment headers moved from their append-only position');
+  assert(JSON.stringify(headers.slice(-22, -16)) === JSON.stringify(deploymentHeaders), 'deployment headers moved from their append-only position');
   const agentRow = traceSheet.rows.find((row) => row[headers.indexOf('source')] === 'agent');
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
   assert(agentRow[headers.indexOf('osDeploymentSuffix')] === 'os34', 'OS deployment suffix was dropped');
+  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260809-build-chain-v1', 'Mini build ID was not stamped');
+  assert(agentRow[headers.indexOf('agentBuildId')] === 'agent-20260809-prepared-contract-v1', 'Agent build ID was dropped');
+  assert(agentRow[headers.indexOf('osBuildId')] === 'os-20260809-build-chain-v1', 'OS build ID was dropped');
   assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');
   assert(!JSON.stringify(traceSheet.rows).includes('full-agent-deployment-id') && !JSON.stringify(traceSheet.rows).includes('https://private.example') && !JSON.stringify(traceSheet.rows).includes('mini-full-deployment-96'), 'unsafe deployment metadata leaked into the sheet');
   delete context.ScriptApp;
