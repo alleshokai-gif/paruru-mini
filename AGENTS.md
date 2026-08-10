@@ -241,3 +241,12 @@ must come after `preparedKeysHash`; inserting them before existing confirmation
 or prepared-shape columns causes `TRACE_SCHEMA_MISMATCH` and halts persistence.
 Every build-ID schema change must retain a fixture for the pre-build header
 sequence and assert that the three IDs are the final three headers.
+
+## DTO boundary incident rule
+
+When an observed state appears impossible, compare the DTO shape at each
+boundary before changing business logic. For Mini, this means confirming that
+the Agent response's allowlisted structural fields survive ingress,
+`appendAgentTraceEntries_()`, and `normalizePersistableAgentTraceEntry_()`
+unchanged. Do not diagnose an upstream service from a missing Mini trace field
+until each of these preservation boundaries has been checked.
