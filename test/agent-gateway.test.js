@@ -234,6 +234,33 @@ test('Mini upgrades the persisted 8/5 32-column trace schema by appending every 
   assert(traceSheet.rows[1].length === headers.length, 'new trace row does not match the expanded header width');
 });
 
+test('Mini upgrades the immediate pre-OS-response-shape fixture by appending only the new final tail', () => {
+  reset();
+  traceSheet = createTraceSheet();
+  const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  const buildTail = ['miniBuildId', 'agentBuildId', 'osBuildId'];
+  const osResponseTail = ['osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError', 'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'];
+  const priorTail = [
+    'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion',
+    'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
+    'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation',
+    'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
+    'preparedStatus', 'preparedKeysHash'
+  ];
+  const priorHeaders = headers.slice(0, -osResponseTail.length);
+  assert(JSON.stringify(priorHeaders.slice(-buildTail.length)) === JSON.stringify(buildTail), 'pre-OS-response-shape fixture no longer retains the existing build tail');
+  assert(JSON.stringify(priorHeaders.slice(-(buildTail.length + priorTail.length), -buildTail.length)) === JSON.stringify(priorTail), 'pre-build fixture no longer matches the persisted header order');
+  traceSheet.headers = priorHeaders.slice();
+  traceSheet.rows = [priorHeaders.map((header) => 'prior-' + header)];
+  context.__preBuildTrace = { entries: [{ event: 'REQUEST_RECEIVED', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat' }], agentEntries: [] };
+  vm.runInContext('persistAgentTrace_(__preBuildTrace)', context);
+  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(headers), 'OS response-shape migration was not append-only');
+  assert(JSON.stringify(traceSheet.headers.slice(-osResponseTail.length)) === JSON.stringify(osResponseTail), 'OS response-shape fields were inserted before an existing header');
+  assert(JSON.stringify(traceSheet.headers.slice(-(osResponseTail.length + buildTail.length), -osResponseTail.length)) === JSON.stringify(buildTail), 'build IDs moved from their existing append-only position');
+  assert(traceSheet.rows[0].length === priorHeaders.length && traceSheet.rows[0][priorHeaders.indexOf('preparedKeysHash')] === 'prior-preparedKeysHash', 'existing trace row was changed');
+  assert(traceSheet.rows[1].length === headers.length, 'new trace row width does not match the expanded schema');
+});
+
 test('Mini still fails closed when an existing trace header differs within the historical prefix', () => {
   reset();
   traceSheet = createTraceSheet();
@@ -452,7 +479,8 @@ test('Mini persists one request deployment chain using suffixes and null version
   vm.runInContext('persistAgentTrace_(__deploymentPersistTrace)', context);
   const headers = traceSheet.headers;
   const deploymentHeaders = ['miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion'];
-  assert(JSON.stringify(headers.slice(-22, -16)) === JSON.stringify(deploymentHeaders), 'deployment headers moved from their append-only position');
+  const deploymentStart = headers.indexOf('miniDeploymentSuffix');
+  assert(JSON.stringify(headers.slice(deploymentStart, deploymentStart + deploymentHeaders.length)) === JSON.stringify(deploymentHeaders), 'deployment headers moved from their append-only position');
   const agentRow = traceSheet.rows.find((row) => row[headers.indexOf('source')] === 'agent');
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
@@ -475,6 +503,9 @@ test('Mini persists only confirmation precheck booleans in the new header tail',
     preparedHasFollowupRequired: true, preparedHasActionConfirmation: false,
     preparedHasSourceTrace: true, preparedHasActionTrace: true,
     preparedStatus: 'FOLLOWUP_REQUIRED', preparedKeysHash: 'a1b2c3d4',
+    osResponseSuccess: false, osResponseHasAction: false, osResponseHasData: false,
+    osResponseHasError: true, osResponseHasDeploymentTrace: false,
+    osResponseKeysHash: 'b1c2d3e4', osResponseDataKeysHash: 'd4c3b2a1', osResponseErrorCode: 'AIRCON_UPSTREAM_HTTP_ERROR',
     confirmationId: 'private-confirmation-id', roomLabel: 'private-room-label', summary: 'private-summary'
   }, {
     event: 'CONFIRMATION_PRECHECK', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
@@ -482,6 +513,8 @@ test('Mini persists only confirmation precheck booleans in the new header tail',
     osResponseHasActionConfirmation: 'true', sanitizedHasActionConfirmation: 0, returnedHasActionConfirmation: null
     ,preparedHasFollowupRequired: 'true', preparedHasActionConfirmation: 0,
     preparedHasSourceTrace: null, preparedHasActionTrace: {}, preparedStatus: 'private-status', preparedKeysHash: 'private-hash'
+    ,osResponseSuccess: 'false', osResponseHasAction: 0, osResponseHasData: {}, osResponseHasError: null,
+    osResponseHasDeploymentTrace: 'true', osResponseKeysHash: 'private-hash', osResponseDataKeysHash: 'x1', osResponseErrorCode: 'private-error'
   }])`, Object.assign(context, { __precheckTrace: trace }));
   assert(JSON.stringify([
     trace.agentEntries[0].hasActionConfirmation, trace.agentEntries[0].confirmationRequired,
@@ -511,11 +544,23 @@ test('Mini persists only confirmation precheck booleans in the new header tail',
     trace.agentEntries[0].preparedStatus, trace.agentEntries[0].preparedKeysHash,
     trace.agentEntries[1].preparedHasFollowupRequired, trace.agentEntries[1].preparedStatus, trace.agentEntries[1].preparedKeysHash
   ]) === JSON.stringify([true, false, true, true, 'FOLLOWUP_REQUIRED', 'a1b2c3d4', '', '', '']), 'prepared shape diagnostics were not safely retained');
+  assert(JSON.stringify([
+    trace.agentEntries[0].osResponseSuccess, trace.agentEntries[0].osResponseHasAction,
+    trace.agentEntries[0].osResponseHasData, trace.agentEntries[0].osResponseHasError,
+    trace.agentEntries[0].osResponseHasDeploymentTrace, trace.agentEntries[0].osResponseKeysHash,
+    trace.agentEntries[0].osResponseDataKeysHash, trace.agentEntries[0].osResponseErrorCode,
+    trace.agentEntries[1].osResponseSuccess, trace.agentEntries[1].osResponseKeysHash, trace.agentEntries[1].osResponseErrorCode
+  ]) === JSON.stringify([false, false, false, true, false, 'b1c2d3e4', 'd4c3b2a1', 'AIRCON_UPSTREAM_HTTP_ERROR', '', '', '']), 'OS response-shape diagnostics were not safely retained');
   const preparedTail = ['preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace', 'preparedStatus', 'preparedKeysHash'];
-  assert(JSON.stringify(traceSheet.headers.slice(-preparedTail.length)) === JSON.stringify(preparedTail), 'prepared shape headers are not append-only');
-  assert(JSON.stringify(traceSheet.headers.slice(-(tail.length + preparedTail.length), -preparedTail.length)) === JSON.stringify(tail), 'precheck headers moved from their append-only position');
+  const buildTail = ['miniBuildId', 'agentBuildId', 'osBuildId'];
+  const osResponseTail = ['osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError', 'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'];
+  assert(JSON.stringify(traceSheet.headers.slice(-(preparedTail.length + buildTail.length + osResponseTail.length), -(buildTail.length + osResponseTail.length))) === JSON.stringify(preparedTail), 'prepared shape headers moved from their persisted position');
+  assert(JSON.stringify(traceSheet.headers.slice(-(tail.length + preparedTail.length + buildTail.length + osResponseTail.length), -(preparedTail.length + buildTail.length + osResponseTail.length))) === JSON.stringify(tail), 'precheck headers moved from their append-only position');
+  assert(JSON.stringify(traceSheet.headers.slice(-(buildTail.length + osResponseTail.length), -osResponseTail.length)) === JSON.stringify(buildTail), 'build IDs moved from their persisted append-only position');
+  assert(JSON.stringify(traceSheet.headers.slice(-osResponseTail.length)) === JSON.stringify(osResponseTail), 'OS response-shape fields were not appended at the final tail');
   const row = traceSheet.rows[0];
   assert(JSON.stringify(tail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([true, false, true, false, true, false, true]), 'precheck booleans were not persisted');
+  assert(JSON.stringify(osResponseTail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([false, false, false, true, false, 'b1c2d3e4', 'd4c3b2a1', 'AIRCON_UPSTREAM_HTTP_ERROR']), 'OS response-shape fields were not persisted');
   assert(!JSON.stringify(traceSheet.rows).includes('private-confirmation-id') && !JSON.stringify(traceSheet.rows).includes('private-room-label') && !JSON.stringify(traceSheet.rows).includes('private-summary'), 'private confirmation fields leaked to the sheet');
 });
 

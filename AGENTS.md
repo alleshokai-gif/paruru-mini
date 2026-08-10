@@ -233,3 +233,11 @@ Codexはコード作成者であり、設計者・レビュー担当・完成判
 - A caught trace-persistence error does not make the trace system healthy.
   Verify the actual `Agent_Trace_Log` receives a new row after deployment
   before reporting trace persistence as working.
+
+### Build ID incident rule
+
+`miniBuildId`, `agentBuildId`, and `osBuildId` are an append-only tail. They
+must come after `preparedKeysHash`; inserting them before existing confirmation
+or prepared-shape columns causes `TRACE_SCHEMA_MISMATCH` and halts persistence.
+Every build-ID schema change must retain a fixture for the pre-build header
+sequence and assert that the three IDs are the final three headers.

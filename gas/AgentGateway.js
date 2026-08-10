@@ -738,6 +738,8 @@ function appendAgentTraceEntries_(trace, entries) {
     'confirmationRoomLabelValid', 'confirmationSummaryValid',
     'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
     'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation',
+    'osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError', 'osResponseHasDeploymentTrace',
+    'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode',
     'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
     'preparedStatus', 'preparedKeysHash',
     'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion',
@@ -794,7 +796,9 @@ function appendAgentTraceEntries_(trace, entries) {
           || key === 'hasActionConfirmation' || key === 'confirmationRequired'
           || key === 'hasSourceTrace' || key === 'hasActionTrace'
           || key === 'osResponseHasActionConfirmation' || key === 'sanitizedHasActionConfirmation'
-          || key === 'returnedHasActionConfirmation') {
+          || key === 'returnedHasActionConfirmation' || key === 'osResponseSuccess'
+          || key === 'osResponseHasAction' || key === 'osResponseHasData'
+          || key === 'osResponseHasError' || key === 'osResponseHasDeploymentTrace') {
         safe[key] = typeof entry[key] === 'boolean' ? entry[key] : '';
         return;
       }
@@ -809,6 +813,14 @@ function appendAgentTraceEntries_(trace, entries) {
       }
       if (key === 'preparedKeysHash') {
         safe[key] = /^[a-f0-9]{8}$/i.test(String(entry[key] || '')) ? String(entry[key]).toLowerCase() : '';
+        return;
+      }
+      if (key === 'osResponseKeysHash' || key === 'osResponseDataKeysHash') {
+        safe[key] = /^[a-f0-9]{8}$/i.test(String(entry[key] || '')) ? String(entry[key]).toLowerCase() : '';
+        return;
+      }
+      if (key === 'osResponseErrorCode') {
+        safe[key] = sanitizeIncomingAgentTraceOsErrorCode_(entry[key]);
         return;
       }
       if (key === 'agentDeploymentSuffix' || key === 'osDeploymentSuffix') {
@@ -897,6 +909,26 @@ function sanitizeIncomingAgentTraceValidationReason_(value) {
     SETPOINT_NOT_ALLOWED: true,
     DURATION_REQUIRED: true,
     DURATION_NOT_ALLOWED: true
+  }[normalized] ? normalized : '';
+}
+
+function sanitizeIncomingAgentTraceOsErrorCode_(value) {
+  const normalized = String(value || '').trim();
+  return {
+    INVALID_COMMAND_INPUT: true,
+    INVALID_INPUT: true,
+    FOLLOWUP_REQUIRED: true,
+    ACTION_NOT_ALLOWED: true,
+    CONFIGURATION_ERROR: true,
+    UNSUPPORTED_COMMAND: true,
+    AUTOMATION_UPSTREAM_ERROR: true,
+    AIRCON_UPSTREAM_UNAVAILABLE: true,
+    AIRCON_UPSTREAM_HTTP_ERROR: true,
+    AIRCON_UPSTREAM_INVALID_RESPONSE: true,
+    AIRCON_PREVIEW_INVALID_RESPONSE: true,
+    UNAUTHORIZED: true,
+    ROOM_NOT_FOUND: true,
+    INTERNAL_ERROR: true
   }[normalized] ? normalized : '';
 }
 

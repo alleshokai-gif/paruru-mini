@@ -49,11 +49,17 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'miniDeploymentSuffix', 'miniVersion',
   'agentDeploymentSuffix', 'agentVersion',
   'osDeploymentSuffix', 'osVersion',
-  'miniBuildId', 'agentBuildId', 'osBuildId',
   'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
   'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation',
   'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
-  'preparedStatus', 'preparedKeysHash'
+  'preparedStatus', 'preparedKeysHash',
+  // Build IDs were introduced after every preceding trace column had already
+  // been persisted. They must remain the append-only tail of this ledger.
+  'miniBuildId', 'agentBuildId', 'osBuildId',
+  // OS response-shape diagnostics are an append-only tail. They contain only
+  // booleans, key-set hashes, and a fixed upstream error-code enum.
+  'osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError',
+  'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'
 ];
 
 function persistAgentTrace_(trace) {
@@ -178,6 +184,14 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     ,preparedHasActionTrace: sanitizeAgentTraceLedgerBoolean_(value.preparedHasActionTrace)
     ,preparedStatus: sanitizeAgentTraceLedgerEnum_(value.preparedStatus, { FOLLOWUP_REQUIRED: true, CONFIRMATION_READY: true, TRACE_ONLY: true, EMPTY: true, INVALID: true })
     ,preparedKeysHash: /^[a-f0-9]{8}$/i.test(String(value.preparedKeysHash || '')) ? String(value.preparedKeysHash).toLowerCase() : ''
+    ,osResponseSuccess: sanitizeAgentTraceLedgerBoolean_(value.osResponseSuccess)
+    ,osResponseHasAction: sanitizeAgentTraceLedgerBoolean_(value.osResponseHasAction)
+    ,osResponseHasData: sanitizeAgentTraceLedgerBoolean_(value.osResponseHasData)
+    ,osResponseHasError: sanitizeAgentTraceLedgerBoolean_(value.osResponseHasError)
+    ,osResponseHasDeploymentTrace: sanitizeAgentTraceLedgerBoolean_(value.osResponseHasDeploymentTrace)
+    ,osResponseKeysHash: sanitizeAgentTraceLedgerHash_(value.osResponseKeysHash)
+    ,osResponseDataKeysHash: sanitizeAgentTraceLedgerHash_(value.osResponseDataKeysHash)
+    ,osResponseErrorCode: sanitizeAgentTraceLedgerOsErrorCode_(value.osResponseErrorCode)
   };
 }
 
@@ -188,6 +202,31 @@ function sanitizeAgentTraceLedgerEnum_(value, allowed) {
 
 function sanitizeAgentTraceLedgerBoolean_(value) {
   return typeof value === 'boolean' ? value : '';
+}
+
+function sanitizeAgentTraceLedgerHash_(value) {
+  const hash = String(value || '');
+  return /^[a-f0-9]{8}$/i.test(hash) ? hash.toLowerCase() : '';
+}
+
+function sanitizeAgentTraceLedgerOsErrorCode_(value) {
+  const code = String(value || '').trim();
+  return {
+    INVALID_COMMAND_INPUT: true,
+    INVALID_INPUT: true,
+    FOLLOWUP_REQUIRED: true,
+    ACTION_NOT_ALLOWED: true,
+    CONFIGURATION_ERROR: true,
+    UNSUPPORTED_COMMAND: true,
+    AUTOMATION_UPSTREAM_ERROR: true,
+    AIRCON_UPSTREAM_UNAVAILABLE: true,
+    AIRCON_UPSTREAM_HTTP_ERROR: true,
+    AIRCON_UPSTREAM_INVALID_RESPONSE: true,
+    AIRCON_PREVIEW_INVALID_RESPONSE: true,
+    UNAUTHORIZED: true,
+    ROOM_NOT_FOUND: true,
+    INTERNAL_ERROR: true
+  }[code] ? code : '';
 }
 
 function sanitizeAgentTraceLedgerDeploymentSuffix_(value) {
