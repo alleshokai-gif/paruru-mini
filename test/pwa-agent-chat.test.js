@@ -729,6 +729,7 @@ test('EVA-03I-2B aircon confirmation uses the existing safe card and immutable c
   await harness.ask('リビングを冷房25℃、風量自動にして');
   const html = harness.elements.get('#homeAgentContent').innerHTML;
   assert(html.includes('冷房25℃・風量自動') && html.includes('data-home-agent-action-execute'), 'aircon confirmation card missing');
+  assert(html.includes('この操作を実行する？') && !html.includes('実行するを実行する？'), 'confirmation prompt is not generic');
   harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
   await harness.run(`executeAgentActionConfirmation({ type: 'agentActionConfirmation', confirmationId: '88888888-8888-4888-8888-888888888888', clientRequestId: '6ba7b810-9dad-41d1-80b4-00c04fd430c8', command: 'aircon.applySettings', confirmationMessage: 'safe' })`);
   const sent = harness.requests[harness.requests.length - 1].payload;

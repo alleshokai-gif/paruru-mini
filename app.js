@@ -3851,7 +3851,7 @@ function renderHomeAgentActionConfirmation(actionCandidate) {
 
   homeAgentContent.insertAdjacentHTML("beforeend", `
     <div class="home-agent-confirm" data-home-agent-confirm>
-      <p>${escapeHtml(actionLabel || "この候補")}を実行する？</p>
+      <p>この操作を実行する？</p>
       <p>${escapeHtml(message)}</p>
       <div class="home-agent-confirm-actions">
         <button class="secondary-button" type="button" data-home-agent-confirm-close>やめる</button>
