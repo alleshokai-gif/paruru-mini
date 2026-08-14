@@ -713,6 +713,15 @@ function logMiniAgentTrace_(event, trace, details) {
     elapsedMs: Math.max(0, Date.now() - Number(trace && trace.startedAtMs || Date.now())),
     openAiCallCount: traceMetricNumber_(performance.openAiCallCount),
     serviceCallCount: traceMetricNumber_(performance.serviceCallCount),
+    routerMs: traceMetricNumber_(performance.routerMs),
+    serviceMs: traceMetricNumber_(performance.serviceMs),
+    totalMs: traceMetricNumber_(performance.totalMs),
+    modelMs: Object.prototype.hasOwnProperty.call(performance, 'modelMs') ? traceMetricNumber_(performance.modelMs) : null,
+    toolMs: Object.prototype.hasOwnProperty.call(performance, 'toolMs') ? traceMetricNumber_(performance.toolMs) : null,
+    toolCallCount: Object.prototype.hasOwnProperty.call(performance, 'toolCallCount') ? traceMetricInteger_(performance.toolCallCount) : null,
+    toolNames: sanitizeIncomingAgentTraceToolNames_(source.toolNames),
+    executionPath: sanitizeIncomingAgentTraceExecutionPath_(source.executionPath),
+    resultStatus: sanitizeIncomingAgentTraceResultStatus_(source.resultStatus),
     intent: safeMiniAgentTraceText_(source.intent || '') || null,
     service: safeMiniAgentTraceText_(source.service || '') || null
   };
@@ -743,7 +752,9 @@ function appendAgentTraceEntries_(trace, entries) {
     'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
     'preparedStatus', 'preparedKeysHash',
     'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion',
-    'osDeploymentSuffix', 'osVersion', 'miniBuildId', 'agentBuildId', 'osBuildId'
+    'osDeploymentSuffix', 'osVersion', 'miniBuildId', 'agentBuildId', 'osBuildId',
+    'routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs',
+    'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'
   ];
   entries.slice(0, 32).forEach(function(entry) {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;
@@ -813,6 +824,27 @@ function appendAgentTraceEntries_(trace, entries) {
       }
       if (key === 'preparedKeysHash') {
         safe[key] = /^[a-f0-9]{8}$/i.test(String(entry[key] || '')) ? String(entry[key]).toLowerCase() : '';
+        return;
+      }
+      if (key === 'routerMs' || key === 'serviceMs' || key === 'totalMs'
+          || key === 'modelMs' || key === 'toolMs') {
+        safe[key] = traceMetricNumber_(entry[key]);
+        return;
+      }
+      if (key === 'toolCallCount') {
+        safe[key] = traceMetricInteger_(entry[key]);
+        return;
+      }
+      if (key === 'toolNames') {
+        safe[key] = sanitizeIncomingAgentTraceToolNames_(entry[key]);
+        return;
+      }
+      if (key === 'executionPath') {
+        safe[key] = sanitizeIncomingAgentTraceExecutionPath_(entry[key]);
+        return;
+      }
+      if (key === 'resultStatus') {
+        safe[key] = sanitizeIncomingAgentTraceResultStatus_(entry[key]);
         return;
       }
       if (key === 'osResponseKeysHash' || key === 'osResponseDataKeysHash') {
@@ -1005,8 +1037,44 @@ function sanitizeAgentDeploymentSuffix_(value) {
 }
 
 function traceMetricNumber_(value) {
+  if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function traceMetricInteger_(value) {
+  if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return null;
+  const numeric = Number(value);
+  return Number.isInteger(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function sanitizeIncomingAgentTraceToolNames_(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const allowed = {
+    'weather.getForecast': true,
+    'calendar.listEvents': true,
+    'home.climate.get': true,
+    'home.aircon.getState': true,
+    'home.aircon.prepareAction': true
+  };
+  return text.split('|').slice(0, 3).map(function(name) {
+    const normalized = String(name || '').trim();
+    return allowed[normalized] ? normalized : 'invalid_tool';
+  }).join('|');
+}
+
+function sanitizeIncomingAgentTraceExecutionPath_(value) {
+  const normalized = String(value || '').trim();
+  return { tool_calling: true, legacy_router: true }[normalized] ? normalized : '';
+}
+
+function sanitizeIncomingAgentTraceResultStatus_(value) {
+  const normalized = String(value || '').trim();
+  return {
+    SUCCESS: true, STALE: true, PARTIAL: true, NO_OP: true, FOLLOWUP_REQUIRED: true,
+    INVALID_INPUT: true, FORBIDDEN: true, NOT_FOUND: true, UNAVAILABLE: true, UPSTREAM_ERROR: true
+  }[normalized] ? normalized : '';
 }
 
 function safeMiniAgentTraceText_(value) {

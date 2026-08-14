@@ -126,6 +126,24 @@ function assert(value, message) { if (!value) throw new Error(message); }
 const tests = [];
 function test(name, fn) { tests.push({ name, fn }); }
 
+const PALURU_AGENT_TRACE_HEADERS_V84 = [
+  'recordedAt', 'source', 'event', 'clientRequestIdSuffix', 'deploymentId', 'version', 'action', 'httpStatus',
+  'errorCode', 'stage', 'reason', 'elapsedMs', 'openAiCallCount', 'serviceCallCount', 'intent', 'service',
+  'openAiErrorType', 'openAiErrorCode', 'openAiErrorMessage', 'validationField', 'validationReason', 'period',
+  'scope', 'roomId', 'operation', 'boundary', 'boundaryHash', 'from', 'field', 'value', 'before', 'after',
+  'state', 'sourceType', 'sourceSystem', 'sourceReason', 'freshness', 'sourceSelected', 'sourceFallbackUsed',
+  'sourceObservedAt', 'sourceRecordCount', 'sourceSelectedCount', 'calendarRecordCount', 'inboxRecordCount',
+  'sourceHttpStatus', 'sourceResultCode', 'actionSource', 'actionResult', 'stateBefore', 'stateAfter',
+  'confirmationRoomLabelPresent', 'confirmationSummaryPresent', 'confirmationRoomLabelValid', 'confirmationSummaryValid',
+  'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion',
+  'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
+  'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation',
+  'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
+  'preparedStatus', 'preparedKeysHash', 'miniBuildId', 'agentBuildId', 'osBuildId',
+  'osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError',
+  'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'
+];
+
 test('tool-free response', () => {
   configure();
   mockFetch(200, agentResponse('今日は土曜日やで。'), (url, options) => {
@@ -240,6 +258,7 @@ test('Mini upgrades the immediate pre-OS-response-shape fixture by appending onl
   const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
   const buildTail = ['miniBuildId', 'agentBuildId', 'osBuildId'];
   const osResponseTail = ['osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError', 'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'];
+  const toolCallingTail = ['routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs', 'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'];
   const priorTail = [
     'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion',
     'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
@@ -247,16 +266,17 @@ test('Mini upgrades the immediate pre-OS-response-shape fixture by appending onl
     'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
     'preparedStatus', 'preparedKeysHash'
   ];
-  const priorHeaders = headers.slice(0, -osResponseTail.length);
+  const priorHeaders = headers.slice(0, -(osResponseTail.length + toolCallingTail.length));
   assert(JSON.stringify(priorHeaders.slice(-buildTail.length)) === JSON.stringify(buildTail), 'pre-OS-response-shape fixture no longer retains the existing build tail');
   assert(JSON.stringify(priorHeaders.slice(-(buildTail.length + priorTail.length), -buildTail.length)) === JSON.stringify(priorTail), 'pre-build fixture no longer matches the persisted header order');
   traceSheet.headers = priorHeaders.slice();
   traceSheet.rows = [priorHeaders.map((header) => 'prior-' + header)];
   context.__preBuildTrace = { entries: [{ event: 'REQUEST_RECEIVED', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat' }], agentEntries: [] };
   vm.runInContext('persistAgentTrace_(__preBuildTrace)', context);
-  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(headers), 'OS response-shape migration was not append-only');
-  assert(JSON.stringify(traceSheet.headers.slice(-osResponseTail.length)) === JSON.stringify(osResponseTail), 'OS response-shape fields were inserted before an existing header');
-  assert(JSON.stringify(traceSheet.headers.slice(-(osResponseTail.length + buildTail.length), -osResponseTail.length)) === JSON.stringify(buildTail), 'build IDs moved from their existing append-only position');
+  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(headers), 'OS response-shape and Tool Calling migrations were not append-only');
+  assert(JSON.stringify(traceSheet.headers.slice(-toolCallingTail.length)) === JSON.stringify(toolCallingTail), 'Tool Calling fields were not appended at the final tail');
+  assert(JSON.stringify(traceSheet.headers.slice(-(osResponseTail.length + toolCallingTail.length), -toolCallingTail.length)) === JSON.stringify(osResponseTail), 'OS response-shape fields were inserted before an existing header');
+  assert(JSON.stringify(traceSheet.headers.slice(-(osResponseTail.length + toolCallingTail.length + buildTail.length), -(osResponseTail.length + toolCallingTail.length))) === JSON.stringify(buildTail), 'build IDs moved from their existing persisted position');
   assert(traceSheet.rows[0].length === priorHeaders.length && traceSheet.rows[0][priorHeaders.indexOf('preparedKeysHash')] === 'prior-preparedKeysHash', 'existing trace row was changed');
   assert(traceSheet.rows[1].length === headers.length, 'new trace row width does not match the expanded schema');
 });
@@ -275,6 +295,98 @@ test('Mini still fails closed when an existing trace header differs within the h
   vm.runInContext('persistAgentTrace_(__mismatchedTrace)', context);
   assert(traceSheet.rows.length === 1, 'schema mismatch unexpectedly wrote a trace row');
   assert(logs.some((line) => line.includes('TRACE_SCHEMA_MISMATCH')), 'schema mismatch was not retained as a persistence failure');
+});
+
+test('Mini appends the Phase 1 trace tail after the literal persisted 84-column fixture', () => {
+  reset();
+  traceSheet = createTraceSheet();
+  const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  const toolCallingTail = [
+    'routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs',
+    'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'
+  ];
+  assert(PALURU_AGENT_TRACE_HEADERS_V84.length === 84, 'historical fixture width changed');
+  assert(headers.length === 93, 'Tool Calling trace schema must contain 93 columns');
+  assert(JSON.stringify(headers.slice(0, 84)) === JSON.stringify(PALURU_AGENT_TRACE_HEADERS_V84), 'existing 84-column schema is not the unchanged prefix');
+  assert(JSON.stringify(headers.slice(84)) === JSON.stringify(toolCallingTail), 'Tool Calling trace fields were not appended in order');
+  assert(headers[72] === 'preparedKeysHash', 'preparedKeysHash moved from column 73');
+  assert(JSON.stringify(headers.slice(73, 76)) === JSON.stringify(['miniBuildId', 'agentBuildId', 'osBuildId']), 'Build ID columns moved from 74-76');
+
+  const existingRow = PALURU_AGENT_TRACE_HEADERS_V84.map((header) => 'prior-' + header);
+  traceSheet.headers = PALURU_AGENT_TRACE_HEADERS_V84.slice();
+  traceSheet.rows = [existingRow.slice()];
+  context.__phase1TraceSchemaFixture = {
+    entries: [{
+      event: 'RESPONSE_SENT', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat',
+      routerMs: 3, serviceMs: 5, totalMs: 11, modelMs: 2, toolMs: 7,
+      toolCallCount: 2, toolNames: 'calendar.listEvents|weather.getForecast',
+      executionPath: 'tool_calling', resultStatus: 'PARTIAL'
+    }],
+    agentEntries: []
+  };
+  vm.runInContext('persistAgentTrace_(__phase1TraceSchemaFixture)', context);
+  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(headers), '93-column header migration was not append-only');
+  assert(JSON.stringify(traceSheet.rows[0]) === JSON.stringify(existingRow), 'existing 84-column fixture row changed');
+  assert(traceSheet.rows[0].length === 84, 'existing fixture row width changed');
+  assert(traceSheet.rows[1].length === 93, 'new trace row width is not 93');
+  const newRow = traceSheet.rows[1];
+  assert(JSON.stringify(toolCallingTail.map((header) => newRow[headers.indexOf(header)])) === JSON.stringify([
+    3, 5, 11, 2, 7, 2, 'calendar.listEvents|weather.getForecast', 'tool_calling', 'PARTIAL'
+  ]), 'new Tool Calling trace values were not persisted');
+});
+
+test('Mini persists omitted Tool Calling metrics as blanks on a legacy trace entry', () => {
+  reset();
+  traceSheet = createTraceSheet();
+  context.__legacyToolCallingTrace = {
+    entries: [{
+      event: 'RESPONSE_SENT', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat',
+      routerMs: null, serviceMs: null, totalMs: null, modelMs: null, toolMs: null, toolCallCount: null
+    }],
+    agentEntries: []
+  };
+  vm.runInContext('persistAgentTrace_(__legacyToolCallingTrace)', context);
+  const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  const fields = ['routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs', 'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'];
+  assert(JSON.stringify(fields.map((header) => traceSheet.rows[0][headers.indexOf(header)])) === JSON.stringify(['', '', '', '', '', '', '', '', '']), 'legacy trace invented Tool Calling metrics instead of leaving them blank');
+});
+
+test('Mini retains only safe Tool Calling trace fields across Agent ingress and persistence', () => {
+  reset();
+  const trace = { clientRequestId, entries: [], agentEntries: [] };
+  vm.runInContext(`appendAgentTraceEntries_(__toolTraceIngress, [{
+    event: 'TOOL_RESULT', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    routerMs: 3.5, serviceMs: 5, totalMs: 11.5, modelMs: 2, toolMs: 7,
+    toolCallCount: 2, toolNames: 'calendar.listEvents|weather.getForecast',
+    executionPath: 'tool_calling', resultStatus: 'PARTIAL'
+  }, {
+    event: 'TOOL_RESULT', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
+    toolCallCount: 1.5,
+    toolNames: 'weather.getForecast|{"period":"tomorrow","message":"private-tool-args"}',
+    executionPath: 'tool_calling;legacy_router', resultStatus: 'SUCCESS private-tool-message',
+    rawToolArgs: '{"period":"tomorrow"}', message: 'private-tool-message'
+  }])`, Object.assign(context, { __toolTraceIngress: trace }));
+  assert(JSON.stringify([
+    trace.agentEntries[0].routerMs, trace.agentEntries[0].serviceMs, trace.agentEntries[0].totalMs,
+    trace.agentEntries[0].modelMs, trace.agentEntries[0].toolMs, trace.agentEntries[0].toolCallCount,
+    trace.agentEntries[0].toolNames, trace.agentEntries[0].executionPath, trace.agentEntries[0].resultStatus
+  ]) === JSON.stringify([3.5, 5, 11.5, 2, 7, 2, 'calendar.listEvents|weather.getForecast', 'tool_calling', 'PARTIAL']), 'safe Tool Calling trace fields changed at Mini ingress');
+  assert(trace.agentEntries[1].toolCallCount === null, 'fractional tool call count was retained');
+  assert(trace.agentEntries[1].toolNames === 'weather.getForecast|invalid_tool', 'unsafe Tool name was not replaced');
+  assert(trace.agentEntries[1].executionPath === '' && trace.agentEntries[1].resultStatus === '', 'unsafe Tool trace enums were retained');
+
+  traceSheet = createTraceSheet();
+  context.__toolTracePersist = { entries: [], agentEntries: trace.agentEntries };
+  vm.runInContext('persistAgentTrace_(__toolTracePersist)', context);
+  const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  const persisted = traceSheet.rows[0];
+  assert(JSON.stringify([
+    persisted[headers.indexOf('routerMs')], persisted[headers.indexOf('serviceMs')], persisted[headers.indexOf('totalMs')],
+    persisted[headers.indexOf('modelMs')], persisted[headers.indexOf('toolMs')], persisted[headers.indexOf('toolCallCount')],
+    persisted[headers.indexOf('toolNames')], persisted[headers.indexOf('executionPath')], persisted[headers.indexOf('resultStatus')]
+  ]) === JSON.stringify([3.5, 5, 11.5, 2, 7, 2, 'calendar.listEvents|weather.getForecast', 'tool_calling', 'PARTIAL']), 'safe Tool Calling trace fields changed during persistence');
+  const serialized = JSON.stringify({ agentEntries: trace.agentEntries, rows: traceSheet.rows });
+  assert(!serialized.includes('private-tool-args') && !serialized.includes('private-tool-message') && !serialized.includes('"period":"tomorrow"'), 'raw Tool arguments or message body reached the trace ledger');
 });
 
 test('Mini keeps only allowlisted validation trace values', () => {
@@ -554,10 +666,13 @@ test('Mini persists only confirmation precheck booleans in the new header tail',
   const preparedTail = ['preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace', 'preparedStatus', 'preparedKeysHash'];
   const buildTail = ['miniBuildId', 'agentBuildId', 'osBuildId'];
   const osResponseTail = ['osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError', 'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'];
-  assert(JSON.stringify(traceSheet.headers.slice(-(preparedTail.length + buildTail.length + osResponseTail.length), -(buildTail.length + osResponseTail.length))) === JSON.stringify(preparedTail), 'prepared shape headers moved from their persisted position');
-  assert(JSON.stringify(traceSheet.headers.slice(-(tail.length + preparedTail.length + buildTail.length + osResponseTail.length), -(preparedTail.length + buildTail.length + osResponseTail.length))) === JSON.stringify(tail), 'precheck headers moved from their append-only position');
-  assert(JSON.stringify(traceSheet.headers.slice(-(buildTail.length + osResponseTail.length), -osResponseTail.length)) === JSON.stringify(buildTail), 'build IDs moved from their persisted append-only position');
-  assert(JSON.stringify(traceSheet.headers.slice(-osResponseTail.length)) === JSON.stringify(osResponseTail), 'OS response-shape fields were not appended at the final tail');
+  const toolCallingTail = ['routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs', 'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'];
+  const laterTailLength = buildTail.length + osResponseTail.length + toolCallingTail.length;
+  assert(JSON.stringify(traceSheet.headers.slice(-(preparedTail.length + laterTailLength), -laterTailLength)) === JSON.stringify(preparedTail), 'prepared shape headers moved from their persisted position');
+  assert(JSON.stringify(traceSheet.headers.slice(-(tail.length + preparedTail.length + laterTailLength), -(preparedTail.length + laterTailLength))) === JSON.stringify(tail), 'precheck headers moved from their append-only position');
+  assert(JSON.stringify(traceSheet.headers.slice(-laterTailLength, -(osResponseTail.length + toolCallingTail.length))) === JSON.stringify(buildTail), 'build IDs moved from their persisted position');
+  assert(JSON.stringify(traceSheet.headers.slice(-(osResponseTail.length + toolCallingTail.length), -toolCallingTail.length)) === JSON.stringify(osResponseTail), 'OS response-shape fields moved from their persisted position');
+  assert(JSON.stringify(traceSheet.headers.slice(-toolCallingTail.length)) === JSON.stringify(toolCallingTail), 'Tool Calling fields were not appended at the final tail');
   const row = traceSheet.rows[0];
   assert(JSON.stringify(tail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([true, false, true, false, true, false, true]), 'precheck booleans were not persisted');
   assert(JSON.stringify(osResponseTail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([false, false, false, true, false, 'b1c2d3e4', 'd4c3b2a1', 'AIRCON_UPSTREAM_HTTP_ERROR']), 'OS response-shape fields were not persisted');

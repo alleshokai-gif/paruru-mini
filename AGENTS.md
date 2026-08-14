@@ -22,10 +22,11 @@ AIは修正対象以外を変更してはならない。修正範囲を広げる
 
 - Agentの仕様を勝手に変更しない
 - OSの契約を勝手に変更しない
-- Tool Callingへ戻さない
-- OpenAIを2回以上呼ばない
+- ADR-001およびArchitectureで定めた移行範囲外のTool Calling経路を導入しない
+- 設計・計測なしに無制限のAgent Loop、Tool再投入、Responses APIループ、モデル／Tool呼出しを導入しない
 - Agent URL / Script Propertiesを勝手に変更しない
 - Apps Script Web Editorでコードを修正しない
+- Codexはデプロイを実行しない。`clasp push`、Apps Scriptのデプロイ作成・更新、ライブラリ版の公開・更新、GitHub Pages等の公開操作はすべてユーザー本人が行う
 - 実ブラウザ受入前に「完了」と報告しない
 - PWAだけ直してMiniとの契約を変更しない
 - 推測だけで実装修正しない
@@ -37,7 +38,7 @@ AIは修正対象以外を変更してはならない。修正範囲を広げる
 ↓
 テスト
 ↓
-deploy
+ユーザー本人によるdeploy
 ↓
 実ブラウザ受入
 ↓
@@ -92,14 +93,14 @@ deploy
 
 ## 1. 設計を勝手に変えない
 
-PALURUは設計が正本であり、AIは設計者ではなく実装者である。次を無断で導入・置換してはならない。
+PALURUは設計が正本であり、AIは設計者ではなく実装者である。ADR-001およびArchitectureに定めない次の変更を無断で導入・置換してはならない。
 
-- Tool Calling
-- Agent Loop
+- Tool Calling経路
+- 無制限のAgent Loop
 - Tool Router
-- Tool再投入
-- Responses APIループ
-- OpenAI呼び出し回数の変更
+- 無制限のTool再投入
+- 無制限のResponses APIループ
+- Phaseごとの上限を設計・計測しないモデル／Tool呼出し回数の変更
 - 処理順の変更
 - 新しい責務の追加
 
@@ -113,7 +114,7 @@ PALURUは設計が正本であり、AIは設計者ではなく実装者である
 2. 構文チェックPASS
 3. 既存テストPASS
 4. 対象Repository全体テストPASS
-5. デプロイ
+5. ユーザー本人によるデプロイ
 6. 接続済み実ブラウザ・実PWA・実デプロイでの確認
 7. 受入試験PASS
 
@@ -150,27 +151,46 @@ PALURUは設計が正本であり、AIは設計者ではなく実装者である
 
 性能改善を報告する前に、最低限以下を実測する。
 
-- OpenAI呼び出し回数
-- API回数
-- Router時間
-- Service時間
-- 総時間
+- OpenAI/model call count
+- Tool call count
+- OS/service call count
+- totalMs
+- 各主要stageのelapsed time
+
+Tool Calling経路では、Phaseごとに許容する最大モデル呼出し回数および最大Tool呼出し回数を、実装前に設計し、成功時・失敗時ともに計測する。無制限のAgent Loop、Tool再投入、Responses APIループは導入しない。
 
 「速くなった」とは書かず、測定値と測定条件だけを記載する。
 
 ## 7. PALURU Agent正本設計
 
-通常相談経路の正本は次のとおりである。
+PALURUはCanonical Intent Router中心の構造から、Agent Tool Calling方式へ段階移行する。移行先の通常相談・操作経路は次のとおりである。
 
-OpenAI（Intent JSONを1回生成）
-→ GAS検証
-→ 決定論Router
-→ PALURU_OS
-→ Service
-→ GASテンプレート生成
-→ PWA
+PWA
+→ Mini Gateway
+→ PALURU Agent
+→ Tool Calling
+→ Domain Tool
+→ PALURU_OS / Domain Service
 
-OpenAIの責務は分類と引数抽出のみ。Service選択と実行はGASが行う。Tool Callingへ戻してはならない。
+Agentの責務は、自然言語理解、Tool選択、複数Toolの組み合わせ、Tool結果の統合、follow-upに限定する。Tool / PALURU_OS / Domain Serviceは決定論処理を担当する。
+
+authorization、validation、business rule、cache、rate limit、idempotency、retry、audit、write safetyをAgentへ移してはならない。actor / auth / contextはMini Gatewayがサーバー側で解決し、Agentはクライアント由来のrole / userIdを認可根拠にしてはならない。
+
+Read ToolはAgentから利用可能とする。Writeは必ず次の三段階とする。
+
+```text
+prepare → confirmation → execute
+```
+
+AgentのTool Callingだけで実機操作・保存などの副作用を完結させてはならない。`execute` 時はMini / OS側でactor / auth / contextを再検証する。既存Airconの `prepare / confirm / execute` は、このWrite安全境界の実装資産として再利用する。
+
+legacy Intent Routerは、未移行domainの一時経路としてのみ維持する。Tool失敗時にlegacy Intent Routerへ自動fallbackしてはならず、同一requestで新旧経路を二重実行してはならない。Big Bangでの置換は禁止する。
+
+Phase 1は、Weather read → Calendar read → Home read → multi-tool → Home prepare の順で導入する。
+
+### OpenAI呼出し回数
+
+現行の「1回固定」は旧Structured Intent方式の制約であり、無条件ルールにはしない。ただし、無制限のAgent Loopは禁止する。Phaseごとに許容する最大Tool / model呼出し回数を設計・計測する。
 
 ## 8. 作業単位と変更履歴
 
@@ -201,7 +221,7 @@ Codexはコード作成者であり、設計者・レビュー担当・完成判
 - Home card and Agent Today Paruru must use the same server-normalized input conditions: selected calendar members, unknown-event policy, cutover time, target dates, scope, Calendar, and Inbox.
 - Do not write request text, replies, raw responses, Calendar, Inbox, health data, tokens, or secrets to diagnostics. Keep only safe event metadata, code, stage, reason, size, elapsed time, request-id suffix, and Build ID.
 - Preserve known upstream error codes through Mini, Agent, and OS. Do not collapse them to `AGENT_ERROR`; only unknown failures may use the generic code.
-- Every `agentChat` change must retain the one-OpenAI-call plus deterministic GAS-service architecture and must measure `routerMs`, `serviceMs`, `totalMs`, `openAiCallCount`, and `serviceCallCount` on both success and failure.
+- Every `agentChat` / Tool Calling change must retain the deterministic Tool / OS / Domain Service safety boundary and must measure OpenAI/model call count, Tool call count, OS/service call count, `totalMs`, and each major stage elapsed time on both success and failure.
 # Agent Internal Context Contracts
 
 - Agent-only internal APIs must explicitly validate required routing fields and
@@ -236,11 +256,21 @@ Codexはコード作成者であり、設計者・レビュー担当・完成判
 
 ### Build ID incident rule
 
-`miniBuildId`, `agentBuildId`, and `osBuildId` are an append-only tail. They
-must come after `preparedKeysHash`; inserting them before existing confirmation
-or prepared-shape columns causes `TRACE_SCHEMA_MISMATCH` and halts persistence.
-Every build-ID schema change must retain a fixture for the pre-build header
-sequence and assert that the three IDs are the final three headers.
+`miniBuildId`, `agentBuildId`, and `osBuildId` are existing persisted columns
+immediately after `preparedKeysHash`. Their persisted positions are immutable,
+and their relative order must always be `miniBuildId` → `agentBuildId` →
+`osBuildId`.
+
+Existing columns, including OS response-shape diagnostics, may follow this
+three-column group. Future Trace fields must always be appended to the current
+schema end; do not move, reorder, or recreate the Build ID columns to make
+them the final three headers.
+
+Every Trace schema migration must use the current 84-column header list as a
+complete historical-prefix fixture with at least one existing row. It must
+assert that the Build ID group remains immediately after `preparedKeysHash`,
+that its three-column order is unchanged, and that all new fields are appended
+only after the current schema end.
 
 ## DTO boundary incident rule
 

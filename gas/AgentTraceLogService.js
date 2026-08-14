@@ -53,13 +53,17 @@ const PALURU_AGENT_TRACE_HEADERS = [
   'osResponseHasActionConfirmation', 'sanitizedHasActionConfirmation', 'returnedHasActionConfirmation',
   'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
   'preparedStatus', 'preparedKeysHash',
-  // Build IDs were introduced after every preceding trace column had already
-  // been persisted. They must remain the append-only tail of this ledger.
+  // Build IDs are persisted immediately after preparedKeysHash. Their
+  // positions and relative order are immutable; later columns may follow.
   'miniBuildId', 'agentBuildId', 'osBuildId',
   // OS response-shape diagnostics are an append-only tail. They contain only
   // booleans, key-set hashes, and a fixed upstream error-code enum.
   'osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError',
-  'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'
+  'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode',
+  // Phase 1 Tool Calling trace fields are append-only after the persisted
+  // 84-column schema. Do not move Build IDs or OS response-shape diagnostics.
+  'routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs',
+  'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'
 ];
 
 function persistAgentTrace_(trace) {
@@ -192,6 +196,18 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     ,osResponseKeysHash: sanitizeAgentTraceLedgerHash_(value.osResponseKeysHash)
     ,osResponseDataKeysHash: sanitizeAgentTraceLedgerHash_(value.osResponseDataKeysHash)
     ,osResponseErrorCode: sanitizeAgentTraceLedgerOsErrorCode_(value.osResponseErrorCode)
+    ,routerMs: sanitizeAgentTraceLedgerNumber_(value.routerMs)
+    ,serviceMs: sanitizeAgentTraceLedgerNumber_(value.serviceMs)
+    ,totalMs: sanitizeAgentTraceLedgerNumber_(value.totalMs)
+    ,modelMs: sanitizeAgentTraceLedgerNumber_(value.modelMs)
+    ,toolMs: sanitizeAgentTraceLedgerNumber_(value.toolMs)
+    ,toolCallCount: sanitizeAgentTraceLedgerNonNegativeInteger_(value.toolCallCount)
+    ,toolNames: sanitizeAgentTraceLedgerToolNames_(value.toolNames)
+    ,executionPath: sanitizeAgentTraceLedgerEnum_(value.executionPath, { tool_calling: true, legacy_router: true })
+    ,resultStatus: sanitizeAgentTraceLedgerEnum_(value.resultStatus, {
+      SUCCESS: true, STALE: true, PARTIAL: true, NO_OP: true, FOLLOWUP_REQUIRED: true,
+      INVALID_INPUT: true, FORBIDDEN: true, NOT_FOUND: true, UNAVAILABLE: true, UPSTREAM_ERROR: true
+    })
   };
 }
 
@@ -342,8 +358,31 @@ function sanitizeAgentTraceValidationReason_(value) {
 }
 
 function sanitizeAgentTraceLedgerNumber_(value) {
+  if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return '';
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : '';
+}
+
+function sanitizeAgentTraceLedgerNonNegativeInteger_(value) {
+  if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return '';
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : '';
+}
+
+function sanitizeAgentTraceLedgerToolNames_(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const allowed = {
+    'weather.getForecast': true,
+    'calendar.listEvents': true,
+    'home.climate.get': true,
+    'home.aircon.getState': true,
+    'home.aircon.prepareAction': true
+  };
+  return text.split('|').slice(0, 3).map(function(name) {
+    const normalized = String(name || '').trim();
+    return allowed[normalized] ? normalized : 'invalid_tool';
+  }).join('|');
 }
 
 function logAgentTracePersistenceFailure_(error) {
