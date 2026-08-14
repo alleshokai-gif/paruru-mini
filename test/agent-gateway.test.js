@@ -389,6 +389,24 @@ test('Mini retains only safe Tool Calling trace fields across Agent ingress and 
   assert(!serialized.includes('private-tool-args') && !serialized.includes('private-tool-message') && !serialized.includes('"period":"tomorrow"'), 'raw Tool arguments or message body reached the trace ledger');
 });
 
+test('Mini final response trace retains Weather Tool Calling performance metadata', () => {
+  reset();
+  const trace = { clientRequestId, entries: [], agentEntries: [] };
+  context.__weatherFinalTrace = trace;
+  vm.runInContext(`logMiniAgentTrace_('RESPONSE_SENT', __weatherFinalTrace, {
+    stage: 'RESPONSE_SENT', agentPerformance: {
+      openAiCallCount: 2, serviceCallCount: 1, routerMs: 3, serviceMs: 5, totalMs: 11,
+      modelMs: 4, toolMs: 5, toolCallCount: 1, toolNames: 'weather.getForecast',
+      executionPath: 'tool_calling', resultStatus: 'SUCCESS'
+    }
+  })`, context);
+  const event = trace.entries[0];
+  assert(JSON.stringify([
+    event.openAiCallCount, event.serviceCallCount, event.modelMs, event.toolMs, event.toolCallCount,
+    event.toolNames, event.executionPath, event.resultStatus, event.totalMs
+  ]) === JSON.stringify([2, 1, 4, 5, 1, 'weather.getForecast', 'tool_calling', 'SUCCESS', 11]), 'Mini final response dropped Weather Tool Calling performance metadata');
+});
+
 test('Mini keeps only allowlisted validation trace values', () => {
   reset();
   const trace = { clientRequestId, agentEntries: [] };

@@ -719,9 +719,9 @@ function logMiniAgentTrace_(event, trace, details) {
     modelMs: Object.prototype.hasOwnProperty.call(performance, 'modelMs') ? traceMetricNumber_(performance.modelMs) : null,
     toolMs: Object.prototype.hasOwnProperty.call(performance, 'toolMs') ? traceMetricNumber_(performance.toolMs) : null,
     toolCallCount: Object.prototype.hasOwnProperty.call(performance, 'toolCallCount') ? traceMetricInteger_(performance.toolCallCount) : null,
-    toolNames: sanitizeIncomingAgentTraceToolNames_(source.toolNames),
-    executionPath: sanitizeIncomingAgentTraceExecutionPath_(source.executionPath),
-    resultStatus: sanitizeIncomingAgentTraceResultStatus_(source.resultStatus),
+    toolNames: sanitizeIncomingAgentTraceToolNames_(source.toolNames || performance.toolNames),
+    executionPath: sanitizeIncomingAgentTraceExecutionPath_(source.executionPath || performance.executionPath),
+    resultStatus: sanitizeIncomingAgentTraceResultStatus_(source.resultStatus || performance.resultStatus),
     intent: safeMiniAgentTraceText_(source.intent || '') || null,
     service: safeMiniAgentTraceText_(source.service || '') || null
   };

@@ -921,7 +921,9 @@ async function routePaluruRequest(memo) {
     return;
   }
 
-  if (isLegacyHomeAgentPriorityQuery(memo)) {
+  // Weather, including umbrella questions, is the Phase 1A Tool Calling domain.
+  // School and Lunch remain on the legacy HomeAgent path until their migration.
+  if (isLegacyHomeAgentPriorityQuery(memo) && !isWeatherQuery(memo)) {
     await submitHomeAgentQuery(memo);
     return;
   }
