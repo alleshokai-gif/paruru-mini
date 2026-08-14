@@ -175,21 +175,65 @@ Weather domainは、実行前に新Tool経路またはlegacy経路のどちら�
 | side effect | なし |
 | legacy domain ownership | Calendar read / HomeAgent schedule (`getFamilySchedule`、`paruru`) |
 
-#### Input contract
+#### Phase 1B Input contract（確定）
 
 | Field | Required | 型・enum | 契約 |
 | --- | --- | --- | --- |
-| `period` | 必須 | `today` / `tomorrow` / `this_week` / `next_7_days` | `Asia/Tokyo` で期間を解決する。 |
-| `scope` | 必須 | `mine` / `family` | `mine` は TrustedContext の actor を基準にする。`family` の可否は OS 側で決定する。 |
-| `memberUserId` | 任意 | canonical member ID | 人を絞る必要がある場合だけ指定する。表示名・ニックネーム・client 由来 ID は不可。canonical 化と authorization は OS 側で実施する。 |
+| `period` | 必須 | `today` / `tomorrow` | `Asia/Tokyo` で期間を解決する。Phase 1Bではこの2値だけを受け付ける。 |
+| `scope` | 必須 | `mine` / `family` | Tool呼出し時の候補値。認可可否はAgentでなくOSがTrustedContextを用いて決定する。 |
 
-`memberUserId` を省略した場合は追加の member filter を指定しない。`scope=mine` で TrustedContext と異なる `memberUserId` を指定できるかは、OS 側で判定する。Agent はその可否を推測しない。
+Phase 1BのTool引数に `memberUserId` は存在しない。`this_week`、`next_7_days`、任意日付、および `memberUserId` を含む未定義引数は `INVALID_INPUT` とする。Agentは表示名、家族順、alias、Calendar IDからmemberを補完しない。
+
+`period` の日付境界はAsia/Tokyoで扱う。Home card / Today Paruruが持つ18:00 rolloverはこのToolに持ち込まず、明示された `period` をそのまま対象日に解決する。
+
+#### TrustedContext・authorization（Phase 1B確定）
+
+`TrustedContext.memberUserId` はMini Gatewayがサーバー側で解決して別経路注入する。Agentはactor、role、capabilityを変更・推測・補完せず、クライアント由来のrole、member、scopeを認可根拠にしない。
+
+| TrustedContext上のactor | `mine` | `family` | OS側の必須検証 |
+| --- | --- | --- | --- |
+| `admin` | 許可対象 | 許可対象 | `calendar.family.read` capability |
+| `guardian` | 許可対象 | 許可対象 | `calendar.family.read` capability |
+| `self_record` | 許可対象 | 許可対象 | `calendar.family.read` capability |
+
+上表はPhase 1Bの固定policyである。OSは両scopeについて `calendar.family.read` を必ず検証し、capabilityが不足する場合は `FORBIDDEN` を返す。role別のより細かな制約や個別member指定policyは後続Phaseで別途設計する。
+
+#### Event filtering（Phase 1B確定）
+
+| `scope` | 取得対象 |
+| --- | --- |
+| `mine` | TrustedContextのactorに一致するtagを持つeventだけ。 |
+| `family` | actor tagで絞り込まない家族全体のevent。未分類eventも含める。 |
+
+`family` と `unknown` はeventの分類値であり、actor IDやmemberUserIdではない。この分類をactor照合や認可判定へ流用しない。
 
 #### Output data contract
 
-`data` は少なくとも `period`、`scope`、`from`、`to`、`events`、`summary` を返す。各 event は少なくとも title、startAt、endAt、allDay、personLabel を構造化して返す。Calendar ID、生 event ID、description、location、attendee、URL は返さない。
+`data` は少なくとも `period`、`scope`、`from`、`to`、`events`、`summary` を返す。各eventはAgent表示に必要なallowlist済み構造化値だけを返す。Calendar ID、生event ID、description、location、attendee、URL は返さない。UI・会話向け自然文はAgentがこの構造化結果から生成する。
 
-予定がない場合は `events: []` と `summary.totalEvents: 0` を返し、取得失敗として扱わない。イベントが上限で切られた場合は `status: PARTIAL` と安全な warning を返す。
+共通envelopeの `success`、`result` / `status`、`data`、`warnings`、safeな`error`、`generatedAt`、`schemaVersion` を正本とする。
+
+#### Result / error semantics（Phase 1B確定）
+
+| 状況 | `status` | `data.events` |
+| --- | --- | --- |
+| eventあり | `SUCCESS` | 対象event配列 |
+| event 0件 | `SUCCESS` | `[]` |
+| warning付き部分取得 | `PARTIAL` | 取得できたevent配列（なければ空配列にせず、欠損をwarningで表す） |
+| capability不足 | `FORBIDDEN` | 返さない |
+| `period` / `scope` / 未定義引数が不正 | `INVALID_INPUT` | 返さない |
+| 利用可能なCalendarデータ源なし | `UNAVAILABLE` | 返さない |
+| upstream通信または処理障害 | `UPSTREAM_ERROR` | 返さない |
+
+取得失敗を `SUCCESS` + `events: []` に変換しない。既知のsafe error codeはMini → OS → Agentの境界で保持する。認可系の既知errorを一律 `UPSTREAM_ERROR` に潰さず、Agentも既知errorを一律 `CALENDAR_UNAVAILABLE` に置換しない。
+
+#### Phase 1B migration / runtime（確定）
+
+- `purpose=calendar` の相談だけをAgentService入口で一度だけ新Tool経路へ排他的に切り替える。
+- 新Tool失敗後にlegacy `calendar_read` / Routerを自動実行しない。同一requestで新旧Calendar経路を二重実行しない。
+- `purpose=today-paruru` と現在の「今日の予定」のToday Paruru挙動はlegacy経路のままとする。Calendar + Inbox集約と18:00 rolloverは変更しない。
+- Weather専用runtimeを複製せず、単一のbounded Tool Calling runnerを拡張して再利用する。
+- Phase 1Bの `purpose=calendar` はmodel calls最大2、Tool calls最大1、OS/service call想定1とする。
 
 ### 3.3 `home.climate.get`
 
@@ -331,12 +375,12 @@ Phase 1 では既存経路を廃止しない。新 namespace は既存実装資�
 以下は実装や仕様を推測で埋めず、別途設計確認が必要である。
 
 1. 後続Phaseの `homeId → location registry`、複数location時の選択規則、locationLabel の公開範囲。Phase 1Aは既存home固定location解決を再利用する。
-2. `calendar.listEvents.memberUserId` の canonical 値集合、`scope=family` 時の member filter と authorization の詳細。
+2. 後続Phaseで `calendar.listEvents.memberUserId` を導入する場合のcanonical値集合、個別member filter、role別policy。Phase 1Bではmember指定を受け付けず、`mine` / `family` のfilterとauthorizationは3.2で固定する。
 3. Room Registry の canonical `roomId` enum、overview に含める room の範囲・順序・上限。
 4. Aircon の `power` と `fan` の enum、機器 capability による許容組合せ、出力 `reportedState` の固定 schema。
 5. climate / aircon の freshness判定閾値と、`STALE` と stale data warning の使い分け。Weather Phase 1Aは既存freshness判定と本書3.1の対応表で固定する。
 6. `home.aircon.prepareAction` の confirmation record 保存先、`confirmationId` の形式、expiresAt、有効期限切れ、既存 Aircon confirm / execute との正確な接続。
 7. `confirmationMessageData` の固定 field、Agent・UI が確認文を生成する責務分担。
-8. Weather以外のknown upstream error allowlistと、新 contract の `FORBIDDEN` / `UNAVAILABLE` / `UPSTREAM_ERROR` への対応表。
-9. model call / Tool call / OS/service call の計数単位、trace の追加 field と append-only migration 手順。
-10. `model calls 最大2` と `Tool calls 最大3` の実測に基づく妥当性評価。現時点で性能実測は行っていない。
+8. Calendar Phase 1B以外のdomainにおけるknown upstream error allowlistと、新contractの `FORBIDDEN` / `UNAVAILABLE` / `UPSTREAM_ERROR` への対応表。Calendar Phase 1Bの結果意味論と既知error保持は3.2で固定する。
+9. 各domainで想定するOS/service call数の実測値と、Phaseごとの上限の妥当性評価。traceの計数単位と93列append-only schema自体は別途確定済みである。
+10. Phase 1のmulti-tool相談に対する `model calls 最大2` と `Tool calls 最大3` の実測に基づく妥当性評価。Phase 1Bの単一Calendar相談は3.2のmodel最大2、Tool最大1を超えない。

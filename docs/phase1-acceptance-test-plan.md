@@ -91,6 +91,15 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 
 ## 5. Calendar Read acceptance
 
+### Phase 1B fixed decision
+
+- 新Toolへ移すのは `purpose=calendar` の相談だけである。`purpose=today-paruru` と、現在「今日の予定」がToday Paruruへ入る挙動は現行legacy経路のまま維持する。Today ParuruのCalendar + Inbox集約および18:00 rolloverは変更しない。
+- Tool入力は `period: today | tomorrow` と `scope: mine | family` だけである。`memberUserId` はPhase 1Bでは受け付けない。`this_week`、`next_7_days`、任意日付、未定義引数は `INVALID_INPUT` とする。
+- `mine` はMini GatewayがTrustedContextへ注入したactor本人、`family` は家族全体を意味する。Tool引数やclient payloadのrole、member、scopeは認可根拠にしない。
+- `admin`、`guardian`、`self_record` は、TrustedContextに `calendar.family.read` capabilityがある場合、`mine` / `family` の両方を許可対象とする。OSは両scopeでこのcapabilityを必ず検証し、不足時は `FORBIDDEN` とする。
+- `mine` はactor tag一致eventだけ、`family` はtagで絞り込まず未分類eventも含める。`family` / `unknown` はevent分類であってactor IDではない。
+- Weather専用runtimeを複製せず、単一のbounded Tool Calling runnerを拡張する。`purpose=calendar` はmodel calls最大2、Tool calls最大1、OS/service call想定1とする。
+
 ### 入力例
 
 - 「明日の予定教えて」
@@ -100,12 +109,19 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 
 | ID | 条件 | 合格条件 |
 | --- | --- | --- |
-| C-01 | actor 自身の明日予定 | `calendar.listEvents` が選択され、`scope=mine` を Tool / OS が TrustedContext 基準で処理する。 |
-| C-02 | 家族の明日予定 | `calendar.listEvents` が選択され、`scope=family` の authorization を OS 側で判定する。 |
-| C-03 | member 絞込み | 必要な場合だけ canonical `memberUserId` を使用する。表示名や client 由来 ID を member selector に使わない。 |
-| C-04 | 権限外 scope / member | `FORBIDDEN` 等の安全な error を返し、権限外データを返さない。Agent がアクセス可否を決定しない。 |
-| C-05 | Calendar 取得失敗 | `UNAVAILABLE` または既知 upstream error を返す。空予定（`events: []`）として扱わない。 |
-| C-06 | 予定0件 | 正常に `events: []` と件数0を返し、取得失敗と混同しない。 |
+| C-01 | `purpose=calendar`、actor自身の明日予定 | `calendar.listEvents` だけを1回選択し、`period=tomorrow`、`scope=mine` をTool / OSがTrustedContext基準で処理する。新しいCanonical Intentを追加しない。 |
+| C-02 | `purpose=calendar`、家族の明日予定 | `calendar.listEvents` だけを1回選択し、`scope=family` をOS側で判定する。Agentがauthorizationを決定しない。 |
+| C-03 | actor / capability | `admin`、`guardian`、`self_record` の各TrustedContextについて、`calendar.family.read` がある場合は両scopeを許可する。capabilityがない場合は `FORBIDDEN` とし、eventを返さない。 |
+| C-04 | `mine` filtering | actor tag一致eventだけを返す。client指定のmember、表示名、alias、event分類をactor照合へ使わない。 |
+| C-05 | `family` filtering | tagで絞り込まず、未分類eventを含む家族全体を返す。`family` / `unknown` をactor IDやmemberUserIdとして扱わない。 |
+| C-06 | input範囲 | `today` / `tomorrow` と `mine` / `family` だけを受理する。`memberUserId`、`this_week`、`next_7_days`、任意日付、未定義引数は `INVALID_INPUT` とし、OS/serviceを呼ばない。 |
+| C-07 | 予定0件 | `SUCCESS` + `events: []` と件数0を返し、取得失敗と混同しない。 |
+| C-08 | warning付き部分取得 | `PARTIAL` と取得できた範囲・安全なwarningを返す。成功/失敗の二値や空予定へ潰さない。 |
+| C-09 | Calendarデータ源なし | `UNAVAILABLE` を返し、空予定（`events: []`）やgenericな `CALENDAR_UNAVAILABLE` へ変換しない。 |
+| C-10 | upstream通信 / 処理障害 | `UPSTREAM_ERROR` を返す。認可系を一律 `UPSTREAM_ERROR` に潰さず、既知safe error codeをMini → OS → Agentで保持する。 |
+| C-11 | migration switch | `purpose=calendar` はAgentService入口で新Tool経路だけを選ぶ。Tool失敗後にlegacy `calendar_read` / Routerを実行せず、同一requestで新旧Calendar経路を二重実行しない。 |
+| C-12 | Today Paruru regression | `purpose=today-paruru` と現行の「今日の予定」はlegacy Today Paruru経路のままで、Calendar + Inbox集約と18:00 rolloverが変わらず、新Calendar Toolを呼ばない。 |
+| C-13 | runtime上限 | model callsは2以下、Tool callsは1、OS/service callは想定1をTraceで確認する。上限逸脱、2本目のTool、無制限loopはFAILとする。 |
 
 ## 6. Home Read acceptance
 
@@ -176,8 +192,8 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 | ID | 条件 | 合格条件 |
 | --- | --- | --- |
 | S-01 | `admin` | Mini Gateway が server-side で TrustedContext を解決し、Tool / OS が capability に基づいて可否を決定する。 |
-| S-02 | `guardian` | guardian のサーバー定義 capability で同じ検証を行う。role 定義と期待権限が未確定なら PASS にできない。 |
-| S-03 | `self_record` | self_record のサーバー定義 capability を超える read / prepare を許可しない。Agent が role を昇格させない。 |
+| S-02 | `guardian` | guardian のサーバー定義 capability で同じ検証を行う。Calendar Phase 1Bでは `calendar.family.read` がある場合、`mine` / `family` の両scopeを許可する。 |
+| S-03 | `self_record` | self_record のサーバー定義 capability を超える read / prepare を許可しない。Calendar Phase 1Bでは `calendar.family.read` がある場合、`mine` / `family` の両scopeを許可する。Agent が role を昇格させない。 |
 | S-04 | revoked device | Mini Gateway が Agent 到達前に拒否する。Tool call、model call、legacy fallback は0回。 |
 | S-05 | actor payload tampering | client が `role` / `userId` / `capabilities` を改ざんしても、server-side TrustedContext だけを使う。Agent が capability を追加・変更しない。 |
 | S-06 | Tool 実行境界 | Tool / OS は各実行で TrustedContext を使い、prepare / execute の間に権限を持ち越さない。 |
@@ -194,6 +210,7 @@ Phase 1 対象 domain では、次を確認する。
 | L-02 | Tool failure | Tool error を返し、旧 Router を自動実行しない。 |
 | L-03 | 未移行 domain | legacy Router / HomeAgent 経路を維持する。 |
 | L-04 | School / Lunch 入力 | legacy 経路で従来どおり処理され、Phase 1 Tool が呼ばれない。 |
+| L-05 | Calendar Phase 1B | `purpose=calendar` は新Tool経路だけ、`purpose=today-paruru` と現行の「今日の予定」はlegacy Today Paruru経路だけを実行する。両方を同一requestで実行しない。 |
 
 ### Regression suite
 
@@ -234,6 +251,8 @@ performance は「速くなった」とは評価しない。測定値、測定�
 | prepare Tool | `≤ 1` | Aircon prepare request で確認する。 |
 | execute Tool | `0` in `agent.chat` | Agent chat 内に execute が存在しないことを確認する。 |
 
+`purpose=calendar` のPhase 1B相談には、上表より狭い個別上限を適用する。model callsは `≤ 2`、Tool callsは `= 1`、OS/service callは想定 `1` とし、Calendar以外のToolを追加しない。
+
 上限を超えた結果は acceptance failure とする。上限の緩和は、実測結果、影響範囲、更新する contract と test plan を示した別の設計判断なしに行わない。
 
 ## 13. Exit Criteria
@@ -256,11 +275,8 @@ Phase 1 の受入候補とするには、以下をすべて満たす必要があ
 
 ## 14. TBD
 
-1. `guardian` role の canonical 定義、capability 集合、テスト用 membership fixture。
-2. deployed read-only acceptance を行う PWA / Mini / Agent / OS の対象環境と、許可された確認用 home / member / room。
-3. `home.aircon.prepareAction` の confirmation record 保存先と、prepare acceptance で許容される保存状態。
-4. `power` / `fan` enum、Room Registry、home weather location、freshness 閾値など、Tool Catalog の未確定 contract。
-5. `agentChat` と Agent 境界の `agent.chat` の命名・呼出し対応、model / Tool / OS-service call の正確な計数単位。
-6. selected Tool names、各 elapsed、call count を既存 `Agent_Trace_Log` に追加する場合の append-only header migration と事前 fixture。
-7. known upstream error の allowlist と、deployed environment で安全に再現する unavailable / stale / partial ケース。
-8. legacy / 新経路の一方だけを実行したことを、実運用 Trace で識別する固定 field と検索方法。
+1. 後続Phaseで `memberUserId`、`this_week`、`next_7_days`、任意日付をCalendar Toolへ導入する場合のpolicyとcontract。Phase 1Bでは受け付けない。
+2. deployed read-only acceptance を行う PWA / Mini / Agent / OS の対象環境と、許可された確認用 home / Calendar fixture。`mine` actor tag一致、`family` の未分類eventを安全に検証できるfixtureは実装前に選定する。
+3. Calendar Phase 1B以外のdomainにおけるknown upstream error allowlistと、安全に再現する unavailable / stale / partial ケース。Calendar Phase 1Bは既知errorを保持し、認可系を `UPSTREAM_ERROR` に潰さないことまで確定している。
+4. `home.aircon.prepareAction` の confirmation record 保存先と、prepare acceptance で許容される保存状態。
+5. `power` / `fan` enum、Room Registry、home weather location、freshness 閾値など、Tool Catalog の未確定contract。

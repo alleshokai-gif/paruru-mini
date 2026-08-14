@@ -407,6 +407,33 @@ test('Mini final response trace retains Weather Tool Calling performance metadat
   ]) === JSON.stringify([2, 1, 4, 5, 1, 'weather.getForecast', 'tool_calling', 'SUCCESS', 11]), 'Mini final response dropped Weather Tool Calling performance metadata');
 });
 
+test('Mini final response trace retains Calendar Tool Calling performance metadata', () => {
+  reset();
+  const trace = { clientRequestId, entries: [], agentEntries: [] };
+  context.__calendarFinalTrace = trace;
+  vm.runInContext(`logMiniAgentTrace_('RESPONSE_SENT', __calendarFinalTrace, {
+    stage: 'RESPONSE_SENT', agentPerformance: {
+      openAiCallCount: 2, serviceCallCount: 1, routerMs: 3, serviceMs: 5, totalMs: 11,
+      modelMs: 4, toolMs: 5, toolCallCount: 1, toolNames: 'calendar.listEvents',
+      executionPath: 'tool_calling', resultStatus: 'FORBIDDEN'
+    }
+  })`, context);
+  const event = trace.entries[0];
+  assert(JSON.stringify([
+    event.openAiCallCount, event.serviceCallCount, event.modelMs, event.toolMs, event.toolCallCount,
+    event.toolNames, event.executionPath, event.resultStatus, event.totalMs
+  ]) === JSON.stringify([2, 1, 4, 5, 1, 'calendar.listEvents', 'tool_calling', 'FORBIDDEN', 11]), 'Mini final response dropped Calendar Tool Calling performance metadata');
+});
+
+test('Mini preserves Calendar safe upstream error codes instead of collapsing them', () => {
+  context.__calendarErrorPayload = { error: { code: 'FORBIDDEN' } };
+  context.__calendarUnavailablePayload = { error: { code: 'UNAVAILABLE' } };
+  context.__calendarUnauthorizedPayload = { error: { code: 'UNAUTHORIZED' } };
+  assert(vm.runInContext('safeUpstreamAgentErrorCode_(__calendarErrorPayload)', context) === 'FORBIDDEN', 'FORBIDDEN was collapsed');
+  assert(vm.runInContext('safeUpstreamAgentErrorCode_(__calendarUnavailablePayload)', context) === 'UNAVAILABLE', 'UNAVAILABLE was collapsed');
+  assert(vm.runInContext('safeUpstreamAgentErrorCode_(__calendarUnauthorizedPayload)', context) === 'UNAUTHORIZED', 'UNAUTHORIZED was collapsed');
+});
+
 test('Mini keeps only allowlisted validation trace values', () => {
   reset();
   const trace = { clientRequestId, agentEntries: [] };
@@ -852,10 +879,12 @@ test('HTTP and invalid JSON map to unavailable', () => {
   assert(post(valid()).error.code === 'AGENT_UNAVAILABLE', 'invalid JSON leaked');
 });
 
-test('Agent error and schema mismatch are hidden', () => {
+test('known Agent authorization error is preserved while schema mismatch stays hidden', () => {
   configure();
   mockFetch(200, { success: false, error: { code: 'UNAUTHORIZED', message: secretToken } });
-  assert(post(valid()).error.code === 'AGENT_ERROR', 'Agent error exposed');
+  const unauthorized = post(valid());
+  assert(unauthorized.error.code === 'UNAUTHORIZED', 'known authorization error was collapsed');
+  assert(!JSON.stringify(unauthorized).includes(secretToken), 'Agent error detail exposed');
   const wrongSchema = agentResponse('reply'); wrongSchema.schemaVersion = 'unexpected';
   mockFetch(200, wrongSchema);
   assert(post(valid()).error.code === 'AGENT_ERROR', 'schema mismatch accepted');

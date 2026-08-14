@@ -296,6 +296,9 @@ function safeUpstreamAgentErrorCode_(payload) {
     UPSTREAM_ERROR: true,
     AGENT_UNAVAILABLE: true,
     INVALID_INPUT: true,
+    FORBIDDEN: true,
+    UNAVAILABLE: true,
+    UNAUTHORIZED: true,
   };
   return allowed[sourceCode] ? sourceCode : 'AGENT_ERROR';
 }
@@ -597,6 +600,9 @@ function buildAgentChatError_(error) {
     CONFIGURATION_ERROR: true,
     AGENT_UNAVAILABLE: true,
     AGENT_ERROR: true,
+    FORBIDDEN: true,
+    UNAVAILABLE: true,
+    UNAUTHORIZED: true,
     ACTOR_CONTRACT_INVALID: true,
     TOOL_DISABLED: true,
     CLIMATE_UNAVAILABLE: true,
@@ -618,6 +624,9 @@ function buildAgentChatError_(error) {
     CONFIGURATION_ERROR: 'Agent接続設定が未完了です。',
     AGENT_UNAVAILABLE: '現在Agentへ接続できません。',
     AGENT_ERROR: 'Agentの処理を完了できませんでした。',
+    FORBIDDEN: 'この予定を表示する権限がありません。',
+    UNAVAILABLE: '予定を取得できませんでした。',
+    UNAUTHORIZED: 'Agent認証を確認できませんでした。',
     ACTOR_CONTRACT_INVALID: '端末の利用情報を確認できませんでした。',
     TOOL_DISABLED: 'この相談機能は現在利用できません。',
     CLIMATE_UNAVAILABLE: '室温・湿度を取得できませんでした。',
