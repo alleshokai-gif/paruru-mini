@@ -565,6 +565,13 @@ test('Mini persists only fixed Home snapshot failure classifications without cha
     ['UPSTREAM_TRANSPORT_ERROR', 'unavailable', null],
     ['UPSTREAM_HTTP_ERROR', 'unavailable', 503],
     ['UPSTREAM_BUSINESS_ERROR', 'unavailable', 200],
+    ['UPSTREAM_BUSINESS_ERROR', 'latest_log_read', 200],
+    ['UPSTREAM_BUSINESS_ERROR', 'full_log_fallback', 200],
+    ['UPSTREAM_BUSINESS_ERROR', 'aircon_state_read', 200],
+    ['UPSTREAM_BUSINESS_ERROR', 'aircon_override_read', 200],
+    ['UPSTREAM_BUSINESS_ERROR', 'trend', 200],
+    ['UPSTREAM_BUSINESS_ERROR', 'aggregation', 200],
+    ['UPSTREAM_BUSINESS_ERROR', 'unknown_internal', 200],
     ['NO_AVAILABLE_ROOMS', 'unavailable', 200],
     ['INVALID_RESPONSE_SHAPE', 'invalid', 200]
   ];
@@ -684,7 +691,7 @@ test('Mini persists one request deployment chain using suffixes and null version
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
   assert(agentRow[headers.indexOf('osDeploymentSuffix')] === 'os34', 'OS deployment suffix was dropped');
-  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260815-home-trace-diagnostics-v1', 'Mini build ID was not stamped');
+  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260815-switchbot-stage-trace-v1', 'Mini build ID was not stamped');
   assert(agentRow[headers.indexOf('agentBuildId')] === 'agent-20260809-prepared-contract-v1', 'Agent build ID was dropped');
   assert(agentRow[headers.indexOf('osBuildId')] === 'os-20260809-build-chain-v1', 'OS build ID was dropped');
   assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');

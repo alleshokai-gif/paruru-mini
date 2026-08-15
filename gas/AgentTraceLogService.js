@@ -147,7 +147,11 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     after: sanitizeAgentTraceLedgerBoundaryValue_(value.after),
     sourceType: sanitizeAgentTraceLedgerEnum_(value.sourceType, { observed: true, forecast: true, calendar: true, inbox: true, calendar_inbox: true, device_state: true, generated: true, none: true }),
     sourceSystem: sanitizeAgentTraceLedgerEnum_(value.sourceSystem, { switchbot: true, mini_weather: true, google_calendar: true, mini_inbox: true, automation: true, paluru_agent: true, unknown: true }),
-    sourceReason: sanitizeAgentTraceLedgerEnum_(value.sourceReason, { primary: true, fallback: true, unavailable: true, stale: true, invalid: true, not_applicable: true }),
+    sourceReason: sanitizeAgentTraceLedgerEnum_(value.sourceReason, {
+      primary: true, fallback: true, unavailable: true, stale: true, invalid: true, not_applicable: true,
+      latest_log_read: true, full_log_fallback: true, aircon_state_read: true, aircon_override_read: true,
+      trend: true, aggregation: true, unknown_internal: true
+    }),
     freshness: sanitizeAgentTraceLedgerEnum_(value.freshness, { current: true, stale: true, unknown: true, not_applicable: true }),
     sourceSelected: sanitizeAgentTraceLedgerEnum_(value.sourceSelected, { switchbot_observed: true, forecast_fallback: true, forecast: true, weather_unavailable: true, room_climate: true, room_not_found: true, climate_invalid_response: true, today_paruru_aggregate: true, aircon_status: true, confirmation_created: true, followup_required: true, outside_not_allowed: true, confirmation_executed: true, confirmation_rejected: true }),
     sourceFallbackUsed: value.sourceFallbackUsed === true,
