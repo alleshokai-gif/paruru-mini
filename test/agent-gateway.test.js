@@ -562,6 +562,7 @@ test('Mini preserves only allowlisted Source Trace fields in the append-only hea
 test('Mini persists only fixed Home snapshot failure classifications without changing the 93-column schema', () => {
   reset();
   const cases = [
+    ['UPSTREAM_TRANSPORT_ERROR', 'unavailable', null],
     ['UPSTREAM_HTTP_ERROR', 'unavailable', 503],
     ['UPSTREAM_BUSINESS_ERROR', 'unavailable', 200],
     ['NO_AVAILABLE_ROOMS', 'unavailable', 200],
@@ -577,8 +578,9 @@ test('Mini persists only fixed Home snapshot failure classifications without cha
   }));
   vm.runInContext('appendAgentTraceEntries_(__homeFailureSourceTrace, __homeFailureSourceEntries)', context);
   cases.forEach((item, index) => {
+    const expectedHttpStatus = item[2] === null ? '' : item[2];
     const entry = trace.agentEntries[index];
-    assert(entry.sourceResultCode === item[0] && entry.sourceReason === item[1] && entry.sourceHttpStatus === item[2], 'safe Home classification dropped at ingress: ' + item[0]);
+    assert(entry.sourceResultCode === item[0] && entry.sourceReason === item[1] && entry.sourceHttpStatus === expectedHttpStatus, 'safe Home classification dropped at ingress: ' + item[0]);
     ['message', 'responseBody', 'url', 'deviceId'].forEach((key) => assert(!Object.prototype.hasOwnProperty.call(entry, key), 'unsafe Home source field survived ingress: ' + key));
   });
   traceSheet = createTraceSheet();
@@ -587,10 +589,11 @@ test('Mini persists only fixed Home snapshot failure classifications without cha
   const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
   assert(headers.length === 93, 'Home failure classification changed Trace schema width');
   cases.forEach((item, index) => {
+    const expectedHttpStatus = item[2] === null ? '' : item[2];
     const row = traceSheet.rows[index];
     assert(row[headers.indexOf('sourceResultCode')] === item[0]
       && row[headers.indexOf('sourceReason')] === item[1]
-      && row[headers.indexOf('sourceHttpStatus')] === item[2], 'safe Home classification was not persisted: ' + item[0]);
+      && row[headers.indexOf('sourceHttpStatus')] === expectedHttpStatus, 'safe Home classification was not persisted: ' + item[0]);
   });
   const serialized = JSON.stringify({ entries: trace.agentEntries, rows: traceSheet.rows });
   ['private upstream exception', 'private response body', 'https://private.invalid', 'device-secret'].forEach((value) => {
@@ -681,7 +684,7 @@ test('Mini persists one request deployment chain using suffixes and null version
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
   assert(agentRow[headers.indexOf('osDeploymentSuffix')] === 'os34', 'OS deployment suffix was dropped');
-  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260809-build-chain-v1', 'Mini build ID was not stamped');
+  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260815-home-trace-diagnostics-v1', 'Mini build ID was not stamped');
   assert(agentRow[headers.indexOf('agentBuildId')] === 'agent-20260809-prepared-contract-v1', 'Agent build ID was dropped');
   assert(agentRow[headers.indexOf('osBuildId')] === 'os-20260809-build-chain-v1', 'OS build ID was dropped');
   assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');

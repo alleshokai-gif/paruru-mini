@@ -694,7 +694,7 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
-const PALURU_MINI_BUILD_ID = 'mini-20260809-build-chain-v1';
+const PALURU_MINI_BUILD_ID = 'mini-20260815-home-trace-diagnostics-v1';
 
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};
@@ -992,12 +992,13 @@ function sanitizeAgentSourceTraceValue_(key, value) {
     sourceReason: { primary: true, fallback: true, unavailable: true, stale: true, invalid: true, not_applicable: true },
     freshness: { current: true, stale: true, unknown: true, not_applicable: true },
     sourceSelected: { switchbot_observed: true, forecast_fallback: true, forecast: true, weather_unavailable: true, room_climate: true, room_not_found: true, climate_invalid_response: true, today_paruru_aggregate: true, aircon_status: true, confirmation_created: true, followup_required: true, outside_not_allowed: true, confirmation_executed: true, confirmation_rejected: true },
-    sourceResultCode: { OK: true, WEATHER_UNAVAILABLE: true, ROOM_NOT_FOUND: true, UPSTREAM_INVALID_RESPONSE: true, CLIMATE_UNAVAILABLE: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true, UPSTREAM_HTTP_ERROR: true, UPSTREAM_BUSINESS_ERROR: true, NO_AVAILABLE_ROOMS: true, INVALID_RESPONSE_SHAPE: true }
+    sourceResultCode: { OK: true, WEATHER_UNAVAILABLE: true, ROOM_NOT_FOUND: true, UPSTREAM_INVALID_RESPONSE: true, CLIMATE_UNAVAILABLE: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true, UPSTREAM_HTTP_ERROR: true, UPSTREAM_BUSINESS_ERROR: true, NO_AVAILABLE_ROOMS: true, INVALID_RESPONSE_SHAPE: true, UPSTREAM_TRANSPORT_ERROR: true }
   };
   if (key === 'sourceFallbackUsed') return value === true;
   if (key === 'sourceObservedAt') return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(text) ? text : '';
   if (key === 'sourceRecordCount' || key === 'sourceSelectedCount' || key === 'calendarRecordCount'
       || key === 'inboxRecordCount' || key === 'sourceHttpStatus') {
+    if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return '';
     const number = Number(value);
     return Number.isInteger(number) && number >= 0 ? number : '';
   }
