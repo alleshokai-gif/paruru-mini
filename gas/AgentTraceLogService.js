@@ -157,7 +157,7 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
     calendarRecordCount: sanitizeAgentTraceLedgerNumber_(value.calendarRecordCount),
     inboxRecordCount: sanitizeAgentTraceLedgerNumber_(value.inboxRecordCount),
     sourceHttpStatus: sanitizeAgentTraceLedgerNumber_(value.sourceHttpStatus),
-    sourceResultCode: sanitizeAgentTraceLedgerEnum_(value.sourceResultCode, { OK: true, WEATHER_UNAVAILABLE: true, ROOM_NOT_FOUND: true, UPSTREAM_INVALID_RESPONSE: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true })
+    sourceResultCode: sanitizeAgentTraceLedgerEnum_(value.sourceResultCode, { OK: true, WEATHER_UNAVAILABLE: true, ROOM_NOT_FOUND: true, UPSTREAM_INVALID_RESPONSE: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true, UPSTREAM_HTTP_ERROR: true, UPSTREAM_BUSINESS_ERROR: true, NO_AVAILABLE_ROOMS: true, INVALID_RESPONSE_SHAPE: true })
     ,actionSource: sanitizeAgentTraceLedgerEnum_(value.actionSource, { confirmation_created: true, confirmation_executed: true, confirmation_rejected: true, followup_required: true, room_not_found: true, outside_not_allowed: true })
     ,actionResult: sanitizeAgentTraceLedgerEnum_(value.actionResult, { OK: true, ACTION_NOT_ALLOWED: true, FOLLOWUP_REQUIRED: true, CONFIRMATION_EXPIRED: true, CONFIRMATION_ACTOR_MISMATCH: true })
     ,stateBefore: sanitizeAgentTraceLedgerEnum_(value.stateBefore, { OFF: true, ON: true, COOL: true, HEAT: true, AUTO: true, UNKNOWN: true })

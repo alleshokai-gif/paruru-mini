@@ -559,6 +559,45 @@ test('Mini preserves only allowlisted Source Trace fields in the append-only hea
   assert(traceSheet.rows[0][selected] === 'room_climate' && traceSheet.rows[0][count] === 3 && traceSheet.rows[0][calendarCount] === 2, 'Source Trace was not persisted');
 });
 
+test('Mini persists only fixed Home snapshot failure classifications without changing the 93-column schema', () => {
+  reset();
+  const cases = [
+    ['UPSTREAM_HTTP_ERROR', 'unavailable', 503],
+    ['UPSTREAM_BUSINESS_ERROR', 'unavailable', 200],
+    ['NO_AVAILABLE_ROOMS', 'unavailable', 200],
+    ['INVALID_RESPONSE_SHAPE', 'invalid', 200]
+  ];
+  const trace = { clientRequestId, agentEntries: [] };
+  context.__homeFailureSourceTrace = trace;
+  context.__homeFailureSourceEntries = cases.map((item) => ({
+    event: 'SERVICE_FAILED', clientRequestIdSuffix: clientRequestId.slice(-8), service: 'home-status', errorCode: 'UNAVAILABLE',
+    sourceType: 'observed', sourceSystem: 'switchbot', sourceReason: item[1], freshness: 'not_applicable',
+    sourceSelected: 'room_climate', sourceFallbackUsed: false, sourceHttpStatus: item[2], sourceResultCode: item[0],
+    message: 'private upstream exception', responseBody: 'private response body', url: 'https://private.invalid', deviceId: 'device-secret'
+  }));
+  vm.runInContext('appendAgentTraceEntries_(__homeFailureSourceTrace, __homeFailureSourceEntries)', context);
+  cases.forEach((item, index) => {
+    const entry = trace.agentEntries[index];
+    assert(entry.sourceResultCode === item[0] && entry.sourceReason === item[1] && entry.sourceHttpStatus === item[2], 'safe Home classification dropped at ingress: ' + item[0]);
+    ['message', 'responseBody', 'url', 'deviceId'].forEach((key) => assert(!Object.prototype.hasOwnProperty.call(entry, key), 'unsafe Home source field survived ingress: ' + key));
+  });
+  traceSheet = createTraceSheet();
+  context.__homeFailureSourcePersist = { entries: [], agentEntries: trace.agentEntries };
+  vm.runInContext('persistAgentTrace_(__homeFailureSourcePersist)', context);
+  const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  assert(headers.length === 93, 'Home failure classification changed Trace schema width');
+  cases.forEach((item, index) => {
+    const row = traceSheet.rows[index];
+    assert(row[headers.indexOf('sourceResultCode')] === item[0]
+      && row[headers.indexOf('sourceReason')] === item[1]
+      && row[headers.indexOf('sourceHttpStatus')] === item[2], 'safe Home classification was not persisted: ' + item[0]);
+  });
+  const serialized = JSON.stringify({ entries: trace.agentEntries, rows: traceSheet.rows });
+  ['private upstream exception', 'private response body', 'https://private.invalid', 'device-secret'].forEach((value) => {
+    assert(!serialized.includes(value), 'unsafe Home source detail reached Trace ledger: ' + value);
+  });
+});
+
 test('Mini persists only allowlisted Aircon Action and State Trace values', () => {
   reset();
   const trace = { clientRequestId, agentEntries: [] };
