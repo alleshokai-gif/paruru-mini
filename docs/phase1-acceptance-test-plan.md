@@ -52,7 +52,27 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 
 `Agent_Trace_Log` の schema は append-only とし、既存 header を挿入・削除・改名・並替えしない。`miniBuildId`、`agentBuildId`、`osBuildId` は `preparedKeysHash` の直後にある既存3列であり、その相対順序を維持する。Build IDより後ろに既存列・将来追加列が存在してよく、追加fieldは常に現行schema末尾へappendする。Trace を「取得できる」と扱うには、deploy 後に実際の `Agent_Trace_Log` へ新しい行が保存され、相関ID suffix と Build ID で確認できる必要がある。
 
-## 4. Weather Read acceptance
+## 4. Migrated Read Tool Pool acceptance
+
+`purpose=weather`、`purpose=calendar`、`purpose=home-read` は、Agent側では共通の `migrated_read` ownershipとして扱う。purposeはmigration markerだけであり、Tool公開範囲・Tool選択・authorizationを拘束しない。
+
+1回目model callには `weather.getForecast`、`calendar.listEvents`、`home.climate.get`、`home.aircon.getState` の4 Toolをすべて公開し、`tool_choice=required` により1〜3件のRead Tool呼出しを必須とする。特定Toolは強制しない。2回目presentation callは `tool_choice=none` とし、追加Tool実行を禁止する。model callsは `≤ 2`、Tool callsは `≤ 3` を維持する。
+
+| ID | 入力 | 合格条件 |
+| --- | --- | --- |
+| RP-01 | 「明日の天気教えて」 | `weather.getForecast` だけを1回選択する。 |
+| RP-02 | 「明日の予定教えて」 | `calendar.listEvents` だけを1回選択する。 |
+| RP-03 | 「リビング何度？」 | `home.climate.get(roomId=living)` だけを1回選択する。既知誤routingを防ぐ既存のcanonical room hint + 温度照会PWAガードは維持するが、拡張しない。 |
+| RP-04 | 「寝室のエアコンどう？」 | `home.aircon.getState(roomId=bedroom)` だけを1回選択する。 |
+| RP-05 | 「明日の予定と天気」 | `calendar.listEvents` と `weather.getForecast` を各1回選択し、複合Intentを作らず1回答へ統合する。 |
+| RP-06 | 「リビング暑いけど外どう？」 | `home.climate.get(roomId=living)` と `weather.getForecast` を各1回選択し、構造化結果を1回答へ統合する。 |
+| RP-07 | migrated Read request | Tool call 0はFAIL。1回目model callで1〜3件のRead Toolを要求し、2回目model callはToolを再実行しない。 |
+| RP-08 | Tool公開範囲 | `School`、`Lunch`、write、prepare、execute ToolはPoolへ公開されない。`purpose=today-paruru` はlegacy Today Paruruのままとする。 |
+| RP-09 | legacy coexistence | Tool失敗後にlegacy Routerを自動実行せず、同一requestで新旧経路を二重実行しない。 |
+
+新しいPWA regex、Canonical Intent、複合Intentは追加しない。曖昧なHome / Weather複合質問は、共通Poolを公開した1回目model callのTool選択で処理する。
+
+## 5. Weather Read acceptance
 
 ### Phase 1A fixed decision
 
@@ -89,7 +109,7 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 | W-12 | location | 既存home固定location解決がTool / OS側で選ばれ、AgentのTool引数にlocation、緯度経度、API選択が含まれない。 |
 | W-13 | migration switch | Phase 1A対象のWeather相談は新Toolだけを1回実行する。新Tool失敗後にlegacy Routerを実行せず、同一requestで二重実行しない。School / Lunchのlegacy回帰は維持する。 |
 
-## 5. Calendar Read acceptance
+## 6. Calendar Read acceptance
 
 ### Phase 1B fixed decision
 
@@ -98,7 +118,7 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 - `mine` はMini GatewayがTrustedContextへ注入したactor本人、`family` は家族全体を意味する。Tool引数やclient payloadのrole、member、scopeは認可根拠にしない。
 - `admin`、`guardian`、`self_record` は、TrustedContextに `calendar.family.read` capabilityがある場合、`mine` / `family` の両方を許可対象とする。OSは両scopeでこのcapabilityを必ず検証し、不足時は `FORBIDDEN` とする。
 - `mine` はactor tag一致eventだけ、`family` はtagで絞り込まず未分類eventも含める。`family` / `unknown` はevent分類であってactor IDではない。
-- Weather専用runtimeを複製せず、単一のbounded Tool Calling runnerを拡張する。`purpose=calendar` はmodel calls最大2、Tool calls最大1、OS/service call想定1とする。
+- Weather専用runtimeを複製せず、単一のbounded Tool Calling runnerを共通Read Tool Poolへ拡張する。`purpose=calendar` はPoolへのmigration ownershipであり、Tool公開範囲をCalendarだけへ制限しない。
 
 ### 入力例
 
@@ -121,9 +141,9 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 | C-10 | upstream通信 / 処理障害 | `UPSTREAM_ERROR` を返す。認可系を一律 `UPSTREAM_ERROR` に潰さず、既知safe error codeをMini → OS → Agentで保持する。 |
 | C-11 | migration switch | `purpose=calendar` はAgentService入口で新Tool経路だけを選ぶ。Tool失敗後にlegacy `calendar_read` / Routerを実行せず、同一requestで新旧Calendar経路を二重実行しない。 |
 | C-12 | Today Paruru regression | `purpose=today-paruru` と現行の「今日の予定」はlegacy Today Paruru経路のままで、Calendar + Inbox集約と18:00 rolloverが変わらず、新Calendar Toolを呼ばない。 |
-| C-13 | runtime上限 | model callsは2以下、Tool callsは1、OS/service callは想定1をTraceで確認する。上限逸脱、2本目のTool、無制限loopはFAILとする。 |
+| C-13 | 単独Calendar質問のruntime | model callsは2以下、`calendar.listEvents` だけを1回選択し、OS/service callは想定1をTraceで確認する。共通Poolの公開ToolをCalendarだけへ狭めず、上限逸脱または無制限loopはFAILとする。 |
 
-## 6. Home Read acceptance
+## 7. Home Read acceptance
 
 ### Phase 1D fixed decision
 
@@ -160,7 +180,7 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 | H-12 | migration / legacy | Home Readの新経路は実行前に排他的に選び、Tool失敗後にlegacy Routerを実行しない。同一requestで新旧Home Readを二重実行しない。Aircon prepare / confirmation / executeは呼ばない。 |
 | H-13 | 推定状態の表現 | Aircon_State等の報告済み・推定状態を、実機リアルタイム状態と断定しない。 |
 
-## 7. Multi-tool acceptance
+## 8. Multi-tool acceptance
 
 ### 必須ケース
 
@@ -175,7 +195,7 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 | M-05 | partial 結果 | `PARTIAL` を成功 / 失敗の二値へ潰さず、取得できた範囲を区別する。 |
 | M-06 | 上限 | Tool call 数は Phase 1 上限以内（最大3）であり、Tool 失敗時に legacy Router を追加実行しない。 |
 
-## 8. Aircon Prepare acceptance
+## 9. Aircon Prepare acceptance
 
 ### 入力例
 
@@ -198,7 +218,7 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 
 既存 Aircon confirmation / execute path は回帰試験対象とするが、Tool Calling Phase 1 の execute acceptance ではない。実機操作は別フェーズで受入する。
 
-## 9. Security / Actor acceptance
+## 10. Security / Actor acceptance
 
 ### 必須ケース
 
@@ -217,7 +237,7 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 | S-05 | actor payload tampering | client が `role` / `userId` / `capabilities` を改ざんしても、server-side TrustedContext だけを使う。Agent が capability を追加・変更しない。 |
 | S-06 | Tool 実行境界 | Tool / OS は各実行で TrustedContext を使い、prepare / execute の間に権限を持ち越さない。 |
 
-## 10. Legacy coexistence and regression
+## 11. Legacy coexistence and regression
 
 ### Legacy coexistence
 
@@ -245,7 +265,7 @@ Phase 1 の対象外に変更・回帰があれば失敗扱いとする。少な
 
 既存の Calendar context、Today Paruru、PWA Agent / pairing 関連のテスト資産は、この回帰確認に含める。既存 test が PASS しても、Phase 1 の deployed acceptance を代替しない。
 
-## 11. Trace / Performance acceptance
+## 12. Trace / Performance acceptance
 
 各 acceptance ケースについて、成功、partial、failure、no-op の全状態を少なくとも1件ずつ記録する。
 
@@ -260,7 +280,7 @@ Phase 1 の対象外に変更・回帰があれば失敗扱いとする。少な
 
 performance は「速くなった」とは評価しない。測定値、測定条件、call count を記録し、Phase 1 の上限が妥当かだけを判断材料として提出する。
 
-## 12. Phase 1 limits
+## 13. Phase 1 limits
 
 初期設計値は次のとおりとする。
 
@@ -271,13 +291,13 @@ performance は「速くなった」とは評価しない。測定値、測定�
 | prepare Tool | `≤ 1` | Aircon prepare request で確認する。 |
 | execute Tool | `0` in `agent.chat` | Agent chat 内に execute が存在しないことを確認する。 |
 
-`purpose=calendar` のPhase 1B相談には、上表より狭い個別上限を適用する。model callsは `≤ 2`、Tool callsは `= 1`、OS/service callは想定 `1` とし、Calendar以外のToolを追加しない。
+`purpose=weather`、`purpose=calendar`、`purpose=home-read` のmigrated Read requestには共通Read Tool Poolを公開する。単独質問は該当Toolだけを1回選択するacceptanceを維持するが、purposeによって公開Toolを狭めない。model callsは `≤ 2`、Tool callsは `1〜3` とし、複数Toolのservice call上限は選択Toolの既存契約に従ってTraceで実測する。
 
 Phase 1D Home Readでは、model callsは `≤ 2`、Tool callsは `≤ 3`、同一requestのHome snapshot service callは原則 `≤ 1` とする。複数Home Toolを選んでも、既存93列Traceの `toolNames`、`toolCallCount`、`serviceCallCount`、`executionPath=tool_calling`、`resultStatus` で実測確認する。schema追加はしない。
 
 上限を超えた結果は acceptance failure とする。上限の緩和は、実測結果、影響範囲、更新する contract と test plan を示した別の設計判断なしに行わない。
 
-## 13. Exit Criteria
+## 14. Exit Criteria
 
 Phase 1 の受入候補とするには、以下をすべて満たす必要がある。
 
@@ -296,7 +316,7 @@ Phase 1 の受入候補とするには、以下をすべて満たす必要があ
 
 「Unit Test PASS」だけでは Phase 1 の完了・復旧・受入完了にしない。実機操作 acceptance は上記の Exit Criteria に含めないが、Phase 1 を超える write execute の完了判断には別途必要である。最終的な受入可否は、証跡と未確認事項を基にユーザーが判断する。
 
-## 14. TBD
+## 15. TBD
 
 1. 後続Phaseで `memberUserId`、`this_week`、`next_7_days`、任意日付をCalendar Toolへ導入する場合のpolicyとcontract。Phase 1Bでは受け付けない。
 2. deployed read-only acceptance を行う PWA / Mini / Agent / OS の対象環境と、許可された確認用 home / Calendar fixture。`mine` actor tag一致、`family` の未分類eventを安全に検証できるfixtureは実装前に選定する。

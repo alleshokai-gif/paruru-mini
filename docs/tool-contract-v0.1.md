@@ -46,7 +46,18 @@ Write の全体経路は `prepare → confirmation → execute` とする。本�
 
 日付は `YYYY-MM-DD`、日時は ISO 8601 形式で `Asia/Tokyo` の UTC オフセット（`+09:00`）を付ける。相対期間（`today`、`tomorrow` 等）は Tool / OS がサーバー時刻を基準に `Asia/Tokyo` で解決する。Agent は別のタイムゾーンで日付・時刻を補完しない。
 
-### 2.2 TrustedContext contract
+### 2.2 Migrated Read Tool Pool（確定）
+
+`purpose=weather`、`purpose=calendar`、`purpose=home-read` は、Agent側ではいずれも `migrated_read` のmigration ownershipとして扱う。`purpose` は新経路を選ぶためのmarkerであり、Tool選択、authorization、引数の解釈を拘束する根拠ではない。
+
+- 1回目model callには、次のRead Toolを共通Poolとしてすべて公開する。`weather.getForecast`、`calendar.listEvents`、`home.climate.get`、`home.aircon.getState`。
+- 1回目model callは `tool_choice=required` とし、少なくとも1件のRead Tool呼出しを必須とする。特定Toolの強制はしない。modelは自然言語と各Tool contractを根拠に、必要な1〜3件を選択できる。
+- すべてのTool結果を集約した2回目presentation callは `tool_choice=none` とし、追加Tool実行を許可しない。model call上限は2、Tool call上限は3を維持する。
+- `School`、`Lunch`、write、prepare、execute ToolはこのPoolへ公開しない。`purpose=today-paruru` も既存legacy Today Paruru経路を維持する。
+- 既知の誤routing防止として、canonical room hintと温度照会表現を `purpose=home-read` にするPWAガードは維持する。ただし、曖昧表現ごとのPWA regexを追加・拡張しない。新しいCanonical Intent、複合Intentも作らない。
+- 新経路は実行前に排他的に選択する。Pool内のTool失敗後にlegacy Routerを自動実行せず、同一requestで新旧経路を二重実行しない。
+
+### 2.3 TrustedContext contract
 
 TrustedContext は Mini Gateway がサーバー側で解決し、Agent 引数とは別経路で Tool / PALURU_OS に注入する。以下の全項目を共通の最小契約とする。
 
@@ -64,7 +75,7 @@ TrustedContext は Mini Gateway がサーバー側で解決し、Agent 引数と
 
 Agent は TrustedContext を変更、推測、補完してはならない。クライアント由来の `role` / `userId` / capability は認可根拠にしない。Tool / OS は注入済み TrustedContext を受けても、authorization、validation、business rule、cache、rate limit、idempotency、retry、audit、write safety を決定論的に実施する。
 
-### 2.3 共通 Output contract
+### 2.4 共通 Output contract
 
 Tool の正本出力は自然文ではなく構造化データとする。UI向け・会話向けの自然文は、構造化結果を根拠に原則 Agent が生成する。
 
@@ -94,7 +105,7 @@ HTTP 成功は「Tool contract を返せた」ことだけを示し、業務成�
 
 取得できなかった個別値は、失敗全体を表す `data: null` で潰さない。個別値が不明・未報告の場合は、Tool 固有 data 内で `value: null` と `availability`（例: `not_reported` / `unknown`）を対にして表す。予定が0件のように値が存在しないことが正常な場合は、空配列または明示的な0件情報を返す。
 
-### 2.4 Error semantics
+### 2.5 Error semantics
 
 | Code / status | 意味 | `data` の扱い |
 | --- | --- | --- |
@@ -229,11 +240,11 @@ Phase 1BのTool引数に `memberUserId` は存在しない。`this_week`、`next
 
 #### Phase 1B migration / runtime（確定）
 
-- `purpose=calendar` の相談だけをAgentService入口で一度だけ新Tool経路へ排他的に切り替える。
+- `purpose=calendar` は `migrated_read` ownershipとして、AgentService入口で一度だけ共通Read Tool Poolへ排他的に切り替える。`purpose` は `calendar.listEvents` だけへの公開制限ではない。
 - 新Tool失敗後にlegacy `calendar_read` / Routerを自動実行しない。同一requestで新旧Calendar経路を二重実行しない。
 - `purpose=today-paruru` と現在の「今日の予定」のToday Paruru挙動はlegacy経路のままとする。Calendar + Inbox集約と18:00 rolloverは変更しない。
 - Weather専用runtimeを複製せず、単一のbounded Tool Calling runnerを拡張して再利用する。
-- Phase 1Bの `purpose=calendar` はmodel calls最大2、Tool calls最大1、OS/service call想定1とする。
+- 単独のCalendar質問は `calendar.listEvents` だけを1回選択するacceptanceを維持する。共通Poolのrequest上限はmodel calls最大2、Tool calls最大3であり、Calendar + Weather等の複数Read Toolを選べる。
 
 #### Phase 1D Home Read（確定）
 
@@ -242,7 +253,7 @@ Phase 1BのTool引数に `memberUserId` は存在しない。`this_week`、`next
 - 両Home Read Toolの唯一のSourceは `home-status-2.0` とする。同一 `agent.chat` request内で複数Home Read Toolが呼ばれた場合、認可済みTrustedContextに結び付いたrequest-scoped snapshotを1回だけ取得して共有する。modelはcacheの有無・再利用を決定しない。requestを跨ぐcacheはPhase 1Dで新設しない。
 - snapshot全体のstatusを各Toolへそのままコピーしてはならない。各Toolが必要とするcomponentだけを決定論的に評価してstatusを投影する。たとえばAircon component欠損でもClimate componentが正常なら `home.climate.get` は `SUCCESS`、measurementがstaleで値ありならClimateは `STALE`、overviewの一部roomだけ取得不能ならClimateは `PARTIAL` とする。
 - RegistryにないroomIdは `NOT_FOUND` とする。roomが存在してmeasurementを取得できない場合は、指定roomでは `UNAVAILABLE`、overviewで一部roomだけなら `PARTIAL` とする。Aircon未構成は正常なread結果であり、`integrationStatus=not_configured` を返す。これを `NOT_FOUND` や `UPSTREAM_ERROR` にしてはならない。
-- Home Readのmigration ownershipをPWA metadataで明示する必要がある場合は `purpose=home-read` を使う。これはCanonical Intentでも認可根拠でもない。既存 `aircon-status` を含むHome Read入力は最終的に同じHome Tool Calling経路へ寄せ、Tool選択はAgentが行う。Tool失敗後のlegacy fallbackと同一requestでの新旧二重実行を禁止する。
+- Home Readのmigration ownershipをPWA metadataで明示する必要がある場合は `purpose=home-read` を使う。これはCanonical Intentでも認可根拠でもなく、共通Read Tool Poolの公開範囲をHome Toolだけへ制限しない。既存 `aircon-status` を含むHome Read入力は最終的に同じ新経路へ寄せ、Tool選択はAgentが行う。Tool失敗後のlegacy fallbackと同一requestでの新旧二重実行を禁止する。
 - Home専用Agent loopは作らず、既存bounded multi-tool runnerを拡張する。Phase 1Dはmodel calls最大2、Tool calls最大3、同一requestのHome snapshot service callは原則最大1とする。たとえばHome Tool callが2回でもservice callが1回でよい。
 - Traceは既存93列のみを使う。schema追加はせず、既存ルールに従い `toolNames`、`toolCallCount`、`serviceCallCount`、`executionPath=tool_calling`、`resultStatus` を記録する。
 

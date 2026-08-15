@@ -950,6 +950,11 @@ async function routePaluruRequest(memo) {
     return;
   }
 
+  if (isRoomTemperatureReadQuery(memo)) {
+    await submitAgentChatQuery(memo, { purpose: "home-read" });
+    return;
+  }
+
   if (isWeatherQuery(memo)) {
     await submitAgentChatQuery(memo, { purpose: "weather" });
     return;
@@ -3272,6 +3277,11 @@ function isLikelyAgentChatQuery(text) {
     return false;
   }
   return AGENT_CHAT_HOME_STATE_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function isRoomTemperatureReadQuery(text) {
+  const value = String(text || "").trim();
+  return Boolean(resolveAgentRoomHint(value)) && /(?:温度|おんど|何度|何℃|湿度|室温)/.test(value);
 }
 
 function isAirconReadQuery(text) {

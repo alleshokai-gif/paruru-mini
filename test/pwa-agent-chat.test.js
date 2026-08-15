@@ -240,6 +240,29 @@ test('A climate question routes only to agentChat and renders reply', async () =
   assert(!harness.elements.get('#homeAgentCard').classList.contains('is-hidden'), 'non-followup Agent reply was auto-closed');
 });
 
+test('Room temperature wording takes the Home Read path before Weather', async () => {
+  const cases = [
+    ['リビング何度？', 'living'],
+    ['寝室何度？', 'bedroom'],
+    ['子ども部屋何度？', 'kids_room'],
+    ['書斎何度？', 'study'],
+  ];
+  for (const [message, roomHint] of cases) {
+    const harness = createHarness();
+    await harness.submit(message);
+    const payload = harness.requests.find((entry) => entry.payload && entry.payload.action === 'agentChat').payload;
+    assert(payload.requestMetadata.purpose === 'home-read', message + ' was routed to Weather');
+    assert(payload.requestMetadata.roomHint === roomHint, message + ' room hint was not canonicalized');
+  }
+});
+
+test('Outdoor temperature wording remains on the Weather path', async () => {
+  const harness = createHarness();
+  await harness.submit('外気温何度？');
+  const payload = harness.requests.find((entry) => entry.payload && entry.payload.action === 'agentChat').payload;
+  assert(payload.requestMetadata.purpose === 'weather', 'outdoor temperature left the Weather path');
+});
+
 test('A1 living climate query forwards only advisory room metadata to Agent', async () => {
   const harness = createHarness();
   await harness.submit('リビングのおんどは？');
