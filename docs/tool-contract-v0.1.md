@@ -235,6 +235,17 @@ Phase 1BのTool引数に `memberUserId` は存在しない。`this_week`、`next
 - Weather専用runtimeを複製せず、単一のbounded Tool Calling runnerを拡張して再利用する。
 - Phase 1Bの `purpose=calendar` はmodel calls最大2、Tool calls最大1、OS/service call想定1とする。
 
+#### Phase 1D Home Read（確定）
+
+- Home Readのrequired capabilityは `home.read` とする。`admin`、`guardian`、`self_record` はrole名だけでは許可しない。TrustedContextの `capabilities` に `home.read` がある場合だけ、Tool / PALURU_OS が決定論的に許可する。`home.aircon.getState` はreadであり、`home.control` を要求しない。不足時は `FORBIDDEN` とする。
+- Phase 1Dのcanonical Room Registryは `living`、`bedroom`、`kids_room`、`study` の4値で固定する。日本語名・aliasはPWAなどの外部境界でcanonical化するだけとし、Agent / Tool / OS / Adapter内部ではcanonical roomIdを再解釈しない。
+- 両Home Read Toolの唯一のSourceは `home-status-2.0` とする。同一 `agent.chat` request内で複数Home Read Toolが呼ばれた場合、認可済みTrustedContextに結び付いたrequest-scoped snapshotを1回だけ取得して共有する。modelはcacheの有無・再利用を決定しない。requestを跨ぐcacheはPhase 1Dで新設しない。
+- snapshot全体のstatusを各Toolへそのままコピーしてはならない。各Toolが必要とするcomponentだけを決定論的に評価してstatusを投影する。たとえばAircon component欠損でもClimate componentが正常なら `home.climate.get` は `SUCCESS`、measurementがstaleで値ありならClimateは `STALE`、overviewの一部roomだけ取得不能ならClimateは `PARTIAL` とする。
+- RegistryにないroomIdは `NOT_FOUND` とする。roomが存在してmeasurementを取得できない場合は、指定roomでは `UNAVAILABLE`、overviewで一部roomだけなら `PARTIAL` とする。Aircon未構成は正常なread結果であり、`integrationStatus=not_configured` を返す。これを `NOT_FOUND` や `UPSTREAM_ERROR` にしてはならない。
+- Home Readのmigration ownershipをPWA metadataで明示する必要がある場合は `purpose=home-read` を使う。これはCanonical Intentでも認可根拠でもない。既存 `aircon-status` を含むHome Read入力は最終的に同じHome Tool Calling経路へ寄せ、Tool選択はAgentが行う。Tool失敗後のlegacy fallbackと同一requestでの新旧二重実行を禁止する。
+- Home専用Agent loopは作らず、既存bounded multi-tool runnerを拡張する。Phase 1Dはmodel calls最大2、Tool calls最大3、同一requestのHome snapshot service callは原則最大1とする。たとえばHome Tool callが2回でもservice callが1回でよい。
+- Traceは既存93列のみを使う。schema追加はせず、既存ルールに従い `toolNames`、`toolCallCount`、`serviceCallCount`、`executionPath=tool_calling`、`resultStatus` を記録する。
+
 ### 3.3 `home.climate.get`
 
 #### Tool metadata
@@ -251,9 +262,9 @@ Phase 1BのTool引数に `memberUserId` は存在しない。`this_week`、`next
 
 | Field | Required | 型・enum | 契約 |
 | --- | --- | --- | --- |
-| `roomId` | 任意 | server Room Registry の canonical room ID | 指定時は当該 room を返す。省略時は overview として扱う。enum は Tool / OS の Room Registry が正本であり、Agent が作成・補完しない。 |
+| `roomId` | 任意 | `living` / `bedroom` / `kids_room` / `study` | 指定時は当該roomを返す。省略時はoverviewとして扱う。Agentは外部alias・日本語room名を渡さず、canonical値を作成・補完しない。Registryにないroomは `NOT_FOUND` とする。 |
 
-room 未指定の overview は Phase 1 で許可する設計とする。overview に含める room の範囲、並び順、上限は Tool / OS の決定論ルールとして別途確定する。
+room未指定のoverviewは、`living → bedroom → kids_room → study` の4室をこの順序で返す。upstreamの表示上位3室などをTool正本にしてはならない。
 
 #### Output data contract
 
@@ -261,9 +272,10 @@ room 未指定の overview は Phase 1 で許可する設計とする。overview
 
 - `measurement`: 温度、湿度、観測日時、各値の availability を含む。
 - `evaluation`: severity / warning code 等の決定論的な評価を含む。自然文評価を正本にしない。
+- `trend`: trend値、availability、warning / safe errorを構造化して含む。
 - `freshness`: current / stale / unknown 等の状態と、判断の基準日時を含む。
 
-room がない場合は `NOT_FOUND`、測定値が古く freshness 要件を満たせない場合は `STALE` とし、`null` だけで曖昧にしない。
+指定roomでmeasurementが取得不能なら `UNAVAILABLE`、overviewの一部roomだけ取得不能なら `PARTIAL` とする。measurementがstaleでも値があれば `STALE` として値を返す。Aircon / automation componentの不備だけでClimate Toolのstatusを劣化させず、`null`、空文字、取得失敗を同じ値へ潰さない。
 
 ### 3.4 `home.aircon.getState`
 
@@ -281,13 +293,13 @@ room がない場合は `NOT_FOUND`、測定値が古く freshness 要件を満�
 
 | Field | Required | 型・enum | 契約 |
 | --- | --- | --- | --- |
-| `roomId` | 必須 | server Room Registry の canonical room ID | Agent は登録済み canonical ID だけを指定する。存在確認と authorization は Tool / OS 側で実施する。 |
+| `roomId` | 必須 | `living` / `bedroom` / `kids_room` / `study` | Agentはcanonical値だけを指定する。存在確認と `home.read` authorizationはTool / OS側で実施し、Registryにないroomは `NOT_FOUND` とする。 |
 
 #### Output data contract
 
-`data` は少なくとも `roomId`、`reportedState`、`confidence`、`observedAt`、`freshness` を返す。`reportedState` には、利用可能な power / mode / setpoint / fan 等の報告済み値だけを構造化して格納する。
+`data` は少なくとも `roomId`、`integrationStatus`、`reportedState`、`confidence`、`observedAt`、`freshness`、`automation`、`pause` を返す。`reportedState` には、利用可能な power / mode / setpoint / fan 等の報告済み値だけを構造化して格納する。
 
-Aircon_State 等の推定値・最終報告値を、実機のリアルタイム状態と表現してはならない。未報告の個別値は availability 付きで表し、`confidence` と `observedAt` を欠かさない。現在性が保証できない状態は `STALE` または `freshness: stale` として区別する。
+Aircon_State等の推定値・最終報告値を、実機のリアルタイム状態と表現してはならない。未報告の個別値はavailability付きで表し、`confidence` と `observedAt` を欠かさない。現在性が保証できない状態は `STALE` または `freshness: stale` として区別する。Aircon未構成は `integrationStatus=not_configured` の正常結果であり、`NOT_FOUND` / `UPSTREAM_ERROR` にしない。
 
 ### 3.5 `home.aircon.prepareAction`
 
@@ -356,6 +368,8 @@ weather.getForecast({ period: "tomorrow" })
 
 これは性能測定結果ではなく、無制限 loop を防ぐための設計上の初期案である。実装前に model call / Tool call の数え方、Tool 内の OS/service call の扱い、成功時・失敗時の trace 項目を確定し、実装後に `OpenAI/model call count`、`Tool call count`、`OS/service call count`、`totalMs`、各主要 stage の elapsed を計測して評価する。
 
+Phase 1D Home Readでは上表に加え、model callsは `≤ 2`、Tool callsは `≤ 3`、同一request内の認可済みHome snapshot service callは原則 `≤ 1` とする。複数Home ToolのTool call数とservice call数は同一である必要がない。
+
 ## 6. Legacy mapping
 
 Phase 1 では既存経路を廃止しない。新 namespace は既存実装資産を直接公開せず、必要に応じて Domain Tool wrapper を介して利用する。
@@ -376,11 +390,13 @@ Phase 1 では既存経路を廃止しない。新 namespace は既存実装資�
 
 1. 後続Phaseの `homeId → location registry`、複数location時の選択規則、locationLabel の公開範囲。Phase 1Aは既存home固定location解決を再利用する。
 2. 後続Phaseで `calendar.listEvents.memberUserId` を導入する場合のcanonical値集合、個別member filter、role別policy。Phase 1Bではmember指定を受け付けず、`mine` / `family` のfilterとauthorizationは3.2で固定する。
-3. Room Registry の canonical `roomId` enum、overview に含める room の範囲・順序・上限。
-4. Aircon の `power` と `fan` の enum、機器 capability による許容組合せ、出力 `reportedState` の固定 schema。
-5. climate / aircon の freshness判定閾値と、`STALE` と stale data warning の使い分け。Weather Phase 1Aは既存freshness判定と本書3.1の対応表で固定する。
-6. `home.aircon.prepareAction` の confirmation record 保存先、`confirmationId` の形式、expiresAt、有効期限切れ、既存 Aircon confirm / execute との正確な接続。
-7. `confirmationMessageData` の固定 field、Agent・UI が確認文を生成する責務分担。
-8. Calendar Phase 1B以外のdomainにおけるknown upstream error allowlistと、新contractの `FORBIDDEN` / `UNAVAILABLE` / `UPSTREAM_ERROR` への対応表。Calendar Phase 1Bの結果意味論と既知error保持は3.2で固定する。
-9. 各domainで想定するOS/service call数の実測値と、Phaseごとの上限の妥当性評価。traceの計数単位と93列append-only schema自体は別途確定済みである。
-10. Phase 1のmulti-tool相談に対する `model calls 最大2` と `Tool calls 最大3` の実測に基づく妥当性評価。Phase 1Bの単一Calendar相談は3.2のmodel最大2、Tool最大1を超えない。
+3. requestを跨ぐHome snapshot cacheを導入する場合の有効期限、invalidations、authorization境界。Phase 1Dでは導入しない。
+4. 後続Phaseでroomを追加する場合のRoom Registry拡張・alias境界・overviewへの含め方。Phase 1Dは4室で固定する。
+5. 後続Phaseでrole別Home read policyを分ける場合のcapability設計。Phase 1Dはrole名ではなく `home.read` のみで決定する。
+6. Aircon の `power` と `fan` のenum、機器capabilityによる許容組合せ、出力 `reportedState` の固定schema。
+7. climate / aircon のfreshness判定閾値と、`STALE` とstale data warningの使い分け。Weather Phase 1Aは既存freshness判定と本書3.1の対応表で固定する。
+8. `home.aircon.prepareAction` のconfirmation record保存先、`confirmationId` の形式、expiresAt、有効期限切れ、既存Aircon confirm / executeとの正確な接続。
+9. `confirmationMessageData` の固定field、Agent・UIが確認文を生成する責務分担。
+10. Calendar Phase 1B以外のdomainにおけるknown upstream error allowlistと、新contractの `FORBIDDEN` / `UNAVAILABLE` / `UPSTREAM_ERROR` への対応表。Calendar Phase 1Bの結果意味論と既知error保持は3.2で固定する。
+11. 各domainで想定するOS/service call数の実測値と、Phaseごとの上限の妥当性評価。traceの計数単位と93列append-only schema自体は別途確定済みである。
+12. Phase 1のmulti-tool相談に対する `model calls 最大2` と `Tool calls 最大3` の実測に基づく妥当性評価。Phase 1Bの単一Calendar相談は3.2のmodel最大2、Tool最大1を超えない。

@@ -946,7 +946,7 @@ async function routePaluruRequest(memo) {
   }
 
   if (isAirconReadQuery(memo)) {
-    await submitAgentChatQuery(memo, { purpose: "aircon-status" });
+    await submitAgentChatQuery(memo, { purpose: "home-read" });
     return;
   }
 
@@ -956,7 +956,7 @@ async function routePaluruRequest(memo) {
   }
 
   if (isLikelyAgentChatQuery(memo)) {
-    await submitAgentChatQuery(memo);
+    await submitAgentChatQuery(memo, { purpose: "home-read" });
     return;
   }
 
@@ -2043,8 +2043,10 @@ async function submitAgentChatQuery(messageText, options = {}) {
     ? "ぱるるが予定を確認中…"
     : request.purpose === "today-paruru"
       ? "ぱるるが予定を確認中…（今日の予定とタスク）"
-    : request.purpose === "aircon-status"
-      ? "ぱるるがエアコンの状態を確認中…"
+    : request.purpose === "home-read"
+      ? (isAirconReadQuery(request.message)
+        ? "ぱるるがエアコンの状態を確認中…"
+        : "ぱるるが家の状態を確認中…")
     : request.purpose === "automation-action"
       ? "ぱるるが操作内容を確認中…"
       : request.purpose === "aircon-action"

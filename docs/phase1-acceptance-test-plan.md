@@ -125,6 +125,17 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 
 ## 6. Home Read acceptance
 
+### Phase 1D fixed decision
+
+- Home Readのrequired capabilityは `home.read` である。`admin`、`guardian`、`self_record` のいずれも、TrustedContextに `home.read` がある場合だけ利用できる。role名、client由来role / userId / capabilities、PWA metadataは認可根拠にしない。OSが決定論的に判定し、不足時は `FORBIDDEN` とする。`home.aircon.getState` はreadであり、`home.control` を要求しない。
+- canonical roomIdは `living`、`bedroom`、`kids_room`、`study` の4値である。日本語名・aliasは外部境界でのみcanonical化し、内部で再解釈しない。
+- `home.climate.get` はroomId任意であり、指定時は対象room、未指定時は `living → bedroom → kids_room → study` のoverviewを返す。measurement、freshness、evaluation、trendを構造化する。
+- `home.aircon.getState` はroomId必須であり、reportedState、confidence、observedAt、freshness、automation、pauseを構造化する。Aircon_Stateを実機のリアルタイム状態として表現しない。Aircon未構成は `integrationStatus=not_configured` の正常結果である。
+- RegistryにないroomIdは `NOT_FOUND` とする。指定roomのmeasurement取得不能は `UNAVAILABLE`、overviewの一部room取得不能は `PARTIAL` とする。snapshot全体statusをToolへコピーせず、各Toolが必要なcomponentだけから `SUCCESS`、`STALE`、`PARTIAL`、`UNAVAILABLE`、`NOT_FOUND`、`FORBIDDEN`、`UPSTREAM_ERROR` を決定論的に投影する。
+- 両Toolは同一 `home-status-2.0` snapshotをSourceとする。同一Agent requestで複数Home Read Toolが呼ばれた場合、認可済みrequest-scoped snapshotを1回だけ取得して共有する。requestを跨ぐcacheは導入せず、modelにcache判断をさせない。
+- 新しいCanonical Intentは作らない。PWA metadataでmigration ownershipを示す必要がある場合だけ `purpose=home-read` を使う。これは認可根拠ではない。既存 `aircon-status` を含むHome Read入力は同じHome Tool Calling経路へ寄せ、Tool失敗後のlegacy fallbackと同一requestでの新旧二重実行を禁止する。
+- Home専用loopは作らず、既存bounded multi-tool runnerを拡張する。model callsは `≤ 2`、Tool callsは `≤ 3`、同一requestのHome snapshot service callは原則 `≤ 1` とする。Trace schemaは既存93列から変更しない。
+
 ### 入力例
 
 - 「リビング何度？」
@@ -135,11 +146,19 @@ Phase 1 の各 acceptance ケースは、少なくとも次の証跡を残す。
 
 | ID | 条件 | 合格条件 |
 | --- | --- | --- |
-| H-01 | room 指定の温湿度 | `home.climate.get` を選択し、roomId は Room Registry の canonical 値だけを Tool / OS で検証する。 |
-| H-02 | room 未指定の home 概要 | `home.climate.get` の overview を正しく扱う。対象 room 範囲・並びは Tool / OS ルールによる。 |
-| H-03 | Aircon 状態 | `home.aircon.getState` を選択し、`reportedState`、`confidence`、`observedAt`、freshness を構造化して扱う。 |
-| H-04 | stale / unavailable / partial | `STALE`、`UNAVAILABLE`、`PARTIAL` を区別し、`null` や「問題なし」へ潰さない。 |
-| H-05 | 推定状態の表現 | Aircon_State 等の報告済み・推定状態を、実機リアルタイム状態と断定しない。 |
+| H-01 | 「リビングの温度」 | `home.climate.get({ roomId: "living" })` を1回選択し、measurement / freshness / evaluation / trendを構造化して返す。 |
+| H-02 | 「家の中どう？」 | `home.climate.get({})` のoverviewとして4室を `living → bedroom → kids_room → study` の順で扱う。upstreamの上位3室表示をTool正本にしない。 |
+| H-03 | 「寝室のエアコン状態」 | `home.aircon.getState({ roomId: "bedroom" })` を1回選択し、reportedState、confidence、observedAt、freshness、automation、pauseを構造化して扱う。 |
+| H-04 | studyのClimate | `study` を他の3室と同じcanonical roomIdとして受理し、Climateを返す。日本語名やaliasを内部roomIdとして残さない。 |
+| H-05 | studyのAircon未構成 | `integrationStatus=not_configured` を正常結果として返す。`NOT_FOUND`、`UNAVAILABLE`、`UPSTREAM_ERROR` にしない。 |
+| H-06 | unknown room | RegistryにないroomIdは `NOT_FOUND` とし、他roomのdataで補完しない。 |
+| H-07 | stale measurement | 値があるstale measurementは `STALE` として値と安全なwarningを返し、現在値と断定しない。 |
+| H-08 | overview一部room unavailable | 取得できたroomを返し、最終statusは `PARTIAL` とする。全体を `UNAVAILABLE` や成功へ潰さない。 |
+| H-09 | capabilityなし | `home.read` がないTrustedContextはOS側で `FORBIDDEN`。Tool dataとlegacy fallbackを発生させず、upstream Home snapshotは取得しない。`home.control` の有無はread可否に使わない。 |
+| H-10 | Home Tool同時要求 | 2 Home Read Toolを選択した場合、Tool call数は2、同一requestの認可済みHome snapshot service call数は1である。modelがcacheを判断せず、両Toolは同じsnapshotを投影する。 |
+| H-11 | status projection | Aircon component欠損・Climate正常ならClimateは `SUCCESS`、指定roomのmeasurement取得不能なら `UNAVAILABLE` とする。snapshot全体statusを転記しない。 |
+| H-12 | migration / legacy | Home Readの新経路は実行前に排他的に選び、Tool失敗後にlegacy Routerを実行しない。同一requestで新旧Home Readを二重実行しない。Aircon prepare / confirmation / executeは呼ばない。 |
+| H-13 | 推定状態の表現 | Aircon_State等の報告済み・推定状態を、実機リアルタイム状態と断定しない。 |
 
 ## 7. Multi-tool acceptance
 
@@ -211,6 +230,7 @@ Phase 1 対象 domain では、次を確認する。
 | L-03 | 未移行 domain | legacy Router / HomeAgent 経路を維持する。 |
 | L-04 | School / Lunch 入力 | legacy 経路で従来どおり処理され、Phase 1 Tool が呼ばれない。 |
 | L-05 | Calendar Phase 1B | `purpose=calendar` は新Tool経路だけ、`purpose=today-paruru` と現行の「今日の予定」はlegacy Today Paruru経路だけを実行する。両方を同一requestで実行しない。 |
+| L-06 | Home Phase 1D | `purpose=home-read` を使う場合も認可根拠にせず、Home Tool Calling経路のownership markerとしてだけ扱う。既存 `aircon-status` を含むHome Readは最終的に同じ新経路へ寄せ、失敗時にlegacy Home Readへ戻さない。 |
 
 ### Regression suite
 
@@ -253,6 +273,8 @@ performance は「速くなった」とは評価しない。測定値、測定�
 
 `purpose=calendar` のPhase 1B相談には、上表より狭い個別上限を適用する。model callsは `≤ 2`、Tool callsは `= 1`、OS/service callは想定 `1` とし、Calendar以外のToolを追加しない。
 
+Phase 1D Home Readでは、model callsは `≤ 2`、Tool callsは `≤ 3`、同一requestのHome snapshot service callは原則 `≤ 1` とする。複数Home Toolを選んでも、既存93列Traceの `toolNames`、`toolCallCount`、`serviceCallCount`、`executionPath=tool_calling`、`resultStatus` で実測確認する。schema追加はしない。
+
 上限を超えた結果は acceptance failure とする。上限の緩和は、実測結果、影響範囲、更新する contract と test plan を示した別の設計判断なしに行わない。
 
 ## 13. Exit Criteria
@@ -261,6 +283,7 @@ Phase 1 の受入候補とするには、以下をすべて満たす必要があ
 
 - 5 Tool contract が実装されている。
 - Weather / Calendar / Home read の acceptance が PASS している。
+- Home Readでは4室Room Registry、`home.read` authorization、Tool別status projection、複数Home Tool時のTool=2 / service=1を確認している。
 - Calendar + Weather multi-tool が PASS している。
 - Aircon prepare が PASS している。
 - write 実行が0回であることを確認している。
@@ -279,4 +302,5 @@ Phase 1 の受入候補とするには、以下をすべて満たす必要があ
 2. deployed read-only acceptance を行う PWA / Mini / Agent / OS の対象環境と、許可された確認用 home / Calendar fixture。`mine` actor tag一致、`family` の未分類eventを安全に検証できるfixtureは実装前に選定する。
 3. Calendar Phase 1B以外のdomainにおけるknown upstream error allowlistと、安全に再現する unavailable / stale / partial ケース。Calendar Phase 1Bは既知errorを保持し、認可系を `UPSTREAM_ERROR` に潰さないことまで確定している。
 4. `home.aircon.prepareAction` の confirmation record 保存先と、prepare acceptance で許容される保存状態。
-5. `power` / `fan` enum、Room Registry、home weather location、freshness 閾値など、Tool Catalog の未確定contract。
+5. requestを跨ぐHome snapshot cache、room追加時のRegistry / alias / overview規則、role別Home read policy。Phase 1Dでは導入・変更しない。
+6. Airconの `power` / `fan` enum、home weather location、Home freshness閾値など、Tool Catalogの未確定contract。

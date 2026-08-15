@@ -245,7 +245,7 @@ test('A1 living climate query forwards only advisory room metadata to Agent', as
   await harness.submit('リビングのおんどは？');
   const payload = harness.requests.find((entry) => entry.payload && entry.payload.action === 'agentChat').payload;
   assert(payload.requestMetadata.roomHint === 'living', 'living room hint was not forwarded');
-  assert(payload.requestMetadata.purpose === 'home-state', 'climate purpose changed unexpectedly');
+  assert(payload.requestMetadata.purpose === 'home-read', 'climate request was not migrated to home-read');
   assert(!Object.prototype.hasOwnProperty.call(payload, 'userId') && !Object.prototype.hasOwnProperty.call(payload, 'role'), 'client identity leaked into Agent request');
 });
 
@@ -360,7 +360,7 @@ test('P1.5 aircon read uses dedicated loading state', async () => {
   const pending = harness.submit('リビングのエアコンどうなってる？');
   await Promise.resolve();
   assert(harness.elements.get('#homeAgentContent').innerHTML.includes('エアコンの状態を確認中'), 'aircon loading text missing');
-  assert(harness.run('pendingHomeAgentRetry.purpose') === 'aircon-status', 'aircon retry purpose missing');
+  assert(harness.run('pendingHomeAgentRetry.purpose') === 'home-read', 'aircon read retry purpose missing');
   resolveResponse();
   await pending;
 });
