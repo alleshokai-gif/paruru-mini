@@ -864,6 +864,34 @@ test('read authorization rejects before Agent call and ignores client actor spoo
   assert(!rejected.success && calls === 1 && readActorCalls === 1, 'unauthorized request reached Agent');
 });
 
+test('P0-ACTOR-SERVER-RESOLVED', () => {
+  configure();
+  readActor = {
+    homeId: 'home-a', memberUserId: 'second_son', displayName: '次男', role: 'self_record',
+    capabilities: ['home.read'], deviceId: 'server-paired-device'
+  };
+  let calls = 0;
+  let sent = null;
+  mockFetch(200, agentResponse('ok'), (_url, options) => {
+    calls += 1;
+    sent = JSON.parse(options.payload);
+  });
+  const result = post(valid({
+    userId: 'father', role: 'admin', capabilities: ['home.control'], homeId: 'spoofed-home',
+    deviceId: 'spoofed-device', pairingToken: 'spoofed-token',
+    requestMetadata: { role: 'admin', capabilities: ['home.control'], actor: { memberUserId: 'father' } }
+  }));
+  assert(result.success, 'paired read request was rejected');
+  assert(readActorCalls === 1, 'server actor was not resolved exactly once');
+  assert(calls === 1, 'valid paired request did not reach Agent exactly once');
+  assert(sent && sent.actor.memberUserId === 'second_son' && sent.actor.role === 'self_record'
+    && sent.actor.deviceId === 'server-paired-device', 'Agent actor was not resolved from pairing and Home_Members');
+  assert(JSON.stringify(sent.actor.capabilities) === JSON.stringify(['home.read']), 'client capabilities replaced the server actor capability');
+  assert(sent.requestMetadata.role === undefined, 'client role entered advisory metadata');
+  assert(sent.requestMetadata.capabilities === undefined, 'client capabilities entered advisory metadata');
+  assert(sent.userId === undefined, 'client userId entered Agent payload');
+});
+
 test('climate service response is sanitized', () => {
   configure();
   mockFetch(200, agentResponse('書斎はちょい暑いで。', [{ service: 'home-climate-context', status: 'success', durationMs: 9451, raw: { temperature: 28.3 } }]));
