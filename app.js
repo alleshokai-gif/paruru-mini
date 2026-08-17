@@ -857,9 +857,14 @@ function classifyHomeInputIntent(memo) {
 }
 
 function isRegisterLikelyHomeInput(value) {
+  // A Today aggregate question may contain "やること".  It remains a
+  // consultation when the existing consultation signals make that clear;
+  // explicit registration wording keeps the existing registration flow.
+  const todayAggregateConsult = isTodayParuruQuery(value) && isConsultLikelyHomeInput(value);
   return isExplicitAgentMemoRequest(value)
     || CALENDAR_IMPLICIT_WRITE_PATTERN.test(value)
-    || /(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー).*(?:登録|追加|入れて|入れといて|作成|保存|残して)|(?:登録|追加|入れて|入れといて|作成|保存|残して).*(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー)|(?:買う|購入|提出|持っていく|やること)/.test(value);
+    || /(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー).*(?:登録|追加|入れて|入れといて|作成|保存|残して)|(?:登録|追加|入れて|入れといて|作成|保存|残して).*(?:タスク|リマインダー|買い物|メモ|予定|スケジュール|カレンダー)/.test(value)
+    || (!todayAggregateConsult && /(?:買う|購入|提出|持っていく|やること)/.test(value));
 }
 
 function isConsultLikelyHomeInput(value) {
@@ -3339,7 +3344,11 @@ function isCalendarReadQuery(text) {
 function isTodayParuruQuery(text) {
   const value = String(text || "").trim();
   if (!value || isCalendarWriteRequest(value)) return false;
-  return /今日\s*(?:の)?\s*(?:予定|やること|何(?:が|か)?ある)/.test(value);
+  // Today Paruru owns Calendar + Inbox aggregate requests, not Calendar-only
+  // schedule questions.  Keep the existing aggregate markers here so the
+  // Calendar read predicate can own "今日の予定" without adding a new router.
+  return /今日\s*(?:の)?\s*何(?:が|か)?ある/.test(value)
+    || (value.includes("今日") && value.includes("やること"));
 }
 
 function isWeatherQuery(text) {

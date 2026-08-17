@@ -452,6 +452,44 @@ test('EVA-03J ambiguous questions use the general Agent without becoming Calenda
   }
 });
 
+test('OWN-TODAY conversation ownership keeps Calendar reads separate from Today aggregate', async () => {
+  const cases = [
+    ['今日の予定教えて', 'calendar'],
+    ['今日の予定と天気教えて', 'calendar'],
+    ['今日やることある？', 'today-paruru'],
+    ['今日の予定とやること教えて', 'today-paruru'],
+    ['明日の予定教えて', 'calendar'],
+    ['明日の予定と天気教えて', 'calendar'],
+  ];
+  for (const [message, purpose] of cases) {
+    const harness = createHarness();
+    await harness.submit(message);
+    const payload = harness.requests.find((entry) => entry.payload && entry.payload.action === 'agentChat')?.payload;
+    assert(payload, message + ' did not reach agentChat');
+    assert(payload.requestMetadata?.purpose === purpose, message + ' ownership was ' + payload.requestMetadata?.purpose);
+  }
+});
+
+test('OWN-TODAY TOP aggregate entry remains independent of conversation routing', async () => {
+  const initial = createHarness();
+  await initial.run('loadNotificationCandidates({ force: true })');
+  assert(initial.requests.some((entry) => entry.payload?.action === 'todayParuruContext'), 'TOP initial load did not use todayParuruContext');
+
+  assert(appSource.includes('if (resolvedView === "home") {\n    await loadNotificationCandidates();\n  }'),
+    'TOP Home re-display no longer refreshes the existing aggregate entry');
+
+  const refresh = createHarness();
+  await refresh.handlers.get('#refreshNotificationsButton:click')();
+  assert(refresh.requests.some((entry) => entry.payload?.action === 'todayParuruContext'), 'TOP refresh did not use todayParuruContext');
+});
+
+test('OWN-TODAY explicit task registration keeps the existing confirmation flow', async () => {
+  const harness = createHarness();
+  await harness.submit('今日のやることを覚えといて');
+  assert(harness.requests.length === 0, 'explicit task registration reached a consultation route');
+  assert(!harness.elements.get('#homeIntentConfirm').classList.contains('is-hidden'), 'explicit task registration lost its route confirmation');
+});
+
 test('EVA-03F Calendar loading, failure and retry preserve request identity', async () => {
   const harness = createHarness();
   let resolveResponse;
@@ -464,7 +502,7 @@ test('EVA-03F Calendar loading, failure and retry preserve request identity', as
   const pending = harness.submit('今日の予定は？');
   await Promise.resolve();
   assert(harness.elements.get('#homeAgentContent').innerHTML.includes('ぱるるが予定を確認中…'), 'Calendar loading message missing');
-  assert(harness.run('pendingHomeAgentRetry.purpose') === 'today-paruru', 'Today Paruru retry purpose missing');
+  assert(harness.run('pendingHomeAgentRetry.purpose') === 'calendar', 'Calendar retry purpose missing');
   resolveResponse();
   await pending;
 
@@ -727,11 +765,11 @@ test('EVA-03I-2B automation and aircon operation requests route to Agent', async
   }
 });
 
-test('Today Paruru and living temperature-down use their dedicated Agent purposes', async () => {
+test('Today aggregate and living temperature-down use their dedicated Agent purposes', async () => {
   const today = createHarness();
-  await today.submit('今日の予定は？');
+  await today.submit('今日やることある？');
   const todayPayload = today.requests.find((entry) => entry.payload)?.payload;
-  assert(todayPayload?.requestMetadata?.purpose === 'today-paruru', 'today query did not select the shared aggregate route');
+  assert(todayPayload?.requestMetadata?.purpose === 'today-paruru', 'today aggregate did not select the shared aggregate route');
 
   const aircon = createHarness();
   await aircon.submit('リビングの温度を下げて');
@@ -1116,7 +1154,7 @@ test('agentChat logs API_ERROR and FETCH_FAILED with the same request context', 
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260802-cross-tracing-1';
+  const expected = 'v20260817-today-paruru-ownership-v1';
   const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
   assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID must have one definition');
   assert(appSource.includes('Build: ${globalThis.BUILD_ID}') && !/const\s+(?:ASSET_VERSION|BUILD_VERSION|BUILD_ID)\s*=/.test(appSource), 'app does not use BUILD_ID as the only Build display source');
