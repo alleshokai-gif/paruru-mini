@@ -217,6 +217,26 @@ test('Cost Guard rejection short-circuits Agent HTTP with a safe code', () => {
   assert(!JSON.stringify(result).includes('burst'), 'guard reason leaked to public response');
 });
 
+test('Cost Guard duplicate state fails closed before Agent HTTP', () => {
+  configure();
+  let agentCalls = 0;
+  context.AgentCostGuardService = {
+    preflight: () => {
+      const error = new Error('AGENT_UNAVAILABLE');
+      error.code = 'AGENT_UNAVAILABLE';
+      error.agentTraceStage = 'COST_GUARD';
+      error.agentDiagnostics = { stage: 'COST_GUARD', reason: 'COST_STATE_DUPLICATE' };
+      throw error;
+    },
+    settle: () => { throw new Error('settle must not run after duplicate rejection'); },
+  };
+  mockFetch(200, agentResponse('not used'), () => { agentCalls += 1; });
+  const result = post(valid());
+  assert(result.success === false && result.error.code === 'AGENT_UNAVAILABLE', 'duplicate state public code changed');
+  assert(agentCalls === 0, 'duplicate state called Agent');
+  assert(!JSON.stringify(result).includes('COST_STATE_DUPLICATE'), 'duplicate reason leaked to public response');
+});
+
 test('Cost Guard releases an accepted request after Agent transport failure', () => {
   configure();
   let settled = null;
@@ -763,7 +783,7 @@ test('Mini persists one request deployment chain using suffixes and null version
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
   assert(agentRow[headers.indexOf('osDeploymentSuffix')] === 'os34', 'OS deployment suffix was dropped');
-  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260818-cost-guard-v1', 'Mini build ID was not stamped');
+  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260818-cost-guard-row-identity-v1', 'Mini build ID was not stamped');
   assert(agentRow[headers.indexOf('agentBuildId')] === 'agent-20260809-prepared-contract-v1', 'Agent build ID was dropped');
   assert(agentRow[headers.indexOf('osBuildId')] === 'os-20260809-build-chain-v1', 'OS build ID was dropped');
   assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');

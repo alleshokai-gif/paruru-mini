@@ -26,6 +26,14 @@ const AgentCostGuardService = (function() {
   const INTERACTION_CLASSES = Object.freeze({
     general_no_data: true, tool_read: true, legacy: true, unclassified: true
   });
+  const COST_GUARD_FAILURE_REASONS = Object.freeze({
+    COST_GUARD_STORAGE_UNAVAILABLE: true,
+    COST_STATE_DUPLICATE: true,
+    COST_STATE_MISSING: true,
+    COST_STATE_ROW_MISMATCH: true,
+    COST_STATE_REQUEST_MISMATCH: true,
+    COST_STATE_INVALID_KEY: true
+  });
   const RESULT_STATUSES = Object.freeze({
     SUCCESS: true, STALE: true, PARTIAL: true, UNAVAILABLE: true,
     UPSTREAM_ERROR: true, NO_OP: true, FORBIDDEN: true, INVALID_INPUT: true,
@@ -36,7 +44,12 @@ const AgentCostGuardService = (function() {
     const input = normalizePreflightInput_(request);
     const deps = resolveDependencies_(overrides);
     const nowMs = safeNowMs_(deps.now());
-    const localDate = deps.localDate(nowMs);
+    const localDate = canonicalLocalDate_(deps.localDate(nowMs));
+    const dailyKey = canonicalDailyKey_({
+      homeId: input.homeId,
+      memberUserId: input.memberUserId,
+      localDate: localDate
+    });
     const lock = deps.lock;
     let lockAcquired = false;
     try {
@@ -45,9 +58,10 @@ const AgentCostGuardService = (function() {
       const dailySheet = ensureSheet_(deps.spreadsheet, DAILY_SHEET_NAME, DAILY_HEADERS);
       const ledgerSheet = ensureSheet_(deps.spreadsheet, LEDGER_SHEET_NAME, LEDGER_HEADERS);
       const daily = readRows_(dailySheet, DAILY_HEADERS);
-      const memberRows = daily.rows.filter(function(row) {
-        return row.values.homeId === input.homeId && row.values.memberUserId === input.memberUserId;
-      });
+      const memberRows = findMemberRows_(daily.rows, dailyKey);
+      // A quota state with more than one current-day row is ambiguous. Reject
+      // it before changing any persisted state or calling the Agent.
+      const today = findSingleDailyRow_(memberRows, dailyKey);
       clearExpiredInFlights_(dailySheet, daily.headers, memberRows, nowMs);
 
       const activeInFlight = findActiveInFlight_(memberRows, nowMs);
@@ -56,7 +70,6 @@ const AgentCostGuardService = (function() {
         return rejected_('AGENT_BUSY', 'busy');
       }
 
-      const today = findDailyRow_(memberRows, localDate);
       const latestBurst = findActiveBurst_(memberRows, nowMs);
       if (latestBurst && latestBurst.count >= BURST_MAX_REQUESTS) {
         appendLedger_(ledgerSheet, LEDGER_HEADERS, guardRejectedLedger_(input, localDate, 'burst', nowMs));
@@ -74,9 +87,9 @@ const AgentCostGuardService = (function() {
         ? { startedAt: latestBurst.startedAt, count: latestBurst.count + 1 }
         : { startedAt: nowMs, count: 1 };
       const state = today || newDailyRow_(daily.headers);
-      state.values.homeId = input.homeId;
-      state.values.memberUserId = input.memberUserId;
-      state.values.localDate = localDate;
+      state.values.homeId = dailyKey.homeId;
+      state.values.memberUserId = dailyKey.memberUserId;
+      state.values.localDate = dailyKey.localDate;
       state.values.acceptedRequestCount = currentCount + 1;
       state.values.windowStartedAt = nextBurst.startedAt;
       state.values.windowRequestCount = nextBurst.count;
@@ -89,12 +102,12 @@ const AgentCostGuardService = (function() {
         guardRequestId: input.guardRequestId,
         homeId: input.homeId,
         memberUserId: input.memberUserId,
-        localDate: localDate,
+        localDate: dailyKey.localDate,
         responsePolicyId: input.responsePolicyId,
         stateRowNumber: rowNumber
       };
     } catch (error) {
-      throw safeCostGuardError_(error);
+      throw preserveOrWrapCostGuardError_(error);
     } finally {
       if (lockAcquired) {
         try {
@@ -109,6 +122,7 @@ const AgentCostGuardService = (function() {
   function settle(handle, outcome, overrides) {
     const safeHandle = normalizeHandle_(handle);
     const safeOutcome = normalizeOutcome_(outcome);
+    const dailyKey = canonicalDailyKey_(safeHandle);
     const deps = resolveDependencies_(overrides);
     const nowMs = safeNowMs_(deps.now());
     const lock = deps.lock;
@@ -119,16 +133,16 @@ const AgentCostGuardService = (function() {
       const dailySheet = ensureSheet_(deps.spreadsheet, DAILY_SHEET_NAME, DAILY_HEADERS);
       const ledgerSheet = ensureSheet_(deps.spreadsheet, LEDGER_SHEET_NAME, LEDGER_HEADERS);
       const daily = readRows_(dailySheet, DAILY_HEADERS);
-      const state = findDailyRow_(daily.rows.filter(function(row) {
-        return row.values.homeId === safeHandle.homeId && row.values.memberUserId === safeHandle.memberUserId;
-      }), safeHandle.localDate);
-      if (state && String(state.values.inFlightRequestId || '') === safeHandle.guardRequestId) {
-        state.values.inFlightRequestId = '';
-        state.values.inFlightExpiresAt = '';
-        addUsageToDaily_(state.values, safeOutcome.usage);
-        state.values.updatedAt = isoAt_(nowMs);
-        writeDailyRow_(dailySheet, daily.headers, state);
+      const memberRows = findMemberRows_(daily.rows, dailyKey);
+      const state = resolveSettleDailyRow_(memberRows, dailyKey, safeHandle.stateRowNumber);
+      if (String(state.values.inFlightRequestId || '') !== safeHandle.guardRequestId) {
+        throw safeCostGuardError_('COST_STATE_REQUEST_MISMATCH');
       }
+      state.values.inFlightRequestId = '';
+      state.values.inFlightExpiresAt = '';
+      addUsageToDaily_(state.values, safeOutcome.usage);
+      state.values.updatedAt = isoAt_(nowMs);
+      writeDailyRow_(dailySheet, daily.headers, state);
       appendLedger_(ledgerSheet, LEDGER_HEADERS, {
         recordedAt: isoAt_(nowMs),
         guardRequestId: safeHandle.guardRequestId,
@@ -148,7 +162,7 @@ const AgentCostGuardService = (function() {
         guardReason: ''
       });
     } catch (error) {
-      throw safeCostGuardError_(error);
+      throw preserveOrWrapCostGuardError_(error);
     } finally {
       if (lockAcquired) {
         try {
@@ -184,7 +198,8 @@ const AgentCostGuardService = (function() {
       guardRequestId: safeKey_(source.guardRequestId, 100),
       homeId: safeKey_(source.homeId, 200),
       memberUserId: safeKey_(source.memberUserId, 100),
-      localDate: safeLocalDate_(source.localDate),
+      localDate: canonicalLocalDate_(source.localDate),
+      stateRowNumber: safeRowNumber_(source.stateRowNumber),
       responsePolicyId: RESPONSE_POLICIES[source.responsePolicyId] ? source.responsePolicyId : 'normal'
     };
     if (!normalized.guardRequestId || !normalized.homeId || !normalized.memberUserId || !normalized.localDate) throw safeCostGuardError_();
@@ -267,10 +282,28 @@ const AgentCostGuardService = (function() {
     return DAILY_LIMITS[String(role || '').trim()] || DAILY_LIMITS.self_record;
   }
 
-  function findDailyRow_(rows, localDate) {
-    const matches = rows.filter(function(row) { return row.values.localDate === localDate; });
-    if (!matches.length) return null;
-    return matches.sort(function(a, b) { return b.rowNumber - a.rowNumber; })[0];
+  function findMemberRows_(rows, dailyKey) {
+    return rows.filter(function(row) {
+      return safeKey_(row.values.homeId, 200) === dailyKey.homeId
+        && safeKey_(row.values.memberUserId, 100) === dailyKey.memberUserId;
+    });
+  }
+
+  function findSingleDailyRow_(memberRows, dailyKey) {
+    const matches = memberRows.filter(function(row) {
+      return canonicalLocalDate_(row.values.localDate) === dailyKey.localDate;
+    });
+    if (matches.length > 1) throw safeCostGuardError_('COST_STATE_DUPLICATE');
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function resolveSettleDailyRow_(memberRows, dailyKey, stateRowNumber) {
+    const state = findSingleDailyRow_(memberRows, dailyKey);
+    if (!state) throw safeCostGuardError_('COST_STATE_MISSING');
+    if (stateRowNumber !== null && state.rowNumber !== stateRowNumber) {
+      throw safeCostGuardError_('COST_STATE_ROW_MISMATCH');
+    }
+    return state;
   }
 
   function findActiveInFlight_(rows, nowMs) {
@@ -393,9 +426,35 @@ const AgentCostGuardService = (function() {
     return Math.floor(numeric);
   }
 
-  function safeLocalDate_(value) {
+  function canonicalDailyKey_(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const key = {
+      homeId: safeKey_(source.homeId, 200),
+      memberUserId: safeKey_(source.memberUserId, 100),
+      localDate: canonicalLocalDate_(source.localDate)
+    };
+    if (!key.homeId || !key.memberUserId || !key.localDate) {
+      throw safeCostGuardError_('COST_STATE_INVALID_KEY');
+    }
+    return key;
+  }
+
+  function canonicalLocalDate_(value) {
+    if (Object.prototype.toString.call(value) === '[object Date]') {
+      const utcMs = value.getTime();
+      if (!Number.isFinite(utcMs)) throw safeCostGuardError_('COST_STATE_INVALID_KEY');
+      // Japan has no daylight-saving adjustment. Convert a persisted Date to
+      // the same Asia/Tokyo yyyy-MM-dd form used by the runtime key.
+      return new Date(utcMs + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    }
     const text = String(value || '').trim();
-    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw safeCostGuardError_('COST_STATE_INVALID_KEY');
+    return text;
+  }
+
+  function safeRowNumber_(value) {
+    const number = Number(value);
+    return Number.isInteger(number) && number >= 2 ? number : null;
   }
 
   function safeKey_(value, maxLength) {
@@ -437,11 +496,20 @@ const AgentCostGuardService = (function() {
     return new Date(nowMs).toISOString();
   }
 
-  function safeCostGuardError_() {
+  function preserveOrWrapCostGuardError_(error) {
+    const reason = error && error.agentDiagnostics && error.agentDiagnostics.reason;
+    if (error && error.code === 'AGENT_UNAVAILABLE' && COST_GUARD_FAILURE_REASONS[reason]) return error;
+    return safeCostGuardError_();
+  }
+
+  function safeCostGuardError_(reason) {
+    const safeReason = COST_GUARD_FAILURE_REASONS[reason]
+      ? reason
+      : 'COST_GUARD_STORAGE_UNAVAILABLE';
     const error = new Error('AGENT_UNAVAILABLE');
     error.code = 'AGENT_UNAVAILABLE';
     error.agentTraceStage = 'COST_GUARD';
-    error.agentDiagnostics = { stage: 'COST_GUARD', reason: 'COST_GUARD_STORAGE_UNAVAILABLE' };
+    error.agentDiagnostics = { stage: 'COST_GUARD', reason: safeReason };
     return error;
   }
 

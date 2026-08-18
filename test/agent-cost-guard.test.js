@@ -111,6 +111,24 @@ function rows(env, sheetName) {
   return sheet.rows.map((row) => Object.fromEntries(sheet.headers.map((header, index) => [header, row[index]])));
 }
 
+function dailySheet(env) {
+  const sheet = env.sheets.Agent_Cost_Daily;
+  if (!sheet) throw new Error('Daily sheet was not created');
+  return sheet;
+}
+
+function setDailyValue(env, rowIndex, header, value) {
+  const sheet = dailySheet(env);
+  sheet.rows[rowIndex][sheet.headers.indexOf(header)] = value;
+}
+
+function expectCostGuardError(fn, expectedReason, message) {
+  let caught = null;
+  try { fn(); } catch (error) { caught = error; }
+  assert(caught && caught.code === 'AGENT_UNAVAILABLE', message + ' did not fail closed');
+  assert(caught.agentDiagnostics && caught.agentDiagnostics.reason === expectedReason, message + ' reason changed');
+}
+
 function assert(value, message) { if (!value) throw new Error(message); }
 const tests = [];
 function test(name, fn) { tests.push({ name, fn }); }
@@ -238,6 +256,73 @@ test('COST-16 and COST-17 release in-flight for completed and Agent-error outcom
     const next = service.preflight(request(index + 11), env.deps);
     assert(next.allowed === true, eventType + ' did not release in-flight state');
   });
+});
+
+test('COST-ROW-01 and COST-ROW-02 canonicalize persisted Date and trimmed string localDate values', () => {
+  const env = createEnvironment();
+  const dateHandle = service.preflight(request('date'), env.deps);
+  setDailyValue(env, 0, 'localDate', new Date(Date.UTC(2026, 7, 17, 15, 0, 0)));
+  settle(env, dateHandle);
+  const stringHandle = service.preflight(request('string'), env.deps);
+  assert(stringHandle.stateRowNumber === dateHandle.stateRowNumber, 'Date localDate did not reuse the same Daily row');
+  setDailyValue(env, 0, 'localDate', ' 2026-08-18 ');
+  settle(env, stringHandle);
+  const next = service.preflight(request('trimmed'), env.deps);
+  assert(next.stateRowNumber === dateHandle.stateRowNumber, 'trimmed string localDate did not reuse the same Daily row');
+});
+
+test('COST-ROW-03 and COST-ROW-04 retain one same-day row and settle cumulative usage', () => {
+  const env = createEnvironment();
+  const first = service.preflight(request(1), env.deps);
+  setDailyValue(env, 0, 'localDate', new Date(Date.UTC(2026, 7, 17, 15, 0, 0)));
+  settle(env, first, { usage: completeUsage(1) });
+  const second = service.preflight(request(2), env.deps);
+  assert(second.stateRowNumber === first.stateRowNumber, 'same key did not retain its original stateRowNumber');
+  settle(env, second, { usage: completeUsage(2) });
+  const daily = rows(env, 'Agent_Cost_Daily');
+  assert(daily.length === 1, 'same logical key created a duplicate Daily row');
+  assert(daily[0].acceptedRequestCount === 2, 'same-day accepted count did not accumulate');
+  assert(daily[0].inFlightRequestId === '' && daily[0].inFlightExpiresAt === '', 'completed settle did not clear in-flight');
+  assert(daily[0].inputTokens === 20 && daily[0].outputTokens === 10 && daily[0].totalTokens === 30 && daily[0].modelCallCount === 3, 'completed settle did not accumulate usage');
+});
+
+test('COST-ROW-05 clears a Date-backed in-flight lease for agent_error', () => {
+  const env = createEnvironment();
+  const handle = service.preflight(request('agent-error'), env.deps);
+  setDailyValue(env, 0, 'localDate', new Date(Date.UTC(2026, 7, 17, 15, 0, 0)));
+  settle(env, handle, { eventType: 'agent_error', usage: null });
+  const daily = rows(env, 'Agent_Cost_Daily')[0];
+  assert(daily.inFlightRequestId === '' && daily.inFlightExpiresAt === '', 'agent_error did not clear Date-backed in-flight state');
+});
+
+test('COST-ROW-06 rejects duplicate canonical state without creating another row', () => {
+  const env = createEnvironment();
+  service.preflight(request('first'), env.deps);
+  const sheet = dailySheet(env);
+  sheet.rows.push(sheet.rows[0].slice());
+  expectCostGuardError(() => service.preflight(request('duplicate'), env.deps), 'COST_STATE_DUPLICATE', 'duplicate Daily state');
+  assert(sheet.rows.length === 2, 'duplicate handling mutated existing Daily rows');
+  assert(rows(env, 'Agent_Cost_Ledger').length === 0, 'duplicate handling appended a ledger record without a valid state');
+});
+
+test('COST-ROW-07 through COST-ROW-09 revalidate state row and request identity before settle', () => {
+  const env = createEnvironment();
+  const handle = service.preflight(request('row-check'), env.deps);
+  expectCostGuardError(() => settle(env, Object.assign({}, handle, { stateRowNumber: handle.stateRowNumber + 1 })), 'COST_STATE_ROW_MISMATCH', 'state row mismatch');
+  const before = rows(env, 'Agent_Cost_Daily')[0];
+  assert(before.inFlightRequestId === handle.guardRequestId, 'row mismatch cleared the original in-flight state');
+  expectCostGuardError(() => settle(env, Object.assign({}, handle, { guardRequestId: 'other-request' })), 'COST_STATE_REQUEST_MISMATCH', 'request mismatch');
+  const after = rows(env, 'Agent_Cost_Daily')[0];
+  assert(after.inFlightRequestId === handle.guardRequestId, 'request mismatch cleared another request lease');
+});
+
+test('COST-ROW-10 preserves unavailable usage as null after canonical row resolution', () => {
+  const env = createEnvironment();
+  const handle = service.preflight(request('unavailable'), env.deps);
+  setDailyValue(env, 0, 'localDate', new Date(Date.UTC(2026, 7, 17, 15, 0, 0)));
+  settle(env, handle, { usage: { inputTokens: null, outputTokens: null, totalTokens: null, modelCallCount: 1, usageStatus: 'unavailable' } });
+  const daily = rows(env, 'Agent_Cost_Daily')[0];
+  assert(daily.inputTokens === '' && daily.outputTokens === '' && daily.totalTokens === '' && daily.modelCallCount === '', 'unavailable usage was converted into Daily zero values');
 });
 
 test('new state and ledger sheets use the specified header order', () => {
