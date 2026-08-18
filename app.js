@@ -1372,7 +1372,7 @@ async function callAgentChat(payload) {
       "ACTOR_CONTRACT_INVALID", "TOOL_DISABLED", "CLIMATE_UNAVAILABLE", "WEATHER_UNAVAILABLE",
       "CALENDAR_UNAVAILABLE", "ROOM_NOT_FOUND", "FOLLOWUP_REQUIRED", "ACTION_NOT_ALLOWED",
       "CONFIRMATION_EXPIRED", "CONFIRMATION_ACTOR_MISMATCH", "AGENT_UNAVAILABLE", "AGENT_ERROR",
-      "CONFIGURATION_ERROR", "INVALID_INPUT", "TODAY_PARURU_UNAVAILABLE", "AUTOMATION_UPSTREAM_ERROR",
+      "AGENT_BUSY", "AGENT_RATE_LIMITED", "CONFIGURATION_ERROR", "INVALID_INPUT", "TODAY_PARURU_UNAVAILABLE", "AUTOMATION_UPSTREAM_ERROR",
       "UPSTREAM_ERROR"
     ].includes(code) ? code : "AGENT_ERROR", "API_SUCCESS_FALSE");
   }
@@ -2146,6 +2146,8 @@ function getAgentChatUserMessage(code, retryable = false) {
     UPSTREAM_ERROR: "確認先のサービスにつながらんかった。実行や保存はしてないで。",
     CONFIRMATION_EXPIRED: "確認の期限が切れとる。もう一度相談してな。",
     CONFIRMATION_ACTOR_MISMATCH: "確認を作った端末と違うため実行できん。",
+    AGENT_BUSY: "利用が集中しとる。少し待ってからもう一回試してな。",
+    AGENT_RATE_LIMITED: "少し待ってからもう一回試してな。",
     INVALID_INPUT: "入力内容を確認してな。",
   };
   return messages[code] || "今はこの確認を完了できんかった。繰り返しても直らん場合は設定を確認してな。";

@@ -1,0 +1,258 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const source = fs.readFileSync(path.resolve(__dirname, '..', 'gas', 'AgentCostGuardService.js'), 'utf8');
+const context = { Date, JSON, Math, Number, Object, Array, String, RegExp, Error };
+vm.createContext(context);
+new vm.Script(source, { filename: 'AgentCostGuardService.js' }).runInContext(context);
+const service = vm.runInContext('AgentCostGuardService', context);
+
+function createSheet(name) {
+  return {
+    name,
+    headers: [],
+    rows: [],
+    frozenRows: 0,
+    getLastColumn() { return this.headers.length; },
+    getLastRow() { return this.headers.length ? this.rows.length + 1 : 0; },
+    getRange(row, column, numRows, numColumns) {
+      const sheet = this;
+      return {
+        getValues() {
+          const values = [];
+          for (let offset = 0; offset < numRows; offset += 1) {
+            const targetRow = row + offset;
+            const sourceRow = targetRow === 1 ? sheet.headers : (sheet.rows[targetRow - 2] || []);
+            values.push(Array.from({ length: numColumns }, (_, index) => sourceRow[column - 1 + index] === undefined ? '' : sourceRow[column - 1 + index]));
+          }
+          return values;
+        },
+        setValues(values) {
+          values.forEach((input, offset) => {
+            const targetRow = row + offset;
+            if (targetRow === 1) {
+              input.forEach((value, index) => { sheet.headers[column - 1 + index] = value; });
+              return;
+            }
+            const rowIndex = targetRow - 2;
+            if (!sheet.rows[rowIndex]) sheet.rows[rowIndex] = Array(sheet.headers.length).fill('');
+            input.forEach((value, index) => { sheet.rows[rowIndex][column - 1 + index] = value; });
+          });
+        }
+      };
+    },
+    setFrozenRows(value) { this.frozenRows = value; }
+  };
+}
+
+function createEnvironment() {
+  const sheets = {};
+  let nowMs = Date.UTC(2026, 7, 18, 3, 0, 0);
+  const lock = {
+    held: false,
+    waits: 0,
+    waitLock() { if (this.held) throw new Error('lock overlap'); this.held = true; this.waits += 1; },
+    releaseLock() { if (!this.held) throw new Error('unheld lock release'); this.held = false; }
+  };
+  const spreadsheet = {
+    getSheetByName(name) { return sheets[name] || null; },
+    insertSheet(name) { const sheet = createSheet(name); sheets[name] = sheet; return sheet; }
+  };
+  return {
+    sheets,
+    lock,
+    setNow(value) { nowMs = value; },
+    advance(ms) { nowMs += ms; },
+    deps: {
+      spreadsheet,
+      lock,
+      now: () => nowMs,
+      localDate: (value) => new Date(value + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    }
+  };
+}
+
+function request(index, options = {}) {
+  const role = options.role || 'admin';
+  return {
+    guardRequestId: options.guardRequestId || ('request-' + index),
+    responsePolicyId: options.responsePolicyId || (role === 'admin' ? 'normal' : 'concise'),
+    actor: {
+      homeId: options.homeId || 'home-a',
+      memberUserId: options.memberUserId || 'father',
+      role,
+      // These client-shaped fields must be irrelevant to Cost Guard.
+      userId: options.userId || 'spoofed-user',
+      capabilities: options.capabilities || ['spoofed.capability']
+    }
+  };
+}
+
+function completeUsage(modelCallCount = 1) {
+  return { inputTokens: 10, outputTokens: 5, totalTokens: 15, modelCallCount, usageStatus: 'available' };
+}
+
+function settle(env, handle, options = {}) {
+  service.settle(handle, {
+    eventType: options.eventType || 'completed',
+    model: 'unknown',
+    interactionClass: options.interactionClass || 'unclassified',
+    resultStatus: options.resultStatus || 'SUCCESS',
+    usage: Object.prototype.hasOwnProperty.call(options, 'usage') ? options.usage : completeUsage()
+  }, env.deps);
+}
+
+function rows(env, sheetName) {
+  const sheet = env.sheets[sheetName];
+  if (!sheet) return [];
+  return sheet.rows.map((row) => Object.fromEntries(sheet.headers.map((header, index) => [header, row[index]])));
+}
+
+function assert(value, message) { if (!value) throw new Error(message); }
+const tests = [];
+function test(name, fn) { tests.push({ name, fn }); }
+
+test('COST-01 in-flight rejects the second accepted member request', () => {
+  const env = createEnvironment();
+  const first = service.preflight(request(1), env.deps);
+  const second = service.preflight(request(2), env.deps);
+  assert(first.allowed === true, 'first request was rejected');
+  assert(second.allowed === false && second.errorCode === 'AGENT_BUSY' && second.guardReason === 'busy', 'in-flight request was not rejected safely');
+  assert(rows(env, 'Agent_Cost_Daily')[0].acceptedRequestCount === 1, 'guard rejection consumed daily quota');
+});
+
+test('COST-02 stale lease recovers after 45 seconds', () => {
+  const env = createEnvironment();
+  service.preflight(request(1), env.deps);
+  env.advance(45001);
+  const recovered = service.preflight(request(2), env.deps);
+  assert(recovered.allowed === true, 'expired in-flight lease did not recover');
+});
+
+test('COST-03 and COST-04 enforce and reset the 3 per 10 second burst', () => {
+  const env = createEnvironment();
+  for (let index = 1; index <= 3; index += 1) {
+    const handle = service.preflight(request(index), env.deps);
+    assert(handle.allowed === true, 'burst request ' + index + ' was rejected early');
+    settle(env, handle);
+    env.advance(1);
+  }
+  const rejected = service.preflight(request(4), env.deps);
+  assert(rejected.allowed === false && rejected.errorCode === 'AGENT_RATE_LIMITED' && rejected.guardReason === 'burst', 'fourth burst request was accepted');
+  env.advance(10000);
+  const reset = service.preflight(request(5), env.deps);
+  assert(reset.allowed === true, 'burst window did not reset');
+});
+
+test('COST-05 through COST-07 apply the role daily limits', () => {
+  [
+    { role: 'admin', limit: 300 },
+    { role: 'guardian', limit: 100 },
+    { role: 'self_record', limit: 60 }
+  ].forEach(({ role, limit }) => {
+    const env = createEnvironment();
+    const handle = service.preflight(request(role + '-seed', { role }), env.deps);
+    settle(env, handle, { usage: null });
+    const state = rows(env, 'Agent_Cost_Daily')[0];
+    state.acceptedRequestCount = limit - 1;
+    const sheet = env.sheets.Agent_Cost_Daily;
+    sheet.rows[0][sheet.headers.indexOf('acceptedRequestCount')] = limit - 1;
+    const boundary = service.preflight(request(role + '-limit', { role }), env.deps);
+    assert(boundary.allowed === true, role + ' limit request was rejected early');
+    settle(env, boundary, { usage: null });
+    const rejected = service.preflight(request(role + '-over', { role }), env.deps);
+    assert(rejected.allowed === false && rejected.guardReason === 'daily', role + ' daily limit did not reject');
+  });
+});
+
+test('COST-08 daily quota rolls over in Asia Tokyo', () => {
+  const env = createEnvironment();
+  env.setNow(Date.UTC(2026, 7, 18, 14, 59, 59));
+  const handle = service.preflight(request(1), env.deps);
+  settle(env, handle, { usage: null });
+  const sheet = env.sheets.Agent_Cost_Daily;
+  sheet.rows[0][sheet.headers.indexOf('acceptedRequestCount')] = 300;
+  env.setNow(Date.UTC(2026, 7, 18, 15, 0, 1));
+  const nextDay = service.preflight(request(2), env.deps);
+  assert(nextDay.allowed === true && nextDay.localDate === '2026-08-19', 'Asia Tokyo date rollover retained prior daily quota');
+});
+
+test('COST-09 and COST-10 isolate members and ignore client role spoofing', () => {
+  const env = createEnvironment();
+  const first = service.preflight(request(1, { memberUserId: 'member-a', role: 'self_record' }), env.deps);
+  settle(env, first, { usage: null });
+  const sheet = env.sheets.Agent_Cost_Daily;
+  sheet.rows[0][sheet.headers.indexOf('acceptedRequestCount')] = 60;
+  const spoofed = service.preflight(request(2, { memberUserId: 'member-a', role: 'self_record', responsePolicyId: 'normal', userId: 'admin-user' }), env.deps);
+  assert(spoofed.allowed === false && spoofed.guardReason === 'daily', 'client role spoof changed quota');
+  const isolated = service.preflight(request(3, { memberUserId: 'member-b', role: 'self_record' }), env.deps);
+  assert(isolated.allowed === true, 'member quota leaked to another member');
+});
+
+test('COST-12 accepted Agent errors still consume a request and release in-flight', () => {
+  const env = createEnvironment();
+  const handle = service.preflight(request(1), env.deps);
+  settle(env, handle, { eventType: 'agent_error', usage: null });
+  const state = rows(env, 'Agent_Cost_Daily')[0];
+  assert(state.acceptedRequestCount === 1, 'accepted Agent failure did not consume quota');
+  assert(state.inFlightRequestId === '' && state.inFlightExpiresAt === '', 'Agent error did not release in-flight lease');
+  assert(rows(env, 'Agent_Cost_Ledger')[0].eventType === 'agent_error', 'Agent failure ledger type changed');
+});
+
+test('COST-13 and COST-14 add complete usage only and never fabricate unavailable usage', () => {
+  const env = createEnvironment();
+  const completed = service.preflight(request(1), env.deps);
+  settle(env, completed, { usage: completeUsage(2) });
+  const unavailable = service.preflight(request(2), env.deps);
+  settle(env, unavailable, { usage: { inputTokens: null, outputTokens: null, totalTokens: null, modelCallCount: 1, usageStatus: 'unavailable' } });
+  const state = rows(env, 'Agent_Cost_Daily')[0];
+  assert(state.inputTokens === 10 && state.outputTokens === 5 && state.totalTokens === 15 && state.modelCallCount === 2, 'complete usage totals changed');
+  const ledger = rows(env, 'Agent_Cost_Ledger');
+  assert(ledger[1].inputTokens === '' && ledger[1].totalTokens === '' && ledger[1].usageStatus === 'unavailable', 'unavailable usage was stored as zero');
+});
+
+test('COST-15 ledger is append-only and excludes request and response content', () => {
+  const env = createEnvironment();
+  const handle = service.preflight(request(1), env.deps);
+  settle(env, handle, {
+    interactionClass: 'tool_read',
+    usage: completeUsage(),
+    message: 'private user message',
+    reply: 'private reply',
+    toolResult: { calendar: 'private event' },
+    sessionId: 'private-session'
+  });
+  const sheet = env.sheets.Agent_Cost_Ledger;
+  assert(JSON.stringify(sheet.rows).includes('private') === false, 'Ledger stored private request or response data');
+  assert(JSON.stringify(sheet.headers) === JSON.stringify(service.constants.LEDGER_HEADERS), 'Ledger headers changed or reordered');
+});
+
+test('COST-16 and COST-17 release in-flight for completed and Agent-error outcomes', () => {
+  ['completed', 'agent_error'].forEach((eventType, index) => {
+    const env = createEnvironment();
+    const handle = service.preflight(request(index + 1), env.deps);
+    settle(env, handle, { eventType, usage: null });
+    const next = service.preflight(request(index + 11), env.deps);
+    assert(next.allowed === true, eventType + ' did not release in-flight state');
+  });
+});
+
+test('new state and ledger sheets use the specified header order', () => {
+  const env = createEnvironment();
+  const handle = service.preflight(request(1), env.deps);
+  settle(env, handle, { usage: null });
+  assert(JSON.stringify(env.sheets.Agent_Cost_Daily.headers) === JSON.stringify(service.constants.DAILY_HEADERS), 'Daily header order changed');
+  assert(JSON.stringify(env.sheets.Agent_Cost_Ledger.headers) === JSON.stringify(service.constants.LEDGER_HEADERS), 'Ledger header order changed');
+  assert(env.lock.held === false && env.lock.waits >= 2, 'Lock was not released around preflight and settle');
+});
+
+let failures = 0;
+tests.forEach((item) => {
+  try { item.fn(); console.log('PASS ' + item.name); }
+  catch (error) { failures += 1; console.error('FAIL ' + item.name + ': ' + error.message); }
+});
+if (failures) process.exitCode = 1;
+else console.log('PASS all ' + tests.length + ' tests');

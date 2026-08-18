@@ -6,6 +6,9 @@ const PALURU_AGENT_DIAGNOSTICS_PROPERTY = 'PALURU_AGENT_DIAGNOSTICS_ENABLED';
 
 function agentChat_(body) {
   const trace = createMiniAgentTrace_(body, 'agentChat');
+  let costGuardHandle = null;
+  let costGuardSettled = false;
+  let costGuardOutcome = null;
   logMiniAgentTrace_('REQUEST_RECEIVED', trace, { stage: 'REQUEST_RECEIVED' });
   try {
     let actor;
@@ -32,9 +35,25 @@ function agentChat_(body) {
       setMiniAgentTraceStage_(error, trace, 'AGENT_CONFIGURATION');
       throw annotateAgentGatewayError_(error, 'PROMPT_BUILD_FAILED', 'AGENT_CONFIGURATION_UNAVAILABLE');
     }
+    const guard = AgentCostGuardService.preflight({
+      guardRequestId: input.clientRequestId,
+      actor: input.actor,
+      responsePolicyId: input.responsePolicyId
+    });
+    if (!guard || guard.allowed !== true) {
+      const errorCode = String(guard && guard.errorCode || 'AGENT_RATE_LIMITED');
+      const guardReason = String(guard && guard.guardReason || 'burst');
+      logMiniAgentTrace_('COST_GUARD_REJECTED', trace, { stage: 'COST_GUARD', errorCode: errorCode, reason: guardReason });
+      throw createAgentGatewayError_(errorCode, 'COST_GUARD', guardReason);
+    }
+    costGuardHandle = guard;
     const response = callPaluruAgent_(config, input, trace);
+    costGuardOutcome = buildAgentCostGuardOutcome_(response, 'agent_error');
     try {
       const result = buildAgentChatSuccess_(response, input);
+      costGuardOutcome.eventType = 'completed';
+      settleAgentCostGuardSafely_(costGuardHandle, costGuardOutcome, trace);
+      costGuardSettled = true;
       logMiniAgentTrace_('RESPONSE_SENT', trace, { stage: 'RESPONSE_SENT', httpStatus: 200, intent: result.intent, agentPerformance: response && response.diagnostics });
       const output = json_(result);
       persistAgentTrace_(trace);
@@ -48,6 +67,10 @@ function agentChat_(body) {
     setMiniAgentTraceStage_(error, trace, stage);
     if (stage === 'UNHANDLED_ERROR') {
       logMiniAgentTrace_('UNHANDLED_ERROR', trace, { stage: stage, errorCode: error && error.code });
+    }
+    if (costGuardHandle && !costGuardSettled) {
+      settleAgentCostGuardSafely_(costGuardHandle, costGuardOutcome || buildAgentCostGuardOutcome_(null, 'agent_error'), trace);
+      costGuardSettled = true;
     }
     const result = buildAgentChatError_(error);
     logMiniAgentTrace_('RESPONSE_SENT', trace, { stage: stage, httpStatus: 200, errorCode: result && result.error && result.error.code, reason: error && error.agentDiagnostics && error.agentDiagnostics.reason, agentPerformance: error && error.agentPerformance });
@@ -602,6 +625,48 @@ function sanitizeAgentUsage_(usage) {
   };
 }
 
+function buildAgentCostGuardOutcome_(response, eventType) {
+  const data = response && response.data && typeof response.data === 'object' ? response.data : {};
+  const diagnostics = data.diagnostics && typeof data.diagnostics === 'object' ? data.diagnostics : {};
+  const toolCallCount = Number(diagnostics.toolCallCount);
+  const executionPath = String(diagnostics.executionPath || '').trim();
+  const interactionClass = toolCallCount > 0
+    ? 'tool_read'
+    : executionPath === 'tool_calling'
+      ? 'general_no_data'
+      : executionPath === 'legacy_router'
+        ? 'legacy'
+        : 'unclassified';
+  const usage = data.usage && typeof data.usage === 'object' ? data.usage : {};
+  return {
+    eventType: eventType === 'completed' ? 'completed' : 'agent_error',
+    model: 'unknown',
+    interactionClass: interactionClass,
+    resultStatus: sanitizeIncomingAgentTraceResultStatus_(diagnostics.resultStatus),
+    usage: {
+      inputTokens: normalizeNullableNumber_(usage.inputTokens),
+      outputTokens: normalizeNullableNumber_(usage.outputTokens),
+      totalTokens: normalizeNullableNumber_(usage.totalTokens),
+      modelCallCount: Number.isInteger(Number(usage.modelCallCount)) && Number(usage.modelCallCount) >= 0 ? Number(usage.modelCallCount) : null,
+      usageStatus: String(usage.usageStatus || '').trim() === 'available' ? 'available' : 'unavailable'
+    }
+  };
+}
+
+function settleAgentCostGuardSafely_(handle, outcome, trace) {
+  if (!handle) return;
+  try {
+    AgentCostGuardService.settle(handle, outcome);
+  } catch (error) {
+    // The request may already have reached OpenAI. Do not turn a completed
+    // response into a retry that would spend another accepted request.
+    // A stale lease remains bounded by the 45-second recovery rule.
+    logMiniAgentTrace_('COST_GUARD_SETTLE_FAILED', trace, {
+      stage: 'COST_GUARD', errorCode: 'AGENT_UNAVAILABLE', reason: 'COST_GUARD_SETTLE_FAILED'
+    });
+  }
+}
+
 function normalizeNullableNumber_(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -629,6 +694,8 @@ function buildAgentChatError_(error) {
     AUTOMATION_UPSTREAM_ERROR: true,
     PREPARED_CONTRACT_VIOLATION: true,
     UPSTREAM_ERROR: true,
+    AGENT_BUSY: true,
+    AGENT_RATE_LIMITED: true,
   };
   const code = error && allowedCodes[error.code] ? error.code : 'INTERNAL_ERROR';
   const messages = {
@@ -655,6 +722,8 @@ function buildAgentChatError_(error) {
     UPSTREAM_ERROR: '確認先のサービスへつながりませんでした。',
     INTERNAL_ERROR: '内部エラーが発生しました。',
   };
+  messages.AGENT_BUSY = '利用が集中しとる。少し待ってからもう一回試してな。';
+  messages.AGENT_RATE_LIMITED = '少し待ってからもう一回試してな。';
   const result = { success: false, error: { code: code, message: messages[code] } };
   const trace = publicMiniAgentTrace_(error && error.agentTrace);
   if (trace) result.trace = trace;
@@ -706,7 +775,7 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
-const PALURU_MINI_BUILD_ID = 'mini-20260818-response-policy-v1';
+const PALURU_MINI_BUILD_ID = 'mini-20260818-cost-guard-v1';
 
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};

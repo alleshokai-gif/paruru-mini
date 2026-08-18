@@ -18,6 +18,20 @@ let controlActor = null;
 let controlActorError = null;
 let controlActorCalls = 0;
 
+function createCostGuardStub() {
+  return {
+    preflight: (request) => ({
+      allowed: true,
+      guardRequestId: request.guardRequestId,
+      homeId: request.actor.homeId,
+      memberUserId: request.actor.memberUserId,
+      localDate: '2026-08-18',
+      responsePolicyId: request.responsePolicyId,
+    }),
+    settle: () => {},
+  };
+}
+
 function createTraceSheet() {
   const sheet = {
     headers: [],
@@ -52,6 +66,7 @@ const context = {
     getScriptProperties: () => ({ getProperty: (name) => properties[name] || '' }),
   },
   UrlFetchApp: { fetch: (...args) => fetchImpl(...args) },
+  AgentCostGuardService: createCostGuardStub(),
   SpreadsheetApp: {
     getActiveSpreadsheet: () => ({
       getSheetByName: () => traceSheet,
@@ -108,7 +123,7 @@ function agentResponse(reply, serviceExecutions) {
     data: {
       reply,
       serviceExecutions: serviceExecutions || [],
-      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, modelCallCount: 1, usageStatus: 'available' },
       rawToolData: { temperature: 28.3 },
     },
   };
@@ -120,7 +135,7 @@ function mockFetch(status, body, onCall) {
   };
 }
 function configure() { properties.PALURU_AGENT_URL = secretUrl; properties.PALURU_AGENT_TOKEN = secretToken; }
-function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; traceSheet = null; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; controlActor = null; controlActorError = null; controlActorCalls = 0; }
+function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; traceSheet = null; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; controlActor = null; controlActorError = null; controlActorCalls = 0; context.AgentCostGuardService = createCostGuardStub(); }
 function assert(value, message) { if (!value) throw new Error(message); }
 
 const tests = [];
@@ -157,6 +172,63 @@ test('tool-free response', () => {
   });
   const result = post(valid({ userId: 'father', userDisplayName: '父', deviceId: 'device' }));
   assert(result.success && result.reply && result.serviceExecutions.length === 0, 'service-free response failed');
+});
+
+test('Cost Guard receives only the server-resolved actor and settles complete usage', () => {
+  configure();
+  let preflightInput = null;
+  let settled = null;
+  context.AgentCostGuardService = {
+    preflight: (request) => {
+      preflightInput = request;
+      return {
+        allowed: true,
+        guardRequestId: request.guardRequestId,
+        homeId: request.actor.homeId,
+        memberUserId: request.actor.memberUserId,
+        localDate: '2026-08-18',
+        responsePolicyId: request.responsePolicyId,
+      };
+    },
+    settle: (handle, outcome) => { settled = { handle, outcome }; },
+  };
+  const response = agentResponse('確認したで。');
+  response.data.diagnostics = { executionPath: 'tool_calling', toolCallCount: 0, resultStatus: '' };
+  mockFetch(200, response);
+  const result = post(valid({ userId: 'spoofed-user', role: 'self_record', responsePolicyId: 'concise' }));
+  assert(result.success, 'guarded Agent response failed');
+  assert(preflightInput && preflightInput.actor.homeId === 'home-a' && preflightInput.actor.memberUserId === 'father', 'Cost Guard used client actor data');
+  assert(preflightInput.responsePolicyId === 'normal' && !Object.prototype.hasOwnProperty.call(preflightInput, 'message'), 'Cost Guard retained client policy or message');
+  assert(settled && settled.outcome.eventType === 'completed', 'completed request was not settled');
+  assert(settled.outcome.usage.inputTokens === 10 && settled.outcome.usage.modelCallCount === 1 && settled.outcome.usage.usageStatus === 'available', 'complete usage was not passed to Cost Guard');
+});
+
+test('Cost Guard rejection short-circuits Agent HTTP with a safe code', () => {
+  configure();
+  let agentCalls = 0;
+  context.AgentCostGuardService = {
+    preflight: () => ({ allowed: false, errorCode: 'AGENT_RATE_LIMITED', guardReason: 'burst' }),
+    settle: () => { throw new Error('settle must not run for rejection'); },
+  };
+  mockFetch(200, agentResponse('not used'), () => { agentCalls += 1; });
+  const result = post(valid());
+  assert(result.success === false && result.error.code === 'AGENT_RATE_LIMITED', 'guard rejection public code changed');
+  assert(agentCalls === 0, 'guard rejection called Agent');
+  assert(!JSON.stringify(result).includes('burst'), 'guard reason leaked to public response');
+});
+
+test('Cost Guard releases an accepted request after Agent transport failure', () => {
+  configure();
+  let settled = null;
+  context.AgentCostGuardService = {
+    preflight: (request) => ({ allowed: true, guardRequestId: request.guardRequestId, homeId: request.actor.homeId, memberUserId: request.actor.memberUserId, localDate: '2026-08-18', responsePolicyId: request.responsePolicyId }),
+    settle: (handle, outcome) => { settled = { handle, outcome }; },
+  };
+  fetchImpl = () => { throw new Error('transport details stay internal'); };
+  const result = post(valid());
+  assert(result.error.code === 'AGENT_UNAVAILABLE', 'transport failure public code changed');
+  assert(settled && settled.outcome.eventType === 'agent_error', 'accepted Agent failure was not settled');
+  assert(settled.outcome.usage.usageStatus === 'unavailable' && settled.outcome.usage.inputTokens === null, 'failed request usage was fabricated');
 });
 
 test('Mini persists a safe combined trace ledger without exposing it to PWA', () => {
@@ -691,7 +763,7 @@ test('Mini persists one request deployment chain using suffixes and null version
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
   assert(agentRow[headers.indexOf('osDeploymentSuffix')] === 'os34', 'OS deployment suffix was dropped');
-  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260818-response-policy-v1', 'Mini build ID was not stamped');
+  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260818-cost-guard-v1', 'Mini build ID was not stamped');
   assert(agentRow[headers.indexOf('agentBuildId')] === 'agent-20260809-prepared-contract-v1', 'Agent build ID was dropped');
   assert(agentRow[headers.indexOf('osBuildId')] === 'os-20260809-build-chain-v1', 'OS build ID was dropped');
   assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');

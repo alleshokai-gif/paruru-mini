@@ -677,6 +677,19 @@ test('D retry reuses clientRequestId and double submit is blocked', async () => 
   assert(duplicateHarness.requests.filter((entry) => entry.payload?.action === 'agentChat').length === 1, 'double submit was not blocked');
 });
 
+test('Cost Guard errors retain only safe wait guidance in Agent Chat', async () => {
+  const busy = createHarness();
+  busy.setResponder(() => ({ success: false, error: { code: 'AGENT_BUSY', message: 'busy internal detail' } }));
+  try {
+    await busy.run('callAgentChat({ action: "agentChat", sessionId: "11111111-1111-4111-8111-111111111111", clientRequestId: "22222222-2222-4222-8222-222222222222" })');
+    throw new Error('busy response unexpectedly succeeded');
+  } catch (error) {
+    assert(error.code === 'AGENT_BUSY', 'busy code was collapsed before safe UI mapping');
+  }
+  assert(busy.run('getAgentChatUserMessage("AGENT_BUSY")').includes('少し待って'), 'busy message is not safe wait guidance');
+  assert(busy.run('getAgentChatUserMessage("AGENT_RATE_LIMITED")').includes('少し待って'), 'rate limit message is not safe wait guidance');
+});
+
 test('D2 Agent start and later Climate success clear stale form errors', async () => {
   const harness = createHarness();
   harness.elements.get('#message').textContent = 'stale red error';
@@ -1154,7 +1167,7 @@ test('agentChat logs API_ERROR and FETCH_FAILED with the same request context', 
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260817-today-paruru-ownership-v1';
+  const expected = 'v20260818-cost-guard-v1';
   const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
   assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID must have one definition');
   assert(appSource.includes('Build: ${globalThis.BUILD_ID}') && !/const\s+(?:ASSET_VERSION|BUILD_VERSION|BUILD_ID)\s*=/.test(appSource), 'app does not use BUILD_ID as the only Build display source');
