@@ -691,7 +691,7 @@ test('Mini persists one request deployment chain using suffixes and null version
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
   assert(agentRow[headers.indexOf('osDeploymentSuffix')] === 'os34', 'OS deployment suffix was dropped');
-  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260815-switchbot-stage-trace-v1', 'Mini build ID was not stamped');
+  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260818-response-policy-v1', 'Mini build ID was not stamped');
   assert(agentRow[headers.indexOf('agentBuildId')] === 'agent-20260809-prepared-contract-v1', 'Agent build ID was dropped');
   assert(agentRow[headers.indexOf('osBuildId')] === 'os-20260809-build-chain-v1', 'OS build ID was dropped');
   assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');
@@ -887,9 +887,55 @@ test('P0-ACTOR-SERVER-RESOLVED', () => {
   assert(sent && sent.actor.memberUserId === 'second_son' && sent.actor.role === 'self_record'
     && sent.actor.deviceId === 'server-paired-device', 'Agent actor was not resolved from pairing and Home_Members');
   assert(JSON.stringify(sent.actor.capabilities) === JSON.stringify(['home.read']), 'client capabilities replaced the server actor capability');
+  assert(sent.responsePolicyId === 'concise', 'server-resolved self_record role did not select concise response policy');
   assert(sent.requestMetadata.role === undefined, 'client role entered advisory metadata');
   assert(sent.requestMetadata.capabilities === undefined, 'client capabilities entered advisory metadata');
   assert(sent.userId === undefined, 'client userId entered Agent payload');
+  assert(sent.requestMetadata.responsePolicyId === undefined, 'client response policy entered advisory metadata');
+  assert(result.responsePolicyId === undefined, 'internal response policy leaked to PWA');
+});
+
+function assertServerResolvedResponsePolicy_(role, expectedPolicyId, requestOverrides) {
+  reset();
+  configure();
+  readActor = {
+    homeId: 'home-a', memberUserId: 'member-' + role, displayName: 'Server Member', role: role,
+    capabilities: ['home.read'], deviceId: 'server-device-' + role
+  };
+  let sent = null;
+  mockFetch(200, agentResponse('ok'), (_url, options) => { sent = JSON.parse(options.payload); });
+  const result = post(valid(requestOverrides));
+  assert(result.success, 'server-resolved policy request was rejected for ' + role);
+  assert(sent && sent.responsePolicyId === expectedPolicyId, 'wrong response policy for server role ' + role);
+  assert(sent.actor.role === role, 'server actor role changed for ' + role);
+  assert(result.responsePolicyId === undefined, 'internal policy leaked to PWA for ' + role);
+  return sent;
+}
+
+test('RPOL-01 server-resolved admin receives normal policy', () => {
+  assertServerResolvedResponsePolicy_('admin', 'normal');
+});
+
+test('RPOL-02 server-resolved guardian receives concise policy', () => {
+  assertServerResolvedResponsePolicy_('guardian', 'concise');
+});
+
+test('RPOL-03 server-resolved self_record receives concise policy', () => {
+  assertServerResolvedResponsePolicy_('self_record', 'concise');
+});
+
+test('RPOL-04 client response-policy and role spoofing are ignored', () => {
+  const sent = assertServerResolvedResponsePolicy_('self_record', 'concise', {
+    userId: 'father', role: 'admin', capabilities: ['home.control'], responsePolicyId: 'normal',
+    requestMetadata: { role: 'admin', responsePolicyId: 'normal', capabilities: ['home.control'] }
+  });
+  assert(sent.actor.memberUserId === 'member-self_record', 'client userId replaced the server actor');
+  assert(sent.responsePolicyId === 'concise', 'client response policy overrode the server role mapping');
+  assert(sent.requestMetadata.responsePolicyId === undefined, 'client response policy reached Agent metadata');
+});
+
+test('RPOL-05 unknown server role uses backward-compatible normal policy', () => {
+  assertServerResolvedResponsePolicy_('unknown_role', 'normal');
 });
 
 test('climate service response is sanitized', () => {

@@ -124,6 +124,9 @@ function validateAgentChatInput_(body, actor) {
     message: message,
     sessionId: sessionId,
     clientRequestId: clientRequestId,
+    // This is derived exclusively from the actor that Mini resolved on the
+    // server. It is presentation policy, not client advisory metadata.
+    responsePolicyId: resolveAgentResponsePolicyId_(actor),
     actor: {
       memberUserId: String(actor && actor.memberUserId || '').trim().slice(0, 100),
       displayName: String(actor && actor.displayName || '').trim().slice(0, 100),
@@ -134,6 +137,14 @@ function validateAgentChatInput_(body, actor) {
     },
     requestMetadata: sanitizeAgentRequestMetadata_(body.requestMetadata, sessionId, clientRequestId, actor),
   };
+}
+
+function resolveAgentResponsePolicyId_(actor) {
+  const role = String(actor && actor.role || '').trim();
+  if (role === 'guardian' || role === 'self_record') return 'concise';
+  // normal is the backwards-compatible safe presentation default. This does
+  // not expand authorization or infer a role from any client-provided value.
+  return 'normal';
 }
 
 function sanitizeAgentRequestMetadata_(value, sessionId, clientRequestId, actor) {
@@ -212,6 +223,7 @@ function callPaluruAgent_(config, input, trace) {
     message: input.message,
     sessionId: input.sessionId,
     clientRequestId: input.clientRequestId,
+    responsePolicyId: input.responsePolicyId,
     actor: input.actor,
     requestMetadata: input.requestMetadata,
     authToken: config.token,
@@ -694,7 +706,7 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
-const PALURU_MINI_BUILD_ID = 'mini-20260815-switchbot-stage-trace-v1';
+const PALURU_MINI_BUILD_ID = 'mini-20260818-response-policy-v1';
 
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};
