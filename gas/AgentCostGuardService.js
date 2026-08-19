@@ -29,6 +29,7 @@ const AgentCostGuardService = (function() {
   const COST_GUARD_FAILURE_REASONS = Object.freeze({
     COST_GUARD_STORAGE_UNAVAILABLE: true,
     COST_STATE_DUPLICATE: true,
+    COST_STATE_WRITE_FAILED: true,
     COST_STATE_MISSING: true,
     COST_STATE_ROW_MISMATCH: true,
     COST_STATE_REQUEST_MISMATCH: true,
@@ -96,7 +97,16 @@ const AgentCostGuardService = (function() {
       state.values.inFlightRequestId = input.guardRequestId;
       state.values.inFlightExpiresAt = nowMs + LEASE_MS;
       state.values.updatedAt = isoAt_(nowMs);
-      const rowNumber = writeDailyRow_(dailySheet, daily.headers, state);
+      const rowNumber = writeAndVerifyDailyRow_(dailySheet, daily.headers, state, deps, {
+        homeId: dailyKey.homeId,
+        memberUserId: dailyKey.memberUserId,
+        localDate: dailyKey.localDate,
+        acceptedRequestCount: currentCount + 1,
+        windowStartedAt: nextBurst.startedAt,
+        windowRequestCount: nextBurst.count,
+        inFlightRequestId: input.guardRequestId,
+        inFlightExpiresAt: nowMs + LEASE_MS
+      });
       return {
         allowed: true,
         guardRequestId: input.guardRequestId,
@@ -138,11 +148,32 @@ const AgentCostGuardService = (function() {
       if (String(state.values.inFlightRequestId || '') !== safeHandle.guardRequestId) {
         throw safeCostGuardError_('COST_STATE_REQUEST_MISMATCH');
       }
+      const preservedPreflightState = {
+        homeId: safeKey_(state.values.homeId, 200),
+        memberUserId: safeKey_(state.values.memberUserId, 100),
+        localDate: canonicalLocalDate_(state.values.localDate),
+        acceptedRequestCount: integerOrZero_(state.values.acceptedRequestCount),
+        windowStartedAt: numericMillis_(state.values.windowStartedAt),
+        windowRequestCount: integerOrZero_(state.values.windowRequestCount)
+      };
       state.values.inFlightRequestId = '';
       state.values.inFlightExpiresAt = '';
       addUsageToDaily_(state.values, safeOutcome.usage);
       state.values.updatedAt = isoAt_(nowMs);
-      writeDailyRow_(dailySheet, daily.headers, state);
+      writeAndVerifyDailyRow_(dailySheet, daily.headers, state, deps, {
+        homeId: preservedPreflightState.homeId,
+        memberUserId: preservedPreflightState.memberUserId,
+        localDate: preservedPreflightState.localDate,
+        acceptedRequestCount: preservedPreflightState.acceptedRequestCount,
+        windowStartedAt: preservedPreflightState.windowStartedAt,
+        windowRequestCount: preservedPreflightState.windowRequestCount,
+        inFlightRequestId: '',
+        inFlightExpiresAt: '',
+        inputTokens: state.values.inputTokens,
+        outputTokens: state.values.outputTokens,
+        totalTokens: state.values.totalTokens,
+        modelCallCount: state.values.modelCallCount
+      });
       appendLedger_(ledgerSheet, LEDGER_HEADERS, {
         recordedAt: isoAt_(nowMs),
         guardRequestId: safeHandle.guardRequestId,
@@ -402,6 +433,55 @@ const AgentCostGuardService = (function() {
     return nextRow;
   }
 
+  function writeAndVerifyDailyRow_(sheet, headers, row, deps, expected) {
+    const rowNumber = writeDailyRow_(sheet, headers, row);
+    deps.flush();
+    const persisted = readDailyRowByNumber_(sheet, headers, rowNumber);
+    if (!persisted || !dailyRowMatches_(persisted.values, expected)) {
+      throw safeCostGuardError_('COST_STATE_WRITE_FAILED');
+    }
+    return rowNumber;
+  }
+
+  function readDailyRowByNumber_(sheet, headers, rowNumber) {
+    const row = Number(rowNumber);
+    if (!Number.isInteger(row) || row < 2) return null;
+    const rowValues = sheet.getRange(row, 1, 1, headers.length).getValues()[0];
+    if (!Array.isArray(rowValues)) return null;
+    const values = {};
+    headers.forEach(function(header, index) { values[header] = rowValues[index]; });
+    return { rowNumber: row, values: values };
+  }
+
+  function dailyRowMatches_(actual, expected) {
+    const source = actual && typeof actual === 'object' ? actual : {};
+    const checks = expected && typeof expected === 'object' ? expected : {};
+    return Object.keys(checks).every(function(field) {
+      const expectedValue = checks[field];
+      const actualValue = source[field];
+      if (field === 'homeId') return safeKey_(actualValue, 200) === expectedValue;
+      if (field === 'memberUserId') return safeKey_(actualValue, 100) === expectedValue;
+      if (field === 'localDate') {
+        try {
+          return canonicalLocalDate_(actualValue) === expectedValue;
+        } catch (error) {
+          return false;
+        }
+      }
+      if (field === 'inFlightRequestId') return String(actualValue || '') === String(expectedValue || '');
+      if (field === 'inFlightExpiresAt' || field === 'windowStartedAt') return numericMillis_(actualValue) === numericMillis_(expectedValue);
+      if (field === 'acceptedRequestCount' || field === 'windowRequestCount' || field === 'modelCallCount') {
+        return integerOrZero_(actualValue) === integerOrZero_(expectedValue);
+      }
+      if (field === 'inputTokens' || field === 'outputTokens' || field === 'totalTokens') {
+        const actualNumber = nonNegativeNumber_(actualValue);
+        const expectedNumber = nonNegativeNumber_(expectedValue);
+        return actualNumber === expectedNumber || (actualNumber === null && expectedNumber === null);
+      }
+      return false;
+    });
+  }
+
   function appendLedger_(sheet, headers, values) {
     const output = headers.map(function(header) { return values[header] === null || values[header] === undefined ? '' : values[header]; });
     const nextRow = Math.max(2, Number(sheet.getLastRow() || 0) + 1);
@@ -416,8 +496,14 @@ const AgentCostGuardService = (function() {
     const localDate = typeof source.localDate === 'function' ? source.localDate : function(nowMs) {
       return Utilities.formatDate(new Date(nowMs), 'Asia/Tokyo', 'yyyy-MM-dd');
     };
+    const flush = typeof source.flush === 'function'
+      ? source.flush
+      : function() {
+        if (typeof SpreadsheetApp === 'undefined' || typeof SpreadsheetApp.flush !== 'function') throw safeCostGuardError_();
+        SpreadsheetApp.flush();
+      };
     if (!spreadsheet || !lock || typeof lock.waitLock !== 'function' || typeof lock.releaseLock !== 'function') throw safeCostGuardError_();
-    return { spreadsheet: spreadsheet, lock: lock, now: now, localDate: localDate };
+    return { spreadsheet: spreadsheet, lock: lock, now: now, localDate: localDate, flush: flush };
   }
 
   function safeNowMs_(value) {

@@ -16,6 +16,7 @@ function createSheet(name) {
     headers: [],
     rows: [],
     frozenRows: 0,
+    afterSetValues: null,
     getLastColumn() { return this.headers.length; },
     getLastRow() { return this.headers.length ? this.rows.length + 1 : 0; },
     getRange(row, column, numRows, numColumns) {
@@ -41,6 +42,9 @@ function createSheet(name) {
             if (!sheet.rows[rowIndex]) sheet.rows[rowIndex] = Array(sheet.headers.length).fill('');
             input.forEach((value, index) => { sheet.rows[rowIndex][column - 1 + index] = value; });
           });
+          if (typeof sheet.afterSetValues === 'function') {
+            sheet.afterSetValues({ row, column, numRows, numColumns });
+          }
         }
       };
     },
@@ -51,6 +55,7 @@ function createSheet(name) {
 function createEnvironment() {
   const sheets = {};
   let nowMs = Date.UTC(2026, 7, 18, 3, 0, 0);
+  let flushCount = 0;
   const lock = {
     held: false,
     waits: 0,
@@ -64,13 +69,15 @@ function createEnvironment() {
   return {
     sheets,
     lock,
+    getFlushCount() { return flushCount; },
     setNow(value) { nowMs = value; },
     advance(ms) { nowMs += ms; },
     deps: {
       spreadsheet,
       lock,
       now: () => nowMs,
-      localDate: (value) => new Date(value + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      localDate: (value) => new Date(value + 9 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      flush: () => { flushCount += 1; }
     }
   };
 }
@@ -120,6 +127,16 @@ function dailySheet(env) {
 function setDailyValue(env, rowIndex, header, value) {
   const sheet = dailySheet(env);
   sheet.rows[rowIndex][sheet.headers.indexOf(header)] = value;
+}
+
+function corruptNextDailyWrite(env, field, value) {
+  const sheet = dailySheet(env);
+  sheet.afterSetValues = function(write) {
+    if (write.row < 2 || write.column !== 1) return;
+    const row = sheet.rows[write.row - 2];
+    row[sheet.headers.indexOf(field)] = value;
+    sheet.afterSetValues = null;
+  };
 }
 
 function expectCostGuardError(fn, expectedReason, message) {
@@ -323,6 +340,68 @@ test('COST-ROW-10 preserves unavailable usage as null after canonical row resolu
   settle(env, handle, { usage: { inputTokens: null, outputTokens: null, totalTokens: null, modelCallCount: 1, usageStatus: 'unavailable' } });
   const daily = rows(env, 'Agent_Cost_Daily')[0];
   assert(daily.inputTokens === '' && daily.outputTokens === '' && daily.totalTokens === '' && daily.modelCallCount === '', 'unavailable usage was converted into Daily zero values');
+});
+
+test('COST-PERSIST-01 preflight fails closed when Daily read-back does not retain its accepted state', () => {
+  const env = createEnvironment();
+  const first = service.preflight(request('persist-seed'), env.deps);
+  settle(env, first, { usage: null });
+  corruptNextDailyWrite(env, 'acceptedRequestCount', 1);
+  expectCostGuardError(() => service.preflight(request('persist-preflight-failure'), env.deps), 'COST_STATE_WRITE_FAILED', 'preflight persistence verification');
+  assert(rows(env, 'Agent_Cost_Ledger').length === 1, 'failed preflight appended a completed Ledger row');
+  assert(env.getFlushCount() >= 3, 'preflight did not flush Daily state before returning');
+});
+
+test('COST-PERSIST-02 settle does not append completed Ledger when Daily read-back fails', () => {
+  const env = createEnvironment();
+  const handle = service.preflight(request('persist-settle-failure'), env.deps);
+  corruptNextDailyWrite(env, 'inFlightRequestId', handle.guardRequestId);
+  expectCostGuardError(() => settle(env, handle), 'COST_STATE_WRITE_FAILED', 'settle persistence verification');
+  assert(rows(env, 'Agent_Cost_Ledger').length === 0, 'failed settle appended a completed Ledger row');
+  assert(env.getFlushCount() >= 2, 'settle did not flush Daily state before Ledger append');
+});
+
+test('COST-PERSIST-03 settle preserves preflight-owned count and burst fields', () => {
+  const env = createEnvironment();
+  const handle = service.preflight(request('ownership'), env.deps);
+  const before = rows(env, 'Agent_Cost_Daily')[0];
+  settle(env, handle, { usage: completeUsage(2) });
+  const after = rows(env, 'Agent_Cost_Daily')[0];
+  ['acceptedRequestCount', 'windowStartedAt', 'windowRequestCount'].forEach((field) => {
+    assert(after[field] === before[field], 'settle rewrote preflight-owned field: ' + field);
+  });
+  assert(after.inFlightRequestId === '' && after.inFlightExpiresAt === '', 'settle did not release its lease');
+  assert(after.modelCallCount === 2, 'settle did not write owned usage field');
+});
+
+test('COST-PERSIST-04 Daily aggregate equals seven sequential completed Ledger entries', () => {
+  const env = createEnvironment();
+  let expectedInput = 0;
+  let expectedOutput = 0;
+  let expectedTotal = 0;
+  let expectedModelCalls = 0;
+  for (let index = 1; index <= 7; index += 1) {
+    const handle = service.preflight(request('aggregate-' + index), env.deps);
+    const usage = {
+      inputTokens: index * 10,
+      outputTokens: index,
+      totalTokens: index * 11,
+      modelCallCount: index,
+      usageStatus: 'available'
+    };
+    settle(env, handle, { usage });
+    expectedInput += usage.inputTokens;
+    expectedOutput += usage.outputTokens;
+    expectedTotal += usage.totalTokens;
+    expectedModelCalls += usage.modelCallCount;
+    env.advance(10001);
+  }
+  const daily = rows(env, 'Agent_Cost_Daily')[0];
+  const ledger = rows(env, 'Agent_Cost_Ledger');
+  assert(daily.acceptedRequestCount === 7, 'Daily accepted count diverged from completed request count');
+  assert(daily.inputTokens === expectedInput && daily.outputTokens === expectedOutput && daily.totalTokens === expectedTotal, 'Daily token totals diverged from completed Ledger totals');
+  assert(daily.modelCallCount === expectedModelCalls, 'Daily model call total diverged from completed Ledger total');
+  assert(ledger.length === 7 && ledger.every((entry) => entry.eventType === 'completed'), 'Ledger did not retain seven completed entries');
 });
 
 test('new state and ledger sheets use the specified header order', () => {
