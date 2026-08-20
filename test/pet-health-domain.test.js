@@ -232,6 +232,39 @@ function summary(context,localDate,homeId='home-main'){
 }
 
 {
+  const {context,spreadsheet}=createHarness(),body=baseRecord({eventType:'meal',mealSlot:'breakfast',amountG:20,completion:'finished'},requestId(49)),events=spreadsheet.sheets.Pet_Health_Events,logs=spreadsheet.sheets.Pet_Health_Request_Log;
+  record(context,body);
+  const table=context.healthMap_(events),localDateIndex=table.map.localDate,stringRow=events.values[1].slice(),dateRow=events.values[1].slice();
+  dateRow[localDateIndex]=new Date('2026-08-18T15:00:00.000Z');
+  assert.deepStrictEqual(plain(context.petHealthStoredEvent_(table,dateRow)),plain(context.petHealthStoredEvent_(table,stringRow)),'PH-I14 Date and string stored Events canonicalize identically');
+  events.values[1][localDateIndex]=dateRow[localDateIndex];
+  const replayed=record(context,body,'2026-08-19T14:00:00+09:00');
+  assert.strictEqual(replayed.data.idempotency.replayed,true,'PH-I14 legacy Date localDate replays');
+  assert.strictEqual(replayed.data.event.localDate,'2026-08-19','PH-I14 response localDate is canonical string');
+  assert.strictEqual(events.getLastRow(),2,'PH-I14 Event remains single');
+  assert.strictEqual(logs.getLastRow(),2,'PH-I14 Request Log remains single');
+}
+
+{
+  const {context,spreadsheet}=createHarness(),body=baseRecord({eventType:'meal',mealSlot:'breakfast',amountG:20,completion:'finished'},requestId(50)),events=spreadsheet.sheets.Pet_Health_Events,logs=spreadsheet.sheets.Pet_Health_Request_Log;
+  record(context,body);
+  const replayed=record(context,body,'2026-08-19T14:00:00+09:00');
+  assert.strictEqual(replayed.data.idempotency.replayed,true,'PH-I15 canonical string localDate replays');
+  assert.strictEqual(replayed.data.event.localDate,'2026-08-19','PH-I15 response localDate remains canonical string');
+  assert.strictEqual(events.getLastRow(),2,'PH-I15 Event remains single');
+  assert.strictEqual(logs.getLastRow(),2,'PH-I15 Request Log remains single');
+}
+
+{
+  const {context,spreadsheet}=createHarness(),body=baseRecord({eventType:'meal',mealSlot:'breakfast',amountG:20,completion:'finished'},requestId(51)),events=spreadsheet.sheets.Pet_Health_Events,logs=spreadsheet.sheets.Pet_Health_Request_Log;
+  record(context,body);
+  events.values[1][events.values[0].indexOf('localDate')]='2026/08/19';
+  assert.throws(()=>record(context,body,'2026-08-19T14:00:00+09:00'),(error)=>error.code==='DATA_INTEGRITY_ERROR','PH-I16 invalid stored localDate fails closed');
+  assert.strictEqual(events.getLastRow(),2,'PH-I16 Event remains single');
+  assert.strictEqual(logs.getLastRow(),2,'PH-I16 Request Log remains single');
+}
+
+{
   const {context}=createHarness();
   let next=100;
   const add=(event,homeId='home-main')=>record(context,baseRecord(event,requestId(next++),homeId),'2026-08-22T12:00:00+09:00');
@@ -299,4 +332,4 @@ function summary(context,localDate,homeId='home-main'){
   assert.throws(()=>context.healthSheet_('Pet_Health_Events'),(error)=>error.code==='CONFIGURATION_ERROR','Pet schema header reorder must fail closed');
 }
 
-console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..13, PH-S01..10, schema, token, and dispatch');
+console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, schema, token, and dispatch');

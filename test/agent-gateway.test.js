@@ -783,7 +783,7 @@ test('Mini persists one request deployment chain using suffixes and null version
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
   assert(agentRow[headers.indexOf('osDeploymentSuffix')] === 'os34', 'OS deployment suffix was dropped');
-  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260819-pet-health-gateway-v1', 'Mini build ID was not stamped');
+  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260820-popio-health-view-v1', 'Mini build ID was not stamped');
   assert(agentRow[headers.indexOf('agentBuildId')] === 'agent-20260809-prepared-contract-v1', 'Agent build ID was dropped');
   assert(agentRow[headers.indexOf('osBuildId')] === 'os-20260809-build-chain-v1', 'OS build ID was dropped');
   assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');

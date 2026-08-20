@@ -10,9 +10,9 @@ const ROLE_CAPABILITIES = Object.freeze({
   self_record: Object.freeze(['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'pet.health.read', 'pet.health.record']),
 });
 const ROLE_ALLOWED_VIEWS = Object.freeze({
-  admin: Object.freeze(['home', 'inbox', 'nurse-okan', 'settings']),
-  guardian: Object.freeze(['home', 'inbox', 'nurse-okan']),
-  self_record: Object.freeze(['home', 'inbox', 'nurse-okan']),
+  admin: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'settings']),
+  guardian: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health']),
+  self_record: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health']),
 });
 const HEALTH_OPERATION_CAPABILITIES = Object.freeze({
   'health.context.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),

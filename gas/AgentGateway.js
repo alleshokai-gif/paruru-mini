@@ -775,7 +775,7 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
-const PALURU_MINI_BUILD_ID = 'mini-20260819-pet-health-gateway-v1';
+const PALURU_MINI_BUILD_ID = 'mini-20260820-popio-health-view-v1';
 
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};

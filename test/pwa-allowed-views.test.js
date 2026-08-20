@@ -21,12 +21,12 @@ function nav(name) { return { dataset: { targetView: name }, hidden: false, disa
 
 const functions = between('async function switchView(viewName)', 'async function loadInbox(options = {})')
   + between('function isViewAllowed_(viewName)', 'function getHomeAgentPairingToken()');
-const views = [view('home'), view('inbox'), view('nurse-okan'), view('settings')];
+const views = [view('home'), view('inbox'), view('nurse-okan'), view('popio-health'), view('settings')];
 const bottom = [nav('home'), nav('inbox'), nav('settings')];
-const drawer = [nav('home'), nav('inbox'), nav('nurse-okan'), nav('settings')];
+const drawer = [nav('home'), nav('inbox'), nav('nurse-okan'), nav('popio-health'), nav('settings')];
 const context = {
   appAuthenticationState: 'active_member',
-  activeMembershipContext: { allowedViews: ['home', 'inbox', 'nurse-okan'] },
+  activeMembershipContext: { allowedViews: ['home', 'inbox', 'nurse-okan', 'popio-health'] },
   activeView: 'settings', views, navItems: bottom, viewNavigationItems: bottom.concat(drawer),
   showMessage() {}, setParuruState() {}, loadNotificationCandidates: async () => {}, loadInbox: async () => {},
   renderProfileForm() {}, renderHomeControlSettings: async () => {}, document: { dispatchEvent() {} }, Array, String,
@@ -37,13 +37,14 @@ context.applyAllowedViews_();
 assert(views.find((item) => item.dataset.view === 'settings').hidden, 'guardian settings view remained visible');
 assert(bottom.find((item) => item.dataset.targetView === 'settings').hidden, 'guardian bottom settings remained visible');
 assert(drawer.find((item) => item.dataset.targetView === 'settings').disabled, 'guardian drawer settings remained enabled');
+assert(!drawer.find((item) => item.dataset.targetView === 'popio-health').disabled, 'guardian Pet Health view was disabled');
 
 (async () => {
   await context.switchView('settings');
   assert.strictEqual(context.activeView, 'home', 'guardian direct settings route was not normalized');
   await context.switchView('unknown');
   assert.strictEqual(context.activeView, 'home', 'unknown route was not normalized');
-  context.activeMembershipContext = { allowedViews: ['home', 'inbox', 'nurse-okan', 'settings'] };
+  context.activeMembershipContext = { allowedViews: ['home', 'inbox', 'nurse-okan', 'popio-health', 'settings'] };
   context.applyAllowedViews_();
   await context.switchView('settings');
   assert.strictEqual(context.activeView, 'settings', 'admin settings route was rejected');

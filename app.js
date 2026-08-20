@@ -499,6 +499,10 @@ const NURSE_OKAN_HEALTH_ACTIONS = new Set([
   "health.weight.list",
   "health.weight.record",
 ]);
+const PET_HEALTH_ACTIONS = new Set([
+  "pet.health.record",
+  "pet.health.getDailySummary",
+]);
 
 async function callAuthenticatedHealth_(action, body = {}) {
   if (appAuthenticationState !== "active_member" || !normalPwaInitialized) {
@@ -520,6 +524,46 @@ async function callAuthenticatedHealth_(action, body = {}) {
     });
   } catch (error) {
     if (error && typeof error === "object" && !error.code) error.code = "HOME_CONTROL_UNAVAILABLE";
+    throw error;
+  }
+}
+
+function buildAuthenticatedPetHealthPayload_(action, body = {}) {
+  const input = body && typeof body === "object" ? body : {};
+  if (action === "pet.health.record") {
+    return {
+      action,
+      petId: input.petId,
+      clientRequestId: input.clientRequestId,
+      event: input.event,
+    };
+  }
+  return {
+    action,
+    petId: input.petId,
+    localDate: input.localDate,
+  };
+}
+
+async function callAuthenticatedPetHealth_(action, body = {}) {
+  if (appAuthenticationState !== "active_member" || !normalPwaInitialized) {
+    throw createHomeControlError("AUTHENTICATION_REQUIRED");
+  }
+  if (!PET_HEALTH_ACTIONS.has(action)) {
+    throw createHomeControlError("PET_HEALTH_ACTION_NOT_ALLOWED");
+  }
+  const token = getHomeAgentPairingToken();
+  if (!token || !userProfile?.deviceId) {
+    throw createHomeControlError("AUTHENTICATION_REQUIRED");
+  }
+  try {
+    return await callHomeControlApi({
+      ...buildAuthenticatedPetHealthPayload_(action, body),
+      deviceId: userProfile.deviceId,
+      pairingToken: token,
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && !error.code) error.code = "PET_HEALTH_UNAVAILABLE";
     throw error;
   }
 }
@@ -706,6 +750,7 @@ const activateMembershipContext_ = function(membershipContext) {
         allowedViews: membershipContext.allowedViews,
       },
       healthApi: callAuthenticatedHealth_,
+      petHealthApi: callAuthenticatedPetHealth_,
     },
   }));
 };
@@ -1249,6 +1294,10 @@ async function switchView(viewName) {
 
   if (resolvedView === "nurse-okan") {
     document.dispatchEvent(new CustomEvent("nurse-okan:opened", { detail: options || {} }));
+  }
+
+  if (resolvedView === "popio-health") {
+    document.dispatchEvent(new CustomEvent("popio-health:opened", { detail: options || {} }));
   }
 
   setParuruState("normal");

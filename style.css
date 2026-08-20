@@ -1466,3 +1466,280 @@ body:not(.is-authenticated) .drawer-overlay {
   min-height: 48px;
   margin-top: 8px;
 }
+
+.popio-health {
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 4px 0 18px;
+}
+
+.popio-health [hidden] {
+  display: none !important;
+}
+
+.popio-health-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.popio-health-header h1,
+.popio-health-header p {
+  margin: 0;
+}
+
+.popio-health-header h1 {
+  font-size: 1.55rem;
+}
+
+.popio-health-eyebrow,
+.popio-health-date {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.popio-health-status {
+  min-height: 1.4em;
+  margin: 0 0 8px;
+  color: #a24740;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.popio-summary-card {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid #dce5dc;
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.popio-summary-card div {
+  min-width: 0;
+  padding: 13px 6px;
+  text-align: center;
+}
+
+.popio-summary-card div + div {
+  border-left: 1px solid #e9eee9;
+}
+
+.popio-summary-card span,
+.popio-summary-card strong {
+  display: block;
+  white-space: nowrap;
+}
+
+.popio-summary-card span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.popio-summary-card strong {
+  margin-top: 5px;
+  color: #374b3a;
+  font-size: 1.2rem;
+}
+
+.popio-record-list {
+  display: grid;
+  gap: 12px;
+}
+
+.popio-card {
+  overflow: hidden;
+  border: 1px solid #dce5dc;
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.popio-card > summary {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  padding: 10px 16px;
+  color: #374b3a;
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 850;
+  list-style-position: inside;
+}
+
+.popio-card[open] > summary {
+  border-bottom: 1px solid #e9eee9;
+  background: #f7fbf6;
+}
+
+.popio-record-form {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.popio-record-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.popio-record-form legend,
+.popio-field > span:first-child {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.popio-field {
+  display: grid;
+}
+
+.popio-health input:not([type="radio"]):not([type="checkbox"]),
+.popio-health select,
+.popio-health textarea,
+.popio-health button {
+  min-height: 48px;
+  padding: 11px 13px;
+  font-size: 16px;
+}
+
+.popio-health textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.popio-unit-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.popio-unit-input em {
+  min-width: 28px;
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.popio-choice-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.popio-choice-grid-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.popio-choice-grid-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.popio-choice-grid-five {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.popio-choice {
+  position: relative;
+  min-width: 0;
+}
+
+.popio-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.popio-choice span {
+  display: grid;
+  min-height: 48px;
+  padding: 6px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.popio-choice input:focus-visible + span {
+  outline: 3px solid rgba(92, 107, 192, 0.18);
+}
+
+.popio-choice input:checked + span {
+  border-color: #6e9a73;
+  background: #eef8ee;
+  color: #315c36;
+}
+
+.popio-check,
+.popio-flag-list .popio-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.popio-check input {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+
+.popio-flag-list {
+  display: grid;
+  gap: 2px;
+}
+
+.popio-submit {
+  border-radius: 12px;
+  background: linear-gradient(135deg, #5f8f65, #4f7d56);
+}
+
+.popio-record-form[aria-busy="true"] {
+  opacity: 0.72;
+}
+
+.popio-form-status {
+  min-height: 1.4em;
+  margin: -5px 0 0;
+  color: #536a56;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+@media (max-width: 390px) {
+  .popio-health-header {
+    align-items: flex-start;
+  }
+
+  .popio-summary-card div {
+    padding: 11px 4px;
+  }
+
+  .popio-summary-card span {
+    font-size: 0.66rem;
+  }
+
+  .popio-summary-card strong {
+    font-size: 1.02rem;
+  }
+
+  .popio-choice-grid-four,
+  .popio-choice-grid-five {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

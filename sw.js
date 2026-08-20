@@ -10,6 +10,7 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("style.css"),
   versioned("app.js"),
   versioned("features/nurse-okan/nurse-okan.js"),
+  versioned("features/popio-health/popio-health.js"),
   "manifest.json",
 ];
 
