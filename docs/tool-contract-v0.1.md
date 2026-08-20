@@ -1,13 +1,13 @@
-# Phase 1 Tool Catalog / Contract v0.1
+# Agent Tool Catalog / Contract v0.1
 
-- 状態: 提案（未実装）
-- 対象: ADR-001 の Phase 1
+- 状態: 決定（Phase 2は未実装）
+- 対象: ADR-001 の Phase 1、および Phase 2 Pet Health extension
 - 正本: [ADR-001: Agent Tool Calling への段階移行](ADR-001-agent-tool-calling.md)、[Architecture](architecture.md)、`AGENTS.md`
 - タイムゾーン: `Asia/Tokyo`
 
 ## 1. 目的と適用範囲
 
-本書は、Agent Tool Calling 方式で導入する Phase 1 の Tool 名、境界、入出力、およびエラー意味論を定義する。対象 Tool は次の5件だけである。
+本書は、Agent Tool Calling 方式で導入するTool名、runtime境界、入出力、およびエラー意味論を定義する。Phase 1の対象Toolは次の5件だけであり、既存contractを維持する。
 
 | Tool | 区分 | side effect | legacy domain ownership |
 | --- | --- | --- | --- |
@@ -17,13 +17,20 @@
 | `home.aircon.getState` | read | なし | HomeAgent の aircon state / `shimao` |
 | `home.aircon.prepareAction` | prepare | 実機操作・対象データ保存はなし | HomeAgent の aircon proposal / `shimao` |
 
-`home.aircon.prepareAction` は confirmation 用の候補を作るだけであり、エアコンの実操作を行わない。confirmation record を永続化するか、既存のどの保存先を使うかは未決定である。
+`home.aircon.prepareAction` は confirmation 用の候補を作るだけであり、エアコンの実操作を行わない。現行Home実装はserver-side pending/result state、5分TTL、actor / home / device bindingを持つ。Phase 2はその安全性を維持し、response envelopeとcommand authorizationだけを加算的に一般化する。
 
 4件の Read Tool は Agent から直接利用できる。prepare Tool も Agent が呼べるが、execute Tool は Phase 1 の `agent.chat` request から呼ばない。
 
 Write の全体経路は `prepare → confirmation → execute` とする。本書で定義するのは prepare までであり、execute の実装契約は別途定義する。
 
-本書は契約文書であり、コード変更、Tool 実装、deploy、実データ変更、Script Properties の変更を承認しない。Phase 1 外の Health、Finance、Energy、School / Lunch は対象外とする。
+Phase 2は次の2 Toolを追加対象とする。`pet.health.record`を上記Phase 1 Read Tool Poolへ混在させない。
+
+| Tool | Responses API transport alias | 区分 | side effect |
+| --- | --- | --- | --- |
+| `pet.health.getDailySummary` | `pet_health_getDailySummary` | read | なし |
+| `pet.health.record` | `pet_health_record` | write prepare | server-side confirmation state作成のみ。Pet Health business dataは保存しない |
+
+本書は契約文書であり、コード変更、Tool 実装、deploy、実データ変更、Script Properties の変更を承認しない。Human Health、Finance、Energy、School / LunchはPhase 2の対象外とする。Pet Healthはlegacy Intentへ追加しない。
 
 ## 2. 共通境界
 
@@ -94,7 +101,7 @@ Tool の正本出力は自然文ではなく構造化データとする。UI向�
 | Field | 必須 | 契約 |
 | --- | --- | --- |
 | `success` | 必須 | Tool の業務処理が成立したかを示す boolean。HTTP の成否とは別に判定する。 |
-| `status` | 必須 | `SUCCESS` / `OK` / `PARTIAL` / `NO_OP` / `FOLLOWUP_REQUIRED` / `STALE` / `ERROR` のいずれか。`SUCCESS` はRead Toolの完全な構造化取得、`OK` はprepare完了等のTool固有成功に用いる。 |
+| `status` | 必須 | `SUCCESS` / `OK` / `CONFIRMATION_READY` / `PARTIAL` / `NO_OP` / `FOLLOWUP_REQUIRED` / `STALE` / `ERROR` のいずれか。`SUCCESS` はRead Toolの完全な構造化取得、`CONFIRMATION_READY` はWrite prepareが確認待ち候補を作成した場合に用いる。既存Phase 1 Toolの`OK`は後方互換のため維持する。 |
 | `data` | 必須 | 成功または部分成功時は Tool 固有の object。業務エラー時は `null` とし、必ず `error` を伴わせる。 |
 | `warnings` | 必須 | 安全な固定コードの配列。原文、トークン、秘密情報、上流の生レスポンスを含めない。 |
 | `error` | 必須 | 成功時は `null`。失敗時は安全な `{ code, retryable }` object。上流の生メッセージは含めない。 |
@@ -117,6 +124,9 @@ HTTP 成功は「Tool contract を返せた」ことだけを示し、業務成�
 | `PARTIAL` | 複数結果の一部だけを構造化して返せた | 取得できた部分だけを object で返す |
 | `NO_OP` | prepare 結果として実行不要と決定された | 実行しない理由と比較対象を object で返す |
 | `FOLLOWUP_REQUIRED` | prepare に必要なユーザー希望が不足・曖昧である | 必要な入力項目を object で返す |
+| `IDEMPOTENCY_CONFLICT` | 同じ`clientRequestId`が異なるcanonical requestへ再利用された | `null`。既存結果やpayloadを漏らさない |
+| `CONFIRMATION_EXPIRED` | server-side confirmation stateの5分TTLを超えた | `null`。executeしない |
+| `CONFIRMATION_ACTOR_MISMATCH` | confirm actorのhome / member / deviceがprepared stateと一致しない | `null`。executeしない |
 | known upstream error | 既知で安全な上流エラー | 既知コードを保持する。`AGENT_ERROR` 等の汎用コードへ潰さない |
 | `UPSTREAM_ERROR` | 安全に分類できない上流障害 | `null`。生の上流エラー本文は返さない |
 
@@ -124,7 +134,100 @@ HTTP 成功は「Tool contract を返せた」ことだけを示し、業務成�
 
 Tool 失敗はこの contract で Agent へ返し、legacy Intent Router へ自動 fallback しない。
 
-## 3. Phase 1 Tool contracts
+### 2.6 Runtime ownership
+
+server-side Tool registryは各Toolの実行区分を固定し、Agentが返したTool callを次のallowlistへ排他的にdispatchする。
+
+| runtime | 許可する区分 | 実行上限 |
+| --- | --- | --- |
+| Migrated Read Tool Calling | `read` | 既存Phase 1はmodel最大2、Tool最大3。Read Tool固有上限を優先する |
+| Migrated Write Prepare Tool Calling | `write_prepare` | model最大1、Tool最大1、prepare最大1、execute 0 |
+
+Phase 1の共通Read Tool Poolは2.2の4件のまま変更しない。Phase 2 migration ownershipが有効なrequestでは、Pet Health read catalogに `pet.health.getDailySummary`、Pet Health write prepare catalogに `pet.health.record`を公開できる。前者だけをRead runtime、後者だけをWrite prepare runtimeへdispatchする。`pet.health.record`を2.2のPoolへ追加しない。
+
+Agent selectionに利用可能なcatalogを提示する場合も、Read allowlistとWrite prepare allowlistはserver-side registryで分離する。選択結果が次のいずれかなら、Write prepareを1件も実行せずzero Tool / safe follow-upとする。
+
+- 必須情報が不足している
+- targetが曖昧である
+- unsupported writeである
+- 複数の独立writeを含む
+- ReadとWriteを同一selection responseで混在させる
+- Write Tool callを2件以上含む
+
+PWA regex、hard-coded keyword、新しいCanonical Intent、legacy RouterでWrite runtimeを選ばない。migration ownership metadataは利用可能なcatalogを有効化するmarkerに限り、特定Tool選択、authorization、capability、引数解釈を拘束しない。exact Tool selectionはAIが行えるが、区分判定とdispatchはserver-side registryが行う。
+
+Write prepareの `CONFIRMATION_READY` は、deterministic validationとserver-side confirmation state作成が成立したことだけを示す。同一`agent.chat` request内でpresentation model call、execute、Domain business writeへ進まない。confirmation summaryはDomain / OSの固定テンプレートをそのまま返す。
+
+### 2.7 Command-aware confirmation envelope
+
+新しい共通shapeは次のとおりとする。
+
+```json
+{
+  "required": true,
+  "confirmationId": "uuid",
+  "command": "pet.health.record",
+  "subject": {
+    "kind": "pet",
+    "id": "popio",
+    "label": "ぽぴお"
+  },
+  "summary": "朝ごはん20g・完食で記録する",
+  "expiresAt": "2026-08-19T10:05:00+09:00"
+}
+```
+
+| Field | 契約 |
+| --- | --- |
+| `required` | 常に`true` |
+| `confirmationId` | server-generated UUID。client/modelは生成しない |
+| `command` | server-side command registryのcanonical値 |
+| `subject` | 表示対象。`kind` / canonical `id` / `label`。認可根拠ではない |
+| `summary` | Domain / OSの決定的テンプレート。200文字以内 |
+| `expiresAt` | prepareから5分後の`Asia/Tokyo` ISO 8601日時 |
+
+既存Home commandでは `roomLabel` を削除せず、`subject: { kind: "room", id: roomId, label: roomLabel }` を加算的に返せる。移行中は既存consumer向け`roomLabel`を維持し、両方を返す場合はlabel一致を必須とする。既存pending stateに`subject`がない場合はserver-side canonical `roomId`から生成する。Pet Healthは`subject.kind = pet`を必須とし、`roomLabel`を返さない。
+
+confirm requestは `confirmationId` とprepareから維持した `clientRequestId` だけをbusiness識別子として送る。`command`、subject、room、petId、eventType、amount、temperature等を再送させて正本にしない。server-side stateから復元する。
+
+confirmation stateは少なくとも次をbindする。
+
+- `homeId`
+- `memberUserId`
+- `deviceId`
+- `command`
+- normalized prepared payload
+- `createdAt`
+- `expiresAt`
+- original `clientRequestId`とorchestration idempotency情報
+
+confirm時はactorを再resolveし、same home / same member / same deviceを確認した後、保存済み`command`からrequired capabilityをserver-side fixed registryで解決して再検証する。
+
+| command | required capability |
+| --- | --- |
+| `automation.pause` | `home.control` |
+| `automation.resume` | `home.control` |
+| `aircon.power` | `home.control` |
+| `aircon.applySettings` | `home.control` |
+| `pet.health.record` | `pet.health.record` |
+
+AIとclientはcapabilityを指定しない。既存Homeのroom validation、`home.control`、5分TTL、actor / home / device再検証を弱めない。期限切れは `CONFIRMATION_EXPIRED` とし、executeしない。
+
+同じconfirmationを再confirmした場合、orchestration層は同じ結果を返す。Pet Health Domain Serviceは別途、同じ`clientRequestId`と同じcanonical requestには同じ成功結果を返し、異なるcanonical requestには `IDEMPOTENCY_CONFLICT` を返す。orchestration idempotencyとDomain write idempotencyは別層である。
+
+### 2.8 `clientRequestId` lifecycle
+
+- Manual UIは保存開始時にUUIDを生成する。同じnetwork/save retry中は保持し、成功後に破棄する。ユーザーが内容を編集して新しい保存を始める場合は新規UUIDとする。内容からUUIDを決定しない。
+- Agent writeはserver / trusted boundaryでWrite request IDを確保する。Tool引数に含めず、modelに生成させず、prepare、confirmation、executeを通して同じIDを維持する。
+- confirmation requestのbusiness payloadはserver-side stateから復元し、clientRequestIdだけを使ってpayloadを再構築しない。
+
+### 2.9 Phase 2 observability
+
+Phase 2は既存Traceの `event`、`stage`、`errorCode`、call count、elapsed、`toolNames`、`executionPath`、`resultStatus`を使う。候補stageは `TOOL_SELECTION`、`WRITE_PREPARE`、`CONFIRMATION_READY`、`CONFIRMATION_RECEIVED`、`ACTOR_REVALIDATED`、`COMMAND_AUTHORIZED`、`WRITE_EXECUTE`、`WRITE_COMPLETED` とする。
+
+これらは既存汎用列の値として表現し、Phase 2だけを理由にTrace headerを追加・挿入・並べ替えない。健康内容、note、raw payload、prepared payload、raw response、token、secretをTraceへ保存しない。実装時にstage/event allowlistを変更する必要がある場合も、既存DTO preservationとappend-only header migration contractを別途満たす。
+
+## 3. Tool contracts
 
 ### 3.1 `weather.getForecast`
 
@@ -321,7 +424,7 @@ Aircon_State等の推定値・最終報告値を、実機のリアルタイム�
 | name | `home.aircon.prepareAction` |
 | purpose | ユーザー希望を受け、確認前の正規化済み Aircon action と preview を生成する |
 | 区分 | prepare |
-| side effect | 実機操作・対象データ保存はなし。confirmation record の永続化方式は TBD。 |
+| side effect | 実機操作・対象データ保存はなし。既存server-side confirmation stateだけを作成する。 |
 | legacy domain ownership | HomeAgent aircon proposal (`buildAirconAdjustmentProposal` 等、`shimao`) |
 
 #### Input contract
@@ -352,7 +455,106 @@ Aircon_State等の推定値・最終報告値を、実機のリアルタイム�
 | `expiresAt` | 必須。`Asia/Tokyo` の ISO 8601 日時 | `null` | `null` |
 | `requiredInputs` | `[]` | `[]` | 必須 |
 
-`confirmationMessageData` は UI / Agent が確認文を組み立てるための構造化値であり、確認の自然文そのものを正本にしない。`OK` は confirmation を待つ準備済み状態を表すだけであり、execute の成功を意味しない。execute は確認済み candidate を受け、Mini / OS が actor / auth / context を再検証した別要求でのみ実行する。
+`confirmationMessageData` は既存Phase 1 Home contractとして維持する。command-aware compatibility layerはこの構造化値と保存済みcanonical roomIdから `roomLabel` / `subject` / deterministic `summary` を生成できるが、model生成の自然文を正本にしない。`OK` は confirmation を待つ準備済み状態を表すだけであり、execute の成功を意味しない。execute は確認済み candidate を受け、Mini / OS が actor / auth / context を再検証した別要求でのみ実行する。
+
+### 3.6 `pet.health.record`（Phase 2）
+
+#### Tool metadata
+
+| Field | 値 |
+| --- | --- |
+| canonical name | `pet.health.record` |
+| Responses API transport alias | `pet_health_record` |
+| 区分 | `write_prepare` |
+| confirmation | 必須 |
+| direct execute | 禁止 |
+| required capability | `pet.health.record`。Tool / OSがTrustedContextから検証 |
+| side effect | server-side confirmation state作成のみ。`Pet_Health_Events`へappendしない |
+| legacy ownership | なし。legacy Intentへ追加しない |
+
+Agentは自然言語から、明示されたeventTypeとevent-specific値だけを構造化する。actor、home、source、recordedBy、capability、authorization、server timestamp、idempotency policyを決めない。不足値を推測せず、deterministic validation前に安全に確定できない場合はzero Tool / follow-upとする。
+
+#### Input contract
+
+| Field | Required | 型・enum | 契約 |
+| --- | --- | --- | --- |
+| `petId` | 必須 | Phase 2 MVPは`popio` | `targetUserId`を流用しない |
+| `eventType` | 必須 | `meal` / `water` / `stool` / `urine` / `weight` / `observation` | 1 Tool callにつき1event |
+| `occurredAt` | 任意 | ISO 8601 `+09:00` | 省略時はprepare時のserver timestampを候補へ固定。modelは時刻を補完しない |
+| `mealSlot` | mealで必須 | `breakfast` / `lunch` / `dinner` / `snack` | meal以外では指定禁止 |
+| `amountG` | mealで任意 | finite number | rangeとcompletion整合はDomain validatorが決定 |
+| `completion` | mealで必須 | `finished` / `partial` / `refused` | meal以外では指定禁止 |
+| `amountMl` | waterで必須 | integer | rangeはDomain validatorが決定 |
+| `stoolForm` | stoolで任意 | `pellet` / `formed` / `banana` / `soft` / `watery` | stool以外では指定禁止 |
+| `stoolAmount` | stoolで任意 | `small` / `normal` / `large` | stool以外では指定禁止 |
+| `coprophagy` | stoolで任意 | boolean | 文字列booleanへ黙って変換しない |
+| `urineStatus` | urineで任意 | `normal` / `concern` | urine以外では指定禁止。Tool envelopeの`status`とは別field |
+| `weightKg` | weightで必須 | finite number | rangeはDomain validatorが決定 |
+| `energy` | observationで任意 | `good` / `normal` / `low` | observation以外では指定禁止 |
+| `appetite` | observationで任意 | `good` / `normal` / `low` | observation以外では指定禁止 |
+| `flags` | observationで任意 | `vomiting` / `sneeze_cough` / `pain_behavior` の重複なし配列 | observation以外では指定禁止 |
+| `note` | 任意 | string | 長さと正規化はDomain validatorが決定 |
+
+共通禁止引数に加え、`source`、`recordedBy`、`recordedAt`、`localDate`、`eventId`、`requestHash`をTool引数へ含めない。定義外field、eventTypeに不適用なfield、`null`は `INVALID_INPUT` とする。
+
+「朝ごはん20g完食して、そのあと便はバナナ状」のように複数eventを含む場合は2件をprepareしない。どちらを先に記録するかfollow-upし、1 user requestから作るcandidateを最大1件にする。
+
+#### Output contract
+
+prepare成功は `success: true`、`status: CONFIRMATION_READY` とし、`data`に次を返す。
+
+```json
+{
+  "normalizedEvent": {
+    "petId": "popio",
+    "eventType": "meal",
+    "mealSlot": "breakfast",
+    "amountG": 20,
+    "completion": "finished",
+    "occurredAt": "2026-08-19T07:00:00+09:00"
+  },
+  "actionConfirmation": {
+    "required": true,
+    "confirmationId": "uuid",
+    "command": "pet.health.record",
+    "subject": {
+      "kind": "pet",
+      "id": "popio",
+      "label": "ぽぴお"
+    },
+    "summary": "朝ごはん20g・完食で記録する",
+    "expiresAt": "2026-08-19T07:05:00+09:00"
+  }
+}
+```
+
+`summary`はDomain / OSの固定テンプレートで生成する。Agentの自然文、raw user text、model説明をconfirmationの正本にしない。confirm後の別requestだけが保存済みcandidateを復元し、actorと`pet.health.record`を再検証してDomain Serviceへexecuteする。
+
+### 3.7 `pet.health.getDailySummary`（Phase 2）
+
+#### Tool metadata
+
+| Field | 値 |
+| --- | --- |
+| canonical name | `pet.health.getDailySummary` |
+| Responses API transport alias | `pet_health_getDailySummary` |
+| 区分 | read |
+| side effect | なし |
+| required capability | `pet.health.read`。Tool / OSがTrustedContextから検証 |
+| legacy ownership | なし。legacy Intentへ追加しない |
+
+#### Input contract
+
+| Field | Required | 型・enum | 契約 |
+| --- | --- | --- | --- |
+| `petId` | 必須 | Phase 2 MVPは`popio` | Agentはactorやhomeから別petを補完しない |
+| `localDate` | 任意 | `YYYY-MM-DD` | 省略時はTool / Domainがserver時刻を`Asia/Tokyo`で解決。`null`は禁止 |
+
+#### Output contract
+
+`data`は少なくとも `petId`、`localDate`、`timezone`、`meal`、`water`、`stool`、`urine`、`latestWeight`、`notableObservations`を構造化して返す。meal / waterはevent数と入力済み量の合計・completeness、stoolは件数と明示された観察、latestWeightは対象日終了時点以前の最新weightを返す。医学的な正常・異常判定、診断、原文にない補完は行わない。
+
+eventが0件である正常結果と、取得不能を同じ空配列・0へ潰さない。capability不足は `FORBIDDEN`、不正日付や未定義fieldは `INVALID_INPUT`、依存先が利用不能なら `UNAVAILABLE` または既知の安全なupstream codeを返す。
 
 ## 4. Multi-tool contract example
 
@@ -381,6 +583,18 @@ weather.getForecast({ period: "tomorrow" })
 
 Phase 1D Home Readでは上表に加え、model callsは `≤ 2`、Tool callsは `≤ 3`、同一request内の認可済みHome snapshot service callは原則 `≤ 1` とする。複数Home ToolのTool call数とservice call数は同一である必要がない。
 
+Phase 2 Write prepare runtimeは次をhard boundとする。
+
+| 項目 | Phase 2 Write prepare上限 | 契約 |
+| --- | --- | --- |
+| model calls | 最大1 | Agent selectionだけ。confirmation文の再生成model callを行わない |
+| Tool calls | 最大1 | 1 user requestから1 candidateだけ |
+| prepare calls | 最大1 | 複数eventを同時prepareしない |
+| execute calls | 0 | 同一`agent.chat` request内では禁止 |
+| OS/service calls | prepareに必要な最大1 | deterministic validationとconfirmation state作成を1回で行う |
+
+Phase 2 Readは既存Read runtimeの境界を維持し、単一 `pet.health.getDailySummary` requestではTool callとDomain service callを各最大1とする。Read結果のpresentationを含むmodel call上限は2とする。
+
 ## 6. Legacy mapping
 
 Phase 1 では既存経路を廃止しない。新 namespace は既存実装資産を直接公開せず、必要に応じて Domain Tool wrapper を介して利用する。
@@ -391,9 +605,11 @@ Phase 1 では既存経路を廃止しない。新 namespace は既存実装資�
 | `calendar.listEvents` | `get_calendar_context`、`getFamilySchedule`、`CalendarReadService.readContext`、`calendarContextInternal_` | `get_calendar_context` の同名ローカル実装は未検出。`CalendarReadService.readContext` は `period` / `scope` の構造化 read を提供する。 | Service 再利用候補。TrustedContext 注入と新 envelope 用 wrapper が必要。廃止候補ではない。 |
 | `home.climate.get` | `get_home_climate_context`、`getRoomClimate`、`roomClimateOverview` | `get_home_climate_context` は README の経路記載のみで、同名ローカル実装は未検出。後二者はローカル legacy skill として存在する。 | 外部経路の所在は TBD。room / overview を統一する wrapper が必要。廃止候補ではない。 |
 | `home.aircon.getState` | `getAirconStatus` | ローカル legacy skill として存在し、room climate 応答の `currentAirconState` を返す。 | `reportedState` / `confidence` / `observedAt` へ正規化する wrapper が必要。廃止候補ではない。 |
-| `home.aircon.prepareAction` | `prepare_aircon_control`、`buildAirconAdjustmentProposal`、`buildManualComfortAdjustmentProposal`、`buildAdaptiveClimateProposal`、`setAirconOverride` | `prepare_aircon_control` の同名ローカル実装は未検出。proposal 系 skill はローカルに存在し、既存 action candidate は `setAirconOverride` を参照する。 | 外部経路の所在、confirmationId 発行、既存 execute との接続は TBD。新 contract 用 wrapper が必要。廃止候補ではない。 |
+| `home.aircon.prepareAction` | `prepare_aircon_control`、`buildAirconAdjustmentProposal`、`buildManualComfortAdjustmentProposal`、`buildAdaptiveClimateProposal`、`setAirconOverride` | `prepare_aircon_control` の同名ローカル実装は未検出。proposal 系 skill はローカルに存在し、既存PALURU_OS command serviceはconfirmationId発行、5分TTL、actor / home / device再検証、single-result replayを実装している。 | 既存Home contractを維持する。Phase 2実装時はcommand-aware envelopeのadditive wrapperを置き、Home executeを置換しない。 |
 
 `get_calendar_context` はこのリポジトリに同名の symbol を検出できなかった。上表では、機能的に近い `CalendarReadService.readContext` と `calendarContextInternal_` を対応候補としている。`get_home_climate_context` と `prepare_aircon_control` についても、ローカルで確認できたのは上表の関連実装までであり、PALURU_OS 側など別リポジトリにある可能性は本書では推測しない。
+
+Pet Healthにはlegacy mappingを作らない。`pet.health.record`と`pet.health.getDailySummary`はPhase 2で新規のDomain Tool wrapperからPet Health Domain Serviceへ接続し、legacy Intent Contract / RouterへPet intentを追加しない。
 
 ## 7. TBD（未確定事項）
 
@@ -406,8 +622,6 @@ Phase 1 では既存経路を廃止しない。新 namespace は既存実装資�
 5. 後続Phaseでrole別Home read policyを分ける場合のcapability設計。Phase 1Dはrole名ではなく `home.read` のみで決定する。
 6. Aircon の `power` と `fan` のenum、機器capabilityによる許容組合せ、出力 `reportedState` の固定schema。
 7. climate / aircon のfreshness判定閾値と、`STALE` とstale data warningの使い分け。Weather Phase 1Aは既存freshness判定と本書3.1の対応表で固定する。
-8. `home.aircon.prepareAction` のconfirmation record保存先、`confirmationId` の形式、expiresAt、有効期限切れ、既存Aircon confirm / executeとの正確な接続。
-9. `confirmationMessageData` の固定field、Agent・UIが確認文を生成する責務分担。
-10. Calendar Phase 1B以外のdomainにおけるknown upstream error allowlistと、新contractの `FORBIDDEN` / `UNAVAILABLE` / `UPSTREAM_ERROR` への対応表。Calendar Phase 1Bの結果意味論と既知error保持は3.2で固定する。
-11. 各domainで想定するOS/service call数の実測値と、Phaseごとの上限の妥当性評価。traceの計数単位と93列append-only schema自体は別途確定済みである。
-12. Phase 1のmulti-tool相談に対する `model calls 最大2` と `Tool calls 最大3` の実測に基づく妥当性評価。Phase 1Bの単一Calendar相談は3.2のmodel最大2、Tool最大1を超えない。
+8. Calendar Phase 1B以外のdomainにおけるknown upstream error allowlistと、新contractの `FORBIDDEN` / `UNAVAILABLE` / `UPSTREAM_ERROR` への対応表。Calendar Phase 1Bの結果意味論と既知error保持は3.2で固定する。
+9. 各domainで想定するOS/service call数の実測値と、Phaseごとの上限の妥当性評価。traceの計数単位と既存append-only schema自体は別途確定済みである。
+10. Phase 1のmulti-tool相談に対する `model calls 最大2` と `Tool calls 最大3` の実測に基づく妥当性評価。Phase 1Bの単一Calendar相談は3.2のmodel最大2、Tool最大1を超えない。

@@ -1,7 +1,9 @@
 function doPost(e) {
+  let body = null;
   try {
-    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     healthToken_(body);
+    if (typeof PET_HEALTH_OPERATIONS_ !== 'undefined' && PET_HEALTH_OPERATIONS_[body.operation]) return healthJson_(petHealthDispatch_(body));
     if (!HEALTH_OPERATIONS_[body.operation]) throw healthErr_('UNSUPPORTED_ACTION');
     let data;
     if (body.operation === 'health.context.get') data = healthContext_(body);
@@ -10,6 +12,7 @@ function doPost(e) {
     else data = executeIdempotentWrite_(body).data;
     return healthJson_({ success: true, data: data });
   } catch (error) {
+    if (body && typeof PET_HEALTH_OPERATIONS_ !== 'undefined' && PET_HEALTH_OPERATIONS_[body.operation]) return healthJson_(petHealthErrorResponse_(body.operation, error));
     const code = error && error.code;
     return healthJson_({ success: false, error: { code: ['UNAUTHORIZED', 'CONFIGURATION_ERROR', 'INVALID_INPUT', 'UNSUPPORTED_ACTION', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR'].indexOf(code) >= 0 ? code : 'INTERNAL_ERROR' } });
   }
