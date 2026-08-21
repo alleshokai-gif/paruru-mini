@@ -297,6 +297,32 @@ async function run() {
   await api.createPetHealthRecentLoader_({ call: async (action, body) => { recentCalls.push({ action, body: plain(body) }); return { events: [] }; } }).load();
   assert.deepStrictEqual(recentCalls, [{ action: 'pet.health.listRecentEvents', body: { petId: 'popio', days: 7 } }], 'PH-H01 recent request');
 
+  // PH-DU01/02: the Popio view uses one Dashboard Read, not the two legacy Read operations.
+  const dashboardFixture = {
+    petId: 'popio', localDate: '2026-08-21', timezone: 'Asia/Tokyo',
+    summary: { meal: { bySlot: { breakfast: { eventCount: 1 }, dinner: { eventCount: 1 } } }, water: {}, waterBottle: { eventCount: 0, latest: null, latestInterval: null }, stool: {}, urine: {}, latestWeight: null, notableObservations: [] },
+    recentEvents: [{ eventId: 'dashboard-event', eventType: 'meal', occurredAt: '2026-08-21T08:00:00+09:00', localDate: '2026-08-21', recordedAt: '2026-08-21T08:01:00+09:00', mealSlot: 'breakfast', completion: 'finished' }],
+  };
+  const dashboardCalls = [];
+  const dashboardLoader = api.createPetHealthDashboardLoader_({ localDate: () => '2026-08-21', call: async (action, body) => { dashboardCalls.push({ action, body: plain(body) }); return dashboardFixture; } });
+  assert.deepStrictEqual(plain(await dashboardLoader.load()), dashboardFixture, 'PH-DU01 dashboard loader result');
+  assert.deepStrictEqual(dashboardCalls, [{ action: 'pet.health.getDashboard', body: { petId: 'popio', localDate: '2026-08-21' } }], 'PH-DU01 view open makes one Dashboard API call');
+  const openSlice = featureSource.slice(featureSource.indexOf('async function open_'), featureSource.indexOf('function createPetHealthSummaryLoader_'));
+  assert(openSlice.includes('loadDashboard_()') && !openSlice.includes('refreshPetHealthReads_()'), 'PH-DU02 view open still uses individual Reads');
+  assert.strictEqual(api.dashboardDataValid_(dashboardFixture), true, 'PH-DU03 cache accepts a valid Dashboard');
+  assert.deepStrictEqual(plain(api.dashboardSnapshotState_(dashboardFixture, false)), { dashboard: dashboardFixture, summary: dashboardFixture.summary, summaryStatus: 'loaded', recentEvents: dashboardFixture.recentEvents, recentStatus: 'loaded', dashboardFresh: false }, 'PH-DU03 cache renders immediately as stale');
+  assert.deepStrictEqual(plain(api.dashboardSnapshotState_(dashboardFixture, true)).dashboard, dashboardFixture, 'PH-DU04 fresh success replaces the cached snapshot');
+  assert.deepStrictEqual(plain(api.dashboardFailureState_(dashboardFixture)).summary, dashboardFixture.summary, 'PH-DU05 fresh failure keeps last-good summary');
+  assert.deepStrictEqual(plain(api.dashboardFailureState_(null)), { dashboard: null, summary: null, summaryStatus: 'failed', recentEvents: [], recentStatus: 'failed', dashboardFresh: false }, 'PH-DU06 cacheless failure is a settled failed state');
+  assert(featureSource.includes('dashboardLoad_ = null'), 'PH-DU07 Dashboard loading does not always settle');
+  assert(featureSource.includes("const refreshed = await loadDashboard_({ quiet: true });"), 'PH-DU08 save success does not issue one Dashboard refresh');
+  assert.strictEqual(api.savedStatusMessage_({ writeSaved: true, dashboardRefreshed: false }), '保存しました。最新表示を更新できませんでした。', 'PH-DU09 failed Dashboard refresh must preserve Write success');
+  assert.strictEqual(api.waterBottleUiModel_(dashboardFixture.summary, 'loaded', false).ready, false, 'PH-DU10 cached Dashboard must keep water bottle Write disabled');
+  assert.strictEqual(api.waterBottleUiModel_(dashboardFixture.summary, 'loaded', true).ready, true, 'PH-DU11 fresh Dashboard enables water bottle Write');
+  assert.strictEqual(api.reminderIcon_({ known: true, items: [{ slot: 'breakfast' }] }), '⚠️', 'PH-DU12 reminder icon');
+  assert.strictEqual(api.reminderIcon_({ known: true, items: [] }), '✅', 'PH-DU13 clear reminder icon');
+  assert.strictEqual(api.reminderIcon_({ known: false, items: [] }), '◻️', 'PH-DU14 unknown reminder icon');
+
   const refreshCalls = [];
   const refreshResult = await api.createPetHealthReadRefresher_({
     loadSummary: async () => { refreshCalls.push('summary'); return false; },
@@ -346,7 +372,17 @@ async function run() {
     petId: 'popio', days: 7, homeId: 'spoof', actorUserId: 'spoof', serviceToken: 'spoof',
   }));
   assert.deepStrictEqual(recentPayload, { action: 'pet.health.listRecentEvents', petId: 'popio', days: 7 }, 'PH-RG03 recent PWA payload leaked server identity');
+  const dashboardPayload = plain(authContext.buildAuthenticatedPetHealthPayload_('pet.health.getDashboard', {
+    petId: 'popio', localDate: '2026-08-21', homeId: 'spoof', actorUserId: 'spoof', serviceToken: 'spoof',
+  }));
+  assert.deepStrictEqual(dashboardPayload, { action: 'pet.health.getDashboard', petId: 'popio', localDate: '2026-08-21' }, 'PH-DU01 Dashboard PWA payload leaked server identity');
   assert(appSource.includes('petHealthApi: callAuthenticatedPetHealth_'), 'authenticated event does not pass Pet facade');
+  assert(appSource.includes('petHealthDashboardCache: petHealthDashboardCacheFacade_()'), 'Dashboard cache facade is not passed separately from credentials');
+  const cacheSlice = appSource.slice(appSource.indexOf('function loadPetHealthDashboardCache_'), appSource.indexOf('function showAuthenticationState'));
+  assert(cacheSlice.includes('PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY') && cacheSlice.includes('dashboard,') && cacheSlice.includes('fetchedAt') && cacheSlice.includes('schemaVersion'), 'PH-DU03 Dashboard cache shape is incomplete');
+  assert(!cacheSlice.includes('pairingToken') && !cacheSlice.includes('deviceId'), 'PH-DU03 Dashboard cache stores credentials');
+  assert(appSource.includes('const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 12000;') && appSource.includes('withPetHealthDashboardTimeout_'), 'PH-DU07 Dashboard Read timeout is missing');
+  assert(appSource.indexOf('document.dispatchEvent(new CustomEvent("paruru:authenticated"') < appSource.indexOf('void switchView(activeView);'), 'PH-DU01 authenticated Pet facade is installed after view opening');
 
   assert(htmlSource.includes('id="popioHealthView"') && htmlSource.includes('id="popioHealthMount"'), 'Pet Health view/mount missing');
   assert(htmlSource.includes('data-target-view="popio-health"'), 'Pet Health drawer navigation missing');

@@ -11,7 +11,7 @@
   const TOKYO_TIME_ZONE = 'Asia/Tokyo';
   const RECENT_EVENT_DAYS = 7;
   const REMINDER_HOURS = Object.freeze({ breakfast: 10, dinner: 22 });
-  const PET_HEALTH_READ_ACTIONS = Object.freeze({ 'pet.health.getDailySummary': true, 'pet.health.listRecentEvents': true });
+  const PET_HEALTH_READ_ACTIONS = Object.freeze({ 'pet.health.getDailySummary': true, 'pet.health.listRecentEvents': true, 'pet.health.getDashboard': true });
   const FLAG_ORDER = Object.freeze(['vomiting', 'sneeze_cough', 'pain_behavior']);
   const state = {
     authContext: null,
@@ -20,9 +20,14 @@
     summaryStatus: 'idle',
     recentEvents: [],
     recentStatus: 'idle',
+    dashboard: null,
+    dashboardStatus: 'idle',
+    dashboardFresh: false,
+    dashboardCache: null,
     mounted: false,
   };
   let saveFlow_ = null;
+  let dashboardLoad_ = null;
 
   function install(doc) {
     doc.addEventListener('DOMContentLoaded', mount_);
@@ -30,6 +35,7 @@
       const detail = event && event.detail || {};
       state.authContext = detail.context || null;
       state.petHealthApi = typeof detail.petHealthApi === 'function' ? detail.petHealthApi : null;
+      state.dashboardCache = detail.petHealthDashboardCache && typeof detail.petHealthDashboardCache.load === 'function' && typeof detail.petHealthDashboardCache.save === 'function' ? detail.petHealthDashboardCache : null;
     });
     doc.addEventListener('popio-health:opened', open_);
   }
@@ -46,7 +52,7 @@
         <div><p class="popio-health-eyebrow">Pet Health</p><h1>🐶 ぽぴお</h1></div>
         <p id="popioHealthDate" class="popio-health-date"></p>
       </header>
-      <p id="popioHealthStatus" class="popio-health-status" role="status" aria-live="polite"></p>
+      <div class="popio-health-status-row"><p id="popioHealthStatus" class="popio-health-status" role="status" aria-live="polite"></p><button id="popioDashboardReload" type="button" hidden>再読み込み</button></div>
       <section class="popio-reminder-card" aria-labelledby="popioReminderTitle">
         <h2 id="popioReminderTitle">⚠️ 今日の記録</h2>
         <p id="popioReminderStatus" class="popio-reminder-status"></p>
@@ -359,8 +365,8 @@
         try {
           if (deps.isOnline && !deps.isOnline()) { const error = new Error('OFFLINE'); error.code = 'OFFLINE'; throw error; }
           const data = await deps.call(request);
-          const postSave = deps.onSuccess ? await deps.onSuccess(key, data, request) : null;
           delete requests[key];
+          const postSave = deps.onSuccess ? await deps.onSuccess(key, data, request) : null;
           if (deps.onSaved) deps.onSaved(key, data, postSave);
           return { skipped: false, saved: true, data: data, postSave: postSave };
         } catch (error) {
@@ -387,8 +393,8 @@
       onSuccess: async function (key) {
         const form = form_(key);
         if (form) { form.reset(); resetTimestampControl_(form); }
-        const reads = await refreshPetHealthReads_({ quiet: true });
-        return { writeSaved: true, summaryRefreshed: reads.summary, recentRefreshed: reads.recent };
+        const refreshed = await loadDashboard_({ quiet: true });
+        return { writeSaved: true, dashboardRefreshed: refreshed, summaryRefreshed: refreshed, recentRefreshed: refreshed };
       },
       onSaved: function (key, _data, postSave) { setFormStatus_(key, savedStatusMessage_(postSave)); },
       onFailure: function (key, error) { setFormStatus_(key, error && error.code === 'OFFLINE' ? 'オフライン中。未保存です。入力は残しています。' : '保存できませんでした。入力は残しています。'); },
@@ -443,6 +449,12 @@
     if (reload) {
       event.preventDefault();
       if (!reload.disabled) void reloadWaterBottleSummary_();
+      return;
+    }
+    const dashboardReload = event.target && event.target.closest ? event.target.closest('#popioDashboardReload') : null;
+    if (dashboardReload) {
+      event.preventDefault();
+      if (!dashboardReload.disabled) void loadDashboard_();
       return;
     }
     const toggle = event.target && event.target.closest ? event.target.closest('[data-popio-timestamp-toggle]') : null;
@@ -515,7 +527,8 @@
     if (label) label.textContent = timestampLabel_(formValues_(form));
   }
 
-  function waterBottleUiModel_(summary, status) {
+  function waterBottleUiModel_(summary, status, fresh) {
+    if (fresh === false && status === 'loaded' && summary && typeof summary === 'object') return { ready: false, canReload: true, message: '最新のボトル状態を確認できないため記録できません' };
     if (status !== 'loaded' || !summary || typeof summary !== 'object') return { ready: false, canReload: status === 'failed', message: status === 'loading' ? '前回の記録を読み込み中…' : '前回の水ボトル記録を読み込めませんでした' };
     const bottle = summary.waterBottle;
     if (!bottle || typeof bottle !== 'object' || !Number.isSafeInteger(Number(bottle.eventCount)) || Number(bottle.eventCount) < 0 || (bottle.latest !== null && (!bottle.latest || typeof bottle.latest !== 'object' || !Number.isSafeInteger(Number(bottle.latest.newFillMl)) || Number(bottle.latest.newFillMl) < 1 || Number(bottle.latest.newFillMl) > 5000 || !Number.isFinite(new Date(String(bottle.latest.occurredAt || '')).getTime())))) {
@@ -554,7 +567,7 @@
   }
 
   function validateWaterBottleForm_(form, event) {
-    const model = waterBottleUiModel_(state.summary, state.summaryStatus);
+    const model = waterBottleUiModel_(state.summary, state.summaryStatus, state.dashboardFresh);
     if (!model.ready) throw inputError_('前回の水ボトル記録を読み込めませんでした');
     if (!model.hasPrevious) {
       if (petHealthOwn_(event, 'remainingMl')) throw inputError_('最初の記録では今の残りを入力しません');
@@ -569,7 +582,7 @@
   function renderWaterBottle_() {
     const form = form_('water_bottle');
     if (!form) return;
-    const model = waterBottleUiModel_(state.summary, state.summaryStatus);
+    const model = waterBottleUiModel_(state.summary, state.summaryStatus, state.dashboardFresh);
     const stateLabel = form.querySelector('[data-popio-water-bottle-state]');
     const previous = form.querySelector('[data-popio-water-bottle-previous]');
     const remaining = form.querySelector('[data-popio-water-bottle-remaining]');
@@ -602,11 +615,11 @@
     const form = form_('water_bottle');
     const reload = form && form.querySelector('[data-popio-water-bottle-reload]');
     if (reload) { reload.disabled = true; reload.textContent = '再読み込み中…'; }
-    await loadSummary_({ quiet: true });
+    await loadDashboard_({ quiet: true });
   }
 
   function updateWaterBottlePreview_(form) {
-    const model = waterBottleUiModel_(state.summary, state.summaryStatus);
+    const model = waterBottleUiModel_(state.summary, state.summaryStatus, state.dashboardFresh);
     renderWaterBottlePreview_(form, model, form.querySelector('[data-popio-water-bottle-preview]'));
   }
 
@@ -654,7 +667,8 @@
     form.querySelectorAll('input,select,textarea,button').forEach(function (control) { control.disabled = Boolean(saving); });
   }
   function savedStatusMessage_(postSave) {
-    return postSave && postSave.writeSaved === true && postSave.summaryRefreshed === false
+    const refreshed = postSave && Object.prototype.hasOwnProperty.call(postSave, 'dashboardRefreshed') ? postSave.dashboardRefreshed : postSave && postSave.summaryRefreshed;
+    return postSave && postSave.writeSaved === true && refreshed === false
       ? '保存しました。最新表示を更新できませんでした。' : '保存しました';
   }
   function setFormStatus_(key, message) { const form = form_(key); const status = form && form.querySelector('[data-popio-form-status]'); if (status) status.textContent = message || ''; }
@@ -669,7 +683,94 @@
     return state.petHealthApi(action, body || {});
   }
 
-  async function open_() { if (!state.mounted) mount_(); renderDate_(); await refreshPetHealthReads_(); }
+  async function open_() {
+    if (!state.mounted) mount_();
+    renderDate_();
+    hydrateDashboardCache_();
+    await loadDashboard_();
+  }
+  function createPetHealthDashboardLoader_(deps) {
+    return {
+      load: function () {
+        return deps.call('pet.health.getDashboard', { petId: PET_ID, localDate: deps.localDate() });
+      },
+    };
+  }
+  function dashboardDataValid_(value) {
+    return Boolean(value) && typeof value === 'object' && value.petId === PET_ID && /^\d{4}-\d{2}-\d{2}$/.test(String(value.localDate || '')) && value.timezone === TOKYO_TIME_ZONE && value.summary && typeof value.summary === 'object' && Array.isArray(value.recentEvents);
+  }
+  function dashboardSnapshotState_(dashboard, fresh) {
+    if (!dashboardDataValid_(dashboard)) return null;
+    return { dashboard: dashboard, summary: dashboard.summary, summaryStatus: 'loaded', recentEvents: dashboard.recentEvents, recentStatus: 'loaded', dashboardFresh: Boolean(fresh) };
+  }
+  function dashboardFailureState_(dashboard) {
+    const retained = dashboardSnapshotState_(dashboard, false);
+    return retained || { dashboard: null, summary: null, summaryStatus: 'failed', recentEvents: [], recentStatus: 'failed', dashboardFresh: false };
+  }
+  function dashboardSnapshotAvailable_() {
+    return dashboardDataValid_(state.dashboard) && state.summaryStatus === 'loaded' && state.recentStatus === 'loaded';
+  }
+  function applyDashboard_(dashboard, fresh) {
+    const next = dashboardSnapshotState_(dashboard, fresh);
+    if (!next) return false;
+    Object.assign(state, next);
+    renderSummary_();
+    renderRecentEvents_();
+    return true;
+  }
+  function hydrateDashboardCache_() {
+    if (state.dashboard || !state.dashboardCache) return false;
+    let cached = null;
+    try { cached = state.dashboardCache.load(); } catch (_) { cached = null; }
+    if (!cached || !dashboardDataValid_(cached.dashboard)) return false;
+    applyDashboard_(cached.dashboard, false);
+    state.dashboardStatus = 'cached';
+    setRootStatus_('更新中…');
+    setDashboardReloadVisible_(false);
+    return true;
+  }
+  function saveDashboardCache_(dashboard) {
+    if (!state.dashboardCache) return;
+    try { state.dashboardCache.save(dashboard); } catch (_) { /* cache is optional */ }
+  }
+  function setDashboardReloadVisible_(visible) {
+    const reload = document.getElementById('popioDashboardReload');
+    if (!reload) return;
+    reload.hidden = !visible;
+    reload.disabled = !visible || Boolean(dashboardLoad_);
+  }
+  function loadDashboard_(options) {
+    if (dashboardLoad_) return dashboardLoad_;
+    const quiet = Boolean(options && options.quiet);
+    const hadSnapshot = dashboardSnapshotAvailable_();
+    state.dashboardStatus = 'loading';
+    state.dashboardFresh = false;
+    if (!quiet) setRootStatus_(hadSnapshot ? '更新中…' : '読み込み中…');
+    setDashboardReloadVisible_(false);
+    renderSummary_();
+    const work = createPetHealthDashboardLoader_({ call: call_, localDate: tokyoDate_ }).load()
+      .then(function (dashboard) {
+        if (!dashboardDataValid_(dashboard)) { const error = new Error('PET_HEALTH_UNAVAILABLE'); error.code = 'PET_HEALTH_UNAVAILABLE'; throw error; }
+        applyDashboard_(dashboard, true);
+        state.dashboardStatus = 'loaded';
+        saveDashboardCache_(dashboard);
+        setRootStatus_('');
+        setDashboardReloadVisible_(false);
+        return true;
+      })
+      .catch(function (error) {
+        state.dashboardStatus = 'failed';
+        state.dashboardFresh = false;
+        Object.assign(state, dashboardFailureState_(hadSnapshot ? state.dashboard : null));
+        renderSummary_();
+        renderRecentEvents_();
+        setRootStatus_(hadSnapshot ? '最新情報を更新できませんでした' : (error && error.code === 'OFFLINE' ? 'オフライン中。読み込めませんでした' : '読み込めませんでした'));
+        setDashboardReloadVisible_(true);
+        return false;
+      });
+    dashboardLoad_ = work.then(function (result) { dashboardLoad_ = null; setDashboardReloadVisible_(state.dashboardStatus === 'failed'); return result; }, function (error) { dashboardLoad_ = null; setDashboardReloadVisible_(true); throw error; });
+    return dashboardLoad_;
+  }
   function createPetHealthSummaryLoader_(deps) {
     return {
       load: function () {
@@ -750,10 +851,14 @@
     if (hour >= REMINDER_HOURS.dinner && dinner === 0) items.push({ slot: 'dinner', label: '夜ごはん', message: '夜ごはんの記録、忘れとらん？' });
     return { known: true, items: items, message: items.length ? '' : '今のところ入力忘れはないで' };
   }
+  function reminderIcon_(model) {
+    return model && model.known ? (model.items.length ? '⚠️' : '✅') : '◻️';
+  }
   function renderReminder_() {
-    const status = document.getElementById('popioReminderStatus'), list = document.getElementById('popioReminderList');
+    const title = document.getElementById('popioReminderTitle'), status = document.getElementById('popioReminderStatus'), list = document.getElementById('popioReminderList');
     if (!status || !list) return;
     const model = recordingReminderModel_(state.summary, state.summaryStatus);
+    if (title) title.textContent = reminderIcon_(model) + ' 今日の記録';
     status.textContent = model.message;
     list.textContent = '';
     model.items.forEach(function (item) {
@@ -866,12 +971,17 @@
     buildOccurredAt_: buildOccurredAt_,
     buildRecordRequest_: buildRecordRequest_,
     applyMealReminderShortcut_: applyMealReminderShortcut_,
+    createPetHealthDashboardLoader_: createPetHealthDashboardLoader_,
     createPetHealthReadRefresher_: createPetHealthReadRefresher_,
     createPetHealthRecentLoader_: createPetHealthRecentLoader_,
     createPetHealthSaveFlow_: createPetHealthSaveFlow_,
     createPetHealthSummaryLoader_: createPetHealthSummaryLoader_,
     historyViewModel_: historyViewModel_,
+    dashboardDataValid_: dashboardDataValid_,
+    dashboardFailureState_: dashboardFailureState_,
+    dashboardSnapshotState_: dashboardSnapshotState_,
     recentEventLabel_: recentEventLabel_,
+    reminderIcon_: reminderIcon_,
     recordingReminderModel_: recordingReminderModel_,
     savedStatusMessage_: savedStatusMessage_,
     shouldBlockPetHealthOffline_: shouldBlockPetHealthOffline_,

@@ -74,6 +74,9 @@ function summary(context,localDate,homeId='home-main'){
 function recent(context,days=7,homeId='home-main',now='2026-08-21T12:00:00+09:00'){
   return context.petHealthRecentEvents_({operation:'pet.health.listRecentEvents',homeId,actorUserId:'father',petId:'popio',days},{now:()=>new Date(now)});
 }
+function dashboard(context,localDate='2026-08-21',homeId='home-main'){
+  return context.petHealthDashboard_({operation:'pet.health.getDashboard',homeId,actorUserId:'father',petId:'popio',localDate},{now:()=>new Date(localDate+'T12:00:00+09:00')});
+}
 
 {
   const {context,spreadsheet}=createHarness();
@@ -382,6 +385,9 @@ function recent(context,days=7,homeId='home-main',now='2026-08-21T12:00:00+09:00
   const recentApi=JSON.parse(context.doPost({postData:{contents:JSON.stringify({operation:'pet.health.listRecentEvents',serviceToken:'test-token',homeId:'home-main',actorUserId:'father',petId:'popio',days:7})}}).getContent());
   assert.strictEqual(recentApi.success,true,'Recent Event doPost dispatch');
   assert.strictEqual(recentApi.operation,'pet.health.listRecentEvents','Recent Event operation response');
+  const dashboardApi=JSON.parse(context.doPost({postData:{contents:JSON.stringify({operation:'pet.health.getDashboard',serviceToken:'test-token',homeId:'home-main',actorUserId:'father',petId:'popio',localDate:'2026-08-19'})}}).getContent());
+  assert.strictEqual(dashboardApi.success,true,'Dashboard doPost dispatch');
+  assert.strictEqual(dashboardApi.operation,'pet.health.getDashboard','Dashboard operation response');
 }
 
 {
@@ -417,6 +423,19 @@ function recent(context,days=7,homeId='home-main',now='2026-08-21T12:00:00+09:00
   assert.strictEqual(value.events.find((event)=>event.eventType==='water').amountMl,150,'PH-R08 legacy water');
   const bottle=value.events.find((event)=>event.eventType==='water_bottle');
   assert.deepStrictEqual({bottleDecreaseMl:bottle.bottleDecreaseMl,elapsedHours:bottle.elapsedHours,normalized24hMl:bottle.normalized24hMl},{bottleDecreaseMl:270,elapsedHours:24,normalized24hMl:270},'PH-R09 water bottle interval');
+  let snapshotReads=0;
+  const originalScopedEvents=context.petHealthScopedEvents_;
+  context.petHealthScopedEvents_=function(homeId,petId){snapshotReads+=1;return originalScopedEvents(homeId,petId);};
+  const dashboardValue=dashboard(context).data;
+  assert.strictEqual(snapshotReads,1,'PH-DASH02 Dashboard reads the Pet Event Sheet once');
+  assert.strictEqual(dashboardValue.petId,'popio','PH-DASH01 Dashboard pet');
+  assert.strictEqual(dashboardValue.localDate,'2026-08-21','PH-DASH01 Dashboard local date');
+  assert.strictEqual(dashboardValue.summary.meal.eventCount,1,'PH-DASH01 Dashboard summary');
+  assert.deepStrictEqual(plain(dashboardValue.recentEvents),plain(value.events),'PH-DASH01 Dashboard recent events use the same snapshot');
+  assert.strictEqual(dashboardValue.summary.waterBottle.latest.newFillMl,400,'PH-DASH05 Dashboard water bottle state');
+  assert.strictEqual(dashboardValue.summary.latestWeight.weightKg,2.3,'PH-DASH06 Dashboard latest weight');
+  assert.strictEqual(dashboardValue.recentEvents.some((event)=>event.amountG===999),false,'PH-DASH03 Dashboard home isolation');
+  assert.strictEqual(dashboardValue.recentEvents.some((event)=>event.petId==='other-pet'),false,'PH-DASH04 Dashboard pet isolation');
   assert.throws(()=>recent(context,6),(error)=>error.code==='INVALID_INPUT','Recent days must be fixed at seven');
   assert.throws(()=>recent(context,'7'),(error)=>error.code==='INVALID_INPUT','Recent days must be JSON number');
 }
@@ -432,4 +451,4 @@ function recent(context,days=7,homeId='home-main',now='2026-08-21T12:00:00+09:00
   assert.throws(()=>context.healthSheet_('Pet_Health_Events'),(error)=>error.code==='CONFIGURATION_ERROR','Pet schema header reorder must fail closed');
 }
 
-console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, PH-W01..10, PH-WS01..05, PH-R01..09, schema, token, and dispatch');
+console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, PH-W01..10, PH-WS01..05, PH-R01..09, PH-DASH01..06, schema, token, and dispatch');

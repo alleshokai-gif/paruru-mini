@@ -23,24 +23,27 @@ function petHealthShiftLocalDate_(localDate,days){
   const parts=petHealthValidDate_(localDate).split('-').map(Number),date=new Date(Date.UTC(parts[0],parts[1]-1,parts[2]+days));
   return date.toISOString().slice(0,10);
 }
+function petHealthEventSnapshot_(homeId,petId){
+  return petHealthScopedEvents_(homeId,petId).sort(function(a,b){return a.instantMs-b.instantMs||a.eventId.localeCompare(b.eventId);});
+}
 function petHealthRecentPublicEvent_(event,interval){
   const out={eventId:event.eventId,eventType:event.eventType,occurredAt:event.occurredAt,localDate:event.localDate,recordedAt:event.recordedAt},keys={meal:['mealSlot','amountG','completion','note'],stool:['stoolForm','stoolAmount','coprophagy','note'],water_bottle:['remainingMl','newFillMl','note'],water:['amountMl','note'],urine:['urineStatus','note'],weight:['weightKg','note'],observation:['energy','appetite','flags','note']}[event.eventType]||[];
   keys.forEach(function(key){if(petHealthHas_(event.eventData,key))out[key]=event.eventData[key];});
   if(interval){out.bottleDecreaseMl=interval.bottleDecreaseMl;out.elapsedHours=interval.elapsedHours;out.normalized24hMl=interval.normalized24hMl;}
   return out;
 }
-function petHealthRecentEvents_(body,options){
-  const deps=options||{},now=deps.now?deps.now():new Date(),request=petHealthNormalizeRecentRequest_(body),all=petHealthScopedEvents_(request.homeId,request.petId);
-  all.sort(function(a,b){return a.instantMs-b.instantMs||a.eventId.localeCompare(b.eventId);});
-  const today=petHealthLocalDate_(now,deps),fromLocalDate=petHealthShiftLocalDate_(today,-6),rangeEndLocalDate=petHealthShiftLocalDate_(today,1),start=petHealthParseInstant_(fromLocalDate+'T00:00:00+09:00').getTime(),end=petHealthParseInstant_(rangeEndLocalDate+'T00:00:00+09:00').getTime(),intervals={};
+function petHealthRecentData_(request,all,today){
+  const fromLocalDate=petHealthShiftLocalDate_(today,-6),rangeEndLocalDate=petHealthShiftLocalDate_(today,1),start=petHealthParseInstant_(fromLocalDate+'T00:00:00+09:00').getTime(),end=petHealthParseInstant_(rangeEndLocalDate+'T00:00:00+09:00').getTime(),intervals={};
   const bottles=all.filter(function(event){return event.eventType==='water_bottle';});
   bottles.forEach(function(event,index){if(event.instantMs>=start&&event.instantMs<end&&petHealthHas_(event.eventData,'remainingMl'))intervals[event.eventId]=petHealthWaterBottleInterval_(index?bottles[index-1]:null,event);});
   const events=all.filter(function(event){return event.instantMs>=start&&event.instantMs<end;}).sort(function(a,b){return b.instantMs-a.instantMs||a.eventId.localeCompare(b.eventId);}).map(function(event){return petHealthRecentPublicEvent_(event,intervals[event.eventId]||null);});
-  return petHealthResponse_('pet.health.listRecentEvents',{petId:request.petId,days:request.days,fromLocalDate:fromLocalDate,toLocalDate:today,timezone:PET_HEALTH_TIMEZONE_,events:events});
+  return {petId:request.petId,days:7,fromLocalDate:fromLocalDate,toLocalDate:today,timezone:PET_HEALTH_TIMEZONE_,events:events};
 }
-function petHealthSummary_(body,options){
-  const deps=options||{},now=deps.now?deps.now():new Date(),request=petHealthNormalizeSummaryRequest_(body,now,deps),all=petHealthScopedEvents_(request.homeId,request.petId);
-  all.sort(function(a,b){return a.instantMs-b.instantMs||a.eventId.localeCompare(b.eventId);});
+function petHealthRecentEvents_(body,options){
+  const deps=options||{},now=deps.now?deps.now():new Date(),request=petHealthNormalizeRecentRequest_(body),all=petHealthEventSnapshot_(request.homeId,request.petId),today=petHealthLocalDate_(now,deps);
+  return petHealthResponse_('pet.health.listRecentEvents',petHealthRecentData_(request,all,today));
+}
+function petHealthSummaryData_(request,all){
   const start=petHealthParseInstant_(request.localDate+'T00:00:00+09:00').getTime(),end=start+24*60*60*1000;
   const daily=all.filter(function(event){if(event.localDate===request.localDate&&(event.instantMs<start||event.instantMs>=end))throw healthErr_('DATA_INTEGRITY_ERROR');return event.localDate===request.localDate;});
   const meals=daily.filter(function(event){return event.eventType==='meal';}),water=daily.filter(function(event){return event.eventType==='water';}),waterBottleDaily=daily.filter(function(event){return event.eventType==='water_bottle';}),stool=daily.filter(function(event){return event.eventType==='stool';}),urine=daily.filter(function(event){return event.eventType==='urine';}),observations=daily.filter(function(event){return event.eventType==='observation';});
@@ -51,6 +54,14 @@ function petHealthSummary_(body,options){
   const waterBottles=all.filter(function(event){return event.eventType==='water_bottle'&&event.instantMs<end;}),latestBottle=waterBottles.length?waterBottles[waterBottles.length-1]:null,previousBottle=waterBottles.length>1?waterBottles[waterBottles.length-2]:null,latestInterval=latestBottle&&petHealthHas_(latestBottle.eventData,'remainingMl')?petHealthWaterBottleInterval_(previousBottle,latestBottle):null;
   const weights=all.filter(function(event){return event.eventType==='weight'&&event.instantMs<end;}),latest=weights.length?weights[weights.length-1]:null;
   const notable=observations.filter(function(event){const data=event.eventData;return data.energy==='low'||data.appetite==='low'||(data.flags&&data.flags.length)||String(data.note||'');}).map(petHealthObservation_);
-  return petHealthResponse_('pet.health.getDailySummary',{petId:request.petId,localDate:request.localDate,timezone:PET_HEALTH_TIMEZONE_,meal:{eventCount:meals.length,totalAmountG:mealAmount.total,knownAmountG:mealAmount.known,amountStatus:mealAmount.status,bySlot:bySlot,completionCounts:completionCounts},water:{eventCount:water.length,totalAmountMl:waterAmount.total,amountStatus:waterAmount.status},waterBottle:{eventCount:waterBottleDaily.length,latest:latestBottle?petHealthWaterBottleLatest_(latestBottle):null,latestInterval:latestInterval},stool:{count:stool.length,observations:stool.map(petHealthObservation_)},urine:{count:urine.length,concernCount:urine.filter(function(event){return event.eventData.urineStatus==='concern';}).length},latestWeight:latest?petHealthObservation_(latest):null,notableObservations:notable});
+  return {petId:request.petId,localDate:request.localDate,timezone:PET_HEALTH_TIMEZONE_,meal:{eventCount:meals.length,totalAmountG:mealAmount.total,knownAmountG:mealAmount.known,amountStatus:mealAmount.status,bySlot:bySlot,completionCounts:completionCounts},water:{eventCount:water.length,totalAmountMl:waterAmount.total,amountStatus:waterAmount.status},waterBottle:{eventCount:waterBottleDaily.length,latest:latestBottle?petHealthWaterBottleLatest_(latestBottle):null,latestInterval:latestInterval},stool:{count:stool.length,observations:stool.map(petHealthObservation_)},urine:{count:urine.length,concernCount:urine.filter(function(event){return event.eventData.urineStatus==='concern';}).length},latestWeight:latest?petHealthObservation_(latest):null,notableObservations:notable};
 }
-function petHealthDispatch_(body){if(body.operation==='pet.health.record')return petHealthRecord_(body);if(body.operation==='pet.health.getDailySummary')return petHealthSummary_(body);if(body.operation==='pet.health.listRecentEvents')return petHealthRecentEvents_(body);throw healthErr_('UNSUPPORTED_ACTION');}
+function petHealthSummary_(body,options){
+  const deps=options||{},now=deps.now?deps.now():new Date(),request=petHealthNormalizeSummaryRequest_(body,now,deps),all=petHealthEventSnapshot_(request.homeId,request.petId);
+  return petHealthResponse_('pet.health.getDailySummary',petHealthSummaryData_(request,all));
+}
+function petHealthDashboard_(body,options){
+  const deps=options||{},now=deps.now?deps.now():new Date(),request=petHealthNormalizeDashboardRequest_(body,now,deps),all=petHealthEventSnapshot_(request.homeId,request.petId),summary=petHealthSummaryData_(request,all),recent=petHealthRecentData_(request,all,request.localDate);
+  return petHealthResponse_('pet.health.getDashboard',{petId:request.petId,localDate:request.localDate,timezone:PET_HEALTH_TIMEZONE_,summary:summary,recentEvents:recent.events});
+}
+function petHealthDispatch_(body){if(body.operation==='pet.health.record')return petHealthRecord_(body);if(body.operation==='pet.health.getDailySummary')return petHealthSummary_(body);if(body.operation==='pet.health.listRecentEvents')return petHealthRecentEvents_(body);if(body.operation==='pet.health.getDashboard')return petHealthDashboard_(body);throw healthErr_('UNSUPPORTED_ACTION');}

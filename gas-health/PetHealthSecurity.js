@@ -2,7 +2,7 @@ const PET_HEALTH_TIMEZONE_ = 'Asia/Tokyo';
 const PET_HEALTH_SCHEMA_VERSION_ = 'pet-health-1.0';
 const PET_HEALTH_RECORD_HASH_VERSION_ = 'pet-health-record-1';
 const PET_HEALTH_SERVER_DEFAULT_OCCURRED_AT_ = '__SERVER_DEFAULT__';
-const PET_HEALTH_OPERATIONS_ = Object.freeze({'pet.health.record':true,'pet.health.getDailySummary':true,'pet.health.listRecentEvents':true});
+const PET_HEALTH_OPERATIONS_ = Object.freeze({'pet.health.record':true,'pet.health.getDailySummary':true,'pet.health.listRecentEvents':true,'pet.health.getDashboard':true});
 const PET_HEALTH_ENUMS_ = Object.freeze({
   eventType:['meal','water','water_bottle','stool','urine','weight','observation'],
   mealSlot:['breakfast','lunch','dinner','snack'],
@@ -137,6 +137,13 @@ function petHealthNormalizeRecentRequest_(body){
   petHealthRejectNull_(body);
   if(!body||body.operation!=='pet.health.listRecentEvents'||body.days!==7)throw healthErr_('INVALID_INPUT');
   return {operation:body.operation,homeId:petHealthNonEmptyString_(body.homeId),actorUserId:petHealthNonEmptyString_(body.actorUserId),petId:petHealthOneOf_(body.petId,['popio']),days:7};
+}
+function petHealthNormalizeDashboardRequest_(body,now,deps){
+  petHealthRejectNull_(body);
+  if(!body||body.operation!=='pet.health.getDashboard')throw healthErr_('INVALID_INPUT');
+  const normalized={operation:body.operation,homeId:petHealthNonEmptyString_(body.homeId),actorUserId:petHealthNonEmptyString_(body.actorUserId),petId:petHealthOneOf_(body.petId,['popio'])};
+  if(petHealthHas_(body,'localDate')){if(body.localDate===null||body.localDate==='')throw healthErr_('INVALID_INPUT');normalized.localDate=petHealthValidDate_(body.localDate);}else normalized.localDate=petHealthLocalDate_(now,deps);
+  return normalized;
 }
 function petHealthCanonical_(value){
   if(Array.isArray(value))return value.map(petHealthCanonical_);

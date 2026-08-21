@@ -10,6 +10,9 @@ const AGENT_CHAT_SESSION_STORAGE_KEY = "paruru-mini-agent-chat-session-v1";
 const HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY = "paruru-mini-home-agent-pairing-v1";
 const HOME_CONTROL_PENDING_STORAGE_KEY = "paruru-mini-home-control-pending-v1";
 const MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY = "paruru-mini-membership-registration-pending-v1";
+const PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY = "paruru-mini-pet-health-dashboard-popio-v1";
+const PET_HEALTH_DASHBOARD_CACHE_SCHEMA_VERSION = "pet-health-1.0";
+const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 12000;
 const HOME_CONTROL_POLL_MILLISECONDS = 5000;
 const NOTIFICATION_CACHE_MS = 5000;
 const NOTIFICATION_DISPLAY_LIMIT = 5;
@@ -503,6 +506,7 @@ const PET_HEALTH_ACTIONS = new Set([
   "pet.health.record",
   "pet.health.getDailySummary",
   "pet.health.listRecentEvents",
+  "pet.health.getDashboard",
 ]);
 
 async function callAuthenticatedHealth_(action, body = {}) {
@@ -565,15 +569,54 @@ async function callAuthenticatedPetHealth_(action, body = {}) {
     throw createHomeControlError("AUTHENTICATION_REQUIRED");
   }
   try {
-    return await callHomeControlApi({
+    const request = callHomeControlApi({
       ...buildAuthenticatedPetHealthPayload_(action, body),
       deviceId: userProfile.deviceId,
       pairingToken: token,
     });
+    return action === "pet.health.getDashboard"
+      ? await withPetHealthDashboardTimeout_(request)
+      : await request;
   } catch (error) {
     if (error && typeof error === "object" && !error.code) error.code = "PET_HEALTH_UNAVAILABLE";
     throw error;
   }
+}
+
+function withPetHealthDashboardTimeout_(request) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => reject(createHomeControlError("PET_HEALTH_TIMEOUT")), PET_HEALTH_DASHBOARD_TIMEOUT_MS);
+    Promise.resolve(request).then(
+      (data) => { clearTimeout(timeoutId); resolve(data); },
+      (error) => { clearTimeout(timeoutId); reject(error); },
+    );
+  });
+}
+
+function loadPetHealthDashboardCache_() {
+  try {
+    const value = JSON.parse(localStorage.getItem(PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY) || "");
+    return value && value.schemaVersion === PET_HEALTH_DASHBOARD_CACHE_SCHEMA_VERSION
+      && Number.isFinite(Date.parse(String(value.fetchedAt || "")))
+      && value.dashboard && typeof value.dashboard === "object" && value.dashboard.petId === "popio"
+      ? { dashboard: value.dashboard, fetchedAt: String(value.fetchedAt), schemaVersion: value.schemaVersion }
+      : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function savePetHealthDashboardCache_(dashboard) {
+  if (!dashboard || typeof dashboard !== "object" || dashboard.petId !== "popio") return;
+  localStorage.setItem(PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY, JSON.stringify({
+    dashboard,
+    fetchedAt: new Date().toISOString(),
+    schemaVersion: PET_HEALTH_DASHBOARD_CACHE_SCHEMA_VERSION,
+  }));
+}
+
+function petHealthDashboardCacheFacade_() {
+  return Object.freeze({ load: loadPetHealthDashboardCache_, save: savePetHealthDashboardCache_ });
 }
 
 function showAuthenticationState(message, state = "locked") {
@@ -745,7 +788,6 @@ const activateMembershipContext_ = function(membershipContext) {
   appAuthenticationState = "active_member";
   initializeNormalPwaOnce();
   applyAllowedViews_();
-  void switchView(activeView);
   document.dispatchEvent(new CustomEvent("paruru:authenticated", {
     detail: {
       context: {
@@ -759,8 +801,10 @@ const activateMembershipContext_ = function(membershipContext) {
       },
       healthApi: callAuthenticatedHealth_,
       petHealthApi: callAuthenticatedPetHealth_,
+      petHealthDashboardCache: petHealthDashboardCacheFacade_(),
     },
   }));
+  void switchView(activeView);
 };
 
 window.addEventListener("load", () => {

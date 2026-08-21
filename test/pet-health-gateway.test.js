@@ -69,6 +69,24 @@ function backendRecent(overrides) {
   }, overrides || {});
 }
 
+function backendDashboard(overrides) {
+  const summary = backendSummary().data;
+  const recent = backendRecent().data;
+  return Object.assign({
+    success: true,
+    status: 'SUCCESS',
+    operation: 'pet.health.getDashboard',
+    data: {
+      petId: 'popio', localDate: '2026-08-19', timezone: 'Asia/Tokyo',
+      summary,
+      recentEvents: recent.events,
+    },
+    warnings: [],
+    error: null,
+    schemaVersion: 'pet-health-1.0',
+  }, overrides || {});
+}
+
 function setup(options) {
   const state = Object.assign({
     actor: { homeId: 'home-server', memberUserId: 'member-server', role: 'admin', deviceId: 'device-server' },
@@ -142,6 +160,16 @@ function recentInput(extra) {
     pairingToken: 'browser-pairing',
     petId: 'popio',
     days: 7,
+  }, extra || {});
+}
+
+function dashboardInput(extra) {
+  return Object.assign({
+    action: 'pet.health.getDashboard',
+    deviceId: 'browser-device',
+    pairingToken: 'browser-pairing',
+    petId: 'popio',
+    localDate: '2026-08-19',
   }, extra || {});
 }
 
@@ -381,6 +409,35 @@ test('PH-RG04', 'recent events forwards the fixed trusted request', () => {
   assert.strictEqual(result.success, true);
   assert.deepStrictEqual(state.forwarded[0], { operation: 'pet.health.listRecentEvents', serviceToken: SERVER_TOKEN, homeId: 'home-server', actorUserId: 'member-server', petId: 'popio', days: 7 });
   assert.strictEqual(Object.hasOwn(result.data.events[0], 'homeId'), false);
+});
+
+test('PH-DG01', 'Dashboard requires pet.health.read', () => {
+  const { api, state } = setup({ responseText: JSON.stringify(backendDashboard()) });
+  assert.strictEqual(api.petHealthGateway_(dashboardInput()).success, true);
+  assert.deepStrictEqual(state.authorizedCapabilities, ['pet.health.read']);
+});
+
+test('PH-DG02', 'Dashboard uses the server-resolved actor', () => {
+  const { api, state } = setup({ actor: { homeId: 'resolved-home', memberUserId: 'resolved-member', role: 'guardian', deviceId: 'resolved-device' }, responseText: JSON.stringify(backendDashboard()) });
+  assert.strictEqual(api.petHealthGateway_(dashboardInput()).success, true);
+  assert.strictEqual(state.forwarded[0].homeId, 'resolved-home');
+  assert.strictEqual(state.forwarded[0].actorUserId, 'resolved-member');
+});
+
+test('PH-DG03', 'Dashboard makes one trusted Health request', () => {
+  const { api, state } = setup({ responseText: JSON.stringify(backendDashboard()) });
+  const result = api.petHealthGateway_(dashboardInput());
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(state.forwarded.length, 1);
+  assert.deepStrictEqual(state.forwarded[0], { operation: 'pet.health.getDashboard', serviceToken: SERVER_TOKEN, homeId: 'home-server', actorUserId: 'member-server', petId: 'popio', localDate: '2026-08-19' });
+  assert.strictEqual(Object.hasOwn(result.data.recentEvents[0], 'homeId'), false);
+});
+
+test('PH-DG04', 'Dashboard rejects spoofed identity fields', () => {
+  const { api, state } = setup({ responseText: JSON.stringify(backendDashboard()) });
+  assert.strictEqual(api.petHealthGateway_(dashboardInput({ homeId: 'spoofed' })).error.code, 'INVALID_INPUT');
+  assert.strictEqual(api.petHealthGateway_(dashboardInput({ source: 'agent' })).error.code, 'INVALID_INPUT');
+  assert.strictEqual(state.forwarded.length, 0);
 });
 
 console.log(`PASS pet health gateway suite (${passed} assertions)`);

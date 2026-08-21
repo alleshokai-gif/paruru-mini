@@ -1,11 +1,13 @@
 const PET_HEALTH_GATEWAY_OPERATION_CAPABILITIES = Object.freeze({
   'pet.health.getDailySummary': 'pet.health.read',
   'pet.health.listRecentEvents': 'pet.health.read',
+  'pet.health.getDashboard': 'pet.health.read',
   'pet.health.record': 'pet.health.record',
 });
 const PET_HEALTH_GATEWAY_ALLOWED_INPUTS = Object.freeze({
   'pet.health.getDailySummary': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true }),
   'pet.health.listRecentEvents': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, days: true }),
+  'pet.health.getDashboard': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true }),
   'pet.health.record': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, event: true }),
 });
 const PET_HEALTH_GATEWAY_RECENT_EVENT_FIELDS = Object.freeze({
@@ -106,8 +108,13 @@ function petHealthGatewayValidSuccess_(result, operation) {
     return Boolean(petHealthGatewayObject_(event) && String(event.eventId || '') && event.petId === 'popio' && String(event.eventType || '') && petHealthGatewayObject_(idempotency) && typeof idempotency.replayed === 'boolean');
   }
   const data = result.data;
-  if (operation === 'pet.health.getDailySummary') return data.petId === 'popio' && /^\d{4}-\d{2}-\d{2}$/.test(String(data.localDate || '')) && data.timezone === 'Asia/Tokyo' && petHealthGatewayObject_(data.meal) && petHealthGatewayObject_(data.water) && petHealthGatewayObject_(data.stool) && petHealthGatewayObject_(data.urine) && (data.latestWeight === null || petHealthGatewayObject_(data.latestWeight)) && Array.isArray(data.notableObservations) && data.notableObservations.every(petHealthGatewayObject_);
-  return operation === 'pet.health.listRecentEvents' && data.petId === 'popio' && data.days === 7 && /^\d{4}-\d{2}-\d{2}$/.test(String(data.fromLocalDate || '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(data.toLocalDate || '')) && data.timezone === 'Asia/Tokyo' && Array.isArray(data.events) && data.events.every(petHealthGatewayValidRecentEvent_);
+  if (operation === 'pet.health.getDailySummary') return petHealthGatewayValidSummary_(data);
+  if (operation === 'pet.health.listRecentEvents') return data.petId === 'popio' && data.days === 7 && /^\d{4}-\d{2}-\d{2}$/.test(String(data.fromLocalDate || '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(data.toLocalDate || '')) && data.timezone === 'Asia/Tokyo' && Array.isArray(data.events) && data.events.every(petHealthGatewayValidRecentEvent_);
+  return operation === 'pet.health.getDashboard' && data.petId === 'popio' && /^\d{4}-\d{2}-\d{2}$/.test(String(data.localDate || '')) && data.timezone === 'Asia/Tokyo' && petHealthGatewayValidSummary_(data.summary) && data.summary.localDate === data.localDate && Array.isArray(data.recentEvents) && data.recentEvents.every(petHealthGatewayValidRecentEvent_);
+}
+
+function petHealthGatewayValidSummary_(data) {
+  return petHealthGatewayObject_(data) && data.petId === 'popio' && /^\d{4}-\d{2}-\d{2}$/.test(String(data.localDate || '')) && data.timezone === 'Asia/Tokyo' && petHealthGatewayObject_(data.meal) && petHealthGatewayObject_(data.water) && petHealthGatewayObject_(data.stool) && petHealthGatewayObject_(data.urine) && (data.latestWeight === null || petHealthGatewayObject_(data.latestWeight)) && Array.isArray(data.notableObservations) && data.notableObservations.every(petHealthGatewayObject_);
 }
 
 function petHealthGatewayValidRecentEvent_(event) {
