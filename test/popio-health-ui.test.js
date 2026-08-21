@@ -60,7 +60,7 @@ assert.strictEqual(api.timestampLabel_({ occurredAtMode: 'explicit', occurredAtD
 // PH-WU01 - PH-WU08: water-bottle UI uses server summary context and sends only one water_bottle event.
 const emptyBottleModel = api.waterBottleUiModel_({ waterBottle: { eventCount: 0, latest: null, latestInterval: null } }, 'loaded');
 assert.deepStrictEqual(plain(emptyBottleModel), {
-  ready: true, hasPrevious: false, message: 'まだ交換記録なし。最初の水量を記録します。', defaultNewFillMl: '', latestInterval: null,
+  ready: true, canReload: false, hasPrevious: false, message: 'まだ交換記録なし。最初の水量を記録します。', defaultNewFillMl: '', latestInterval: null,
 }, 'PH-WU01 first-set UI model');
 const previousBottleModel = api.waterBottleUiModel_({
   waterBottle: {
@@ -85,6 +85,9 @@ assert.strictEqual(api.buildEventPayload_('water_bottle', {
   occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '2', newFillMl: '400', remainingMl: '130',
 }, timestampNow).occurredAt, '2026-08-21T02:00:00+09:00', 'PH-WU08 timestamp integration');
 assert.strictEqual(api.formatOccurredAt_('2026-08-20T08:00:00+09:00', timestampNow), '昨日 8時', 'water bottle previous timestamp label');
+const failedBottleModel = api.waterBottleUiModel_(null, 'failed');
+assert.strictEqual(failedBottleModel.ready, false, 'PH-SF05 failed summary must keep bottle form disabled');
+assert.strictEqual(failedBottleModel.canReload, true, 'PH-SF05 failed summary must expose Read-only reload');
 
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
 
@@ -199,6 +202,44 @@ async function run() {
   assert.strictEqual((await bottleRetryFlow.save('water_bottle', savedBottle)).saved, false, 'PH-WU10 first failure');
   assert.strictEqual((await bottleRetryFlow.save('water_bottle', savedBottle)).saved, true, 'PH-WU10 retry success');
   assert.strictEqual(bottleRetryIds[0], bottleRetryIds[1], 'PH-WU10 retry changed request ID');
+
+  // PH-SF01/02/07: a saved Write is final even when the following Read refresh fails.
+  const postSaveResults = [];
+  const saveStatuses = [];
+  const saveIds = [];
+  let saveSequence = 80;
+  const postSaveFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(saveSequence++),
+    isOnline: () => true,
+    call: async (request) => { saveIds.push(request.clientRequestId); return { event: { eventId: 'saved-meal' } }; },
+    onSuccess: async () => ({ writeSaved: true, summaryRefreshed: false }),
+    onSaved: (_key, _data, postSave) => { postSaveResults.push(plain(postSave)); saveStatuses.push(api.savedStatusMessage_(postSave)); },
+  });
+  const mealSave = await postSaveFlow.save('meal', { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished' });
+  assert.strictEqual(mealSave.saved, true, 'PH-SF02 refresh failure must not revert a saved Write');
+  assert.deepStrictEqual(plain(mealSave.postSave), { writeSaved: true, summaryRefreshed: false }, 'PH-SF02 save outcome');
+  assert.strictEqual(postSaveFlow.requestId('meal'), '', 'PH-SF02 saved Write retained request ID');
+  assert.deepStrictEqual(postSaveResults, [{ writeSaved: true, summaryRefreshed: false }], 'PH-SF02 saved outcome was not delivered');
+  assert.deepStrictEqual(saveStatuses, ['保存しました。最新表示を更新できませんでした。'], 'PH-SF02 saved message must not say Write failed');
+  const secondMealSave = await postSaveFlow.save('meal', { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished' });
+  assert.strictEqual(secondMealSave.saved, true, 'PH-SF08 later new save remains possible');
+  assert.notStrictEqual(saveIds[0], saveIds[1], 'PH-SF08 summary failure reused a saved Write request ID');
+  assert.strictEqual(api.savedStatusMessage_({ writeSaved: true, summaryRefreshed: true }), '保存しました', 'PH-SF01 success message');
+
+  // PH-SF03 - PH-SF06: the recovery control is Read-only and only appears for a failed summary.
+  assert(featureSource.includes('type="button" data-popio-water-bottle-reload'), 'PH-SF03 reload must never submit a record');
+  assert(featureSource.includes("reload.hidden = !model.canReload") && featureSource.includes("reload.disabled = !model.canReload || Boolean(saveFlow_ && saveFlow_.isSaving('water_bottle'))"), 'PH-SF05/06 reload visibility is not bound to summary state');
+  const retryActions = [];
+  const retryLoader = api.createPetHealthSummaryLoader_({
+    localDate: () => '2026-08-21',
+    call: async (action, body) => { retryActions.push({ action, body: plain(body) }); return { petId: 'popio' }; },
+  });
+  await retryLoader.load();
+  assert.deepStrictEqual(retryActions, [{ action: 'pet.health.getDailySummary', body: { petId: 'popio', localDate: '2026-08-21' } }], 'PH-SF04 retry must issue one summary Read only');
+  const restoredBottleModel = api.waterBottleUiModel_({ waterBottle: { eventCount: 1, latest: { eventId: 'bottle-restored', occurredAt: '2026-08-21T08:00:00+09:00', newFillMl: 400 }, latestInterval: null } }, 'loaded');
+  assert.strictEqual(restoredBottleModel.ready, true, 'PH-SF05 successful retry must re-enable water bottle input');
+  assert.strictEqual(restoredBottleModel.canReload, false, 'PH-SF05 successful retry must hide reload');
+  assert.strictEqual(api.waterBottleUiModel_(null, 'failed').canReload, true, 'PH-SF06 failed retry keeps Read-only retry available');
 
   // PH-U14: initial summary loader uses only petId and Tokyo localDate.
   const summaryCalls = [];

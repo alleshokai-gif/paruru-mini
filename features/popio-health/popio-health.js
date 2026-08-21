@@ -102,6 +102,7 @@
       <label class="popio-field" data-popio-water-bottle-remaining hidden><span>今の残り</span><span class="popio-unit-input"><input name="remainingMl" type="text" inputmode="numeric" maxlength="4"><em>mL</em></span></label>
       <label class="popio-field"><span>新しく入れた量</span><span class="popio-unit-input"><input name="newFillMl" type="text" inputmode="numeric" maxlength="4" required><em>mL</em></span></label>
       <section class="popio-water-bottle-preview" data-popio-water-bottle-preview hidden aria-live="polite"></section>
+      <button class="popio-water-bottle-reload" type="button" data-popio-water-bottle-reload hidden>再読み込み</button>
       ${note_()}${timestampControl_()}${submit_('セットを記録')}
     </form></details>`;
   }
@@ -342,10 +343,10 @@
         try {
           if (deps.isOnline && !deps.isOnline()) { const error = new Error('OFFLINE'); error.code = 'OFFLINE'; throw error; }
           const data = await deps.call(request);
-          if (deps.onSuccess) await deps.onSuccess(key, data, request);
+          const postSave = deps.onSuccess ? await deps.onSuccess(key, data, request) : null;
           delete requests[key];
-          if (deps.onSaved) deps.onSaved(key, data);
-          return { skipped: false, saved: true, data: data };
+          if (deps.onSaved) deps.onSaved(key, data, postSave);
+          return { skipped: false, saved: true, data: data, postSave: postSave };
         } catch (error) {
           if (deps.onFailure) deps.onFailure(key, error, request);
           return { skipped: false, saved: false, error: error };
@@ -367,8 +368,12 @@
       isOnline: function () { return typeof navigator === 'undefined' || navigator.onLine !== false; },
       call: function (request) { return call_('pet.health.record', request); },
       onSaving: function (key) { setFormSaving_(key, true); setFormStatus_(key, '保存中…'); },
-      onSuccess: async function (key) { const form = form_(key); if (form) { form.reset(); resetTimestampControl_(form); } await loadSummary_({ quiet: true }); },
-      onSaved: function (key) { setFormStatus_(key, '保存しました'); },
+      onSuccess: async function (key) {
+        const form = form_(key);
+        if (form) { form.reset(); resetTimestampControl_(form); }
+        return { writeSaved: true, summaryRefreshed: await loadSummary_({ quiet: true }) };
+      },
+      onSaved: function (key, _data, postSave) { setFormStatus_(key, savedStatusMessage_(postSave)); },
       onFailure: function (key, error) { setFormStatus_(key, error && error.code === 'OFFLINE' ? 'オフライン中。未保存です。入力は残しています。' : '保存できませんでした。入力は残しています。'); },
       onSettled: function (key) {
         setFormSaving_(key, false);
@@ -408,6 +413,12 @@
   }
 
   function handleTimestampClick_(event) {
+    const reload = event.target && event.target.closest ? event.target.closest('[data-popio-water-bottle-reload]') : null;
+    if (reload) {
+      event.preventDefault();
+      if (!reload.disabled) void reloadWaterBottleSummary_();
+      return;
+    }
     const toggle = event.target && event.target.closest ? event.target.closest('[data-popio-timestamp-toggle]') : null;
     if (toggle) {
       const form = toggle.closest('.popio-record-form');
@@ -466,14 +477,15 @@
   }
 
   function waterBottleUiModel_(summary, status) {
-    if (status !== 'loaded' || !summary || typeof summary !== 'object') return { ready: false, message: status === 'loading' ? '前回の記録を読み込み中…' : '前回の水ボトル記録を読み込めませんでした' };
+    if (status !== 'loaded' || !summary || typeof summary !== 'object') return { ready: false, canReload: status === 'failed', message: status === 'loading' ? '前回の記録を読み込み中…' : '前回の水ボトル記録を読み込めませんでした' };
     const bottle = summary.waterBottle;
     if (!bottle || typeof bottle !== 'object' || !Number.isSafeInteger(Number(bottle.eventCount)) || Number(bottle.eventCount) < 0 || (bottle.latest !== null && (!bottle.latest || typeof bottle.latest !== 'object' || !Number.isSafeInteger(Number(bottle.latest.newFillMl)) || Number(bottle.latest.newFillMl) < 1 || Number(bottle.latest.newFillMl) > 5000 || !Number.isFinite(new Date(String(bottle.latest.occurredAt || '')).getTime())))) {
-      return { ready: false, message: '前回の水ボトル記録を読み込めませんでした' };
+      return { ready: false, canReload: false, message: '前回の水ボトル記録を読み込めませんでした' };
     }
-    if (bottle.latest === null) return { ready: true, hasPrevious: false, message: 'まだ交換記録なし。最初の水量を記録します。', defaultNewFillMl: '', latestInterval: null };
+    if (bottle.latest === null) return { ready: true, canReload: false, hasPrevious: false, message: 'まだ交換記録なし。最初の水量を記録します。', defaultNewFillMl: '', latestInterval: null };
     return {
       ready: true,
+      canReload: false,
       hasPrevious: true,
       message: '前回の交換をもとに記録します。',
       previousOccurredAt: String(bottle.latest.occurredAt || ''),
@@ -524,6 +536,7 @@
     const remaining = form.querySelector('[data-popio-water-bottle-remaining]');
     const newFill = form.querySelector('[name="newFillMl"]');
     const preview = form.querySelector('[data-popio-water-bottle-preview]');
+    const reload = form.querySelector('[data-popio-water-bottle-reload]');
     const submit = form.querySelector('.popio-submit');
     if (stateLabel) stateLabel.textContent = model.message;
     if (previous) previous.hidden = !model.ready || !model.hasPrevious;
@@ -533,9 +546,24 @@
       setWaterBottleText_(form, '[data-popio-water-bottle-previous-fill]', model.previousFillMl + 'mL');
     }
     if (newFill && !newFill.value && model.ready) newFill.value = model.defaultNewFillMl;
-    form.querySelectorAll('input,select,textarea,button').forEach(function (control) { control.disabled = !model.ready; });
+    form.querySelectorAll('input,select,textarea,button').forEach(function (control) {
+      if (control === reload) return;
+      control.disabled = !model.ready;
+    });
     if (submit) submit.disabled = !model.ready;
+    if (reload) {
+      reload.hidden = !model.canReload;
+      reload.disabled = !model.canReload || Boolean(saveFlow_ && saveFlow_.isSaving('water_bottle'));
+      reload.textContent = '再読み込み';
+    }
     renderWaterBottlePreview_(form, model, preview);
+  }
+
+  async function reloadWaterBottleSummary_() {
+    const form = form_('water_bottle');
+    const reload = form && form.querySelector('[data-popio-water-bottle-reload]');
+    if (reload) { reload.disabled = true; reload.textContent = '再読み込み中…'; }
+    await loadSummary_({ quiet: true });
   }
 
   function updateWaterBottlePreview_(form) {
@@ -585,6 +613,10 @@
     const form = form_(key); if (!form) return;
     form.setAttribute('aria-busy', String(Boolean(saving)));
     form.querySelectorAll('input,select,textarea,button').forEach(function (control) { control.disabled = Boolean(saving); });
+  }
+  function savedStatusMessage_(postSave) {
+    return postSave && postSave.writeSaved === true && postSave.summaryRefreshed === false
+      ? '保存しました。最新表示を更新できませんでした。' : '保存しました';
   }
   function setFormStatus_(key, message) { const form = form_(key); const status = form && form.querySelector('[data-popio-form-status]'); if (status) status.textContent = message || ''; }
 
@@ -664,6 +696,7 @@
     buildRecordRequest_: buildRecordRequest_,
     createPetHealthSaveFlow_: createPetHealthSaveFlow_,
     createPetHealthSummaryLoader_: createPetHealthSummaryLoader_,
+    savedStatusMessage_: savedStatusMessage_,
     summaryDisplayModel_: summaryDisplayModel_,
     timestampLabel_: timestampLabel_,
     tokyoDate_: tokyoDate_,
