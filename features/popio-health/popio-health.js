@@ -620,9 +620,13 @@
   }
   function setFormStatus_(key, message) { const form = form_(key); const status = form && form.querySelector('[data-popio-form-status]'); if (status) status.textContent = message || ''; }
 
+  function shouldBlockPetHealthOffline_(action, online) {
+    return online === false && action !== 'pet.health.getDailySummary';
+  }
+
   async function call_(action, body) {
     if (!state.authContext || !state.petHealthApi) { const error = new Error('AUTHENTICATION_REQUIRED'); error.code = 'AUTHENTICATION_REQUIRED'; throw error; }
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) { const error = new Error('OFFLINE'); error.code = 'OFFLINE'; throw error; }
+    if (typeof navigator !== 'undefined' && shouldBlockPetHealthOffline_(action, navigator.onLine)) { const error = new Error('OFFLINE'); error.code = 'OFFLINE'; throw error; }
     return state.petHealthApi(action, body || {});
   }
 
@@ -697,6 +701,7 @@
     createPetHealthSaveFlow_: createPetHealthSaveFlow_,
     createPetHealthSummaryLoader_: createPetHealthSummaryLoader_,
     savedStatusMessage_: savedStatusMessage_,
+    shouldBlockPetHealthOffline_: shouldBlockPetHealthOffline_,
     summaryDisplayModel_: summaryDisplayModel_,
     timestampLabel_: timestampLabel_,
     tokyoDate_: tokyoDate_,

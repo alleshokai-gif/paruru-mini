@@ -221,6 +221,7 @@ async function run() {
   assert.strictEqual(postSaveFlow.requestId('meal'), '', 'PH-SF02 saved Write retained request ID');
   assert.deepStrictEqual(postSaveResults, [{ writeSaved: true, summaryRefreshed: false }], 'PH-SF02 saved outcome was not delivered');
   assert.deepStrictEqual(saveStatuses, ['保存しました。最新表示を更新できませんでした。'], 'PH-SF02 saved message must not say Write failed');
+  assert.strictEqual(postSaveFlow.isSaving('meal'), false, 'PH-RCA02 summary failure left the save flow busy');
   const secondMealSave = await postSaveFlow.save('meal', { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished' });
   assert.strictEqual(secondMealSave.saved, true, 'PH-SF08 later new save remains possible');
   assert.notStrictEqual(saveIds[0], saveIds[1], 'PH-SF08 summary failure reused a saved Write request ID');
@@ -240,6 +241,13 @@ async function run() {
   assert.strictEqual(restoredBottleModel.ready, true, 'PH-SF05 successful retry must re-enable water bottle input');
   assert.strictEqual(restoredBottleModel.canReload, false, 'PH-SF05 successful retry must hide reload');
   assert.strictEqual(api.waterBottleUiModel_(null, 'failed').canReload, true, 'PH-SF06 failed retry keeps Read-only retry available');
+
+  // PH-RCA01: navigator.onLine is only a hint. A Summary Read must still reach
+  // the authenticated gateway, while offline Writes retain the existing guard.
+  assert.strictEqual(api.shouldBlockPetHealthOffline_('pet.health.getDailySummary', false), false, 'PH-RCA01 offline hint blocked Summary Read locally');
+  assert.strictEqual(api.shouldBlockPetHealthOffline_('pet.health.record', false), true, 'PH-RCA01 offline Write guard was weakened');
+  assert.strictEqual(api.shouldBlockPetHealthOffline_('pet.health.getDailySummary', true), false, 'PH-RCA01 online Summary Read was blocked');
+  assert(featureSource.includes("shouldBlockPetHealthOffline_(action, navigator.onLine)"), 'PH-RCA01 call_ does not use the action-aware offline guard');
 
   // PH-U14: initial summary loader uses only petId and Tokyo localDate.
   const summaryCalls = [];

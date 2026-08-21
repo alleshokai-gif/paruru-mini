@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260821-popio-water-bottle-save-refresh-v1";
+globalThis.BUILD_ID = "v20260821-popio-summary-read-online-hint-fix-v1";
