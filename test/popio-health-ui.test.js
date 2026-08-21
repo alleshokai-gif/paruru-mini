@@ -49,6 +49,9 @@ assert(!Object.hasOwn(recordRequest.event, 'occurredAt'), 'manual UI must use se
 
 // PH-TUI01 - PH-TUI06: timestamps are opt-in, Tokyo based, and never permit a future manual hour.
 const timestampNow = new Date('2026-08-21T08:37:00+09:00');
+function reminderSummary(breakfast, dinner) {
+  return { meal: { bySlot: { breakfast: { eventCount: breakfast }, dinner: { eventCount: dinner } } } };
+}
 assert.deepStrictEqual(plain(api.buildEventPayload_('stool', {}, timestampNow)), { eventType: 'stool' }, 'PH-TUI01 default must omit occurredAt');
 assert.strictEqual(api.buildOccurredAt_({ occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '2' }, timestampNow), '2026-08-21T02:00:00+09:00', 'PH-TUI02 today timestamp');
 assert.strictEqual(api.buildOccurredAt_({ occurredAtMode: 'explicit', occurredAtDate: 'yesterday', occurredAtHour: '23' }, timestampNow), '2026-08-20T23:00:00+09:00', 'PH-TUI03 yesterday timestamp');
@@ -88,6 +91,37 @@ assert.strictEqual(api.formatOccurredAt_('2026-08-20T08:00:00+09:00', timestampN
 const failedBottleModel = api.waterBottleUiModel_(null, 'failed');
 assert.strictEqual(failedBottleModel.ready, false, 'PH-SF05 failed summary must keep bottle form disabled');
 assert.strictEqual(failedBottleModel.canReload, true, 'PH-SF05 failed summary must expose Read-only reload');
+
+// PH-M01 - PH-M08: only scheduled breakfast/dinner records can become missing.
+assert.deepStrictEqual(plain(api.recordingReminderModel_(reminderSummary(0, 0), 'loaded', new Date('2026-08-21T09:00:00+09:00')).items), [], 'PH-M01 breakfast reminder before 10:00');
+assert.deepStrictEqual(plain(api.recordingReminderModel_(reminderSummary(0, 0), 'loaded', new Date('2026-08-21T10:00:00+09:00')).items.map((item) => item.slot)), ['breakfast'], 'PH-M02 breakfast reminder at 10:00');
+assert.deepStrictEqual(plain(api.recordingReminderModel_(reminderSummary(1, 0), 'loaded', new Date('2026-08-21T10:00:00+09:00')).items), [], 'PH-M03 recorded breakfast');
+const refusedBreakfastSummary = reminderSummary(1, 0);
+refusedBreakfastSummary.meal.completionCounts = { finished: 0, partial: 0, refused: 1 };
+assert.deepStrictEqual(plain(api.recordingReminderModel_(refusedBreakfastSummary, 'loaded', new Date('2026-08-21T12:00:00+09:00')).items), [], 'PH-M04 refused breakfast is still represented by an eventCount');
+assert.deepStrictEqual(plain(api.recordingReminderModel_(reminderSummary(1, 0), 'loaded', new Date('2026-08-21T21:00:00+09:00')).items), [], 'PH-M05 dinner reminder before 22:00');
+assert.deepStrictEqual(plain(api.recordingReminderModel_(reminderSummary(1, 0), 'loaded', new Date('2026-08-21T22:00:00+09:00')).items.map((item) => item.slot)), ['dinner'], 'PH-M06 dinner reminder at 22:00');
+assert.deepStrictEqual(plain(api.recordingReminderModel_(reminderSummary(1, 1), 'loaded', new Date('2026-08-21T22:00:00+09:00')).items), [], 'PH-M07 recorded dinner');
+assert.strictEqual(api.recordingReminderModel_(null, 'failed', new Date('2026-08-21T22:00:00+09:00')).known, false, 'PH-M08 failed summary must not assert missing');
+
+const historyEvents = [
+  { eventId: 'meal', eventType: 'meal', occurredAt: '2026-08-21T08:00:00+09:00', localDate: '2026-08-21', recordedAt: '2026-08-21T08:01:00+09:00', mealSlot: 'breakfast', amountG: 20, completion: 'finished' },
+  { eventId: 'stool', eventType: 'stool', occurredAt: '2026-08-21T12:00:00+09:00', localDate: '2026-08-21', recordedAt: '2026-08-21T12:01:00+09:00', stoolForm: 'banana', stoolAmount: 'normal' },
+  { eventId: 'bottle', eventType: 'water_bottle', occurredAt: '2026-08-20T18:00:00+09:00', localDate: '2026-08-20', recordedAt: '2026-08-20T18:01:00+09:00', remainingMl: 130, newFillMl: 400, bottleDecreaseMl: 270, elapsedHours: 18, normalized24hMl: 360 },
+  { eventId: 'water', eventType: 'water', occurredAt: '2026-08-19T07:00:00+09:00', localDate: '2026-08-19', recordedAt: '2026-08-19T07:01:00+09:00', amountMl: 150 },
+  { eventId: 'urine', eventType: 'urine', occurredAt: '2026-08-18T06:00:00+09:00', localDate: '2026-08-18', recordedAt: '2026-08-18T06:01:00+09:00', urineStatus: 'concern' },
+  { eventId: 'weight', eventType: 'weight', occurredAt: '2026-08-17T09:00:00+09:00', localDate: '2026-08-17', recordedAt: '2026-08-17T09:01:00+09:00', weightKg: 2.3 },
+  { eventId: 'observation', eventType: 'observation', occurredAt: '2026-08-15T10:00:00+09:00', localDate: '2026-08-15', recordedAt: '2026-08-15T10:01:00+09:00', flags: ['vomiting'], note: '様子見' },
+];
+const historyModel = api.historyViewModel_(historyEvents, 'loaded', new Date('2026-08-21T13:00:00+09:00'));
+assert.strictEqual(historyModel.groups.reduce((count, group) => count + group.items.length, 0), 7, 'PH-H01 seven-day events');
+assert.deepStrictEqual(plain(historyModel.groups.map((group) => group.localDate)), ['2026-08-21','2026-08-20','2026-08-19','2026-08-18','2026-08-17','2026-08-15'], 'PH-H02 date groups');
+assert.deepStrictEqual(plain(historyModel.groups[0].items.map((item) => item.eventId)), ['stool','meal'], 'PH-H03 occurredAt DESC');
+assert.deepStrictEqual(historyEvents.map(api.recentEventLabel_), ['🍚 朝 20g 完食','💩 バナナ / 普通','💧 270mL減 / 18h','💧 水 150mL','🚽 おしっこ / 気になる','⚖️ 2.3kg','👀 体調 / 嘔吐 📝'], 'PH-H04 event labels');
+assert.strictEqual(api.historyViewModel_([], 'loaded', timestampNow).state, 'empty', 'PH-H05 empty state');
+assert.strictEqual(api.historyViewModel_([], 'failed', timestampNow).state, 'failed', 'PH-H06 failure state');
+assert.strictEqual(api.historyViewModel_(historyEvents, 'loaded', timestampNow).state, 'loaded', 'PH-H07 summary failure must not affect history model');
+assert.strictEqual(api.summaryDisplayModel_({ meal: { eventCount: 1, totalAmountG: 20 }, water: { eventCount: 0 }, stool: { count: 0 }, latestWeight: null }, 'loaded').meal, '20g', 'PH-H08 recent failure must not affect summary model');
 
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
 
@@ -245,6 +279,7 @@ async function run() {
   // PH-RCA01: navigator.onLine is only a hint. A Summary Read must still reach
   // the authenticated gateway, while offline Writes retain the existing guard.
   assert.strictEqual(api.shouldBlockPetHealthOffline_('pet.health.getDailySummary', false), false, 'PH-RCA01 offline hint blocked Summary Read locally');
+  assert.strictEqual(api.shouldBlockPetHealthOffline_('pet.health.listRecentEvents', false), false, 'PH-RCA01 offline hint blocked Recent Read locally');
   assert.strictEqual(api.shouldBlockPetHealthOffline_('pet.health.record', false), true, 'PH-RCA01 offline Write guard was weakened');
   assert.strictEqual(api.shouldBlockPetHealthOffline_('pet.health.getDailySummary', true), false, 'PH-RCA01 online Summary Read was blocked');
   assert(featureSource.includes("shouldBlockPetHealthOffline_(action, navigator.onLine)"), 'PH-RCA01 call_ does not use the action-aware offline guard');
@@ -257,6 +292,26 @@ async function run() {
   });
   await loader.load();
   assert.deepStrictEqual(summaryCalls, [{ action: 'pet.health.getDailySummary', body: { petId: 'popio', localDate: '2026-08-20' } }], 'PH-U14 summary request');
+
+  const recentCalls = [];
+  await api.createPetHealthRecentLoader_({ call: async (action, body) => { recentCalls.push({ action, body: plain(body) }); return { events: [] }; } }).load();
+  assert.deepStrictEqual(recentCalls, [{ action: 'pet.health.listRecentEvents', body: { petId: 'popio', days: 7 } }], 'PH-H01 recent request');
+
+  const refreshCalls = [];
+  const refreshResult = await api.createPetHealthReadRefresher_({
+    loadSummary: async () => { refreshCalls.push('summary'); return false; },
+    loadRecent: async () => { refreshCalls.push('recent'); return true; },
+  }).load({ quiet: true });
+  assert.deepStrictEqual(plain(refreshResult), { summary: false, recent: true }, 'PH-H07/H09 independent refresh outcomes');
+  assert.deepStrictEqual(refreshCalls.sort(), ['recent','summary'], 'PH-H09 save refresh must call both Reads');
+
+  const shortcutState = { scrolled: false, focused: false };
+  const reminderInput = { checked: false, focus() { shortcutState.focused = true; } };
+  const reminderDetails = { open: false, scrollIntoView() { shortcutState.scrolled = true; } };
+  const reminderForm = { querySelector: () => reminderInput, closest: () => reminderDetails };
+  assert.strictEqual(api.applyMealReminderShortcut_({ querySelector: () => reminderForm }, 'dinner'), true, 'PH-H10 shortcut application');
+  assert.strictEqual(reminderInput.checked, true, 'PH-H10 meal slot was not selected');
+  assert.deepStrictEqual(shortcutState, { scrolled: true, focused: true }, 'PH-H10 form was not focused/scrolled');
 
   // PH-U15/U16: a successful zero summary is distinct from a failed/unavailable summary.
   const emptyModel = api.summaryDisplayModel_({
@@ -287,6 +342,10 @@ async function run() {
     petId: 'popio', clientRequestId: uuid(99), event: { eventType: 'stool' }, actorUserId: 'spoof', role: 'admin',
   }));
   assert.deepStrictEqual(recordPayload, { action: 'pet.health.record', petId: 'popio', clientRequestId: uuid(99), event: { eventType: 'stool' } });
+  const recentPayload = plain(authContext.buildAuthenticatedPetHealthPayload_('pet.health.listRecentEvents', {
+    petId: 'popio', days: 7, homeId: 'spoof', actorUserId: 'spoof', serviceToken: 'spoof',
+  }));
+  assert.deepStrictEqual(recentPayload, { action: 'pet.health.listRecentEvents', petId: 'popio', days: 7 }, 'PH-RG03 recent PWA payload leaked server identity');
   assert(appSource.includes('petHealthApi: callAuthenticatedPetHealth_'), 'authenticated event does not pass Pet facade');
 
   assert(htmlSource.includes('id="popioHealthView"') && htmlSource.includes('id="popioHealthMount"'), 'Pet Health view/mount missing');
@@ -295,6 +354,7 @@ async function run() {
   assert(membershipSource.match(/popio-health/g)?.length === 3, 'Pet Health view is not allowed for all three roles');
   assert(swSource.includes('versioned("features/popio-health/popio-health.js")'), 'Pet Health feature missing from PWA app shell');
   assert(featureSource.includes('data-event-type="water_bottle"') && featureSource.includes('data-popio-water-bottle-previous'), 'water-bottle form missing');
+  assert(featureSource.includes('id="popioReminderList"') && featureSource.includes('id="popioHistoryList"'), 'Reminder/History UI mount missing');
 
   // PH-TUI09 - PH-TUI12: success resets to now, each form owns a timestamp control, and no server fields leak.
   assert(featureSource.includes('form.reset(); resetTimestampControl_(form);'), 'PH-TUI09 success does not reset timestamp state');
@@ -314,8 +374,9 @@ async function run() {
   assert(cssSource.includes('.popio-choice span') && cssSource.includes('.popio-check') && cssSource.includes('min-height: 48px;'), 'Pet choices lack 48px tap targets');
   assert(cssSource.includes('.popio-occurred-at-panel') && cssSource.includes('grid-template-columns: repeat(2, minmax(0, 1fr));'), 'timestamp panel lacks the mobile grid contract');
   assert(cssSource.includes('.popio-water-bottle-previous') && cssSource.includes('.popio-water-bottle-preview'), 'water-bottle mobile styles missing');
+  assert(cssSource.includes('.popio-reminder-item') && cssSource.includes('.popio-history-item'), 'Reminder/History mobile styles missing');
 
-  console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, and PH-WU01-PH-WU10 Pet Health UI payload, timestamp, water bottle, save lifecycle, summary, auth, and responsive contracts');
+  console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, PH-WU01-PH-WU10, PH-M01-PH-M08, and PH-H01-PH-H10 Pet Health UI contracts');
 }
 
 run().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

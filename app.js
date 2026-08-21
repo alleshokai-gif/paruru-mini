@@ -502,6 +502,7 @@ const NURSE_OKAN_HEALTH_ACTIONS = new Set([
 const PET_HEALTH_ACTIONS = new Set([
   "pet.health.record",
   "pet.health.getDailySummary",
+  "pet.health.listRecentEvents",
 ]);
 
 async function callAuthenticatedHealth_(action, body = {}) {
@@ -536,6 +537,13 @@ function buildAuthenticatedPetHealthPayload_(action, body = {}) {
       petId: input.petId,
       clientRequestId: input.clientRequestId,
       event: input.event,
+    };
+  }
+  if (action === "pet.health.listRecentEvents") {
+    return {
+      action,
+      petId: input.petId,
+      days: input.days,
     };
   }
   return {

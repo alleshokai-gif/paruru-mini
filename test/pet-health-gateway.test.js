@@ -54,6 +54,21 @@ function backendSummary(overrides) {
   }, overrides || {});
 }
 
+function backendRecent(overrides) {
+  return Object.assign({
+    success: true,
+    status: 'SUCCESS',
+    operation: 'pet.health.listRecentEvents',
+    data: {
+      petId: 'popio', days: 7, fromLocalDate: '2026-08-15', toLocalDate: '2026-08-21', timezone: 'Asia/Tokyo',
+      events: [{ eventId: 'event-recent', eventType: 'meal', occurredAt: '2026-08-21T08:00:00+09:00', localDate: '2026-08-21', recordedAt: '2026-08-21T08:01:00+09:00', mealSlot: 'breakfast', amountG: 20, completion: 'finished' }],
+    },
+    warnings: [],
+    error: null,
+    schemaVersion: 'pet-health-1.0',
+  }, overrides || {});
+}
+
 function setup(options) {
   const state = Object.assign({
     actor: { homeId: 'home-server', memberUserId: 'member-server', role: 'admin', deviceId: 'device-server' },
@@ -117,6 +132,16 @@ function summaryInput(extra) {
     pairingToken: 'browser-pairing',
     petId: 'popio',
     localDate: '2026-08-19',
+  }, extra || {});
+}
+
+function recentInput(extra) {
+  return Object.assign({
+    action: 'pet.health.listRecentEvents',
+    deviceId: 'browser-device',
+    pairingToken: 'browser-pairing',
+    petId: 'popio',
+    days: 7,
   }, extra || {});
 }
 
@@ -327,6 +352,35 @@ test('PH-G30', 'additive water-bottle summary data passes through unchanged', ()
   const result = api.petHealthGateway_(summaryInput());
   assert.strictEqual(result.success, true);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(result.data.waterBottle)), { eventCount: 1, latest: { eventId: 'bottle-1', occurredAt: '2026-08-19T08:00:00+09:00', newFillMl: 400 }, latestInterval: null });
+});
+
+test('PH-RG01', 'recent events requires pet.health.read', () => {
+  const { api, state } = setup({ responseText: JSON.stringify(backendRecent()) });
+  assert.strictEqual(api.petHealthGateway_(recentInput()).success, true);
+  assert.deepStrictEqual(state.authorizedCapabilities, ['pet.health.read']);
+});
+
+test('PH-RG02', 'recent events uses the server-resolved actor', () => {
+  const { api, state } = setup({ actor: { homeId: 'resolved-home', memberUserId: 'resolved-member', role: 'guardian', deviceId: 'resolved-device' }, responseText: JSON.stringify(backendRecent()) });
+  assert.strictEqual(api.petHealthGateway_(recentInput()).success, true);
+  assert.strictEqual(state.forwarded[0].homeId, 'resolved-home');
+  assert.strictEqual(state.forwarded[0].actorUserId, 'resolved-member');
+  assert.deepStrictEqual(state.resolvedCredentials, [{ deviceId: 'browser-device', pairingToken: 'browser-pairing' }]);
+});
+
+test('PH-RG03', 'recent events rejects spoofed identity', () => {
+  const { api, state } = setup({ responseText: JSON.stringify(backendRecent()) });
+  assert.strictEqual(api.petHealthGateway_(recentInput({ homeId: 'spoofed' })).error.code, 'INVALID_INPUT');
+  assert.strictEqual(api.petHealthGateway_(recentInput({ actorUserId: 'spoofed' })).error.code, 'INVALID_INPUT');
+  assert.strictEqual(state.forwarded.length, 0);
+});
+
+test('PH-RG04', 'recent events forwards the fixed trusted request', () => {
+  const { api, state } = setup({ responseText: JSON.stringify(backendRecent()) });
+  const result = api.petHealthGateway_(recentInput());
+  assert.strictEqual(result.success, true);
+  assert.deepStrictEqual(state.forwarded[0], { operation: 'pet.health.listRecentEvents', serviceToken: SERVER_TOKEN, homeId: 'home-server', actorUserId: 'member-server', petId: 'popio', days: 7 });
+  assert.strictEqual(Object.hasOwn(result.data.events[0], 'homeId'), false);
 });
 
 console.log(`PASS pet health gateway suite (${passed} assertions)`);

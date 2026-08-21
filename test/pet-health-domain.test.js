@@ -71,6 +71,9 @@ function summary(context,localDate,homeId='home-main'){
   if(localDate!==undefined)body.localDate=localDate;
   return context.petHealthSummary_(body,{now:()=>new Date('2026-08-22T12:00:00+09:00')});
 }
+function recent(context,days=7,homeId='home-main',now='2026-08-21T12:00:00+09:00'){
+  return context.petHealthRecentEvents_({operation:'pet.health.listRecentEvents',homeId,actorUserId:'father',petId:'popio',days},{now:()=>new Date(now)});
+}
 
 {
   const {context,spreadsheet}=createHarness();
@@ -376,6 +379,46 @@ function summary(context,localDate,homeId='home-main'){
   assert.strictEqual(apiResponse.success,true,'Pet doPost dispatch');
   const unauthorized=JSON.parse(context.doPost({postData:{contents:JSON.stringify({...apiBody,clientRequestId:requestId(998),serviceToken:'wrong'})}}).getContent());
   assert.strictEqual(unauthorized.error.code,'UNAUTHORIZED','Pet service token boundary');
+  const recentApi=JSON.parse(context.doPost({postData:{contents:JSON.stringify({operation:'pet.health.listRecentEvents',serviceToken:'test-token',homeId:'home-main',actorUserId:'father',petId:'popio',days:7})}}).getContent());
+  assert.strictEqual(recentApi.success,true,'Recent Event doPost dispatch');
+  assert.strictEqual(recentApi.operation,'pet.health.listRecentEvents','Recent Event operation response');
+}
+
+{
+  const {context,spreadsheet}=createHarness();
+  let next=1200;
+  const add=(event,homeId='home-main')=>record(context,baseRecord(event,requestId(next++),homeId),'2026-08-21T23:00:00+09:00');
+  add({eventType:'water_bottle',occurredAt:'2026-08-14T08:00:00+09:00',newFillMl:400});
+  add({eventType:'water_bottle',occurredAt:'2026-08-15T08:00:00+09:00',remainingMl:130,newFillMl:400,note:'交換'});
+  add({eventType:'observation',occurredAt:'2026-08-16T09:00:00+09:00',energy:'normal',flags:['vomiting'],note:'観察'});
+  add({eventType:'weight',occurredAt:'2026-08-17T10:00:00+09:00',weightKg:2.3});
+  add({eventType:'urine',occurredAt:'2026-08-18T11:00:00+09:00',urineStatus:'concern'});
+  add({eventType:'water',occurredAt:'2026-08-19T12:00:00+09:00',amountMl:150});
+  add({eventType:'stool',occurredAt:'2026-08-20T13:00:00+09:00',stoolForm:'banana',stoolAmount:'normal',coprophagy:false});
+  add({eventType:'meal',occurredAt:'2026-08-21T14:00:00+09:00',mealSlot:'breakfast',amountG:20,completion:'finished',note:'朝'});
+  add({eventType:'meal',occurredAt:'2026-08-21T15:00:00+09:00',mealSlot:'dinner',amountG:999,completion:'finished'},'other-home');
+  const eventSheet=spreadsheet.sheets.Pet_Health_Events,petIdColumn=eventSheet.values[0].indexOf('petId'),otherPet=eventSheet.values[eventSheet.values.length-2].slice();
+  otherPet[petIdColumn]='other-pet';
+  eventSheet.values.push(otherPet);
+
+  const value=recent(context).data;
+  assert.strictEqual(value.days,7,'PH-R01 fixed seven-day response');
+  assert.strictEqual(value.fromLocalDate,'2026-08-15','PH-R01 from boundary');
+  assert.strictEqual(value.toLocalDate,'2026-08-21','PH-R01 inclusive today');
+  assert.strictEqual(value.events.length,7,'PH-R01 latest seven local dates');
+  assert.strictEqual(value.events.some((event)=>event.localDate==='2026-08-14'),false,'PH-R02 older event included');
+  assert.strictEqual(value.events.some((event)=>event.amountG===999),false,'PH-R03 other home leaked');
+  assert.strictEqual(value.events.some((event)=>event.petId==='other-pet'),false,'PH-R04 other pet leaked');
+  assert.deepStrictEqual(plain(value.events.map((event)=>event.localDate)),['2026-08-21','2026-08-20','2026-08-19','2026-08-18','2026-08-17','2026-08-16','2026-08-15'],'PH-R05 occurredAt DESC');
+  const meal=value.events[0];
+  assert.deepStrictEqual(plain(meal),{eventId:meal.eventId,eventType:'meal',occurredAt:'2026-08-21T14:00:00+09:00',localDate:'2026-08-21',recordedAt:meal.recordedAt,mealSlot:'breakfast',amountG:20,completion:'finished',note:'朝'},'PH-R06 sanitized meal shape');
+  ['homeId','actorUserId','recordedBy','clientRequestId','requestHash','source'].forEach((field)=>assert.strictEqual(Object.hasOwn(meal,field),false,`PH-R06 leaked ${field}`));
+  assert.deepStrictEqual(Array.from(new Set(value.events.map((event)=>event.eventType))).sort(),['meal','observation','stool','urine','water','water_bottle','weight'],'PH-R07 all event types');
+  assert.strictEqual(value.events.find((event)=>event.eventType==='water').amountMl,150,'PH-R08 legacy water');
+  const bottle=value.events.find((event)=>event.eventType==='water_bottle');
+  assert.deepStrictEqual({bottleDecreaseMl:bottle.bottleDecreaseMl,elapsedHours:bottle.elapsedHours,normalized24hMl:bottle.normalized24hMl},{bottleDecreaseMl:270,elapsedHours:24,normalized24hMl:270},'PH-R09 water bottle interval');
+  assert.throws(()=>recent(context,6),(error)=>error.code==='INVALID_INPUT','Recent days must be fixed at seven');
+  assert.throws(()=>recent(context,'7'),(error)=>error.code==='INVALID_INPUT','Recent days must be JSON number');
 }
 
 {
@@ -389,4 +432,4 @@ function summary(context,localDate,homeId='home-main'){
   assert.throws(()=>context.healthSheet_('Pet_Health_Events'),(error)=>error.code==='CONFIGURATION_ERROR','Pet schema header reorder must fail closed');
 }
 
-console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, PH-W01..10, PH-WS01..05, schema, token, and dispatch');
+console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, PH-W01..10, PH-WS01..05, PH-R01..09, schema, token, and dispatch');

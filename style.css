@@ -1510,6 +1510,71 @@ body:not(.is-authenticated) .drawer-overlay {
   font-weight: 700;
 }
 
+.popio-reminder-card,
+.popio-history-card {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid #dce5dc;
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.popio-reminder-card h2,
+.popio-history-card h2,
+.popio-history-group h3 {
+  margin: 0;
+  color: #374b3a;
+}
+
+.popio-reminder-card h2,
+.popio-history-card h2 {
+  font-size: 1.02rem;
+}
+
+.popio-reminder-status,
+.popio-history-status {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.popio-reminder-list,
+.popio-history-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.popio-reminder-list:empty,
+.popio-history-list:empty {
+  margin-top: 0;
+}
+
+.popio-reminder-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #edf1ed;
+}
+
+.popio-reminder-item span {
+  min-width: 0;
+  color: #6f5740;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.popio-reminder-item button {
+  border: 1px solid #dfcda9;
+  border-radius: 12px;
+  background: #fffaf0;
+  color: #72562d;
+  font-weight: 800;
+}
+
 .popio-summary-card {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1550,6 +1615,40 @@ body:not(.is-authenticated) .drawer-overlay {
 .popio-record-list {
   display: grid;
   gap: 12px;
+}
+
+.popio-history-card {
+  margin-top: 16px;
+}
+
+.popio-history-group {
+  display: grid;
+  gap: 4px;
+}
+
+.popio-history-group + .popio-history-group {
+  padding-top: 10px;
+  border-top: 1px solid #edf1ed;
+}
+
+.popio-history-group h3 {
+  font-size: 0.88rem;
+}
+
+.popio-history-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.popio-history-item time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
 }
 
 .popio-card {
@@ -1854,6 +1953,14 @@ body:not(.is-authenticated) .drawer-overlay {
 
   .popio-summary-card strong {
     font-size: 1.02rem;
+  }
+
+  .popio-reminder-item {
+    grid-template-columns: 1fr;
+  }
+
+  .popio-reminder-item button {
+    width: 100%;
   }
 
   .popio-choice-grid-four,

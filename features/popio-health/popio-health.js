@@ -9,12 +9,17 @@
 
   const PET_ID = 'popio';
   const TOKYO_TIME_ZONE = 'Asia/Tokyo';
+  const RECENT_EVENT_DAYS = 7;
+  const REMINDER_HOURS = Object.freeze({ breakfast: 10, dinner: 22 });
+  const PET_HEALTH_READ_ACTIONS = Object.freeze({ 'pet.health.getDailySummary': true, 'pet.health.listRecentEvents': true });
   const FLAG_ORDER = Object.freeze(['vomiting', 'sneeze_cough', 'pain_behavior']);
   const state = {
     authContext: null,
     petHealthApi: null,
     summary: null,
     summaryStatus: 'idle',
+    recentEvents: [],
+    recentStatus: 'idle',
     mounted: false,
   };
   let saveFlow_ = null;
@@ -42,6 +47,11 @@
         <p id="popioHealthDate" class="popio-health-date"></p>
       </header>
       <p id="popioHealthStatus" class="popio-health-status" role="status" aria-live="polite"></p>
+      <section class="popio-reminder-card" aria-labelledby="popioReminderTitle">
+        <h2 id="popioReminderTitle">⚠️ 今日の記録</h2>
+        <p id="popioReminderStatus" class="popio-reminder-status"></p>
+        <div id="popioReminderList" class="popio-reminder-list"></div>
+      </section>
       <section class="popio-summary-card" aria-label="今日のまとめ">
         <div><span>🍚 ごはん</span><strong id="popioSummaryMeal">--</strong></div>
         <div><span>💧 水</span><strong id="popioSummaryWater">--</strong></div>
@@ -55,7 +65,12 @@
         ${urineForm_()}
         ${weightForm_()}
         ${observationForm_()}
-      </div>`;
+      </div>
+      <section class="popio-history-card" aria-labelledby="popioHistoryTitle">
+        <h2 id="popioHistoryTitle">📋 最近の記録</h2>
+        <p id="popioHistoryStatus" class="popio-history-status" role="status" aria-live="polite"></p>
+        <div id="popioHistoryList" class="popio-history-list"></div>
+      </section>`;
     mount.append(root);
     root.addEventListener('submit', submitRecord_);
     root.addEventListener('input', handleContentChanged_);
@@ -65,6 +80,7 @@
     initializeTimestampControls_(root);
     renderDate_();
     renderSummary_();
+    renderRecentEvents_();
   }
 
   function mealForm_() {
@@ -371,7 +387,8 @@
       onSuccess: async function (key) {
         const form = form_(key);
         if (form) { form.reset(); resetTimestampControl_(form); }
-        return { writeSaved: true, summaryRefreshed: await loadSummary_({ quiet: true }) };
+        const reads = await refreshPetHealthReads_({ quiet: true });
+        return { writeSaved: true, summaryRefreshed: reads.summary, recentRefreshed: reads.recent };
       },
       onSaved: function (key, _data, postSave) { setFormStatus_(key, savedStatusMessage_(postSave)); },
       onFailure: function (key, error) { setFormStatus_(key, error && error.code === 'OFFLINE' ? 'オフライン中。未保存です。入力は残しています。' : '保存できませんでした。入力は残しています。'); },
@@ -413,6 +430,15 @@
   }
 
   function handleTimestampClick_(event) {
+    const shortcut = event.target && event.target.closest ? event.target.closest('[data-popio-reminder-slot]') : null;
+    if (shortcut) {
+      event.preventDefault();
+      if (applyMealReminderShortcut_(document, shortcut.dataset.popioReminderSlot)) {
+        ensureSaveFlow_().contentChanged('meal');
+        setFormStatus_('meal', '');
+      }
+      return;
+    }
     const reload = event.target && event.target.closest ? event.target.closest('[data-popio-water-bottle-reload]') : null;
     if (reload) {
       event.preventDefault();
@@ -435,6 +461,19 @@
     resetTimestampControl_(form);
     ensureSaveFlow_().contentChanged(String(form.dataset.eventType || ''));
     setFormStatus_(String(form.dataset.eventType || ''), '');
+  }
+
+  function applyMealReminderShortcut_(root, slot) {
+    if (!root || ['breakfast', 'dinner'].indexOf(slot) < 0) return false;
+    const form = root.querySelector('.popio-record-form[data-event-type="meal"]');
+    const input = form && form.querySelector('[name="mealSlot"][value="' + slot + '"]');
+    if (!form || !input) return false;
+    const details = form.closest('details');
+    if (details) details.open = true;
+    input.checked = true;
+    if (details && typeof details.scrollIntoView === 'function') details.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (typeof input.focus === 'function') input.focus();
+    return true;
   }
 
   function initializeTimestampControls_(root) {
@@ -621,7 +660,7 @@
   function setFormStatus_(key, message) { const form = form_(key); const status = form && form.querySelector('[data-popio-form-status]'); if (status) status.textContent = message || ''; }
 
   function shouldBlockPetHealthOffline_(action, online) {
-    return online === false && action !== 'pet.health.getDailySummary';
+    return online === false && !PET_HEALTH_READ_ACTIONS[action];
   }
 
   async function call_(action, body) {
@@ -630,13 +669,31 @@
     return state.petHealthApi(action, body || {});
   }
 
-  async function open_() { if (!state.mounted) mount_(); renderDate_(); await loadSummary_(); }
+  async function open_() { if (!state.mounted) mount_(); renderDate_(); await refreshPetHealthReads_(); }
   function createPetHealthSummaryLoader_(deps) {
     return {
       load: function () {
         return deps.call('pet.health.getDailySummary', { petId: PET_ID, localDate: deps.localDate() });
       },
     };
+  }
+  function createPetHealthRecentLoader_(deps) {
+    return {
+      load: function () {
+        return deps.call('pet.health.listRecentEvents', { petId: PET_ID, days: RECENT_EVENT_DAYS });
+      },
+    };
+  }
+  function createPetHealthReadRefresher_(deps) {
+    return {
+      async load(options) {
+        const results = await Promise.all([deps.loadSummary(options), deps.loadRecent(options)]);
+        return { summary: results[0], recent: results[1] };
+      },
+    };
+  }
+  function refreshPetHealthReads_(options) {
+    return createPetHealthReadRefresher_({ loadSummary: loadSummary_, loadRecent: loadRecentEvents_ }).load(options);
   }
   async function loadSummary_(options) {
     const quiet = Boolean(options && options.quiet);
@@ -656,6 +713,22 @@
       return false;
     }
   }
+  async function loadRecentEvents_() {
+    state.recentStatus = 'loading';
+    renderRecentEvents_();
+    try {
+      const data = await createPetHealthRecentLoader_({ call: call_ }).load();
+      state.recentEvents = Array.isArray(data && data.events) ? data.events : [];
+      state.recentStatus = 'loaded';
+      renderRecentEvents_();
+      return true;
+    } catch (_) {
+      state.recentEvents = [];
+      state.recentStatus = 'failed';
+      renderRecentEvents_();
+      return false;
+    }
+  }
 
   function summaryDisplayModel_(summary, status) {
     if (status !== 'loaded' || !summary || typeof summary !== 'object') return { meal: '--', water: '--', stool: '--', weight: '--' };
@@ -665,9 +738,103 @@
     const weight = summary.latestWeight && typeof summary.latestWeight.weightKg === 'number' ? summary.latestWeight.weightKg + 'kg' : '--';
     return { meal: meal, water: water, stool: stool, weight: weight };
   }
+  function recordingReminderModel_(summary, status, now) {
+    const slots = summary && summary.meal && summary.meal.bySlot;
+    const count = function (slot) { return slots && slots[slot] ? slots[slot].eventCount : NaN; };
+    const breakfast = count('breakfast'), dinner = count('dinner');
+    if (status !== 'loaded' || !Number.isSafeInteger(breakfast) || breakfast < 0 || !Number.isSafeInteger(dinner) || dinner < 0) {
+      return { known: false, items: [], message: '今日の記録を確認できませんでした' };
+    }
+    const hour = tokyoHour_(now), items = [];
+    if (hour >= REMINDER_HOURS.breakfast && breakfast === 0) items.push({ slot: 'breakfast', label: '朝ごはん', message: '朝ごはんの記録、まだやで' });
+    if (hour >= REMINDER_HOURS.dinner && dinner === 0) items.push({ slot: 'dinner', label: '夜ごはん', message: '夜ごはんの記録、忘れとらん？' });
+    return { known: true, items: items, message: items.length ? '' : '今のところ入力忘れはないで' };
+  }
+  function renderReminder_() {
+    const status = document.getElementById('popioReminderStatus'), list = document.getElementById('popioReminderList');
+    if (!status || !list) return;
+    const model = recordingReminderModel_(state.summary, state.summaryStatus);
+    status.textContent = model.message;
+    list.textContent = '';
+    model.items.forEach(function (item) {
+      const row = document.createElement('div'), text = document.createElement('span'), button = document.createElement('button');
+      row.className = 'popio-reminder-item';
+      text.textContent = '🍚 ' + item.message;
+      button.type = 'button';
+      button.dataset.popioReminderSlot = item.slot;
+      button.textContent = item.label + 'を記録';
+      row.append(text, button);
+      list.append(row);
+    });
+  }
+  function recentEventLabel_(event) {
+    const data = event || {}, mealSlots = { breakfast: '朝', lunch: '昼', dinner: '夜', snack: '補食' }, completions = { finished: '完食', partial: '一部', refused: '食べなかった' }, stoolForms = { pellet: 'コロコロ', formed: '形あり', banana: 'バナナ', soft: 'やわらかい', watery: '水様' }, stoolAmounts = { small: '少なめ', normal: '普通', large: '多め' };
+    let label = '';
+    if (data.eventType === 'meal') {
+      const parts = ['🍚', mealSlots[data.mealSlot] || 'ごはん'];
+      if (data.completion !== 'refused' && typeof data.amountG === 'number') parts.push(data.amountG + 'g');
+      if (completions[data.completion]) parts.push(completions[data.completion]);
+      label = parts.join(' ');
+    } else if (data.eventType === 'stool') {
+      const details = [stoolForms[data.stoolForm], stoolAmounts[data.stoolAmount]].filter(Boolean);
+      label = details.length ? '💩 ' + details.join(' / ') : '💩 うんち';
+    } else if (data.eventType === 'water_bottle') {
+      label = typeof data.bottleDecreaseMl === 'number' ? '💧 ' + data.bottleDecreaseMl + 'mL減 / ' + data.elapsedHours + 'h' : '💧 水ボトル交換' + (typeof data.newFillMl === 'number' ? ' ' + data.newFillMl + 'mL' : '');
+    } else if (data.eventType === 'water') label = '💧 水' + (typeof data.amountMl === 'number' ? ' ' + data.amountMl + 'mL' : '');
+    else if (data.eventType === 'urine') label = '🚽 おしっこ' + (data.urineStatus === 'concern' ? ' / 気になる' : '');
+    else if (data.eventType === 'weight') label = '⚖️ ' + (typeof data.weightKg === 'number' ? data.weightKg + 'kg' : '体重');
+    else if (data.eventType === 'observation') {
+      const flags = { vomiting: '嘔吐', sneeze_cough: 'くしゃみ・咳', pain_behavior: '痛がる様子' };
+      const details = Array.isArray(data.flags) ? data.flags.map(function (flag) { return flags[flag]; }).filter(Boolean) : [];
+      label = '👀 体調' + (details.length ? ' / ' + details.join('・') : '');
+    } else label = '記録';
+    return label + (String(data.note || '') ? ' 📝' : '');
+  }
+  function historyDateLabel_(localDate, now) {
+    if (localDate === tokyoDate_(now)) return '今日 ' + Number(localDate.slice(5, 7)) + '/' + Number(localDate.slice(8, 10));
+    if (localDate === tokyoPreviousDate_(now)) return '昨日 ' + Number(localDate.slice(5, 7)) + '/' + Number(localDate.slice(8, 10));
+    return Number(localDate.slice(5, 7)) + '/' + Number(localDate.slice(8, 10));
+  }
+  function historyViewModel_(events, status, now) {
+    if (status === 'loading' || status === 'idle') return { state: 'loading', message: '最近の記録を読み込み中…', groups: [] };
+    if (status !== 'loaded' || !Array.isArray(events)) return { state: 'failed', message: '最近の記録を読み込めませんでした', groups: [] };
+    if (events.some(function (event) { return !event || !/^\d{4}-\d{2}-\d{2}$/.test(String(event.localDate || '')) || !Number.isFinite(new Date(String(event.occurredAt || '')).getTime()); })) return { state: 'failed', message: '最近の記録を読み込めませんでした', groups: [] };
+    const ordered = events.slice().sort(function (a, b) { return new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime() || String(a.eventId || '').localeCompare(String(b.eventId || '')); });
+    const groups = [];
+    ordered.forEach(function (event) {
+      let group = groups.length && groups[groups.length - 1];
+      if (!group || group.localDate !== event.localDate) { group = { localDate: event.localDate, label: historyDateLabel_(event.localDate, now), items: [] }; groups.push(group); }
+      group.items.push({ eventId: String(event.eventId || ''), time: String(tokyoHour_(new Date(event.occurredAt))).padStart(2, '0') + '時', label: recentEventLabel_(event) });
+    });
+    return { state: groups.length ? 'loaded' : 'empty', message: groups.length ? '' : '最近の記録はまだないで', groups: groups };
+  }
+  function renderRecentEvents_() {
+    const status = document.getElementById('popioHistoryStatus'), list = document.getElementById('popioHistoryList');
+    if (!status || !list) return;
+    const model = historyViewModel_(state.recentEvents, state.recentStatus);
+    status.textContent = model.message;
+    list.textContent = '';
+    model.groups.forEach(function (group) {
+      const section = document.createElement('section'), heading = document.createElement('h3');
+      section.className = 'popio-history-group';
+      heading.textContent = group.label;
+      section.append(heading);
+      group.items.forEach(function (item) {
+        const row = document.createElement('div'), time = document.createElement('time'), label = document.createElement('span');
+        row.className = 'popio-history-item';
+        row.dataset.eventId = item.eventId;
+        time.textContent = item.time;
+        label.textContent = item.label;
+        row.append(time, label);
+        section.append(row);
+      });
+      list.append(section);
+    });
+  }
   function renderSummary_() {
     const model = summaryDisplayModel_(state.summary, state.summaryStatus);
     setText_('popioSummaryMeal', model.meal); setText_('popioSummaryWater', model.water); setText_('popioSummaryStool', model.stool); setText_('popioSummaryWeight', model.weight);
+    renderReminder_();
     renderWaterBottle_();
   }
   function renderDate_() { const value = tokyoDate_(); const parts = value.split('-'); setText_('popioHealthDate', parts.length === 3 ? '今日 ' + Number(parts[1]) + '/' + Number(parts[2]) : '今日'); }
@@ -698,8 +865,14 @@
     buildEventPayload_: buildEventPayload_,
     buildOccurredAt_: buildOccurredAt_,
     buildRecordRequest_: buildRecordRequest_,
+    applyMealReminderShortcut_: applyMealReminderShortcut_,
+    createPetHealthReadRefresher_: createPetHealthReadRefresher_,
+    createPetHealthRecentLoader_: createPetHealthRecentLoader_,
     createPetHealthSaveFlow_: createPetHealthSaveFlow_,
     createPetHealthSummaryLoader_: createPetHealthSummaryLoader_,
+    historyViewModel_: historyViewModel_,
+    recentEventLabel_: recentEventLabel_,
+    recordingReminderModel_: recordingReminderModel_,
     savedStatusMessage_: savedStatusMessage_,
     shouldBlockPetHealthOffline_: shouldBlockPetHealthOffline_,
     summaryDisplayModel_: summaryDisplayModel_,

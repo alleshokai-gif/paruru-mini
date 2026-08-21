@@ -1,10 +1,21 @@
 const PET_HEALTH_GATEWAY_OPERATION_CAPABILITIES = Object.freeze({
   'pet.health.getDailySummary': 'pet.health.read',
+  'pet.health.listRecentEvents': 'pet.health.read',
   'pet.health.record': 'pet.health.record',
 });
 const PET_HEALTH_GATEWAY_ALLOWED_INPUTS = Object.freeze({
   'pet.health.getDailySummary': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true }),
+  'pet.health.listRecentEvents': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, days: true }),
   'pet.health.record': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, event: true }),
+});
+const PET_HEALTH_GATEWAY_RECENT_EVENT_FIELDS = Object.freeze({
+  meal: Object.freeze(['mealSlot', 'amountG', 'completion', 'note']),
+  stool: Object.freeze(['stoolForm', 'stoolAmount', 'coprophagy', 'note']),
+  water_bottle: Object.freeze(['remainingMl', 'newFillMl', 'bottleDecreaseMl', 'elapsedHours', 'normalized24hMl', 'note']),
+  water: Object.freeze(['amountMl', 'note']),
+  urine: Object.freeze(['urineStatus', 'note']),
+  weight: Object.freeze(['weightKg', 'note']),
+  observation: Object.freeze(['energy', 'appetite', 'flags', 'note']),
 });
 const PET_HEALTH_GATEWAY_SAFE_ERRORS = Object.freeze({
   UNAUTHORIZED_DEVICE: true, MEMBERSHIP_NOT_FOUND: true, FORBIDDEN: true,
@@ -51,6 +62,8 @@ function petHealthGatewayForTrustedActor_(input, actor, trustedSource) {
     forwarded.source = trustedSource;
     forwarded.clientRequestId = input.clientRequestId;
     forwarded.event = input.event;
+  } else if (operation === 'pet.health.listRecentEvents') {
+    forwarded.days = input.days;
   } else if (Object.prototype.hasOwnProperty.call(input, 'localDate')) {
     forwarded.localDate = input.localDate;
   }
@@ -77,6 +90,7 @@ function petHealthGatewayValidateInput_(input, operation) {
   const allowed = PET_HEALTH_GATEWAY_ALLOWED_INPUTS[operation];
   if (!allowed || Object.keys(input).some(function(key) { return !allowed[key]; })) throw petHealthGatewayError_('INVALID_INPUT');
   if (input.petId !== 'popio') throw petHealthGatewayError_('INVALID_INPUT');
+  if (operation === 'pet.health.listRecentEvents' && input.days !== 7) throw petHealthGatewayError_('INVALID_INPUT');
 }
 
 function petHealthGatewayBackendErrorCode_(result) {
@@ -92,7 +106,15 @@ function petHealthGatewayValidSuccess_(result, operation) {
     return Boolean(petHealthGatewayObject_(event) && String(event.eventId || '') && event.petId === 'popio' && String(event.eventType || '') && petHealthGatewayObject_(idempotency) && typeof idempotency.replayed === 'boolean');
   }
   const data = result.data;
-  return data.petId === 'popio' && /^\d{4}-\d{2}-\d{2}$/.test(String(data.localDate || '')) && data.timezone === 'Asia/Tokyo' && petHealthGatewayObject_(data.meal) && petHealthGatewayObject_(data.water) && petHealthGatewayObject_(data.stool) && petHealthGatewayObject_(data.urine) && (data.latestWeight === null || petHealthGatewayObject_(data.latestWeight)) && Array.isArray(data.notableObservations) && data.notableObservations.every(petHealthGatewayObject_);
+  if (operation === 'pet.health.getDailySummary') return data.petId === 'popio' && /^\d{4}-\d{2}-\d{2}$/.test(String(data.localDate || '')) && data.timezone === 'Asia/Tokyo' && petHealthGatewayObject_(data.meal) && petHealthGatewayObject_(data.water) && petHealthGatewayObject_(data.stool) && petHealthGatewayObject_(data.urine) && (data.latestWeight === null || petHealthGatewayObject_(data.latestWeight)) && Array.isArray(data.notableObservations) && data.notableObservations.every(petHealthGatewayObject_);
+  return operation === 'pet.health.listRecentEvents' && data.petId === 'popio' && data.days === 7 && /^\d{4}-\d{2}-\d{2}$/.test(String(data.fromLocalDate || '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(data.toLocalDate || '')) && data.timezone === 'Asia/Tokyo' && Array.isArray(data.events) && data.events.every(petHealthGatewayValidRecentEvent_);
+}
+
+function petHealthGatewayValidRecentEvent_(event) {
+  if (!petHealthGatewayObject_(event) || !String(event.eventId || '') || !PET_HEALTH_GATEWAY_RECENT_EVENT_FIELDS[event.eventType] || !Number.isFinite(new Date(String(event.occurredAt || '')).getTime()) || !Number.isFinite(new Date(String(event.recordedAt || '')).getTime()) || !/^\d{4}-\d{2}-\d{2}$/.test(String(event.localDate || ''))) return false;
+  const allowed = { eventId: true, eventType: true, occurredAt: true, localDate: true, recordedAt: true };
+  PET_HEALTH_GATEWAY_RECENT_EVENT_FIELDS[event.eventType].forEach(function(key) { allowed[key] = true; });
+  return Object.keys(event).every(function(key) { return allowed[key]; });
 }
 
 function petHealthGatewayObject_(value) {
