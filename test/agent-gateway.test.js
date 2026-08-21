@@ -158,6 +158,18 @@ const PALURU_AGENT_TRACE_HEADERS_V84 = [
   'osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError',
   'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'
 ];
+const PALURU_AGENT_TRACE_TOOL_CALLING_TAIL = [
+  'routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs',
+  'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'
+];
+// This is the complete immediate persisted predecessor of the Runtime Port
+// trace migration.  It intentionally includes the original 84-column prefix
+// and one existing row fixture is used below.
+const PALURU_AGENT_TRACE_HEADERS_V93 = PALURU_AGENT_TRACE_HEADERS_V84.concat(PALURU_AGENT_TRACE_TOOL_CALLING_TAIL);
+const PALURU_AGENT_RUNTIME_PORT_TRACE_TAIL = [
+  'runtimeVariant', 'runtimeAdapterVersion', 'provider', 'model',
+  'toolArgumentsHash', 'inputTokens', 'outputTokens'
+];
 
 test('tool-free response', () => {
   configure();
@@ -351,6 +363,7 @@ test('Mini upgrades the immediate pre-OS-response-shape fixture by appending onl
   const buildTail = ['miniBuildId', 'agentBuildId', 'osBuildId'];
   const osResponseTail = ['osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError', 'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'];
   const toolCallingTail = ['routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs', 'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'];
+  const runtimePortTail = PALURU_AGENT_RUNTIME_PORT_TRACE_TAIL;
   const priorTail = [
     'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion', 'osDeploymentSuffix', 'osVersion',
     'hasActionConfirmation', 'confirmationRequired', 'hasSourceTrace', 'hasActionTrace',
@@ -358,7 +371,7 @@ test('Mini upgrades the immediate pre-OS-response-shape fixture by appending onl
     'preparedHasFollowupRequired', 'preparedHasActionConfirmation', 'preparedHasSourceTrace', 'preparedHasActionTrace',
     'preparedStatus', 'preparedKeysHash'
   ];
-  const priorHeaders = headers.slice(0, -(osResponseTail.length + toolCallingTail.length));
+  const priorHeaders = headers.slice(0, -(osResponseTail.length + toolCallingTail.length + runtimePortTail.length));
   assert(JSON.stringify(priorHeaders.slice(-buildTail.length)) === JSON.stringify(buildTail), 'pre-OS-response-shape fixture no longer retains the existing build tail');
   assert(JSON.stringify(priorHeaders.slice(-(buildTail.length + priorTail.length), -buildTail.length)) === JSON.stringify(priorTail), 'pre-build fixture no longer matches the persisted header order');
   traceSheet.headers = priorHeaders.slice();
@@ -366,9 +379,10 @@ test('Mini upgrades the immediate pre-OS-response-shape fixture by appending onl
   context.__preBuildTrace = { entries: [{ event: 'REQUEST_RECEIVED', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat' }], agentEntries: [] };
   vm.runInContext('persistAgentTrace_(__preBuildTrace)', context);
   assert(JSON.stringify(traceSheet.headers) === JSON.stringify(headers), 'OS response-shape and Tool Calling migrations were not append-only');
-  assert(JSON.stringify(traceSheet.headers.slice(-toolCallingTail.length)) === JSON.stringify(toolCallingTail), 'Tool Calling fields were not appended at the final tail');
-  assert(JSON.stringify(traceSheet.headers.slice(-(osResponseTail.length + toolCallingTail.length), -toolCallingTail.length)) === JSON.stringify(osResponseTail), 'OS response-shape fields were inserted before an existing header');
-  assert(JSON.stringify(traceSheet.headers.slice(-(osResponseTail.length + toolCallingTail.length + buildTail.length), -(osResponseTail.length + toolCallingTail.length))) === JSON.stringify(buildTail), 'build IDs moved from their existing persisted position');
+  assert(JSON.stringify(traceSheet.headers.slice(-runtimePortTail.length)) === JSON.stringify(runtimePortTail), 'Runtime Port fields were not appended at the final tail');
+  assert(JSON.stringify(traceSheet.headers.slice(-(runtimePortTail.length + toolCallingTail.length), -runtimePortTail.length)) === JSON.stringify(toolCallingTail), 'Tool Calling fields moved from their existing tail');
+  assert(JSON.stringify(traceSheet.headers.slice(-(runtimePortTail.length + osResponseTail.length + toolCallingTail.length), -(runtimePortTail.length + toolCallingTail.length))) === JSON.stringify(osResponseTail), 'OS response-shape fields were inserted before an existing header');
+  assert(JSON.stringify(traceSheet.headers.slice(-(runtimePortTail.length + osResponseTail.length + toolCallingTail.length + buildTail.length), -(runtimePortTail.length + osResponseTail.length + toolCallingTail.length))) === JSON.stringify(buildTail), 'build IDs moved from their existing persisted position');
   assert(traceSheet.rows[0].length === priorHeaders.length && traceSheet.rows[0][priorHeaders.indexOf('preparedKeysHash')] === 'prior-preparedKeysHash', 'existing trace row was changed');
   assert(traceSheet.rows[1].length === headers.length, 'new trace row width does not match the expanded schema');
 });
@@ -393,14 +407,13 @@ test('Mini appends the Phase 1 trace tail after the literal persisted 84-column 
   reset();
   traceSheet = createTraceSheet();
   const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
-  const toolCallingTail = [
-    'routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs',
-    'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'
-  ];
+  const toolCallingTail = PALURU_AGENT_TRACE_TOOL_CALLING_TAIL;
+  const runtimePortTail = PALURU_AGENT_RUNTIME_PORT_TRACE_TAIL;
   assert(PALURU_AGENT_TRACE_HEADERS_V84.length === 84, 'historical fixture width changed');
-  assert(headers.length === 93, 'Tool Calling trace schema must contain 93 columns');
+  assert(headers.length === 100, 'Runtime Port trace schema must contain 100 columns');
   assert(JSON.stringify(headers.slice(0, 84)) === JSON.stringify(PALURU_AGENT_TRACE_HEADERS_V84), 'existing 84-column schema is not the unchanged prefix');
-  assert(JSON.stringify(headers.slice(84)) === JSON.stringify(toolCallingTail), 'Tool Calling trace fields were not appended in order');
+  assert(JSON.stringify(headers.slice(84, 93)) === JSON.stringify(toolCallingTail), 'Tool Calling trace fields were not appended in order');
+  assert(JSON.stringify(headers.slice(93)) === JSON.stringify(runtimePortTail), 'Runtime Port trace fields were not appended in order');
   assert(headers[72] === 'preparedKeysHash', 'preparedKeysHash moved from column 73');
   assert(JSON.stringify(headers.slice(73, 76)) === JSON.stringify(['miniBuildId', 'agentBuildId', 'osBuildId']), 'Build ID columns moved from 74-76');
 
@@ -417,10 +430,10 @@ test('Mini appends the Phase 1 trace tail after the literal persisted 84-column 
     agentEntries: []
   };
   vm.runInContext('persistAgentTrace_(__phase1TraceSchemaFixture)', context);
-  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(headers), '93-column header migration was not append-only');
+  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(headers), '100-column header migration was not append-only');
   assert(JSON.stringify(traceSheet.rows[0]) === JSON.stringify(existingRow), 'existing 84-column fixture row changed');
   assert(traceSheet.rows[0].length === 84, 'existing fixture row width changed');
-  assert(traceSheet.rows[1].length === 93, 'new trace row width is not 93');
+  assert(traceSheet.rows[1].length === 100, 'new trace row width is not 100');
   const newRow = traceSheet.rows[1];
   assert(JSON.stringify(toolCallingTail.map((header) => newRow[headers.indexOf(header)])) === JSON.stringify([
     3, 5, 11, 2, 7, 2, 'calendar.listEvents|weather.getForecast', 'tool_calling', 'PARTIAL'
@@ -443,6 +456,33 @@ test('Mini persists omitted Tool Calling metrics as blanks on a legacy trace ent
   assert(JSON.stringify(fields.map((header) => traceSheet.rows[0][headers.indexOf(header)])) === JSON.stringify(['', '', '', '', '', '', '', '', '']), 'legacy trace invented Tool Calling metrics instead of leaving them blank');
 });
 
+test('Mini appends Runtime Port fields after the immediate persisted 93-column fixture', () => {
+  reset();
+  traceSheet = createTraceSheet();
+  const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
+  const existingRow = PALURU_AGENT_TRACE_HEADERS_V93.map((header) => 'prior-' + header);
+  traceSheet.headers = PALURU_AGENT_TRACE_HEADERS_V93.slice();
+  traceSheet.rows = [existingRow.slice()];
+  context.__runtimePortTraceSchemaFixture = {
+    entries: [{
+      event: 'RESPONSE_SENT', clientRequestIdSuffix: clientRequestId.slice(-8), action: 'agentChat',
+      runtimeVariant: 'current', runtimeAdapterVersion: 'current-bounded-runtime-adapter-v1',
+      provider: 'openai_responses', model: 'gpt-5-mini', toolArgumentsHash: 'a1b2c3d4',
+      inputTokens: 12, outputTokens: 8
+    }],
+    agentEntries: []
+  };
+  vm.runInContext('persistAgentTrace_(__runtimePortTraceSchemaFixture)', context);
+  assert(JSON.stringify(headers.slice(0, 93)) === JSON.stringify(PALURU_AGENT_TRACE_HEADERS_V93), 'immediate 93-column schema is not the unchanged prefix');
+  assert(JSON.stringify(traceSheet.headers) === JSON.stringify(headers), 'Runtime Port headers were not appended only after the immediate 93-column fixture');
+  assert(JSON.stringify(traceSheet.rows[0]) === JSON.stringify(existingRow), 'immediate 93-column fixture row changed');
+  assert(traceSheet.rows[0].length === 93 && traceSheet.rows[1].length === 100, 'Runtime Port migration row widths are incorrect');
+  const row = traceSheet.rows[1];
+  assert(JSON.stringify(PALURU_AGENT_RUNTIME_PORT_TRACE_TAIL.map((header) => row[headers.indexOf(header)])) === JSON.stringify([
+    'current', 'current-bounded-runtime-adapter-v1', 'openai_responses', 'gpt-5-mini', 'a1b2c3d4', 12, 8
+  ]), 'Runtime Port trace values were not persisted');
+});
+
 test('Mini retains only safe Tool Calling trace fields across Agent ingress and persistence', () => {
   reset();
   const trace = { clientRequestId, entries: [], agentEntries: [] };
@@ -450,22 +490,30 @@ test('Mini retains only safe Tool Calling trace fields across Agent ingress and 
     event: 'TOOL_RESULT', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
     routerMs: 3.5, serviceMs: 5, totalMs: 11.5, modelMs: 2, toolMs: 7,
     toolCallCount: 2, toolNames: 'calendar.listEvents|weather.getForecast',
-    executionPath: 'tool_calling', resultStatus: 'PARTIAL'
+    executionPath: 'tool_calling', resultStatus: 'PARTIAL',
+    runtimeVariant: 'current', runtimeAdapterVersion: 'current-bounded-runtime-adapter-v1',
+    provider: 'openai_responses', model: 'gpt-5-mini', toolArgumentsHash: 'a1b2c3d4',
+    inputTokens: 17, outputTokens: 9
   }, {
     event: 'TOOL_RESULT', clientRequestIdSuffix: '${clientRequestId.slice(-8)}',
     toolCallCount: 1.5,
     toolNames: 'weather.getForecast|{"period":"tomorrow","message":"private-tool-args"}',
     executionPath: 'tool_calling;legacy_router', resultStatus: 'SUCCESS private-tool-message',
+    runtimeVariant: 'hermes', runtimeAdapterVersion: 'private-adapter', provider: 'private-provider',
+    model: 'private-model', toolArgumentsHash: 'private-tool-args', inputTokens: 1.5, outputTokens: -1,
     rawToolArgs: '{"period":"tomorrow"}', message: 'private-tool-message'
   }])`, Object.assign(context, { __toolTraceIngress: trace }));
   assert(JSON.stringify([
     trace.agentEntries[0].routerMs, trace.agentEntries[0].serviceMs, trace.agentEntries[0].totalMs,
     trace.agentEntries[0].modelMs, trace.agentEntries[0].toolMs, trace.agentEntries[0].toolCallCount,
-    trace.agentEntries[0].toolNames, trace.agentEntries[0].executionPath, trace.agentEntries[0].resultStatus
-  ]) === JSON.stringify([3.5, 5, 11.5, 2, 7, 2, 'calendar.listEvents|weather.getForecast', 'tool_calling', 'PARTIAL']), 'safe Tool Calling trace fields changed at Mini ingress');
+    trace.agentEntries[0].toolNames, trace.agentEntries[0].executionPath, trace.agentEntries[0].resultStatus,
+    trace.agentEntries[0].runtimeVariant, trace.agentEntries[0].runtimeAdapterVersion, trace.agentEntries[0].provider,
+    trace.agentEntries[0].model, trace.agentEntries[0].toolArgumentsHash, trace.agentEntries[0].inputTokens, trace.agentEntries[0].outputTokens
+  ]) === JSON.stringify([3.5, 5, 11.5, 2, 7, 2, 'calendar.listEvents|weather.getForecast', 'tool_calling', 'PARTIAL', 'current', 'current-bounded-runtime-adapter-v1', 'openai_responses', 'gpt-5-mini', 'a1b2c3d4', 17, 9]), 'safe Tool Calling trace fields changed at Mini ingress');
   assert(trace.agentEntries[1].toolCallCount === null, 'fractional tool call count was retained');
   assert(trace.agentEntries[1].toolNames === 'weather.getForecast|invalid_tool', 'unsafe Tool name was not replaced');
   assert(trace.agentEntries[1].executionPath === '' && trace.agentEntries[1].resultStatus === '', 'unsafe Tool trace enums were retained');
+  assert(JSON.stringify([trace.agentEntries[1].runtimeVariant, trace.agentEntries[1].runtimeAdapterVersion, trace.agentEntries[1].provider, trace.agentEntries[1].model, trace.agentEntries[1].toolArgumentsHash, trace.agentEntries[1].inputTokens, trace.agentEntries[1].outputTokens]) === JSON.stringify(['', '', '', '', '', null, null]), 'unsafe Runtime Port trace values were retained');
 
   traceSheet = createTraceSheet();
   context.__toolTracePersist = { entries: [], agentEntries: trace.agentEntries };
@@ -475,8 +523,10 @@ test('Mini retains only safe Tool Calling trace fields across Agent ingress and 
   assert(JSON.stringify([
     persisted[headers.indexOf('routerMs')], persisted[headers.indexOf('serviceMs')], persisted[headers.indexOf('totalMs')],
     persisted[headers.indexOf('modelMs')], persisted[headers.indexOf('toolMs')], persisted[headers.indexOf('toolCallCount')],
-    persisted[headers.indexOf('toolNames')], persisted[headers.indexOf('executionPath')], persisted[headers.indexOf('resultStatus')]
-  ]) === JSON.stringify([3.5, 5, 11.5, 2, 7, 2, 'calendar.listEvents|weather.getForecast', 'tool_calling', 'PARTIAL']), 'safe Tool Calling trace fields changed during persistence');
+    persisted[headers.indexOf('toolNames')], persisted[headers.indexOf('executionPath')], persisted[headers.indexOf('resultStatus')],
+    persisted[headers.indexOf('runtimeVariant')], persisted[headers.indexOf('runtimeAdapterVersion')], persisted[headers.indexOf('provider')],
+    persisted[headers.indexOf('model')], persisted[headers.indexOf('toolArgumentsHash')], persisted[headers.indexOf('inputTokens')], persisted[headers.indexOf('outputTokens')]
+  ]) === JSON.stringify([3.5, 5, 11.5, 2, 7, 2, 'calendar.listEvents|weather.getForecast', 'tool_calling', 'PARTIAL', 'current', 'current-bounded-runtime-adapter-v1', 'openai_responses', 'gpt-5-mini', 'a1b2c3d4', 17, 9]), 'safe Tool Calling trace fields changed during persistence');
   const serialized = JSON.stringify({ agentEntries: trace.agentEntries, rows: traceSheet.rows });
   assert(!serialized.includes('private-tool-args') && !serialized.includes('private-tool-message') && !serialized.includes('"period":"tomorrow"'), 'raw Tool arguments or message body reached the trace ledger');
 });
@@ -489,14 +539,17 @@ test('Mini final response trace retains Weather Tool Calling performance metadat
     stage: 'RESPONSE_SENT', agentPerformance: {
       openAiCallCount: 2, serviceCallCount: 1, routerMs: 3, serviceMs: 5, totalMs: 11,
       modelMs: 4, toolMs: 5, toolCallCount: 1, toolNames: 'weather.getForecast',
-      executionPath: 'tool_calling', resultStatus: 'SUCCESS'
+      executionPath: 'tool_calling', resultStatus: 'SUCCESS', runtimeVariant: 'current',
+      runtimeAdapterVersion: 'current-bounded-runtime-adapter-v1', provider: 'openai_responses',
+      model: 'gpt-5-mini', toolArgumentsHash: 'a1b2c3d4', inputTokens: 18, outputTokens: 7
     }
   })`, context);
   const event = trace.entries[0];
   assert(JSON.stringify([
     event.openAiCallCount, event.serviceCallCount, event.modelMs, event.toolMs, event.toolCallCount,
-    event.toolNames, event.executionPath, event.resultStatus, event.totalMs
-  ]) === JSON.stringify([2, 1, 4, 5, 1, 'weather.getForecast', 'tool_calling', 'SUCCESS', 11]), 'Mini final response dropped Weather Tool Calling performance metadata');
+    event.toolNames, event.executionPath, event.resultStatus, event.totalMs, event.runtimeVariant,
+    event.runtimeAdapterVersion, event.provider, event.model, event.toolArgumentsHash, event.inputTokens, event.outputTokens
+  ]) === JSON.stringify([2, 1, 4, 5, 1, 'weather.getForecast', 'tool_calling', 'SUCCESS', 11, 'current', 'current-bounded-runtime-adapter-v1', 'openai_responses', 'gpt-5-mini', 'a1b2c3d4', 18, 7]), 'Mini final response dropped Weather Tool Calling performance metadata');
 });
 
 test('Mini final response trace retains Calendar Tool Calling performance metadata', () => {
@@ -686,7 +739,7 @@ test('Mini persists only fixed Home snapshot failure classifications without cha
   context.__homeFailureSourcePersist = { entries: [], agentEntries: trace.agentEntries };
   vm.runInContext('persistAgentTrace_(__homeFailureSourcePersist)', context);
   const headers = vm.runInContext('PALURU_AGENT_TRACE_HEADERS', context);
-  assert(headers.length === 93, 'Home failure classification changed Trace schema width');
+  assert(headers.length === 100, 'Home failure classification changed Trace schema width');
   cases.forEach((item, index) => {
     const expectedHttpStatus = item[2] === null ? '' : item[2];
     const row = traceSheet.rows[index];
@@ -853,12 +906,14 @@ test('Mini persists only confirmation precheck booleans in the new header tail',
   const buildTail = ['miniBuildId', 'agentBuildId', 'osBuildId'];
   const osResponseTail = ['osResponseSuccess', 'osResponseHasAction', 'osResponseHasData', 'osResponseHasError', 'osResponseHasDeploymentTrace', 'osResponseKeysHash', 'osResponseDataKeysHash', 'osResponseErrorCode'];
   const toolCallingTail = ['routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs', 'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'];
-  const laterTailLength = buildTail.length + osResponseTail.length + toolCallingTail.length;
+  const runtimePortTail = PALURU_AGENT_RUNTIME_PORT_TRACE_TAIL;
+  const laterTailLength = buildTail.length + osResponseTail.length + toolCallingTail.length + runtimePortTail.length;
   assert(JSON.stringify(traceSheet.headers.slice(-(preparedTail.length + laterTailLength), -laterTailLength)) === JSON.stringify(preparedTail), 'prepared shape headers moved from their persisted position');
   assert(JSON.stringify(traceSheet.headers.slice(-(tail.length + preparedTail.length + laterTailLength), -(preparedTail.length + laterTailLength))) === JSON.stringify(tail), 'precheck headers moved from their append-only position');
-  assert(JSON.stringify(traceSheet.headers.slice(-laterTailLength, -(osResponseTail.length + toolCallingTail.length))) === JSON.stringify(buildTail), 'build IDs moved from their persisted position');
-  assert(JSON.stringify(traceSheet.headers.slice(-(osResponseTail.length + toolCallingTail.length), -toolCallingTail.length)) === JSON.stringify(osResponseTail), 'OS response-shape fields moved from their persisted position');
-  assert(JSON.stringify(traceSheet.headers.slice(-toolCallingTail.length)) === JSON.stringify(toolCallingTail), 'Tool Calling fields were not appended at the final tail');
+  assert(JSON.stringify(traceSheet.headers.slice(-laterTailLength, -(osResponseTail.length + toolCallingTail.length + runtimePortTail.length))) === JSON.stringify(buildTail), 'build IDs moved from their persisted position');
+  assert(JSON.stringify(traceSheet.headers.slice(-(osResponseTail.length + toolCallingTail.length + runtimePortTail.length), -(toolCallingTail.length + runtimePortTail.length))) === JSON.stringify(osResponseTail), 'OS response-shape fields moved from their persisted position');
+  assert(JSON.stringify(traceSheet.headers.slice(-(toolCallingTail.length + runtimePortTail.length), -runtimePortTail.length)) === JSON.stringify(toolCallingTail), 'Tool Calling fields moved from their persisted tail');
+  assert(JSON.stringify(traceSheet.headers.slice(-runtimePortTail.length)) === JSON.stringify(runtimePortTail), 'Runtime Port fields were not appended at the final tail');
   const row = traceSheet.rows[0];
   assert(JSON.stringify(tail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([true, false, true, false, true, false, true]), 'precheck booleans were not persisted');
   assert(JSON.stringify(osResponseTail.map((header) => row[traceSheet.headers.indexOf(header)])) === JSON.stringify([false, false, false, true, false, 'b1c2d3e4', 'd4c3b2a1', 'AIRCON_UPSTREAM_HTTP_ERROR']), 'OS response-shape fields were not persisted');
@@ -916,6 +971,21 @@ test('Today Paruru scope is derived from the server actor and selected members, 
   }, sessionId, clientRequestId, { memberUserId: 'father' });
   assert(mine.todayParuruSettings.scope === 'mine', 'single actor selection was not resolved as mine');
   assert(family.todayParuruSettings.scope === 'family', 'family selection trusted a spoofed mine scope');
+});
+
+test('client runtimeVariant never reaches Agent runtime selection', () => {
+  configure();
+  mockFetch(200, agentResponse('ok'), (url, options) => {
+    const sent = JSON.parse(options.payload);
+    assert(!Object.prototype.hasOwnProperty.call(sent, 'runtimeVariant'), 'client runtimeVariant reached the Agent request');
+    assert(!Object.prototype.hasOwnProperty.call(sent.requestMetadata, 'runtimeVariant'), 'metadata runtimeVariant reached the Agent request');
+    assert(sent.requestMetadata.purpose === 'weather', 'Weather purpose changed while rejecting client runtimeVariant');
+  });
+  const result = post(valid({
+    runtimeVariant: 'hermes',
+    requestMetadata: { purpose: 'weather', runtimeVariant: 'hermes' }
+  }));
+  assert(result.success, 'runtimeVariant rejection changed the normal Agent response');
 });
 
 test('safe upstream weather failure remains distinguishable to PWA', () => {

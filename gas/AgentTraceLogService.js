@@ -63,7 +63,11 @@ const PALURU_AGENT_TRACE_HEADERS = [
   // Phase 1 Tool Calling trace fields are append-only after the persisted
   // 84-column schema. Do not move Build IDs or OS response-shape diagnostics.
   'routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs',
-  'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'
+  'toolCallCount', 'toolNames', 'executionPath', 'resultStatus',
+  // Runtime-port comparison fields. These contain fixed identifiers,
+  // counters, and a Weather enum-shape hash only; no input or Tool payload.
+  'runtimeVariant', 'runtimeAdapterVersion', 'provider', 'model',
+  'toolArgumentsHash', 'inputTokens', 'outputTokens'
 ];
 
 function persistAgentTrace_(trace) {
@@ -212,6 +216,13 @@ function normalizePersistableAgentTraceEntry_(entry, source) {
       SUCCESS: true, STALE: true, PARTIAL: true, NO_OP: true, FOLLOWUP_REQUIRED: true,
       INVALID_INPUT: true, FORBIDDEN: true, NOT_FOUND: true, UNAVAILABLE: true, UPSTREAM_ERROR: true
     })
+    ,runtimeVariant: sanitizeAgentTraceLedgerEnum_(value.runtimeVariant, { current: true })
+    ,runtimeAdapterVersion: /^current-bounded-runtime-adapter-v\d+$/.test(String(value.runtimeAdapterVersion || '')) ? String(value.runtimeAdapterVersion) : ''
+    ,provider: sanitizeAgentTraceLedgerEnum_(value.provider, { openai_responses: true })
+    ,model: sanitizeAgentTraceLedgerText_(value.model)
+    ,toolArgumentsHash: sanitizeAgentTraceLedgerRuntimeHash_(value.toolArgumentsHash)
+    ,inputTokens: sanitizeAgentTraceLedgerNonNegativeInteger_(value.inputTokens)
+    ,outputTokens: sanitizeAgentTraceLedgerNonNegativeInteger_(value.outputTokens)
   };
 }
 
@@ -227,6 +238,11 @@ function sanitizeAgentTraceLedgerBoolean_(value) {
 function sanitizeAgentTraceLedgerHash_(value) {
   const hash = String(value || '');
   return /^[a-f0-9]{8}$/i.test(hash) ? hash.toLowerCase() : '';
+}
+
+function sanitizeAgentTraceLedgerRuntimeHash_(value) {
+  const hash = String(value || '').toLowerCase();
+  return /^[a-f0-9]{8}(?:[a-f0-9]{8}){0,7}$/.test(hash) ? hash : '';
 }
 
 function sanitizeAgentTraceLedgerOsErrorCode_(value) {

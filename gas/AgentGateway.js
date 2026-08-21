@@ -812,6 +812,13 @@ function logMiniAgentTrace_(event, trace, details) {
     toolNames: sanitizeIncomingAgentTraceToolNames_(source.toolNames || performance.toolNames),
     executionPath: sanitizeIncomingAgentTraceExecutionPath_(source.executionPath || performance.executionPath),
     resultStatus: sanitizeIncomingAgentTraceResultStatus_(source.resultStatus || performance.resultStatus),
+    runtimeVariant: sanitizeIncomingAgentTraceRuntimeVariant_(source.runtimeVariant || performance.runtimeVariant),
+    runtimeAdapterVersion: sanitizeIncomingAgentTraceRuntimeAdapterVersion_(source.runtimeAdapterVersion || performance.runtimeAdapterVersion),
+    provider: sanitizeIncomingAgentTraceProvider_(source.provider || performance.provider),
+    model: sanitizeIncomingAgentTraceModel_(source.model || performance.model),
+    toolArgumentsHash: sanitizeIncomingAgentTraceRuntimeHash_(source.toolArgumentsHash || performance.toolArgumentsHash),
+    inputTokens: Object.prototype.hasOwnProperty.call(performance, 'inputTokens') ? traceMetricInteger_(performance.inputTokens) : null,
+    outputTokens: Object.prototype.hasOwnProperty.call(performance, 'outputTokens') ? traceMetricInteger_(performance.outputTokens) : null,
     intent: safeMiniAgentTraceText_(source.intent || '') || null,
     service: safeMiniAgentTraceText_(source.service || '') || null
   };
@@ -844,7 +851,9 @@ function appendAgentTraceEntries_(trace, entries) {
     'miniDeploymentSuffix', 'miniVersion', 'agentDeploymentSuffix', 'agentVersion',
     'osDeploymentSuffix', 'osVersion', 'miniBuildId', 'agentBuildId', 'osBuildId',
     'routerMs', 'serviceMs', 'totalMs', 'modelMs', 'toolMs',
-    'toolCallCount', 'toolNames', 'executionPath', 'resultStatus'
+    'toolCallCount', 'toolNames', 'executionPath', 'resultStatus',
+    'runtimeVariant', 'runtimeAdapterVersion', 'provider', 'model',
+    'toolArgumentsHash', 'inputTokens', 'outputTokens'
   ];
   entries.slice(0, 32).forEach(function(entry) {
     if (!entry || Array.isArray(entry) || typeof entry !== 'object') return;
@@ -935,6 +944,30 @@ function appendAgentTraceEntries_(trace, entries) {
       }
       if (key === 'resultStatus') {
         safe[key] = sanitizeIncomingAgentTraceResultStatus_(entry[key]);
+        return;
+      }
+      if (key === 'runtimeVariant') {
+        safe[key] = sanitizeIncomingAgentTraceRuntimeVariant_(entry[key]);
+        return;
+      }
+      if (key === 'runtimeAdapterVersion') {
+        safe[key] = sanitizeIncomingAgentTraceRuntimeAdapterVersion_(entry[key]);
+        return;
+      }
+      if (key === 'provider') {
+        safe[key] = sanitizeIncomingAgentTraceProvider_(entry[key]);
+        return;
+      }
+      if (key === 'model') {
+        safe[key] = sanitizeIncomingAgentTraceModel_(entry[key]);
+        return;
+      }
+      if (key === 'toolArgumentsHash') {
+        safe[key] = sanitizeIncomingAgentTraceRuntimeHash_(entry[key]);
+        return;
+      }
+      if (key === 'inputTokens' || key === 'outputTokens') {
+        safe[key] = traceMetricInteger_(entry[key]);
         return;
       }
       if (key === 'osResponseKeysHash' || key === 'osResponseDataKeysHash') {
@@ -1172,6 +1205,28 @@ function sanitizeIncomingAgentTraceResultStatus_(value) {
   }[normalized] ? normalized : '';
 }
 
+function sanitizeIncomingAgentTraceRuntimeVariant_(value) {
+  return String(value || '').trim() === 'current' ? 'current' : '';
+}
+
+function sanitizeIncomingAgentTraceRuntimeAdapterVersion_(value) {
+  const normalized = String(value || '').trim();
+  return /^current-bounded-runtime-adapter-v\d+$/.test(normalized) ? normalized : '';
+}
+
+function sanitizeIncomingAgentTraceProvider_(value) {
+  return String(value || '').trim() === 'openai_responses' ? 'openai_responses' : '';
+}
+
+function sanitizeIncomingAgentTraceModel_(value) {
+  return String(value || '').trim() === 'gpt-5-mini' ? 'gpt-5-mini' : '';
+}
+
+function sanitizeIncomingAgentTraceRuntimeHash_(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return /^[a-f0-9]{8}(?:[a-f0-9]{8}){0,7}$/.test(normalized) ? normalized : '';
+}
+
 function safeMiniAgentTraceText_(value) {
   return String(value || '').replace(/[^A-Z0-9_.-]/gi, '').slice(0, 100);
 }
@@ -1182,13 +1237,27 @@ function sanitizeAgentPerformanceDiagnostics_(value) {
     const numeric = Number(value);
     return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
   }
-  return {
+  const result = {
     routerMs: number(source.routerMs),
     serviceMs: number(source.serviceMs),
     totalMs: number(source.totalMs),
     openAiCallCount: number(source.openAiCallCount),
     serviceCallCount: number(source.serviceCallCount)
   };
+  if (Object.prototype.hasOwnProperty.call(source, 'modelMs')) result.modelMs = number(source.modelMs);
+  if (Object.prototype.hasOwnProperty.call(source, 'toolMs')) result.toolMs = number(source.toolMs);
+  if (Object.prototype.hasOwnProperty.call(source, 'toolCallCount')) result.toolCallCount = traceMetricInteger_(source.toolCallCount);
+  if (Object.prototype.hasOwnProperty.call(source, 'toolNames')) result.toolNames = sanitizeIncomingAgentTraceToolNames_(source.toolNames);
+  if (Object.prototype.hasOwnProperty.call(source, 'executionPath')) result.executionPath = sanitizeIncomingAgentTraceExecutionPath_(source.executionPath);
+  if (Object.prototype.hasOwnProperty.call(source, 'resultStatus')) result.resultStatus = sanitizeIncomingAgentTraceResultStatus_(source.resultStatus);
+  if (Object.prototype.hasOwnProperty.call(source, 'runtimeVariant')) result.runtimeVariant = sanitizeIncomingAgentTraceRuntimeVariant_(source.runtimeVariant);
+  if (Object.prototype.hasOwnProperty.call(source, 'runtimeAdapterVersion')) result.runtimeAdapterVersion = sanitizeIncomingAgentTraceRuntimeAdapterVersion_(source.runtimeAdapterVersion);
+  if (Object.prototype.hasOwnProperty.call(source, 'provider')) result.provider = sanitizeIncomingAgentTraceProvider_(source.provider);
+  if (Object.prototype.hasOwnProperty.call(source, 'model')) result.model = sanitizeIncomingAgentTraceModel_(source.model);
+  if (Object.prototype.hasOwnProperty.call(source, 'toolArgumentsHash')) result.toolArgumentsHash = sanitizeIncomingAgentTraceRuntimeHash_(source.toolArgumentsHash);
+  if (Object.prototype.hasOwnProperty.call(source, 'inputTokens')) result.inputTokens = traceMetricInteger_(source.inputTokens);
+  if (Object.prototype.hasOwnProperty.call(source, 'outputTokens')) result.outputTokens = traceMetricInteger_(source.outputTokens);
+  return result;
 }
 
 function redactPaluruAgentUrl_(value) {
