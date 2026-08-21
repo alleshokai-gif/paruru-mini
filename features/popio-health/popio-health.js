@@ -122,7 +122,7 @@
         <span>前回</span><strong data-popio-water-bottle-previous-at></strong><strong data-popio-water-bottle-previous-fill></strong>
       </section>
       <label class="popio-field" data-popio-water-bottle-remaining hidden><span>今の残り</span><span class="popio-unit-input"><input name="remainingMl" type="text" inputmode="numeric" maxlength="4"><em>mL</em></span></label>
-      <label class="popio-field"><span>新しく入れた量</span><span class="popio-unit-input"><input name="newFillMl" type="text" inputmode="numeric" maxlength="4" required><em>mL</em></span></label>
+      <label class="popio-field"><span>交換後のボトル量</span><span class="popio-unit-input"><input name="newFillMl" type="text" inputmode="numeric" maxlength="4" required><em>mL</em></span></label>
       <section class="popio-water-bottle-preview" data-popio-water-bottle-preview hidden aria-live="polite"></section>
       <button class="popio-water-bottle-reload" type="button" data-popio-water-bottle-reload hidden>再読み込み</button>
       ${note_()}${timestampControl_()}${submit_('セットを記録')}
@@ -188,7 +188,7 @@
     return Array.from({ length: 24 }, function (_, hour) { return '<option value="' + hour + '">' + hour + '時</option>'; }).join('');
   }
   function submit_(label) {
-    return '<button class="popio-submit" type="submit">' + String(label || '記録する') + '</button><p class="popio-form-status" data-popio-form-status role="status" aria-live="polite"></p>';
+    return '<button class="popio-submit" type="submit">' + String(label || '記録する') + '</button><div class="popio-correction-actions" data-popio-correction-actions hidden><button type="button" data-popio-void>記録を取り消す</button><button type="button" data-popio-correction-cancel>キャンセル</button></div><p class="popio-form-status" data-popio-form-status role="status" aria-live="polite"></p>';
   }
 
   function formValues_(form) {
@@ -213,7 +213,7 @@
     } else if (event.eventType === 'water') {
       event.amountMl = integer_(input.amountMl, '飲んだ量', 1, 10000);
     } else if (event.eventType === 'water_bottle') {
-      event.newFillMl = integer_(input.newFillMl, '新しく入れた量', 1, 5000);
+      event.newFillMl = integer_(input.newFillMl, '交換後のボトル量', 1, 5000);
       const remaining = optionalInteger_(input.remainingMl, '今の残り', 0, 5000);
       if (remaining !== null) event.remainingMl = remaining;
     } else if (event.eventType === 'stool') {
@@ -346,28 +346,46 @@
   function buildRecordRequest_(clientRequestId, event) {
     return { petId: PET_ID, clientRequestId: String(clientRequestId || ''), event: event };
   }
+  function buildCorrectionRequest_(clientRequestId, correctionOfEventId, event) {
+    return { petId: PET_ID, clientRequestId: String(clientRequestId || ''), correctionOfEventId: String(correctionOfEventId || ''), event: event };
+  }
+  function buildVoidRequest_(clientRequestId, correctionOfEventId) {
+    return { petId: PET_ID, clientRequestId: String(clientRequestId || ''), correctionOfEventId: String(correctionOfEventId || '') };
+  }
+  function petHealthWriteAction_(write) {
+    const action = String(write && write.action || 'pet.health.record');
+    if (action !== 'pet.health.record' && action !== 'pet.health.correct' && action !== 'pet.health.void') throw inputError_('記録操作を確認できませんでした');
+    return action;
+  }
+  function buildPetHealthWriteRequest_(clientRequestId, event, write) {
+    const action = petHealthWriteAction_(write);
+    if (action === 'pet.health.correct') return buildCorrectionRequest_(clientRequestId, write.correctionOfEventId, event);
+    if (action === 'pet.health.void') return buildVoidRequest_(clientRequestId, write.correctionOfEventId);
+    return buildRecordRequest_(clientRequestId, event);
+  }
 
   function createPetHealthSaveFlow_(deps) {
     const saving = Object.create(null);
     const requests = Object.create(null);
     const createId = deps.createRequestId;
     return {
-      async save(formKey, event) {
+      async save(formKey, event, write) {
         const key = String(formKey || '');
         if (saving[key]) return { skipped: true, saved: false };
-        const fingerprint = JSON.stringify(event || {});
+        const action = petHealthWriteAction_(write);
+        const fingerprint = JSON.stringify({ action: action, correctionOfEventId: write && write.correctionOfEventId || '', event: event || {} });
         if (!requests[key] || requests[key].fingerprint !== fingerprint) {
           requests[key] = { id: createId(), fingerprint: fingerprint };
         }
-        const request = buildRecordRequest_(requests[key].id, event);
+        const request = buildPetHealthWriteRequest_(requests[key].id, event, write);
         saving[key] = true;
         if (deps.onSaving) deps.onSaving(key, request);
         try {
           if (deps.isOnline && !deps.isOnline()) { const error = new Error('OFFLINE'); error.code = 'OFFLINE'; throw error; }
-          const data = await deps.call(request);
+          const data = await deps.call(request, action);
           delete requests[key];
-          const postSave = deps.onSuccess ? await deps.onSuccess(key, data, request) : null;
-          if (deps.onSaved) deps.onSaved(key, data, postSave);
+          const postSave = deps.onSuccess ? await deps.onSuccess(key, data, request, action) : null;
+          if (deps.onSaved) deps.onSaved(key, data, postSave, request, action);
           return { skipped: false, saved: true, data: data, postSave: postSave };
         } catch (error) {
           if (deps.onFailure) deps.onFailure(key, error, request);
@@ -388,15 +406,15 @@
     saveFlow_ = createPetHealthSaveFlow_({
       createRequestId: createUuid_,
       isOnline: function () { return typeof navigator === 'undefined' || navigator.onLine !== false; },
-      call: function (request) { return call_('pet.health.record', request); },
+      call: function (request, action) { return call_(action, request); },
       onSaving: function (key) { setFormSaving_(key, true); setFormStatus_(key, '保存中…'); },
       onSuccess: async function (key) {
         const form = form_(key);
-        if (form) { form.reset(); resetTimestampControl_(form); }
+        if (form) { form.reset(); resetTimestampControl_(form); exitCorrectionMode_(form); }
         const refreshed = await loadDashboard_({ quiet: true });
         return { writeSaved: true, dashboardRefreshed: refreshed, summaryRefreshed: refreshed, recentRefreshed: refreshed };
       },
-      onSaved: function (key, _data, postSave) { setFormStatus_(key, savedStatusMessage_(postSave)); },
+      onSaved: function (key, _data, postSave, _request, action) { setFormStatus_(key, savedStatusMessage_(postSave, action)); },
       onFailure: function (key, error) { setFormStatus_(key, error && error.code === 'OFFLINE' ? 'オフライン中。未保存です。入力は残しています。' : '保存できませんでした。入力は残しています。'); },
       onSettled: function (key) {
         setFormSaving_(key, false);
@@ -412,13 +430,14 @@
     event.preventDefault();
     const key = String(form.dataset.eventType || '');
     if (ensureSaveFlow_().isSaving(key)) return;
+    const correctionOfEventId = String(form.dataset.correctionOfEventId || '');
     let payload;
     try {
       payload = buildEventPayload_(key, formValues_(form));
-      if (key === 'water_bottle') validateWaterBottleForm_(form, payload);
+      if (key === 'water_bottle' && !correctionOfEventId) validateWaterBottleForm_(form, payload);
     }
     catch (error) { setFormStatus_(key, String(error && error.message || '入力内容を確認してください')); return; }
-    await ensureSaveFlow_().save(key, payload);
+    await ensureSaveFlow_().save(key, payload, correctionOfEventId ? { action: 'pet.health.correct', correctionOfEventId: correctionOfEventId } : null);
   }
 
   function handleContentChanged_(event) {
@@ -436,6 +455,28 @@
   }
 
   function handleTimestampClick_(event) {
+    const correction = event.target && event.target.closest ? event.target.closest('[data-popio-correction-event-id]') : null;
+    if (correction) {
+      event.preventDefault();
+      startCorrection_(String(correction.dataset.popioCorrectionEventId || ''));
+      return;
+    }
+    const cancelCorrection = event.target && event.target.closest ? event.target.closest('[data-popio-correction-cancel]') : null;
+    if (cancelCorrection) {
+      event.preventDefault();
+      const form = cancelCorrection.closest('.popio-record-form');
+      if (form) { form.reset(); resetTimestampControl_(form); exitCorrectionMode_(form); if (form.dataset.eventType === 'water_bottle') renderWaterBottle_(); ensureSaveFlow_().contentChanged(String(form.dataset.eventType || '')); setFormStatus_(String(form.dataset.eventType || ''), ''); }
+      return;
+    }
+    const voidButton = event.target && event.target.closest ? event.target.closest('[data-popio-void]') : null;
+    if (voidButton) {
+      event.preventDefault();
+      const form = voidButton.closest('.popio-record-form'), key = String(form && form.dataset.eventType || ''), correctionOfEventId = String(form && form.dataset.correctionOfEventId || '');
+      if (!form || !key || !correctionOfEventId || ensureSaveFlow_().isSaving(key)) return;
+      if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm('この記録を取り消しますか？')) return;
+      void ensureSaveFlow_().save(key, null, { action: 'pet.health.void', correctionOfEventId: correctionOfEventId });
+      return;
+    }
     const shortcut = event.target && event.target.closest ? event.target.closest('[data-popio-reminder-slot]') : null;
     if (shortcut) {
       event.preventDefault();
@@ -486,6 +527,60 @@
     if (details && typeof details.scrollIntoView === 'function') details.scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (typeof input.focus === 'function') input.focus();
     return true;
+  }
+
+  function setCorrectionValue_(form, name, value) {
+    if (!form) return;
+    if (name === 'flags') {
+      const selected = Array.isArray(value) ? value.map(String) : [];
+      form.querySelectorAll('[name="flags"]').forEach(function (input) { input.checked = selected.includes(String(input.value)); });
+      return;
+    }
+    if (name === 'coprophagy') { const input = form.querySelector('[name="coprophagy"]'); if (input) input.checked = value === true; return; }
+    const radio = form.querySelector('[name="' + name + '"][value="' + String(value) + '"]');
+    if (radio && radio.type === 'radio') { radio.checked = true; return; }
+    const input = form.querySelector('[name="' + name + '"]');
+    if (input) input.value = value === undefined || value === null ? '' : String(value);
+  }
+  function setCorrectionOccurredAt_(form, occurredAt) {
+    const date = new Date(String(occurredAt || ''));
+    if (!Number.isFinite(date.getTime())) return false;
+    const mode = form.querySelector('[name="occurredAtMode"]'), dateInput = form.querySelector('[name="occurredAtDate"]'), hour = form.querySelector('[name="occurredAtHour"]'), custom = form.querySelector('[name="occurredAtCustomDate"]'), panel = form.querySelector('[data-popio-timestamp-panel]'), toggle = form.querySelector('[data-popio-timestamp-toggle]'), localDate = tokyoDate_(date), today = tokyoDate_(), yesterday = tokyoPreviousDate_();
+    if (!mode || !dateInput || !hour) return false;
+    mode.value = 'explicit';
+    if (localDate === today) dateInput.value = 'today';
+    else if (localDate === yesterday) dateInput.value = 'yesterday';
+    else { dateInput.value = 'custom'; if (custom) custom.value = localDate; }
+    hour.value = String(tokyoHour_(date));
+    if (panel) panel.hidden = false;
+    if (toggle) toggle.setAttribute('aria-expanded', 'true');
+    updateCustomDateVisibility_(form); updateTimestampLabel_(form);
+    return true;
+  }
+  function enterCorrectionMode_(form, event) {
+    if (!form || !event || !String(event.eventId || '')) return false;
+    form.reset(); resetTimestampControl_(form);
+    ['mealSlot','amountG','completion','remainingMl','newFillMl','stoolForm','stoolAmount','coprophagy','urineStatus','weightKg','energy','appetite','flags','note'].forEach(function(key){if(petHealthOwn_(event,key))setCorrectionValue_(form,key,event[key]);});
+    if (!setCorrectionOccurredAt_(form, event.occurredAt)) return false;
+    form.dataset.correctionOfEventId = String(event.eventId);
+    const actions = form.querySelector('[data-popio-correction-actions]'), submit = form.querySelector('.popio-submit'), details = form.closest('details');
+    if (actions) actions.hidden = false;
+    if (submit) submit.textContent = '修正を保存';
+    if (details) { details.open = true; if (typeof details.scrollIntoView === 'function') details.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (form.dataset.eventType === 'water_bottle') renderWaterBottle_();
+    return true;
+  }
+  function exitCorrectionMode_(form) {
+    if (!form) return;
+    delete form.dataset.correctionOfEventId;
+    const actions = form.querySelector('[data-popio-correction-actions]'), submit = form.querySelector('.popio-submit');
+    if (actions) actions.hidden = true;
+    if (submit) submit.textContent = form.dataset.eventType === 'water_bottle' ? 'セットを記録' : '記録する';
+  }
+  function startCorrection_(eventId) {
+    const event = state.recentEvents.find(function(item){return String(item && item.eventId || '') === String(eventId || '');});
+    if (!event) return false;
+    return enterCorrectionMode_(form_(event.eventType), event);
   }
 
   function initializeTimestampControls_(root) {
@@ -666,10 +761,11 @@
     form.setAttribute('aria-busy', String(Boolean(saving)));
     form.querySelectorAll('input,select,textarea,button').forEach(function (control) { control.disabled = Boolean(saving); });
   }
-  function savedStatusMessage_(postSave) {
+  function savedStatusMessage_(postSave, action) {
     const refreshed = postSave && Object.prototype.hasOwnProperty.call(postSave, 'dashboardRefreshed') ? postSave.dashboardRefreshed : postSave && postSave.summaryRefreshed;
+    const saved = action === 'pet.health.correct' ? '修正しました' : action === 'pet.health.void' ? '記録を取り消しました' : '保存しました';
     return postSave && postSave.writeSaved === true && refreshed === false
-      ? '保存しました。最新表示を更新できませんでした。' : '保存しました';
+      ? saved + '。最新表示を更新できませんでした。' : saved;
   }
   function setFormStatus_(key, message) { const form = form_(key); const status = form && form.querySelector('[data-popio-form-status]'); if (status) status.textContent = message || ''; }
 
@@ -925,12 +1021,15 @@
       heading.textContent = group.label;
       section.append(heading);
       group.items.forEach(function (item) {
-        const row = document.createElement('div'), time = document.createElement('time'), label = document.createElement('span');
+        const row = document.createElement('div'), time = document.createElement('time'), label = document.createElement('span'), edit = document.createElement('button');
         row.className = 'popio-history-item';
         row.dataset.eventId = item.eventId;
         time.textContent = item.time;
         label.textContent = item.label;
-        row.append(time, label);
+        edit.type = 'button';
+        edit.dataset.popioCorrectionEventId = item.eventId;
+        edit.textContent = '修正';
+        row.append(time, label, edit);
         section.append(row);
       });
       list.append(section);
@@ -970,6 +1069,8 @@
     buildEventPayload_: buildEventPayload_,
     buildOccurredAt_: buildOccurredAt_,
     buildRecordRequest_: buildRecordRequest_,
+    buildCorrectionRequest_: buildCorrectionRequest_,
+    buildVoidRequest_: buildVoidRequest_,
     applyMealReminderShortcut_: applyMealReminderShortcut_,
     createPetHealthDashboardLoader_: createPetHealthDashboardLoader_,
     createPetHealthReadRefresher_: createPetHealthReadRefresher_,
@@ -993,5 +1094,6 @@
     waterBottleUiModel_: waterBottleUiModel_,
     waterBottlePreview_: waterBottlePreview_,
     formatOccurredAt_: formatOccurredAt_,
+    petHealthWriteAction_: petHealthWriteAction_,
   });
 }));

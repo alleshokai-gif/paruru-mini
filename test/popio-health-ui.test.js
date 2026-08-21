@@ -47,6 +47,24 @@ assert.deepStrictEqual(Object.keys(recordRequest), ['petId', 'clientRequestId', 
 });
 assert(!Object.hasOwn(recordRequest.event, 'occurredAt'), 'manual UI must use server_default occurredAt');
 
+// PH-CU01 - PH-CU08: correction/void requests are explicit operations, retain
+// the normal idempotency lifecycle, and never expose server-owned fields.
+const correctionRequest = api.buildCorrectionRequest_(uuid(2), uuid(1), { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished', amountG: 18 });
+assert.deepStrictEqual(plain(correctionRequest), { petId: 'popio', clientRequestId: uuid(2), correctionOfEventId: uuid(1), event: { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished', amountG: 18 } }, 'PH-CU04 correction payload');
+const voidRequest = api.buildVoidRequest_(uuid(3), uuid(1));
+assert.deepStrictEqual(plain(voidRequest), { petId: 'popio', clientRequestId: uuid(3), correctionOfEventId: uuid(1) }, 'PH-CU05 void payload has no business event');
+['homeId','actorUserId','recordedBy','role','capabilities','source','serviceToken','deviceId','pairingToken'].forEach((key) => {
+  assert(!Object.hasOwn(correctionRequest, key), `PH-CU04 prohibited correction field: ${key}`);
+  assert(!Object.hasOwn(voidRequest, key), `PH-CU05 prohibited void field: ${key}`);
+});
+assert(featureSource.includes('data-popio-correction-event-id') && featureSource.includes('data-popio-void') && featureSource.includes('data-popio-correction-cancel'), 'PH-CU01/05 correction controls are missing');
+assert(featureSource.includes('enterCorrectionMode_') && featureSource.includes('setCorrectionOccurredAt_'), 'PH-CU02/03 correction prefill or timestamp edit is missing');
+assert(featureSource.includes("window.confirm('この記録を取り消しますか？')"), 'PH-CU05 void confirmation is missing');
+assert(featureSource.includes("action: 'pet.health.correct'") && featureSource.includes("action: 'pet.health.void'"), 'PH-CU04/07 correction operations are not selected by the form');
+assert(featureSource.includes("loadDashboard_({ quiet: true })"), 'PH-CU06/07 correction success does not refresh Dashboard once');
+assert(featureSource.includes('交換後のボトル量'), 'PH-CU09 water bottle label was not corrected');
+assert(featureSource.includes('defaultNewFillMl'), 'PH-CU10 previous fill default was removed');
+
 // PH-TUI01 - PH-TUI06: timestamps are opt-in, Tokyo based, and never permit a future manual hour.
 const timestampNow = new Date('2026-08-21T08:37:00+09:00');
 function reminderSummary(breakfast, dinner) {
@@ -126,6 +144,27 @@ assert.strictEqual(api.summaryDisplayModel_({ meal: { eventCount: 1, totalAmount
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
 
 async function run() {
+  const correctionIds = [];
+  let correctionCalls = 0;
+  const correctionFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(300 + correctionCalls),
+    isOnline: () => true,
+    call: async (request, action) => { correctionCalls += 1; correctionIds.push({ id: request.clientRequestId, action, target: request.correctionOfEventId }); if (correctionCalls === 1) throw new Error('network'); return { event: { eventId: 'correction-1' } }; },
+  });
+  const correctionEvent = { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished', amountG: 18, occurredAt: '2026-08-20T08:00:00+09:00' };
+  assert.strictEqual((await correctionFlow.save('meal', correctionEvent, { action: 'pet.health.correct', correctionOfEventId: uuid(301) })).saved, false, 'PH-CU08 correction failure retains request ID');
+  assert.strictEqual((await correctionFlow.save('meal', correctionEvent, { action: 'pet.health.correct', correctionOfEventId: uuid(301) })).saved, true, 'PH-CU04 correction retry succeeds');
+  assert.deepStrictEqual(correctionIds, [{ id: uuid(300), action: 'pet.health.correct', target: uuid(301) }, { id: uuid(300), action: 'pet.health.correct', target: uuid(301) }], 'PH-CU08 correction retry changed request identity');
+
+  const voidCalls = [];
+  const voidFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(302),
+    isOnline: () => true,
+    call: async (request, action) => { voidCalls.push({ request: plain(request), action }); return { event: { eventId: 'void-1' } }; },
+  });
+  assert.strictEqual((await voidFlow.save('meal', null, { action: 'pet.health.void', correctionOfEventId: uuid(301) })).saved, true, 'PH-CU07 void save succeeds');
+  assert.deepStrictEqual(voidCalls, [{ request: { petId: 'popio', clientRequestId: uuid(302), correctionOfEventId: uuid(301) }, action: 'pet.health.void' }], 'PH-CU07 void sends no business payload');
+
   // PH-U09/U10: double submit is skipped and success releases the request ID.
   const gate = deferred();
   let calls = 0;
@@ -368,6 +407,14 @@ async function run() {
     petId: 'popio', clientRequestId: uuid(99), event: { eventType: 'stool' }, actorUserId: 'spoof', role: 'admin',
   }));
   assert.deepStrictEqual(recordPayload, { action: 'pet.health.record', petId: 'popio', clientRequestId: uuid(99), event: { eventType: 'stool' } });
+  const correctPayload = plain(authContext.buildAuthenticatedPetHealthPayload_('pet.health.correct', {
+    petId: 'popio', clientRequestId: uuid(101), correctionOfEventId: uuid(99), event: { eventType: 'stool' }, homeId: 'spoof', actorUserId: 'spoof', source: 'agent', serviceToken: 'spoof',
+  }));
+  assert.deepStrictEqual(correctPayload, { action: 'pet.health.correct', petId: 'popio', clientRequestId: uuid(101), correctionOfEventId: uuid(99), event: { eventType: 'stool' } }, 'PH-CU04 PWA correction payload leaked a server field');
+  const voidPayload = plain(authContext.buildAuthenticatedPetHealthPayload_('pet.health.void', {
+    petId: 'popio', clientRequestId: uuid(102), correctionOfEventId: uuid(99), homeId: 'spoof', actorUserId: 'spoof', source: 'agent', serviceToken: 'spoof',
+  }));
+  assert.deepStrictEqual(voidPayload, { action: 'pet.health.void', petId: 'popio', clientRequestId: uuid(102), correctionOfEventId: uuid(99) }, 'PH-CU05 PWA void payload leaked a server field');
   const recentPayload = plain(authContext.buildAuthenticatedPetHealthPayload_('pet.health.listRecentEvents', {
     petId: 'popio', days: 7, homeId: 'spoof', actorUserId: 'spoof', serviceToken: 'spoof',
   }));

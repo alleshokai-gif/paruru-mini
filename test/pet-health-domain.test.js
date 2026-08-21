@@ -62,10 +62,18 @@ function requestId(number){return `00000000-0000-4000-8000-${pad(number,12)}`;}
 function baseRecord(event,id=requestId(1),homeId='home-main'){
   return {operation:'pet.health.record',homeId,actorUserId:'father',source:'manual',clientRequestId:id,petId:'popio',event};
 }
+function baseCorrect(event,correctionOfEventId,id=requestId(1),homeId='home-main'){
+  return {operation:'pet.health.correct',homeId,actorUserId:'father',source:'manual',clientRequestId:id,petId:'popio',correctionOfEventId,event};
+}
+function baseVoid(correctionOfEventId,id=requestId(1),homeId='home-main'){
+  return {operation:'pet.health.void',homeId,actorUserId:'father',source:'manual',clientRequestId:id,petId:'popio',correctionOfEventId};
+}
 const fixedNow='2026-08-19T12:00:00+09:00';
 function normalize(context,event){return context.petHealthNormalizeRecordRequest_(baseRecord(event),new Date(fixedNow),{});}
 function invalid(context,event){assert.throws(()=>normalize(context,event),(error)=>error.code==='INVALID_INPUT');}
 function record(context,body,now=fixedNow){return context.petHealthRecord_(body,{now:()=>new Date(now)});}
+function correct(context,body,now=fixedNow){return context.petHealthCorrect_(body,{now:()=>new Date(now)});}
+function voidEvent(context,body,now=fixedNow){return context.petHealthVoid_(body,{now:()=>new Date(now)});}
 function summary(context,localDate,homeId='home-main'){
   const body={operation:'pet.health.getDailySummary',homeId,actorUserId:'father',petId:'popio'};
   if(localDate!==undefined)body.localDate=localDate;
@@ -80,7 +88,7 @@ function dashboard(context,localDate='2026-08-21',homeId='home-main'){
 
 {
   const {context,spreadsheet}=createHarness();
-  assert.deepStrictEqual(spreadsheet.sheets.Pet_Health_Events.values[0],['eventId','homeId','petId','eventType','occurredAt','occurredAtSource','localDate','mealSlot','amountG','completion','amountMl','stoolForm','stoolAmount','coprophagy','urineStatus','weightKg','energy','appetite','flagsJson','note','source','recordedBy','recordedAt','clientRequestId','requestHash','remainingMl','newFillMl']);
+  assert.deepStrictEqual(spreadsheet.sheets.Pet_Health_Events.values[0],['eventId','homeId','petId','eventType','occurredAt','occurredAtSource','localDate','mealSlot','amountG','completion','amountMl','stoolForm','stoolAmount','coprophagy','urineStatus','weightKg','energy','appetite','flagsJson','note','source','recordedBy','recordedAt','clientRequestId','requestHash','remainingMl','newFillMl','correctionType','correctionOfEventId']);
   assert.deepStrictEqual(spreadsheet.sheets.Pet_Health_Request_Log.values[0],['clientRequestId','operation','actorUserId','petId','requestHash','eventId','responseJson','status','createdAt']);
   ['Health_Daily','Health_Weight','Health_Request_Log'].forEach((name)=>assert(!spreadsheet.sheets[name].values[0].includes('petId'),`${name} was mixed with Pet schema`));
 
@@ -449,6 +457,67 @@ function dashboard(context,localDate='2026-08-21',homeId='home-main'){
   spreadsheet.sheets.Pet_Health_Events.values[0][0]=spreadsheet.sheets.Pet_Health_Events.values[0][1];
   spreadsheet.sheets.Pet_Health_Events.values[0][1]=first;
   assert.throws(()=>context.healthSheet_('Pet_Health_Events'),(error)=>error.code==='CONFIGURATION_ERROR','Pet schema header reorder must fail closed');
+}
+
+{
+  const {context,spreadsheet}=createHarness(),now='2026-08-22T12:00:00+09:00';
+  const original=record(context,baseRecord({eventType:'meal',occurredAt:'2026-08-20T08:00:00+09:00',mealSlot:'breakfast',amountG:20,completion:'finished'},requestId(200)),now);
+  const originalId=original.data.event.eventId;
+  assert.throws(()=>correct(context,baseCorrect({eventType:'meal',mealSlot:'breakfast',amountG:18,completion:'finished'},originalId,requestId(200)),now),(error)=>error.code==='IDEMPOTENCY_CONFLICT','PH-C11 reused request ID with a different correction request conflicts');
+  const firstCorrection=correct(context,baseCorrect({eventType:'meal',occurredAt:'2026-08-20T08:00:00+09:00',mealSlot:'breakfast',amountG:18,completion:'finished'},originalId,requestId(201)),now);
+  assert.strictEqual(firstCorrection.operation,'pet.health.correct','PH-C02 correction operation');
+  assert.strictEqual(firstCorrection.data.event.amountG,18,'PH-C02 corrected meal amount');
+  assert.strictEqual(firstCorrection.data.event.occurredAt,'2026-08-20T08:00:00+09:00','PH-C03 corrected occurredAt');
+  assert.strictEqual(spreadsheet.sheets.Pet_Health_Events.getLastRow(),3,'PH-C01/02 append-only correction');
+  assert.strictEqual(summary(context,'2026-08-20').data.meal.totalAmountG,18,'PH-C04/CR01 original excluded from effective summary');
+  assert.strictEqual(recent(context,7,'home-main','2026-08-21T12:00:00+09:00').data.events[0].eventId,firstCorrection.data.event.eventId,'PH-CR02 recent returns the effective correction');
+  const secondCorrection=correct(context,baseCorrect({eventType:'meal',occurredAt:'2026-08-20T09:00:00+09:00',mealSlot:'breakfast',amountG:17,completion:'finished'},firstCorrection.data.event.eventId,requestId(202)),now);
+  assert.strictEqual(summary(context,'2026-08-20').data.meal.totalAmountG,17,'PH-C05 second correction wins');
+  const correctionReplay=correct(context,baseCorrect({eventType:'meal',occurredAt:'2026-08-20T09:00:00+09:00',mealSlot:'breakfast',amountG:17,completion:'finished'},firstCorrection.data.event.eventId,requestId(202)),now);
+  assert.strictEqual(correctionReplay.data.idempotency.replayed,true,'PH-C11 correction retry replays');
+  assert.strictEqual(spreadsheet.sheets.Pet_Health_Events.getLastRow(),4,'PH-C11 correction retry does not append');
+  const voidResponse=voidEvent(context,baseVoid(secondCorrection.data.event.eventId,requestId(203)),now);
+  assert.strictEqual(voidResponse.operation,'pet.health.void','PH-C07 void corrected event');
+  assert.strictEqual(summary(context,'2026-08-20').data.meal.eventCount,0,'PH-C07/CR03 void hides effective event');
+  assert.strictEqual(recent(context,7,'home-main','2026-08-21T12:00:00+09:00').data.events.length,0,'PH-CR03 void hidden from recent history');
+  assert.throws(()=>correct(context,baseCorrect({eventType:'meal',mealSlot:'breakfast',completion:'finished'},requestId(299),requestId(204)),now),(error)=>error.code==='INVALID_INPUT','PH-C08 nonexistent target rejects');
+  assert.throws(()=>correct(context,baseCorrect({eventType:'water',amountMl:150},originalId,requestId(205)),now),(error)=>error.code==='INVALID_INPUT','PH-C10 event type mismatch rejects');
+  const rawCycle=[
+    {eventId:requestId(210),eventType:'stool',correctionType:'correction',correctionOfEventId:requestId(211),instantMs:1},
+    {eventId:requestId(211),eventType:'stool',correctionType:'correction',correctionOfEventId:requestId(210),instantMs:2},
+  ];
+  assert.throws(()=>context.petHealthResolveEffectiveEvents_(rawCycle),(error)=>error.code==='DATA_INTEGRITY_ERROR','PH-C09/C12 self or cycle fails closed');
+}
+
+{
+  const {context}=createHarness(),now='2026-08-22T12:00:00+09:00';
+  const original=record(context,baseRecord({eventType:'meal',occurredAt:'2026-08-20T08:00:00+09:00',mealSlot:'breakfast',amountG:20,completion:'finished'},requestId(220)),now);
+  const voidResponse=voidEvent(context,baseVoid(original.data.event.eventId,requestId(221)),now);
+  assert.strictEqual(voidResponse.data.event.eventType,'meal','PH-C06 void event keeps only target type');
+  assert.deepStrictEqual(Object.keys(voidResponse.data.event).filter((key)=>['mealSlot','amountG','completion','note'].indexOf(key)>=0),[],'PH-C06 void has no meal business payload');
+  assert.strictEqual(summary(context,'2026-08-20').data.meal.bySlot.breakfast.eventCount,0,'PH-CR05 voided breakfast is missing for reminder data');
+}
+
+{
+  const {context}=createHarness(),now='2026-08-22T12:00:00+09:00';
+  const original=record(context,baseRecord({eventType:'weight',occurredAt:'2026-08-20T08:00:00+09:00',weightKg:2.3},requestId(225)),now);
+  const corrected=correct(context,baseCorrect({eventType:'weight',occurredAt:'2026-08-20T09:00:00+09:00',weightKg:2.2},original.data.event.eventId,requestId(226)),now);
+  const value=summary(context,'2026-08-20').data;
+  assert.strictEqual(value.latestWeight.eventId,corrected.data.event.eventId,'PH-CR04 latest weight uses the effective correction');
+  assert.strictEqual(value.latestWeight.weightKg,2.2,'PH-CR04 corrected latest weight value');
+}
+
+{
+  const {context}=createHarness(),now='2026-08-22T12:00:00+09:00';
+  const first=record(context,baseRecord({eventType:'water_bottle',occurredAt:'2026-08-19T08:00:00+09:00',newFillMl:400},requestId(230)),now);
+  const second=record(context,baseRecord({eventType:'water_bottle',occurredAt:'2026-08-20T08:00:00+09:00',remainingMl:100,newFillMl:400},requestId(231)),now);
+  assert.strictEqual(summary(context,'2026-08-20').data.waterBottle.latestInterval.bottleDecreaseMl,300,'PH-C13 baseline bottle interval');
+  const correction=correct(context,baseCorrect({eventType:'water_bottle',occurredAt:'2026-08-20T08:00:00+09:00',remainingMl:130,newFillMl:400},second.data.event.eventId,requestId(232)),now);
+  assert.strictEqual(summary(context,'2026-08-20').data.waterBottle.latestInterval.bottleDecreaseMl,270,'PH-C13 bottle correction recalculates interval');
+  voidEvent(context,baseVoid(correction.data.event.eventId,requestId(233)),now);
+  const bottle=summary(context,'2026-08-20').data.waterBottle;
+  assert.strictEqual(bottle.latest.eventId,first.data.event.eventId,'PH-C14 bottle void restores the effective predecessor');
+  assert.strictEqual(bottle.latestInterval,null,'PH-C14 bottle void removes the derived interval');
 }
 
 console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, PH-W01..10, PH-WS01..05, PH-R01..09, PH-DASH01..06, schema, token, and dispatch');

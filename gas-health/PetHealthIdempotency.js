@@ -28,13 +28,14 @@ function petHealthIdempotencyState_(request){
   if(events.length>1||logs.length>1||(logs.length===1&&events.length===0))throw healthErr_('DATA_INTEGRITY_ERROR');
   return {event:events[0]||null,log:logs[0]||null};
 }
-function petHealthRecord_(body,options){
-  const deps=options||{},receivedAt=deps.now?deps.now():new Date(),request=petHealthNormalizeRecordRequest_(body,receivedAt,deps),requestHash=petHealthRecordHash_(request),lock=deps.lock||(LockService&&LockService.getScriptLock());
+function petHealthWrite_(body,options,normalizer,hashBuilder){
+  const deps=options||{},receivedAt=deps.now?deps.now():new Date(),request=normalizer(body,receivedAt,deps),requestHash=hashBuilder(request),lock=deps.lock||(LockService&&LockService.getScriptLock());
   lock.waitLock(30000);
   try {
     const state=petHealthIdempotencyState_(request);
     if(state.event){
-      const original=petHealthRecordResponse_(state.event,false);
+      if(state.event.requestHash!==requestHash&&state.log&&String(state.log.operation||'')!==request.operation)throw healthErr_('IDEMPOTENCY_CONFLICT');
+      const original=petHealthWriteResponse_(request.operation,state.event,false);
       if(state.log)petHealthValidateLog_(state.log,state.event,original,request);
       if(state.event.requestHash!==requestHash)throw healthErr_('IDEMPOTENCY_CONFLICT');
       if(!state.log){
@@ -42,17 +43,26 @@ function petHealthRecord_(body,options){
         petHealthFlushPersistence_();
         petHealthVerifyPersistedRequestLog_(request,state.event,original);
       }
-      return petHealthRecordResponse_(state.event,true);
+      return petHealthWriteResponse_(request.operation,state.event,true);
+    }
+    const rawEvents=petHealthScopedEvents_(request.homeId,request.petId);
+    if(request.correctionType!=='original'){
+      const target=petHealthCorrectionTarget_(rawEvents,request);
+      if(request.correctionType==='void')request.event={eventType:target.eventType,eventData:{},occurredAtInput:PET_HEALTH_SERVER_DEFAULT_OCCURRED_AT_};
     }
     const occurredAt=request.event.occurredAt||petHealthInstant_(receivedAt,deps),occurredAtSource=request.event.occurredAt?'explicit':'server_default',recordedAt=petHealthInstant_(receivedAt,deps),eventId=deps.uuid?deps.uuid():Utilities.getUuid();
-    petHealthValidateWaterBottleAppend_(request,occurredAt);
     if(!healthUuid_(eventId))throw healthErr_('INTERNAL_ERROR');
+    const draft=petHealthDraftStoredEvent_(request,eventId,occurredAt,occurredAtSource,recordedAt,requestHash);
+    petHealthValidateWriteCandidate_(request,draft,rawEvents);
     const appendedEvent=petHealthAppendEvent_(request,eventId,occurredAt,occurredAtSource,recordedAt,requestHash);
     petHealthFlushPersistence_();
-    const event=petHealthVerifyPersistedEvent_(request,appendedEvent),response=petHealthRecordResponse_(event,false);
+    const event=petHealthVerifyPersistedEvent_(request,appendedEvent),response=petHealthWriteResponse_(request.operation,event,false);
     petHealthAppendRequestLog_(request,event,response,recordedAt);
     petHealthFlushPersistence_();
     petHealthVerifyPersistedRequestLog_(request,event,response);
     return response;
   } finally {lock.releaseLock();}
 }
+function petHealthRecord_(body,options){return petHealthWrite_(body,options,petHealthNormalizeRecordRequest_,petHealthRecordHash_);}
+function petHealthCorrect_(body,options){return petHealthWrite_(body,options,petHealthNormalizeCorrectionRequest_,petHealthCorrectionHash_);}
+function petHealthVoid_(body,options){return petHealthWrite_(body,options,petHealthNormalizeVoidRequest_,petHealthCorrectionHash_);}

@@ -3,12 +3,16 @@ const PET_HEALTH_GATEWAY_OPERATION_CAPABILITIES = Object.freeze({
   'pet.health.listRecentEvents': 'pet.health.read',
   'pet.health.getDashboard': 'pet.health.read',
   'pet.health.record': 'pet.health.record',
+  'pet.health.correct': 'pet.health.record',
+  'pet.health.void': 'pet.health.record',
 });
 const PET_HEALTH_GATEWAY_ALLOWED_INPUTS = Object.freeze({
   'pet.health.getDailySummary': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true }),
   'pet.health.listRecentEvents': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, days: true }),
   'pet.health.getDashboard': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true }),
   'pet.health.record': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, event: true }),
+  'pet.health.correct': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, correctionOfEventId: true, event: true }),
+  'pet.health.void': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, correctionOfEventId: true }),
 });
 const PET_HEALTH_GATEWAY_RECENT_EVENT_FIELDS = Object.freeze({
   meal: Object.freeze(['mealSlot', 'amountG', 'completion', 'note']),
@@ -64,6 +68,15 @@ function petHealthGatewayForTrustedActor_(input, actor, trustedSource) {
     forwarded.source = trustedSource;
     forwarded.clientRequestId = input.clientRequestId;
     forwarded.event = input.event;
+  } else if (operation === 'pet.health.correct') {
+    forwarded.source = trustedSource;
+    forwarded.clientRequestId = input.clientRequestId;
+    forwarded.correctionOfEventId = input.correctionOfEventId;
+    forwarded.event = input.event;
+  } else if (operation === 'pet.health.void') {
+    forwarded.source = trustedSource;
+    forwarded.clientRequestId = input.clientRequestId;
+    forwarded.correctionOfEventId = input.correctionOfEventId;
   } else if (operation === 'pet.health.listRecentEvents') {
     forwarded.days = input.days;
   } else if (Object.prototype.hasOwnProperty.call(input, 'localDate')) {
@@ -103,7 +116,7 @@ function petHealthGatewayBackendErrorCode_(result) {
 
 function petHealthGatewayValidSuccess_(result, operation) {
   if (!result || result.success !== true || result.status !== 'SUCCESS' || result.operation !== operation || !petHealthGatewayObject_(result.data) || !petHealthGatewayValidWarnings_(result.warnings) || result.error !== null || result.schemaVersion !== 'pet-health-1.0') return false;
-  if (operation === 'pet.health.record') {
+  if (operation === 'pet.health.record' || operation === 'pet.health.correct' || operation === 'pet.health.void') {
     const event = result.data.event, idempotency = result.data.idempotency;
     return Boolean(petHealthGatewayObject_(event) && String(event.eventId || '') && event.petId === 'popio' && String(event.eventType || '') && petHealthGatewayObject_(idempotency) && typeof idempotency.replayed === 'boolean');
   }

@@ -504,6 +504,8 @@ const NURSE_OKAN_HEALTH_ACTIONS = new Set([
 ]);
 const PET_HEALTH_ACTIONS = new Set([
   "pet.health.record",
+  "pet.health.correct",
+  "pet.health.void",
   "pet.health.getDailySummary",
   "pet.health.listRecentEvents",
   "pet.health.getDashboard",
@@ -541,6 +543,23 @@ function buildAuthenticatedPetHealthPayload_(action, body = {}) {
       petId: input.petId,
       clientRequestId: input.clientRequestId,
       event: input.event,
+    };
+  }
+  if (action === "pet.health.correct") {
+    return {
+      action,
+      petId: input.petId,
+      clientRequestId: input.clientRequestId,
+      correctionOfEventId: input.correctionOfEventId,
+      event: input.event,
+    };
+  }
+  if (action === "pet.health.void") {
+    return {
+      action,
+      petId: input.petId,
+      clientRequestId: input.clientRequestId,
+      correctionOfEventId: input.correctionOfEventId,
     };
   }
   if (action === "pet.health.listRecentEvents") {

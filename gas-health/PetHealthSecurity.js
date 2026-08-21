@@ -1,8 +1,9 @@
 const PET_HEALTH_TIMEZONE_ = 'Asia/Tokyo';
 const PET_HEALTH_SCHEMA_VERSION_ = 'pet-health-1.0';
 const PET_HEALTH_RECORD_HASH_VERSION_ = 'pet-health-record-1';
+const PET_HEALTH_CORRECTION_HASH_VERSION_ = 'pet-health-correction-1';
 const PET_HEALTH_SERVER_DEFAULT_OCCURRED_AT_ = '__SERVER_DEFAULT__';
-const PET_HEALTH_OPERATIONS_ = Object.freeze({'pet.health.record':true,'pet.health.getDailySummary':true,'pet.health.listRecentEvents':true,'pet.health.getDashboard':true});
+const PET_HEALTH_OPERATIONS_ = Object.freeze({'pet.health.record':true,'pet.health.correct':true,'pet.health.void':true,'pet.health.getDailySummary':true,'pet.health.listRecentEvents':true,'pet.health.getDashboard':true});
 const PET_HEALTH_ENUMS_ = Object.freeze({
   eventType:['meal','water','water_bottle','stool','urine','weight','observation'],
   mealSlot:['breakfast','lunch','dinner','snack'],
@@ -24,7 +25,7 @@ const PET_HEALTH_EVENT_FIELDS_ = Object.freeze({
   weight:['weightKg'],
   observation:['energy','appetite','flags']
 });
-const PET_HEALTH_SERVER_EVENT_FIELDS_ = Object.freeze({eventId:true,homeId:true,petId:true,occurredAtSource:true,localDate:true,flagsJson:true,source:true,recordedBy:true,recordedAt:true,clientRequestId:true,requestHash:true,actorUserId:true,operation:true});
+const PET_HEALTH_SERVER_EVENT_FIELDS_ = Object.freeze({eventId:true,homeId:true,petId:true,occurredAtSource:true,localDate:true,flagsJson:true,source:true,recordedBy:true,recordedAt:true,clientRequestId:true,requestHash:true,actorUserId:true,operation:true,correctionType:true,correctionOfEventId:true});
 
 function petHealthHas_(object,key){return Object.prototype.hasOwnProperty.call(object||{},key);}
 function petHealthRejectNull_(value){if(value===null)throw healthErr_('INVALID_INPUT');if(Array.isArray(value))value.forEach(petHealthRejectNull_);else if(value&&typeof value==='object')Object.keys(value).forEach(function(key){petHealthRejectNull_(value[key]);});}
@@ -122,9 +123,22 @@ function petHealthNormalizeEvent_(event,now,deps){
 function petHealthNormalizeRecordRequest_(body,now,deps){
   petHealthRejectNull_(body);
   if(!body||body.operation!=='pet.health.record'||!healthUuid_(body.clientRequestId))throw healthErr_('INVALID_INPUT');
-  const normalized={operation:body.operation,homeId:petHealthNonEmptyString_(body.homeId),actorUserId:petHealthNonEmptyString_(body.actorUserId),petId:petHealthOneOf_(body.petId,['popio']),source:petHealthOneOf_(body.source,PET_HEALTH_ENUMS_.source),clientRequestId:body.clientRequestId};
+  const normalized={operation:body.operation,homeId:petHealthNonEmptyString_(body.homeId),actorUserId:petHealthNonEmptyString_(body.actorUserId),petId:petHealthOneOf_(body.petId,['popio']),source:petHealthOneOf_(body.source,PET_HEALTH_ENUMS_.source),clientRequestId:body.clientRequestId,correctionType:'original',correctionOfEventId:''};
   normalized.event=petHealthNormalizeEvent_(body.event,now,deps);
   return normalized;
+}
+function petHealthNormalizeCorrectionTarget_(value){if(typeof value!=='string'||!healthUuid_(value))throw healthErr_('INVALID_INPUT');return value;}
+function petHealthNormalizeCorrectionRequest_(body,now,deps){
+  petHealthRejectNull_(body);
+  if(!body||body.operation!=='pet.health.correct'||!healthUuid_(body.clientRequestId))throw healthErr_('INVALID_INPUT');
+  const normalized={operation:body.operation,homeId:petHealthNonEmptyString_(body.homeId),actorUserId:petHealthNonEmptyString_(body.actorUserId),petId:petHealthOneOf_(body.petId,['popio']),source:petHealthOneOf_(body.source,PET_HEALTH_ENUMS_.source),clientRequestId:body.clientRequestId,correctionType:'correction',correctionOfEventId:petHealthNormalizeCorrectionTarget_(body.correctionOfEventId)};
+  normalized.event=petHealthNormalizeEvent_(body.event,now,deps);
+  return normalized;
+}
+function petHealthNormalizeVoidRequest_(body){
+  petHealthRejectNull_(body);
+  if(!body||body.operation!=='pet.health.void'||!healthUuid_(body.clientRequestId)||petHealthHas_(body,'event'))throw healthErr_('INVALID_INPUT');
+  return {operation:body.operation,homeId:petHealthNonEmptyString_(body.homeId),actorUserId:petHealthNonEmptyString_(body.actorUserId),petId:petHealthOneOf_(body.petId,['popio']),source:petHealthOneOf_(body.source,PET_HEALTH_ENUMS_.source),clientRequestId:body.clientRequestId,correctionType:'void',correctionOfEventId:petHealthNormalizeCorrectionTarget_(body.correctionOfEventId),event:null};
 }
 function petHealthNormalizeSummaryRequest_(body,now,deps){
   petHealthRejectNull_(body);
@@ -154,6 +168,15 @@ function petHealthCanonical_(value){
 function petHealthRecordHash_(request){
   const canonical=petHealthCanonical_({schemaVersion:PET_HEALTH_RECORD_HASH_VERSION_,operation:request.operation,homeId:request.homeId,actorUserId:request.actorUserId,petId:request.petId,source:request.source,occurredAtInput:request.event.occurredAtInput,eventType:request.event.eventType,eventData:request.event.eventData});
   return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(canonical),Utilities.Charset.UTF_8));
+}
+function petHealthCorrectionHash_(request){
+  const canonical={schemaVersion:PET_HEALTH_CORRECTION_HASH_VERSION_,operation:request.operation,homeId:request.homeId,actorUserId:request.actorUserId,petId:request.petId,source:request.source,correctionOfEventId:request.correctionOfEventId};
+  if(request.operation==='pet.health.correct'){
+    canonical.occurredAtInput=request.event.occurredAtInput;
+    canonical.eventType=request.event.eventType;
+    canonical.eventData=request.event.eventData;
+  }
+  return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(petHealthCanonical_(canonical)),Utilities.Charset.UTF_8));
 }
 function petHealthResponse_(operation,data){return {success:true,status:'SUCCESS',operation:operation,data:data,warnings:[],error:null,schemaVersion:PET_HEALTH_SCHEMA_VERSION_};}
 function petHealthErrorResponse_(operation,error){

@@ -30,6 +30,11 @@ function backendRecord(overrides) {
     schemaVersion: 'pet-health-1.0',
   }, overrides || {});
 }
+function backendWrite(operation) {
+  const response = backendRecord();
+  response.operation = operation;
+  return response;
+}
 
 function backendSummary(overrides) {
   return Object.assign({
@@ -140,6 +145,29 @@ function recordInput(extra) {
     petId: 'popio',
     clientRequestId: '01234567-89ab-4def-8123-456789abcdef',
     event: { eventType: 'stool' },
+  }, extra || {});
+}
+
+function correctInput(extra) {
+  return Object.assign({
+    action: 'pet.health.correct',
+    deviceId: 'browser-device',
+    pairingToken: 'browser-pairing',
+    petId: 'popio',
+    clientRequestId: '01234567-89ab-4def-8123-456789abcdef',
+    correctionOfEventId: '01234567-89ab-4def-8123-456789abcdea',
+    event: { eventType: 'stool' },
+  }, extra || {});
+}
+
+function voidInput(extra) {
+  return Object.assign({
+    action: 'pet.health.void',
+    deviceId: 'browser-device',
+    pairingToken: 'browser-pairing',
+    petId: 'popio',
+    clientRequestId: '01234567-89ab-4def-8123-456789abcdef',
+    correctionOfEventId: '01234567-89ab-4def-8123-456789abcdea',
   }, extra || {});
 }
 
@@ -438,6 +466,37 @@ test('PH-DG04', 'Dashboard rejects spoofed identity fields', () => {
   assert.strictEqual(api.petHealthGateway_(dashboardInput({ homeId: 'spoofed' })).error.code, 'INVALID_INPUT');
   assert.strictEqual(api.petHealthGateway_(dashboardInput({ source: 'agent' })).error.code, 'INVALID_INPUT');
   assert.strictEqual(state.forwarded.length, 0);
+});
+
+test('PH-CG01', 'correct and void require the record capability', () => {
+  ['admin', 'guardian', 'self_record'].forEach((role) => {
+    let fixture = setup({ actor: { homeId: 'home-server', memberUserId: role + '-member', role, deviceId: 'device-server' }, responseText: JSON.stringify(backendWrite('pet.health.correct')) });
+    assert.strictEqual(fixture.api.petHealthGateway_(correctInput()).success, true);
+    assert.deepStrictEqual(fixture.state.authorizedCapabilities, ['pet.health.record']);
+    fixture = setup({ actor: { homeId: 'home-server', memberUserId: role + '-member', role, deviceId: 'device-server' }, responseText: JSON.stringify(backendWrite('pet.health.void')) });
+    assert.strictEqual(fixture.api.petHealthGateway_(voidInput()).success, true);
+    assert.deepStrictEqual(fixture.state.authorizedCapabilities, ['pet.health.record']);
+  });
+});
+
+test('PH-CG02', 'correct and void forward only the trusted DTO', () => {
+  let fixture = setup({ responseText: JSON.stringify(backendWrite('pet.health.correct')) });
+  assert.strictEqual(fixture.api.petHealthGateway_(correctInput()).success, true);
+  assert.deepStrictEqual(fixture.state.forwarded[0], { operation: 'pet.health.correct', serviceToken: SERVER_TOKEN, homeId: 'home-server', actorUserId: 'member-server', petId: 'popio', source: 'manual', clientRequestId: '01234567-89ab-4def-8123-456789abcdef', correctionOfEventId: '01234567-89ab-4def-8123-456789abcdea', event: { eventType: 'stool' } });
+  fixture = setup({ responseText: JSON.stringify(backendWrite('pet.health.void')) });
+  assert.strictEqual(fixture.api.petHealthGateway_(voidInput()).success, true);
+  assert.deepStrictEqual(fixture.state.forwarded[0], { operation: 'pet.health.void', serviceToken: SERVER_TOKEN, homeId: 'home-server', actorUserId: 'member-server', petId: 'popio', source: 'manual', clientRequestId: '01234567-89ab-4def-8123-456789abcdef', correctionOfEventId: '01234567-89ab-4def-8123-456789abcdea' });
+  assert.strictEqual(Object.hasOwn(fixture.state.forwarded[0], 'pairingToken'), false);
+  assert.strictEqual(Object.hasOwn(fixture.state.forwarded[0], 'deviceId'), false);
+});
+
+test('PH-CG03', 'correction spoof fields and a void event are rejected', () => {
+  let fixture = setup({ responseText: JSON.stringify(backendWrite('pet.health.correct')) });
+  assert.strictEqual(fixture.api.petHealthGateway_(correctInput({ homeId: 'spoof' })).error.code, 'INVALID_INPUT');
+  assert.strictEqual(fixture.state.forwarded.length, 0);
+  fixture = setup({ responseText: JSON.stringify(backendWrite('pet.health.void')) });
+  assert.strictEqual(fixture.api.petHealthGateway_(voidInput({ event: { eventType: 'stool' } })).error.code, 'INVALID_INPUT');
+  assert.strictEqual(fixture.state.forwarded.length, 0);
 });
 
 console.log(`PASS pet health gateway suite (${passed} assertions)`);

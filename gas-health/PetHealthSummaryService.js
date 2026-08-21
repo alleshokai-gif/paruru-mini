@@ -24,7 +24,7 @@ function petHealthShiftLocalDate_(localDate,days){
   return date.toISOString().slice(0,10);
 }
 function petHealthEventSnapshot_(homeId,petId){
-  return petHealthScopedEvents_(homeId,petId).sort(function(a,b){return a.instantMs-b.instantMs||a.eventId.localeCompare(b.eventId);});
+  return petHealthResolveEffectiveEvents_(petHealthScopedEvents_(homeId,petId));
 }
 function petHealthRecentPublicEvent_(event,interval){
   const out={eventId:event.eventId,eventType:event.eventType,occurredAt:event.occurredAt,localDate:event.localDate,recordedAt:event.recordedAt},keys={meal:['mealSlot','amountG','completion','note'],stool:['stoolForm','stoolAmount','coprophagy','note'],water_bottle:['remainingMl','newFillMl','note'],water:['amountMl','note'],urine:['urineStatus','note'],weight:['weightKg','note'],observation:['energy','appetite','flags','note']}[event.eventType]||[];
@@ -64,4 +64,4 @@ function petHealthDashboard_(body,options){
   const deps=options||{},now=deps.now?deps.now():new Date(),request=petHealthNormalizeDashboardRequest_(body,now,deps),all=petHealthEventSnapshot_(request.homeId,request.petId),summary=petHealthSummaryData_(request,all),recent=petHealthRecentData_(request,all,request.localDate);
   return petHealthResponse_('pet.health.getDashboard',{petId:request.petId,localDate:request.localDate,timezone:PET_HEALTH_TIMEZONE_,summary:summary,recentEvents:recent.events});
 }
-function petHealthDispatch_(body){if(body.operation==='pet.health.record')return petHealthRecord_(body);if(body.operation==='pet.health.getDailySummary')return petHealthSummary_(body);if(body.operation==='pet.health.listRecentEvents')return petHealthRecentEvents_(body);if(body.operation==='pet.health.getDashboard')return petHealthDashboard_(body);throw healthErr_('UNSUPPORTED_ACTION');}
+function petHealthDispatch_(body){if(body.operation==='pet.health.record')return petHealthRecord_(body);if(body.operation==='pet.health.correct')return petHealthCorrect_(body);if(body.operation==='pet.health.void')return petHealthVoid_(body);if(body.operation==='pet.health.getDailySummary')return petHealthSummary_(body);if(body.operation==='pet.health.listRecentEvents')return petHealthRecentEvents_(body);if(body.operation==='pet.health.getDashboard')return petHealthDashboard_(body);throw healthErr_('UNSUPPORTED_ACTION');}
