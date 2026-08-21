@@ -60,7 +60,9 @@
     root.addEventListener('submit', submitRecord_);
     root.addEventListener('input', handleContentChanged_);
     root.addEventListener('change', handleContentChanged_);
+    root.addEventListener('click', handleTimestampClick_);
     state.mounted = true;
+    initializeTimestampControls_(root);
     renderDate_();
     renderSummary_();
   }
@@ -74,7 +76,7 @@
       <fieldset><legend>食べ方</legend><div class="popio-choice-grid popio-choice-grid-three">
         ${choice_('completion','finished','完食',true)}${choice_('completion','partial','一部食べた')}${choice_('completion','refused','食べなかった')}
       </div></fieldset>
-      ${note_()}${submit_()}
+      ${note_()}${timestampControl_()}${submit_()}
     </form></details>`;
   }
 
@@ -87,14 +89,14 @@
         ${choice_('stoolAmount','small','少')}${choice_('stoolAmount','normal','普通')}${choice_('stoolAmount','large','多')}
       </div></fieldset>
       <label class="popio-check"><input name="coprophagy" type="checkbox"><span>食糞あり</span></label>
-      ${note_()}${submit_()}
+      ${note_()}${timestampControl_()}${submit_()}
     </form></details>`;
   }
 
   function waterForm_() {
     return `<details class="popio-card"><summary>💧 水</summary><form class="popio-record-form" data-event-type="water">
       <label class="popio-field"><span>飲んだ量</span><span class="popio-unit-input"><input name="amountMl" type="text" inputmode="numeric" maxlength="5" required><em>mL</em></span></label>
-      ${note_()}${submit_()}
+      ${note_()}${timestampControl_()}${submit_()}
     </form></details>`;
   }
 
@@ -103,14 +105,14 @@
       <fieldset><legend>様子（任意）</legend><div class="popio-choice-grid popio-choice-grid-three">
         ${choice_('urineStatus','','記録だけ',true)}${choice_('urineStatus','normal','いつもどおり')}${choice_('urineStatus','concern','気になる')}
       </div></fieldset>
-      ${note_()}${submit_()}
+      ${note_()}${timestampControl_()}${submit_()}
     </form></details>`;
   }
 
   function weightForm_() {
     return `<details class="popio-card"><summary>⚖️ 体重</summary><form class="popio-record-form" data-event-type="weight">
       <label class="popio-field"><span>体重</span><span class="popio-unit-input"><input name="weightKg" type="text" inputmode="decimal" maxlength="7" required><em>kg</em></span></label>
-      ${note_()}${submit_()}
+      ${note_()}${timestampControl_()}${submit_()}
     </form></details>`;
   }
 
@@ -125,7 +127,7 @@
       <div class="popio-flag-list" aria-label="気になること">
         ${check_('flags','vomiting','嘔吐')}${check_('flags','sneeze_cough','くしゃみ・咳')}${check_('flags','pain_behavior','痛がる様子')}
       </div>
-      ${note_()}${submit_()}
+      ${note_()}${timestampControl_()}${submit_()}
     </form></details>`;
   }
 
@@ -137,6 +139,24 @@
   }
   function note_() {
     return '<label class="popio-field"><span>メモ（任意）</span><textarea name="note" rows="2" maxlength="500"></textarea></label>';
+  }
+  function timestampControl_() {
+    return `<section class="popio-occurred-at" data-popio-occurred-at>
+      <input type="hidden" name="occurredAtMode" value="now">
+      <div class="popio-occurred-at-summary">
+        <span>🕐 記録日時</span><output data-popio-occurred-at-label>いま</output>
+        <button type="button" class="popio-occurred-at-toggle" data-popio-timestamp-toggle aria-expanded="false">変更</button>
+      </div>
+      <div class="popio-occurred-at-panel" data-popio-timestamp-panel hidden>
+        <label class="popio-field"><span>日付</span><select name="occurredAtDate" data-popio-timestamp-input><option value="today">今日</option><option value="yesterday">昨日</option><option value="custom">日付を選ぶ</option></select></label>
+        <label class="popio-field"><span>時間</span><select name="occurredAtHour" data-popio-timestamp-input>${timestampHourOptions_()}</select></label>
+        <label class="popio-field" data-popio-custom-date hidden><span>日付を選ぶ</span><input name="occurredAtCustomDate" type="date" data-popio-timestamp-input></label>
+        <button type="button" class="popio-occurred-at-reset" data-popio-timestamp-reset>いまに戻す</button>
+      </div>
+    </section>`;
+  }
+  function timestampHourOptions_() {
+    return Array.from({ length: 24 }, function (_, hour) { return '<option value="' + hour + '">' + hour + '時</option>'; }).join('');
   }
   function submit_() {
     return '<button class="popio-submit" type="submit">記録する</button><p class="popio-form-status" data-popio-form-status role="status" aria-live="polite"></p>';
@@ -151,7 +171,7 @@
     return values;
   }
 
-  function buildEventPayload_(eventType, values) {
+  function buildEventPayload_(eventType, values, now) {
     const input = values && typeof values === 'object' ? values : {};
     const event = { eventType: String(eventType || '') };
     if (event.eventType === 'meal') {
@@ -179,6 +199,8 @@
     } else {
       throw inputError_('記録の種類を確認できませんでした');
     }
+    const occurredAt = buildOccurredAt_(input, now);
+    if (occurredAt) event.occurredAt = occurredAt;
     const note = String(input.note || '').normalize('NFC').trim();
     if (note) event.note = note;
     if (event.eventType === 'observation' && !event.energy && !event.appetite && !event.flags && !event.note) {
@@ -224,6 +246,64 @@
     return number;
   }
   function inputError_(message) { const error = new Error(message); error.code = 'INVALID_INPUT'; return error; }
+
+  function buildOccurredAt_(values, now) {
+    const input = values && typeof values === 'object' ? values : {};
+    if (String(input.occurredAtMode || 'now') !== 'explicit') return '';
+    const current = validDate_(now);
+    const today = tokyoDate_(current);
+    const dateMode = String(input.occurredAtDate || '');
+    let localDate = '';
+    if (dateMode === 'today') localDate = today;
+    else if (dateMode === 'yesterday') localDate = tokyoPreviousDate_(current);
+    else if (dateMode === 'custom') {
+      localDate = validLocalDate_(input.occurredAtCustomDate);
+      if (localDate > today) throw inputError_('未来の時刻は記録できません');
+    } else throw inputError_('日付を確認してください');
+    const hour = strictHour_(input.occurredAtHour);
+    if (localDate === today && hour > tokyoHour_(current)) throw inputError_('未来の時刻は記録できません');
+    return localDate + 'T' + String(hour).padStart(2, '0') + ':00:00+09:00';
+  }
+
+  function timestampLabel_(values, now) {
+    const input = values && typeof values === 'object' ? values : {};
+    if (String(input.occurredAtMode || 'now') !== 'explicit') return 'いま';
+    const current = validDate_(now);
+    const today = tokyoDate_(current);
+    const yesterday = tokyoPreviousDate_(current);
+    const dateMode = String(input.occurredAtDate || '');
+    const localDate = dateMode === 'today' ? today : dateMode === 'yesterday' ? yesterday : dateMode === 'custom' ? String(input.occurredAtCustomDate || '') : '';
+    const hour = String(input.occurredAtHour || '');
+    if (!/^\d{1,2}$/.test(hour) || Number(hour) < 0 || Number(hour) > 23) return '日時を選ぶ';
+    if (localDate === today) return '今日 ' + Number(hour) + '時';
+    if (localDate === yesterday) return '昨日 ' + Number(hour) + '時';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
+      const parts = localDate.split('-');
+      return Number(parts[1]) + '/' + Number(parts[2]) + ' ' + Number(hour) + '時';
+    }
+    return '日時を選ぶ';
+  }
+
+  function validDate_(value) {
+    const date = value instanceof Date ? new Date(value.getTime()) : new Date(value === undefined ? Date.now() : value);
+    if (!Number.isFinite(date.getTime())) throw inputError_('日時を確認してください');
+    return date;
+  }
+  function validLocalDate_(value) {
+    const normalized = String(value || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) throw inputError_('日付を確認してください');
+    const parts = normalized.split('-').map(Number);
+    const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    if (date.getUTCFullYear() !== parts[0] || date.getUTCMonth() !== parts[1] - 1 || date.getUTCDate() !== parts[2]) throw inputError_('日付を確認してください');
+    return normalized;
+  }
+  function strictHour_(value) {
+    const raw = String(value === undefined || value === null ? '' : value);
+    if (!/^\d{1,2}$/.test(raw)) throw inputError_('時間を確認してください');
+    const hour = Number(raw);
+    if (!Number.isSafeInteger(hour) || hour < 0 || hour > 23) throw inputError_('時間を確認してください');
+    return hour;
+  }
 
   function buildRecordRequest_(clientRequestId, event) {
     return { petId: PET_ID, clientRequestId: String(clientRequestId || ''), event: event };
@@ -272,7 +352,7 @@
       isOnline: function () { return typeof navigator === 'undefined' || navigator.onLine !== false; },
       call: function (request) { return call_('pet.health.record', request); },
       onSaving: function (key) { setFormSaving_(key, true); setFormStatus_(key, '保存中…'); },
-      onSuccess: async function (key) { const form = form_(key); if (form) form.reset(); await loadSummary_({ quiet: true }); },
+      onSuccess: async function (key) { const form = form_(key); if (form) { form.reset(); resetTimestampControl_(form); } await loadSummary_({ quiet: true }); },
       onSaved: function (key) { setFormStatus_(key, '保存しました'); },
       onFailure: function (key, error) { setFormStatus_(key, error && error.code === 'OFFLINE' ? 'オフライン中。未保存です。入力は残しています。' : '保存できませんでした。入力は残しています。'); },
       onSettled: function (key) { setFormSaving_(key, false); },
@@ -295,8 +375,72 @@
   function handleContentChanged_(event) {
     const form = event.target && event.target.closest ? event.target.closest('.popio-record-form') : null;
     if (!form) return;
+    if (event.target && event.target.matches && event.target.matches('[data-popio-timestamp-input]')) {
+      const mode = form.querySelector('[name="occurredAtMode"]');
+      if (mode) mode.value = 'explicit';
+      updateCustomDateVisibility_(form);
+      updateTimestampLabel_(form);
+    }
     ensureSaveFlow_().contentChanged(String(form.dataset.eventType || ''));
     setFormStatus_(String(form.dataset.eventType || ''), '');
+  }
+
+  function handleTimestampClick_(event) {
+    const toggle = event.target && event.target.closest ? event.target.closest('[data-popio-timestamp-toggle]') : null;
+    if (toggle) {
+      const form = toggle.closest('.popio-record-form');
+      const panel = form && form.querySelector('[data-popio-timestamp-panel]');
+      if (!form || !panel) return;
+      panel.hidden = !panel.hidden;
+      toggle.setAttribute('aria-expanded', String(!panel.hidden));
+      return;
+    }
+    const reset = event.target && event.target.closest ? event.target.closest('[data-popio-timestamp-reset]') : null;
+    if (!reset) return;
+    const form = reset.closest('.popio-record-form');
+    if (!form) return;
+    resetTimestampControl_(form);
+    ensureSaveFlow_().contentChanged(String(form.dataset.eventType || ''));
+    setFormStatus_(String(form.dataset.eventType || ''), '');
+  }
+
+  function initializeTimestampControls_(root) {
+    root.querySelectorAll('.popio-record-form').forEach(function (form) {
+      const hour = form.querySelector('[name="occurredAtHour"]');
+      const customDate = form.querySelector('[name="occurredAtCustomDate"]');
+      if (hour) hour.value = String(tokyoHour_());
+      if (customDate) customDate.max = tokyoDate_();
+      updateCustomDateVisibility_(form);
+      updateTimestampLabel_(form);
+    });
+  }
+
+  function resetTimestampControl_(form) {
+    const mode = form.querySelector('[name="occurredAtMode"]');
+    const date = form.querySelector('[name="occurredAtDate"]');
+    const hour = form.querySelector('[name="occurredAtHour"]');
+    const customDate = form.querySelector('[name="occurredAtCustomDate"]');
+    const panel = form.querySelector('[data-popio-timestamp-panel]');
+    const toggle = form.querySelector('[data-popio-timestamp-toggle]');
+    if (mode) mode.value = 'now';
+    if (date) date.value = 'today';
+    if (hour) hour.value = String(tokyoHour_());
+    if (customDate) { customDate.value = ''; customDate.max = tokyoDate_(); }
+    if (panel) panel.hidden = true;
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    updateCustomDateVisibility_(form);
+    updateTimestampLabel_(form);
+  }
+
+  function updateCustomDateVisibility_(form) {
+    const date = form.querySelector('[name="occurredAtDate"]');
+    const custom = form.querySelector('[data-popio-custom-date]');
+    if (custom) custom.hidden = !date || date.value !== 'custom';
+  }
+
+  function updateTimestampLabel_(form) {
+    const label = form.querySelector('[data-popio-occurred-at-label]');
+    if (label) label.textContent = timestampLabel_(formValues_(form));
   }
 
   function form_(key) { return document.querySelector('.popio-record-form[data-event-type="' + String(key || '') + '"]'); }
@@ -355,7 +499,17 @@
   function renderDate_() { const value = tokyoDate_(); const parts = value.split('-'); setText_('popioHealthDate', parts.length === 3 ? '今日 ' + Number(parts[1]) + '/' + Number(parts[2]) : '今日'); }
   function setRootStatus_(message) { setText_('popioHealthStatus', message || ''); }
   function setText_(id, value) { const element = document.getElementById(id); if (element) element.textContent = String(value); }
-  function tokyoDate_(now) { return (now instanceof Date ? now : new Date(now || Date.now())).toLocaleDateString('sv-SE', { timeZone: TOKYO_TIME_ZONE }); }
+  function tokyoDate_(now) { return validDate_(now).toLocaleDateString('sv-SE', { timeZone: TOKYO_TIME_ZONE }); }
+  function tokyoHour_(now) {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: TOKYO_TIME_ZONE, hour: '2-digit', hourCycle: 'h23' }).formatToParts(validDate_(now));
+    const hour = parts.find(function (part) { return part.type === 'hour'; });
+    return hour ? Number(hour.value) : 0;
+  }
+  function tokyoPreviousDate_(now) {
+    const parts = tokyoDate_(now).split('-').map(Number);
+    const previous = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] - 1));
+    return previous.toISOString().slice(0, 10);
+  }
 
   function createUuid_() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -368,10 +522,14 @@
     PET_ID: PET_ID,
     install: install,
     buildEventPayload_: buildEventPayload_,
+    buildOccurredAt_: buildOccurredAt_,
     buildRecordRequest_: buildRecordRequest_,
     createPetHealthSaveFlow_: createPetHealthSaveFlow_,
     createPetHealthSummaryLoader_: createPetHealthSummaryLoader_,
     summaryDisplayModel_: summaryDisplayModel_,
+    timestampLabel_: timestampLabel_,
     tokyoDate_: tokyoDate_,
+    tokyoHour_: tokyoHour_,
+    tokyoPreviousDate_: tokyoPreviousDate_,
   });
 }));

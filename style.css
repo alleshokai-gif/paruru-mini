@@ -1629,6 +1629,59 @@ body:not(.is-authenticated) .drawer-overlay {
   font-weight: 800;
 }
 
+.popio-occurred-at {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e1e9e1;
+  border-radius: 14px;
+  background: #fbfdfb;
+}
+
+.popio-occurred-at-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.popio-occurred-at-summary > span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.popio-occurred-at output {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.popio-occurred-at-toggle,
+.popio-occurred-at-reset {
+  border: 1px solid #c8d9ca;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #315c36;
+  font-weight: 800;
+}
+
+.popio-occurred-at-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e4ebe4;
+}
+
+.popio-occurred-at-panel [data-popio-custom-date],
+.popio-occurred-at-reset {
+  grid-column: 1 / -1;
+}
+
 .popio-choice-grid {
   display: grid;
   gap: 8px;
@@ -1741,5 +1794,15 @@ body:not(.is-authenticated) .drawer-overlay {
   .popio-choice-grid-four,
   .popio-choice-grid-five {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .popio-occurred-at-summary,
+  .popio-occurred-at-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .popio-occurred-at-summary > span,
+  .popio-occurred-at output {
+    white-space: normal;
   }
 }

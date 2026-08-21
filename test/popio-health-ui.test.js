@@ -47,6 +47,16 @@ assert.deepStrictEqual(Object.keys(recordRequest), ['petId', 'clientRequestId', 
 });
 assert(!Object.hasOwn(recordRequest.event, 'occurredAt'), 'manual UI must use server_default occurredAt');
 
+// PH-TUI01 - PH-TUI06: timestamps are opt-in, Tokyo based, and never permit a future manual hour.
+const timestampNow = new Date('2026-08-21T08:37:00+09:00');
+assert.deepStrictEqual(plain(api.buildEventPayload_('stool', {}, timestampNow)), { eventType: 'stool' }, 'PH-TUI01 default must omit occurredAt');
+assert.strictEqual(api.buildOccurredAt_({ occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '2' }, timestampNow), '2026-08-21T02:00:00+09:00', 'PH-TUI02 today timestamp');
+assert.strictEqual(api.buildOccurredAt_({ occurredAtMode: 'explicit', occurredAtDate: 'yesterday', occurredAtHour: '23' }, timestampNow), '2026-08-20T23:00:00+09:00', 'PH-TUI03 yesterday timestamp');
+assert.strictEqual(api.buildOccurredAt_({ occurredAtMode: 'explicit', occurredAtDate: 'custom', occurredAtCustomDate: '2026-08-19', occurredAtHour: '7' }, timestampNow), '2026-08-19T07:00:00+09:00', 'PH-TUI04 custom past date');
+assert.throws(() => api.buildOccurredAt_({ occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '10' }, timestampNow), (error) => error.code === 'INVALID_INPUT' && error.message === '未来の時刻は記録できません', 'PH-TUI05 future hour must fail locally');
+assert.strictEqual(api.buildOccurredAt_({ occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '8' }, timestampNow), '2026-08-21T08:00:00+09:00', 'PH-TUI06 current hour must pass');
+assert.strictEqual(api.timestampLabel_({ occurredAtMode: 'explicit', occurredAtDate: 'yesterday', occurredAtHour: '23' }, timestampNow), '昨日 23時', 'timestamp label uses Tokyo-relative day');
+
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
 
 async function run() {
@@ -105,6 +115,40 @@ async function run() {
   await editFlow.save('weight', { eventType: 'weight', weightKg: 2.4 });
   assert.notStrictEqual(editedIds[0], editedIds[1], 'PH-U13 edited save reused prior request ID');
 
+  // PH-TUI07/08: an unchanged explicit timestamp retries with one ID; changing it retires that ID.
+  const timestampRetryIds = [];
+  let timestampRetryCalls = 0;
+  const timestampRetryFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(41 + timestampRetryCalls),
+    isOnline: () => true,
+    call: async (request) => {
+      timestampRetryCalls += 1;
+      timestampRetryIds.push({ id: request.clientRequestId, occurredAt: request.event.occurredAt });
+      if (timestampRetryCalls === 1) throw new Error('network');
+      return { event: { eventId: 'event-3' } };
+    },
+  });
+  const explicitStool = api.buildEventPayload_('stool', { occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '2' }, timestampNow);
+  await timestampRetryFlow.save('stool', explicitStool);
+  await timestampRetryFlow.save('stool', explicitStool);
+  assert.deepStrictEqual(timestampRetryIds, [
+    { id: uuid(41), occurredAt: '2026-08-21T02:00:00+09:00' },
+    { id: uuid(41), occurredAt: '2026-08-21T02:00:00+09:00' },
+  ], 'PH-TUI07 retry changed its timestamp or request ID');
+
+  const timestampEditIds = [];
+  let timestampEditCalls = 0;
+  const timestampEditFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(51 + timestampEditCalls),
+    isOnline: () => true,
+    call: async (request) => { timestampEditCalls += 1; timestampEditIds.push(request.clientRequestId); throw new Error('network'); },
+  });
+  await timestampEditFlow.save('stool', explicitStool);
+  timestampEditFlow.contentChanged('stool');
+  const changedExplicitStool = api.buildEventPayload_('stool', { occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '3' }, timestampNow);
+  await timestampEditFlow.save('stool', changedExplicitStool);
+  assert.notStrictEqual(timestampEditIds[0], timestampEditIds[1], 'PH-TUI08 changed timestamp reused its request ID');
+
   // PH-U14: initial summary loader uses only petId and Tokyo localDate.
   const summaryCalls = [];
   const loader = api.createPetHealthSummaryLoader_({
@@ -151,12 +195,25 @@ async function run() {
   assert(membershipSource.match(/popio-health/g)?.length === 3, 'Pet Health view is not allowed for all three roles');
   assert(swSource.includes('versioned("features/popio-health/popio-health.js")'), 'Pet Health feature missing from PWA app shell');
 
+  // PH-TUI09 - PH-TUI12: success resets to now, each form owns a timestamp control, and no server fields leak.
+  assert(featureSource.includes('form.reset(); resetTimestampControl_(form);'), 'PH-TUI09 success does not reset timestamp state');
+  assert.strictEqual((featureSource.match(/\$\{timestampControl_\(\)\}/g) || []).length, 6, 'PH-TUI10 forms do not have independent timestamp controls');
+  assert.strictEqual(api.buildOccurredAt_({ occurredAtMode: 'now' }, timestampNow), '', 'PH-TUI11 now reset must omit occurredAt');
+  const explicitRequest = api.buildRecordRequest_(uuid(100), api.buildEventPayload_('stool', {
+    occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '2', homeId: 'spoof', source: 'agent',
+  }, timestampNow));
+  assert.deepStrictEqual(plain(explicitRequest), {
+    petId: 'popio', clientRequestId: uuid(100), event: { eventType: 'stool', occurredAt: '2026-08-21T02:00:00+09:00' },
+  }, 'PH-TUI12 explicit payload leaked a client/server field');
+  assert(!Object.hasOwn(explicitRequest, 'localDate') && !Object.hasOwn(explicitRequest.event, 'localDate'), 'PH-TUI12 sent localDate');
+
   // Responsive contract: full-size text controls/buttons and full-size choice labels.
   assert(cssSource.includes('.popio-health input:not([type="radio"]):not([type="checkbox"])') && cssSource.includes('min-height: 48px;'), 'Pet text controls lack 48px contract');
   assert(cssSource.includes('.popio-health button') && cssSource.includes('font-size: 16px;'), 'Pet controls lack 16px contract');
   assert(cssSource.includes('.popio-choice span') && cssSource.includes('.popio-check') && cssSource.includes('min-height: 48px;'), 'Pet choices lack 48px tap targets');
+  assert(cssSource.includes('.popio-occurred-at-panel') && cssSource.includes('grid-template-columns: repeat(2, minmax(0, 1fr));'), 'timestamp panel lacks the mobile grid contract');
 
-  console.log('PASS PH-U01-PH-U19 Pet Health UI payload, save lifecycle, summary, auth, and responsive contracts');
+  console.log('PASS PH-U01-PH-U19 and PH-TUI01-PH-TUI12 Pet Health UI payload, timestamp, save lifecycle, summary, auth, and responsive contracts');
 }
 
 run().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });
