@@ -57,6 +57,35 @@ assert.throws(() => api.buildOccurredAt_({ occurredAtMode: 'explicit', occurredA
 assert.strictEqual(api.buildOccurredAt_({ occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '8' }, timestampNow), '2026-08-21T08:00:00+09:00', 'PH-TUI06 current hour must pass');
 assert.strictEqual(api.timestampLabel_({ occurredAtMode: 'explicit', occurredAtDate: 'yesterday', occurredAtHour: '23' }, timestampNow), '昨日 23時', 'timestamp label uses Tokyo-relative day');
 
+// PH-WU01 - PH-WU08: water-bottle UI uses server summary context and sends only one water_bottle event.
+const emptyBottleModel = api.waterBottleUiModel_({ waterBottle: { eventCount: 0, latest: null, latestInterval: null } }, 'loaded');
+assert.deepStrictEqual(plain(emptyBottleModel), {
+  ready: true, hasPrevious: false, message: 'まだ交換記録なし。最初の水量を記録します。', defaultNewFillMl: '', latestInterval: null,
+}, 'PH-WU01 first-set UI model');
+const previousBottleModel = api.waterBottleUiModel_({
+  waterBottle: {
+    eventCount: 1,
+    latest: { eventId: 'bottle-1', occurredAt: '2026-08-20T08:00:00+09:00', newFillMl: 400 },
+    latestInterval: null,
+  },
+}, 'loaded');
+assert.strictEqual(previousBottleModel.previousFillMl, 400, 'PH-WU02 previous fill');
+assert.strictEqual(previousBottleModel.defaultNewFillMl, '400', 'PH-WU03 default new fill');
+assert.deepStrictEqual(plain(api.buildEventPayload_('water_bottle', { newFillMl: '400', remainingMl: '130' }, timestampNow)), {
+  eventType: 'water_bottle', newFillMl: 400, remainingMl: 130,
+}, 'PH-WU04 bottle payload');
+const bottlePreview = api.waterBottlePreview_(previousBottleModel ? { occurredAt: previousBottleModel.previousOccurredAt, newFillMl: previousBottleModel.previousFillMl } : null, {
+  occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '2', remainingMl: '130',
+}, timestampNow);
+assert.deepStrictEqual(plain(bottlePreview), { bottleDecreaseMl: 270, elapsedHours: 18, normalized24hMl: 360, shortInterval: false }, 'PH-WU05/06 bottle preview');
+assert.strictEqual(api.waterBottlePreview_({ occurredAt: '2026-08-20T08:00:00+09:00', newFillMl: 400 }, {
+  occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '2', remainingMl: '401',
+}, timestampNow).error, '今の残りは前回セット量以下で入力してください', 'PH-WU07 invalid remaining');
+assert.strictEqual(api.buildEventPayload_('water_bottle', {
+  occurredAtMode: 'explicit', occurredAtDate: 'today', occurredAtHour: '2', newFillMl: '400', remainingMl: '130',
+}, timestampNow).occurredAt, '2026-08-21T02:00:00+09:00', 'PH-WU08 timestamp integration');
+assert.strictEqual(api.formatOccurredAt_('2026-08-20T08:00:00+09:00', timestampNow), '昨日 8時', 'water bottle previous timestamp label');
+
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
 
 async function run() {
@@ -149,6 +178,28 @@ async function run() {
   await timestampEditFlow.save('stool', changedExplicitStool);
   assert.notStrictEqual(timestampEditIds[0], timestampEditIds[1], 'PH-TUI08 changed timestamp reused its request ID');
 
+  // PH-WU09/10: water-bottle save refreshes on success and retains one ID on failure/retry.
+  let bottleRefreshes = 0;
+  const savedBottle = { eventType: 'water_bottle', newFillMl: 400 };
+  const bottleSuccessFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(61),
+    isOnline: () => true,
+    call: async () => ({ event: { eventId: 'bottle-1' } }),
+    onSuccess: async () => { bottleRefreshes += 1; },
+  });
+  assert.strictEqual((await bottleSuccessFlow.save('water_bottle', savedBottle)).saved, true, 'PH-WU09 bottle save');
+  assert.strictEqual(bottleRefreshes, 1, 'PH-WU09 bottle save refresh');
+  const bottleRetryIds = [];
+  let bottleRetryCalls = 0;
+  const bottleRetryFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(70 + bottleRetryCalls),
+    isOnline: () => true,
+    call: async (request) => { bottleRetryCalls += 1; bottleRetryIds.push(request.clientRequestId); if (bottleRetryCalls === 1) throw new Error('network'); return { event: { eventId: 'bottle-2' } }; },
+  });
+  assert.strictEqual((await bottleRetryFlow.save('water_bottle', savedBottle)).saved, false, 'PH-WU10 first failure');
+  assert.strictEqual((await bottleRetryFlow.save('water_bottle', savedBottle)).saved, true, 'PH-WU10 retry success');
+  assert.strictEqual(bottleRetryIds[0], bottleRetryIds[1], 'PH-WU10 retry changed request ID');
+
   // PH-U14: initial summary loader uses only petId and Tokyo localDate.
   const summaryCalls = [];
   const loader = api.createPetHealthSummaryLoader_({
@@ -194,6 +245,7 @@ async function run() {
   assert(htmlSource.includes('features/popio-health/popio-health.js'), 'Pet Health feature script missing');
   assert(membershipSource.match(/popio-health/g)?.length === 3, 'Pet Health view is not allowed for all three roles');
   assert(swSource.includes('versioned("features/popio-health/popio-health.js")'), 'Pet Health feature missing from PWA app shell');
+  assert(featureSource.includes('data-event-type="water_bottle"') && featureSource.includes('data-popio-water-bottle-previous'), 'water-bottle form missing');
 
   // PH-TUI09 - PH-TUI12: success resets to now, each form owns a timestamp control, and no server fields leak.
   assert(featureSource.includes('form.reset(); resetTimestampControl_(form);'), 'PH-TUI09 success does not reset timestamp state');
@@ -212,8 +264,9 @@ async function run() {
   assert(cssSource.includes('.popio-health button') && cssSource.includes('font-size: 16px;'), 'Pet controls lack 16px contract');
   assert(cssSource.includes('.popio-choice span') && cssSource.includes('.popio-check') && cssSource.includes('min-height: 48px;'), 'Pet choices lack 48px tap targets');
   assert(cssSource.includes('.popio-occurred-at-panel') && cssSource.includes('grid-template-columns: repeat(2, minmax(0, 1fr));'), 'timestamp panel lacks the mobile grid contract');
+  assert(cssSource.includes('.popio-water-bottle-previous') && cssSource.includes('.popio-water-bottle-preview'), 'water-bottle mobile styles missing');
 
-  console.log('PASS PH-U01-PH-U19 and PH-TUI01-PH-TUI12 Pet Health UI payload, timestamp, save lifecycle, summary, auth, and responsive contracts');
+  console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, and PH-WU01-PH-WU10 Pet Health UI payload, timestamp, water bottle, save lifecycle, summary, auth, and responsive contracts');
 }
 
 run().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

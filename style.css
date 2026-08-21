@@ -1629,6 +1629,61 @@ body:not(.is-authenticated) .drawer-overlay {
   font-weight: 800;
 }
 
+.popio-water-bottle-state {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 750;
+}
+
+.popio-water-bottle-previous {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e1e9e1;
+  border-radius: 14px;
+  background: #fbfdfb;
+}
+
+.popio-water-bottle-previous > span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.popio-water-bottle-previous > strong {
+  min-width: 0;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.popio-water-bottle-previous > strong:last-child {
+  color: #315c36;
+  text-align: right;
+}
+
+.popio-water-bottle-preview {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #d7e7d8;
+  border-radius: 14px;
+  background: #f4faf4;
+}
+
+.popio-water-bottle-preview strong {
+  color: #315c36;
+}
+
+.popio-water-bottle-preview span,
+.popio-water-bottle-preview small {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
 .popio-occurred-at {
   display: grid;
   gap: 10px;
@@ -1804,5 +1859,14 @@ body:not(.is-authenticated) .drawer-overlay {
   .popio-occurred-at-summary > span,
   .popio-occurred-at output {
     white-space: normal;
+  }
+
+  .popio-water-bottle-previous {
+    grid-template-columns: 1fr auto;
+  }
+
+  .popio-water-bottle-previous > strong:first-of-type {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }

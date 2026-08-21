@@ -51,7 +51,7 @@
       <div class="popio-record-list">
         ${mealForm_()}
         ${stoolForm_()}
-        ${waterForm_()}
+        ${waterBottleForm_()}
         ${urineForm_()}
         ${weightForm_()}
         ${observationForm_()}
@@ -93,10 +93,16 @@
     </form></details>`;
   }
 
-  function waterForm_() {
-    return `<details class="popio-card"><summary>💧 水</summary><form class="popio-record-form" data-event-type="water">
-      <label class="popio-field"><span>飲んだ量</span><span class="popio-unit-input"><input name="amountMl" type="text" inputmode="numeric" maxlength="5" required><em>mL</em></span></label>
-      ${note_()}${timestampControl_()}${submit_()}
+  function waterBottleForm_() {
+    return `<details class="popio-card"><summary>💧 水ボトル</summary><form class="popio-record-form" data-event-type="water_bottle">
+      <p class="popio-water-bottle-state" data-popio-water-bottle-state>前回の記録を読み込み中…</p>
+      <section class="popio-water-bottle-previous" data-popio-water-bottle-previous hidden>
+        <span>前回</span><strong data-popio-water-bottle-previous-at></strong><strong data-popio-water-bottle-previous-fill></strong>
+      </section>
+      <label class="popio-field" data-popio-water-bottle-remaining hidden><span>今の残り</span><span class="popio-unit-input"><input name="remainingMl" type="text" inputmode="numeric" maxlength="4"><em>mL</em></span></label>
+      <label class="popio-field"><span>新しく入れた量</span><span class="popio-unit-input"><input name="newFillMl" type="text" inputmode="numeric" maxlength="4" required><em>mL</em></span></label>
+      <section class="popio-water-bottle-preview" data-popio-water-bottle-preview hidden aria-live="polite"></section>
+      ${note_()}${timestampControl_()}${submit_('セットを記録')}
     </form></details>`;
   }
 
@@ -158,8 +164,8 @@
   function timestampHourOptions_() {
     return Array.from({ length: 24 }, function (_, hour) { return '<option value="' + hour + '">' + hour + '時</option>'; }).join('');
   }
-  function submit_() {
-    return '<button class="popio-submit" type="submit">記録する</button><p class="popio-form-status" data-popio-form-status role="status" aria-live="polite"></p>';
+  function submit_(label) {
+    return '<button class="popio-submit" type="submit">' + String(label || '記録する') + '</button><p class="popio-form-status" data-popio-form-status role="status" aria-live="polite"></p>';
   }
 
   function formValues_(form) {
@@ -183,6 +189,10 @@
       if (event.completion !== 'refused' && amount !== null && amount <= 0) throw inputError_('食べた量は0より大きくしてください');
     } else if (event.eventType === 'water') {
       event.amountMl = integer_(input.amountMl, '飲んだ量', 1, 10000);
+    } else if (event.eventType === 'water_bottle') {
+      event.newFillMl = integer_(input.newFillMl, '新しく入れた量', 1, 5000);
+      const remaining = optionalInteger_(input.remainingMl, '今の残り', 0, 5000);
+      if (remaining !== null) event.remainingMl = remaining;
     } else if (event.eventType === 'stool') {
       optionalEnum_(event, 'stoolForm', input.stoolForm, ['pellet','formed','banana','soft','watery']);
       optionalEnum_(event, 'stoolAmount', input.stoolAmount, ['small','normal','large']);
@@ -244,6 +254,11 @@
     const number = Number(raw);
     if (!Number.isSafeInteger(number) || number < min || number > max) throw inputError_(label + 'を確認してください');
     return number;
+  }
+  function optionalInteger_(value, label, min, max) {
+    const raw = String(value === undefined || value === null ? '' : value).trim();
+    if (!raw) return null;
+    return integer_(raw, label, min, max);
   }
   function inputError_(message) { const error = new Error(message); error.code = 'INVALID_INPUT'; return error; }
 
@@ -355,7 +370,10 @@
       onSuccess: async function (key) { const form = form_(key); if (form) { form.reset(); resetTimestampControl_(form); } await loadSummary_({ quiet: true }); },
       onSaved: function (key) { setFormStatus_(key, '保存しました'); },
       onFailure: function (key, error) { setFormStatus_(key, error && error.code === 'OFFLINE' ? 'オフライン中。未保存です。入力は残しています。' : '保存できませんでした。入力は残しています。'); },
-      onSettled: function (key) { setFormSaving_(key, false); },
+      onSettled: function (key) {
+        setFormSaving_(key, false);
+        if (key === 'water_bottle') renderWaterBottle_();
+      },
     });
     return saveFlow_;
   }
@@ -367,7 +385,10 @@
     const key = String(form.dataset.eventType || '');
     if (ensureSaveFlow_().isSaving(key)) return;
     let payload;
-    try { payload = buildEventPayload_(key, formValues_(form)); }
+    try {
+      payload = buildEventPayload_(key, formValues_(form));
+      if (key === 'water_bottle') validateWaterBottleForm_(form, payload);
+    }
     catch (error) { setFormStatus_(key, String(error && error.message || '入力内容を確認してください')); return; }
     await ensureSaveFlow_().save(key, payload);
   }
@@ -381,6 +402,7 @@
       updateCustomDateVisibility_(form);
       updateTimestampLabel_(form);
     }
+    if (String(form.dataset.eventType || '') === 'water_bottle') updateWaterBottlePreview_(form);
     ensureSaveFlow_().contentChanged(String(form.dataset.eventType || ''));
     setFormStatus_(String(form.dataset.eventType || ''), '');
   }
@@ -443,6 +465,121 @@
     if (label) label.textContent = timestampLabel_(formValues_(form));
   }
 
+  function waterBottleUiModel_(summary, status) {
+    if (status !== 'loaded' || !summary || typeof summary !== 'object') return { ready: false, message: status === 'loading' ? '前回の記録を読み込み中…' : '前回の水ボトル記録を読み込めませんでした' };
+    const bottle = summary.waterBottle;
+    if (!bottle || typeof bottle !== 'object' || !Number.isSafeInteger(Number(bottle.eventCount)) || Number(bottle.eventCount) < 0 || (bottle.latest !== null && (!bottle.latest || typeof bottle.latest !== 'object' || !Number.isSafeInteger(Number(bottle.latest.newFillMl)) || Number(bottle.latest.newFillMl) < 1 || Number(bottle.latest.newFillMl) > 5000 || !Number.isFinite(new Date(String(bottle.latest.occurredAt || '')).getTime())))) {
+      return { ready: false, message: '前回の水ボトル記録を読み込めませんでした' };
+    }
+    if (bottle.latest === null) return { ready: true, hasPrevious: false, message: 'まだ交換記録なし。最初の水量を記録します。', defaultNewFillMl: '', latestInterval: null };
+    return {
+      ready: true,
+      hasPrevious: true,
+      message: '前回の交換をもとに記録します。',
+      previousOccurredAt: String(bottle.latest.occurredAt || ''),
+      previousFillMl: Number(bottle.latest.newFillMl),
+      defaultNewFillMl: String(Number(bottle.latest.newFillMl)),
+      latestInterval: bottle.latestInterval || null,
+    };
+  }
+
+  function waterBottlePreview_(previous, values, now) {
+    if (!previous || !Number.isSafeInteger(Number(previous.newFillMl))) return null;
+    const remaining = optionalInteger_(values && values.remainingMl, '今の残り', 0, 5000);
+    if (remaining === null) return null;
+    if (remaining > Number(previous.newFillMl)) return { error: '今の残りは前回セット量以下で入力してください' };
+    let current;
+    try {
+      const occurredAt = buildOccurredAt_(values || {}, now);
+      current = occurredAt ? new Date(occurredAt) : validDate_(now);
+    } catch (error) {
+      return { error: String(error && error.message || '日時を確認してください') };
+    }
+    const prior = new Date(String(previous.occurredAt || ''));
+    if (!Number.isFinite(prior.getTime()) || current.getTime() <= prior.getTime()) return { error: '前回より後の日時を選んでください' };
+    const bottleDecreaseMl = Number(previous.newFillMl) - remaining;
+    const elapsedMs = current.getTime() - prior.getTime();
+    return { bottleDecreaseMl: bottleDecreaseMl, elapsedHours: Math.round((elapsedMs / 3600000) * 10) / 10, normalized24hMl: Math.round(bottleDecreaseMl / elapsedMs * 86400000), shortInterval: elapsedMs < 6 * 3600000 };
+  }
+
+  function validateWaterBottleForm_(form, event) {
+    const model = waterBottleUiModel_(state.summary, state.summaryStatus);
+    if (!model.ready) throw inputError_('前回の水ボトル記録を読み込めませんでした');
+    if (!model.hasPrevious) {
+      if (petHealthOwn_(event, 'remainingMl')) throw inputError_('最初の記録では今の残りを入力しません');
+      return;
+    }
+    if (!petHealthOwn_(event, 'remainingMl')) throw inputError_('今の残りを入力してください');
+    if (event.remainingMl > model.previousFillMl) throw inputError_('今の残りは前回セット量以下で入力してください');
+    const preview = waterBottlePreview_({ occurredAt: model.previousOccurredAt, newFillMl: model.previousFillMl }, formValues_(form));
+    if (preview && preview.error) throw inputError_(preview.error);
+  }
+
+  function renderWaterBottle_() {
+    const form = form_('water_bottle');
+    if (!form) return;
+    const model = waterBottleUiModel_(state.summary, state.summaryStatus);
+    const stateLabel = form.querySelector('[data-popio-water-bottle-state]');
+    const previous = form.querySelector('[data-popio-water-bottle-previous]');
+    const remaining = form.querySelector('[data-popio-water-bottle-remaining]');
+    const newFill = form.querySelector('[name="newFillMl"]');
+    const preview = form.querySelector('[data-popio-water-bottle-preview]');
+    const submit = form.querySelector('.popio-submit');
+    if (stateLabel) stateLabel.textContent = model.message;
+    if (previous) previous.hidden = !model.ready || !model.hasPrevious;
+    if (remaining) remaining.hidden = !model.ready || !model.hasPrevious;
+    if (model.hasPrevious) {
+      setWaterBottleText_(form, '[data-popio-water-bottle-previous-at]', formatOccurredAt_(model.previousOccurredAt));
+      setWaterBottleText_(form, '[data-popio-water-bottle-previous-fill]', model.previousFillMl + 'mL');
+    }
+    if (newFill && !newFill.value && model.ready) newFill.value = model.defaultNewFillMl;
+    form.querySelectorAll('input,select,textarea,button').forEach(function (control) { control.disabled = !model.ready; });
+    if (submit) submit.disabled = !model.ready;
+    renderWaterBottlePreview_(form, model, preview);
+  }
+
+  function updateWaterBottlePreview_(form) {
+    const model = waterBottleUiModel_(state.summary, state.summaryStatus);
+    renderWaterBottlePreview_(form, model, form.querySelector('[data-popio-water-bottle-preview]'));
+  }
+
+  function renderWaterBottlePreview_(form, model, target) {
+    if (!target) return;
+    const livePreview = model.ready && model.hasPrevious ? waterBottlePreview_({ occurredAt: model.previousOccurredAt, newFillMl: model.previousFillMl }, formValues_(form)) : null;
+    if (livePreview && livePreview.error) {
+      target.hidden = false;
+      target.textContent = livePreview.error;
+      return;
+    }
+    const interval = livePreview || model.latestInterval;
+    if (!interval || interval.error) {
+      target.hidden = true;
+      target.textContent = '';
+      return;
+    }
+    const hours = Number(interval.elapsedHours);
+    const normalizedLabel = hours < 6 || interval.shortInterval ? '24時間換算（参考） 約' : '24時間換算 約';
+    target.hidden = false;
+    target.innerHTML = '<strong>今回の目安</strong><span>ボトル減少量 ' + Number(interval.bottleDecreaseMl) + 'mL</span><span>' + hours + '時間</span><span>' + normalizedLabel + Number(interval.normalized24hMl) + 'mL</span><small>※こぼれ等を含む目安</small>';
+  }
+
+  function setWaterBottleText_(form, selector, value) {
+    const element = form.querySelector(selector);
+    if (element) element.textContent = String(value || '');
+  }
+
+  function formatOccurredAt_(value, now) {
+    const date = new Date(String(value || ''));
+    if (!Number.isFinite(date.getTime())) return '--';
+    const localDate = tokyoDate_(date),today = tokyoDate_(now),yesterday = tokyoPreviousDate_(now),hour = tokyoHour_(date);
+    if (localDate === today) return '今日 ' + hour + '時';
+    if (localDate === yesterday) return '昨日 ' + hour + '時';
+    const parts = localDate.split('-');
+    return Number(parts[1]) + '/' + Number(parts[2]) + ' ' + hour + '時';
+  }
+
+  function petHealthOwn_(object, key) { return Object.prototype.hasOwnProperty.call(object || {}, key); }
+
   function form_(key) { return document.querySelector('.popio-record-form[data-event-type="' + String(key || '') + '"]'); }
   function setFormSaving_(key, saving) {
     const form = form_(key); if (!form) return;
@@ -495,6 +632,7 @@
   function renderSummary_() {
     const model = summaryDisplayModel_(state.summary, state.summaryStatus);
     setText_('popioSummaryMeal', model.meal); setText_('popioSummaryWater', model.water); setText_('popioSummaryStool', model.stool); setText_('popioSummaryWeight', model.weight);
+    renderWaterBottle_();
   }
   function renderDate_() { const value = tokyoDate_(); const parts = value.split('-'); setText_('popioHealthDate', parts.length === 3 ? '今日 ' + Number(parts[1]) + '/' + Number(parts[2]) : '今日'); }
   function setRootStatus_(message) { setText_('popioHealthStatus', message || ''); }
@@ -531,5 +669,8 @@
     tokyoDate_: tokyoDate_,
     tokyoHour_: tokyoHour_,
     tokyoPreviousDate_: tokyoPreviousDate_,
+    waterBottleUiModel_: waterBottleUiModel_,
+    waterBottlePreview_: waterBottlePreview_,
+    formatOccurredAt_: formatOccurredAt_,
   });
 }));

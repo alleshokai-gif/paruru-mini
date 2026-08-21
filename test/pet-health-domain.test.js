@@ -74,7 +74,7 @@ function summary(context,localDate,homeId='home-main'){
 
 {
   const {context,spreadsheet}=createHarness();
-  assert.deepStrictEqual(spreadsheet.sheets.Pet_Health_Events.values[0],['eventId','homeId','petId','eventType','occurredAt','occurredAtSource','localDate','mealSlot','amountG','completion','amountMl','stoolForm','stoolAmount','coprophagy','urineStatus','weightKg','energy','appetite','flagsJson','note','source','recordedBy','recordedAt','clientRequestId','requestHash']);
+  assert.deepStrictEqual(spreadsheet.sheets.Pet_Health_Events.values[0],['eventId','homeId','petId','eventType','occurredAt','occurredAtSource','localDate','mealSlot','amountG','completion','amountMl','stoolForm','stoolAmount','coprophagy','urineStatus','weightKg','energy','appetite','flagsJson','note','source','recordedBy','recordedAt','clientRequestId','requestHash','remainingMl','newFillMl']);
   assert.deepStrictEqual(spreadsheet.sheets.Pet_Health_Request_Log.values[0],['clientRequestId','operation','actorUserId','petId','requestHash','eventId','responseJson','status','createdAt']);
   ['Health_Daily','Health_Weight','Health_Request_Log'].forEach((name)=>assert(!spreadsheet.sheets[name].values[0].includes('petId'),`${name} was mixed with Pet schema`));
 
@@ -89,6 +89,11 @@ function summary(context,localDate,homeId='home-main'){
   invalid(context,{eventType:'water',amountMl:150.5}); // PH-D05
   invalid(context,{eventType:'water',amountMl:0});
   invalid(context,{eventType:'water',amountMl:10001});
+  assert.deepStrictEqual(plain(normalize(context,{eventType:'water_bottle',newFillMl:400}).event.eventData),{newFillMl:400},'PH-W01 first bottle set payload');
+  assert.deepStrictEqual(plain(normalize(context,{eventType:'water_bottle',newFillMl:400,remainingMl:130}).event.eventData),{newFillMl:400,remainingMl:130},'PH-W02 exchange payload');
+  invalid(context,{eventType:'water_bottle',newFillMl:400.5});
+  invalid(context,{eventType:'water_bottle',newFillMl:0});
+  invalid(context,{eventType:'water_bottle',newFillMl:5001});
   assert.strictEqual(normalize(context,{eventType:'stool'}).event.eventType,'stool','PH-D06');
   invalid(context,{eventType:'stool',stoolForm:'round'}); // PH-D07
   assert.strictEqual(normalize(context,{eventType:'urine'}).event.eventType,'urine','PH-D08');
@@ -265,6 +270,58 @@ function summary(context,localDate,homeId='home-main'){
 }
 
 {
+  const {context,spreadsheet}=createHarness();
+  assert.throws(()=>record(context,baseRecord({eventType:'water_bottle',occurredAt:'2026-08-19T07:00:00+09:00',remainingMl:130,newFillMl:400},requestId(59)),'2026-08-22T12:00:00+09:00'),(error)=>error.code==='INVALID_INPUT','first bottle set must omit remaining');
+  const first=baseRecord({eventType:'water_bottle',occurredAt:'2026-08-19T08:00:00+09:00',newFillMl:400},requestId(60));
+  const firstResponse=record(context,first,'2026-08-22T12:00:00+09:00');
+  assert.strictEqual(firstResponse.data.event.eventType,'water_bottle','PH-W01 first set event type');
+  assert.strictEqual(firstResponse.data.event.newFillMl,400,'PH-W01 first set new fill');
+  assert.strictEqual(Object.hasOwn(firstResponse.data.event,'remainingMl'),false,'PH-W01 first set must omit remaining');
+
+  const second=baseRecord({eventType:'water_bottle',occurredAt:'2026-08-20T02:00:00+09:00',remainingMl:130,newFillMl:400},requestId(61));
+  const secondResponse=record(context,second,'2026-08-22T12:00:00+09:00');
+  assert.strictEqual(secondResponse.data.event.remainingMl,130,'PH-W02 second exchange remaining');
+  assert.throws(()=>record(context,baseRecord({eventType:'water_bottle',occurredAt:'2026-08-20T03:00:00+09:00',newFillMl:400},requestId(62)),'2026-08-22T12:00:00+09:00'),(error)=>error.code==='INVALID_INPUT','subsequent bottle exchange requires remaining');
+  assert.throws(()=>record(context,baseRecord({eventType:'water_bottle',occurredAt:'2026-08-20T03:00:00+09:00',remainingMl:401,newFillMl:400},requestId(63)),'2026-08-22T12:00:00+09:00'),(error)=>error.code==='INVALID_INPUT','PH-W03 remaining cannot exceed previous fill');
+  assert.throws(()=>record(context,baseRecord({eventType:'water_bottle',occurredAt:'2026-08-20T02:00:00+09:00',remainingMl:130,newFillMl:400},requestId(64)),'2026-08-22T12:00:00+09:00'),(error)=>error.code==='INVALID_INPUT','PH-W04 equal occurredAt must fail');
+  assert.throws(()=>record(context,baseRecord({eventType:'water_bottle',occurredAt:'2026-08-19T23:00:00+09:00',remainingMl:130,newFillMl:400},requestId(65)),'2026-08-22T12:00:00+09:00'),(error)=>error.code==='INVALID_INPUT','PH-W09 old-date append must fail');
+
+  const interval=summary(context,'2026-08-20').data.waterBottle.latestInterval;
+  assert.strictEqual(interval.bottleDecreaseMl,270,'PH-W05 bottle decrease');
+  assert.strictEqual(interval.elapsedHours,18,'PH-W06 elapsed hours');
+  assert.strictEqual(interval.normalized24hMl,360,'PH-W07 normalized 24h');
+  const direct=record(context,baseRecord({eventType:'water',occurredAt:'2026-08-20T04:00:00+09:00',amountMl:150},requestId(66)),'2026-08-22T12:00:00+09:00');
+  assert.strictEqual(direct.data.event.amountMl,150,'PH-W08 legacy direct water records unchanged');
+  assert.strictEqual(summary(context,'2026-08-20').data.water.totalAmountMl,150,'PH-W08 legacy water summary unchanged');
+  const replay=record(context,second,'2026-08-22T13:00:00+09:00');
+  assert.strictEqual(replay.data.idempotency.replayed,true,'PH-W10 bottle retry replays');
+  assert.strictEqual(spreadsheet.sheets.Pet_Health_Events.getLastRow(),4,'PH-W10 retry must not append Event');
+  assert.strictEqual(spreadsheet.sheets.Pet_Health_Request_Log.getLastRow(),4,'PH-W10 retry must not append Request Log');
+}
+
+{
+  const {context}=createHarness();
+  let next=70;
+  const add=(event)=>record(context,baseRecord(event,requestId(next++)),'2026-08-22T12:00:00+09:00');
+  const none=summary(context,'2026-08-19').data.waterBottle;
+  assert.deepStrictEqual(plain(none),{eventCount:0,latest:null,latestInterval:null},'PH-WS01 no bottle events');
+  add({eventType:'water_bottle',occurredAt:'2026-08-19T08:00:00+09:00',newFillMl:400});
+  const firstOnly=summary(context,'2026-08-19').data.waterBottle;
+  assert.deepStrictEqual(plain(firstOnly),{eventCount:1,latest:{eventId:firstOnly.latest.eventId,occurredAt:'2026-08-19T08:00:00+09:00',newFillMl:400},latestInterval:null},'PH-WS02 first set only');
+  add({eventType:'water_bottle',occurredAt:'2026-08-20T02:00:00+09:00',remainingMl:130,newFillMl:400});
+  const latest=summary(context,'2026-08-20').data.waterBottle;
+  assert.strictEqual(latest.eventCount,1,'PH-WS03 daily event count');
+  assert.strictEqual(latest.latest.newFillMl,400,'PH-WS03 latest fill');
+  assert.deepStrictEqual(plain(latest.latestInterval),{bottleDecreaseMl:270,elapsedHours:18,normalized24hMl:360},'PH-WS03 latest interval');
+  add({eventType:'water_bottle',occurredAt:'2026-08-21T02:00:00+09:00',remainingMl:100,newFillMl:350});
+  const latestOfMany=summary(context,'2026-08-21').data.waterBottle;
+  assert.strictEqual(latestOfMany.latest.newFillMl,350,'PH-WS04 newest bottle selected');
+  assert.deepStrictEqual(plain(latestOfMany.latestInterval),{bottleDecreaseMl:300,elapsedHours:24,normalized24hMl:300},'PH-WS04 newest interval selected');
+  add({eventType:'water',occurredAt:'2026-08-21T03:00:00+09:00',amountMl:150});
+  assert.deepStrictEqual(plain(summary(context,'2026-08-21').data.water),{eventCount:1,totalAmountMl:150,amountStatus:'complete'},'PH-WS05 legacy water summary unchanged');
+}
+
+{
   const {context}=createHarness();
   let next=100;
   const add=(event,homeId='home-main')=>record(context,baseRecord(event,requestId(next++),homeId),'2026-08-22T12:00:00+09:00');
@@ -332,4 +389,4 @@ function summary(context,localDate,homeId='home-main'){
   assert.throws(()=>context.healthSheet_('Pet_Health_Events'),(error)=>error.code==='CONFIGURATION_ERROR','Pet schema header reorder must fail closed');
 }
 
-console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, schema, token, and dispatch');
+console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, PH-W01..10, PH-WS01..05, schema, token, and dispatch');

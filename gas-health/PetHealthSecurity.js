@@ -4,7 +4,7 @@ const PET_HEALTH_RECORD_HASH_VERSION_ = 'pet-health-record-1';
 const PET_HEALTH_SERVER_DEFAULT_OCCURRED_AT_ = '__SERVER_DEFAULT__';
 const PET_HEALTH_OPERATIONS_ = Object.freeze({'pet.health.record':true,'pet.health.getDailySummary':true});
 const PET_HEALTH_ENUMS_ = Object.freeze({
-  eventType:['meal','water','stool','urine','weight','observation'],
+  eventType:['meal','water','water_bottle','stool','urine','weight','observation'],
   mealSlot:['breakfast','lunch','dinner','snack'],
   completion:['finished','partial','refused'],
   stoolForm:['pellet','formed','banana','soft','watery'],
@@ -18,6 +18,7 @@ const PET_HEALTH_ENUMS_ = Object.freeze({
 const PET_HEALTH_EVENT_FIELDS_ = Object.freeze({
   meal:['mealSlot','amountG','completion'],
   water:['amountMl'],
+  water_bottle:['remainingMl','newFillMl'],
   stool:['stoolForm','stoolAmount','coprophagy'],
   urine:['urineStatus'],
   weight:['weightKg'],
@@ -98,6 +99,10 @@ function petHealthNormalizeEvent_(event,now,deps){
     if(data.completion==='refused'&&petHealthHas_(data,'amountG')&&data.amountG!==0)throw healthErr_('INVALID_INPUT');
     if(data.completion!=='refused'&&petHealthHas_(data,'amountG')&&data.amountG<=0)throw healthErr_('INVALID_INPUT');
   }else if(eventType==='water')data.amountMl=petHealthNumber_(event.amountMl,1,10000,0,true);
+  else if(eventType==='water_bottle'){
+    data.newFillMl=petHealthNumber_(event.newFillMl,1,5000,0,true);
+    if(petHealthHas_(event,'remainingMl'))data.remainingMl=petHealthNumber_(event.remainingMl,0,5000,0,true);
+  }
   else if(eventType==='stool'){
     if(petHealthHas_(event,'stoolForm'))data.stoolForm=petHealthOneOf_(event.stoolForm,PET_HEALTH_ENUMS_.stoolForm);
     if(petHealthHas_(event,'stoolAmount'))data.stoolAmount=petHealthOneOf_(event.stoolAmount,PET_HEALTH_ENUMS_.stoolAmount);

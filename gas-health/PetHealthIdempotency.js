@@ -45,6 +45,7 @@ function petHealthRecord_(body,options){
       return petHealthRecordResponse_(state.event,true);
     }
     const occurredAt=request.event.occurredAt||petHealthInstant_(receivedAt,deps),occurredAtSource=request.event.occurredAt?'explicit':'server_default',recordedAt=petHealthInstant_(receivedAt,deps),eventId=deps.uuid?deps.uuid():Utilities.getUuid();
+    petHealthValidateWaterBottleAppend_(request,occurredAt);
     if(!healthUuid_(eventId))throw healthErr_('INTERNAL_ERROR');
     const appendedEvent=petHealthAppendEvent_(request,eventId,occurredAt,occurredAtSource,recordedAt,requestHash);
     petHealthFlushPersistence_();

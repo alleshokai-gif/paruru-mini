@@ -14,7 +14,7 @@ function petHealthAppendEvent_(request,eventId,occurredAt,occurredAtSource,recor
 function petHealthStoredEvent_(table,row){
   try {
     const get=function(key){return row[table.map[key]];},event={eventType:String(get('eventType')||''),occurredAt:String(get('occurredAt')||'')};
-    ['mealSlot','amountG','completion','amountMl','stoolForm','stoolAmount','coprophagy','urineStatus','weightKg','energy','appetite','note'].forEach(function(key){if(petHealthCellPresent_(get(key)))event[key]=get(key);});
+    ['mealSlot','amountG','completion','amountMl','remainingMl','newFillMl','stoolForm','stoolAmount','coprophagy','urineStatus','weightKg','energy','appetite','note'].forEach(function(key){if(petHealthCellPresent_(get(key)))event[key]=get(key);});
     if(petHealthCellPresent_(get('flagsJson'))){const flags=JSON.parse(String(get('flagsJson')));if(!Array.isArray(flags)||JSON.stringify(flags)!==String(get('flagsJson')))throw healthErr_('DATA_INTEGRITY_ERROR');event.flags=flags;}
     const normalized=petHealthNormalizeEvent_(event,new Date(8640000000000000),null),instant=petHealthParseInstant_(String(get('occurredAt')||'')),recordedInstant=petHealthParseInstant_(String(get('recordedAt')||'')),rawDataKeys=Object.keys(event).filter(function(key){return key!=='eventType'&&key!=='occurredAt';}),normalizedDataKeys=Object.keys(normalized.eventData);
     const stored={eventId:String(get('eventId')||''),homeId:String(get('homeId')||''),petId:String(get('petId')||''),eventType:normalized.eventType,occurredAt:normalized.occurredAt,occurredAtSource:String(get('occurredAtSource')||''),localDate:healthDate_(get('localDate')),eventData:normalized.eventData,source:String(get('source')||''),recordedBy:String(get('recordedBy')||''),recordedAt:petHealthInstant_(recordedInstant),clientRequestId:String(get('clientRequestId')||''),requestHash:String(get('requestHash')||''),instantMs:instant.getTime()};
@@ -46,4 +46,16 @@ function petHealthScopedEvents_(homeId,petId){
   const table=healthMap_(healthSheet_(PET_HEALTH_SHEETS.events)),found=[];
   table.values.slice(1).forEach(function(row){if(String(row[table.map.homeId]||'')===homeId&&String(row[table.map.petId]||'')===petId)found.push(petHealthStoredEvent_(table,row));});
   return found;
+}
+function petHealthWaterBottleEvents_(homeId,petId){
+  return petHealthScopedEvents_(homeId,petId).filter(function(event){return event.eventType==='water_bottle';}).sort(function(a,b){return a.instantMs-b.instantMs||a.eventId.localeCompare(b.eventId);});
+}
+function petHealthValidateWaterBottleAppend_(request,occurredAt){
+  if(request.event.eventType!=='water_bottle')return;
+  const bottles=petHealthWaterBottleEvents_(request.homeId,request.petId),previous=bottles.length?bottles[bottles.length-1]:null,currentInstant=petHealthParseInstant_(occurredAt),data=request.event.eventData;
+  if(!previous){
+    if(petHealthHas_(data,'remainingMl'))throw healthErr_('INVALID_INPUT');
+    return;
+  }
+  if(currentInstant.getTime()<=previous.instantMs||!petHealthHas_(data,'remainingMl')||data.remainingMl>previous.eventData.newFillMl)throw healthErr_('INVALID_INPUT');
 }

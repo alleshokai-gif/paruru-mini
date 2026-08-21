@@ -42,6 +42,7 @@ function backendSummary(overrides) {
       timezone: 'Asia/Tokyo',
       meal: {},
       water: {},
+      waterBottle: { eventCount: 0, latest: null, latestInterval: null },
       stool: {},
       urine: {},
       latestWeight: null,
@@ -313,6 +314,19 @@ test('PH-G29', 'all remaining privileged client fields are rejected', () => {
     assert.strictEqual(result.error.code, 'INVALID_INPUT');
     assert.strictEqual(state.forwarded.length, 0);
   });
+});
+
+test('PH-G30', 'additive water-bottle summary data passes through unchanged', () => {
+  const { api } = setup({ responseText: JSON.stringify(backendSummary({
+    data: {
+      petId: 'popio', localDate: '2026-08-19', timezone: 'Asia/Tokyo', meal: {}, water: {},
+      waterBottle: { eventCount: 1, latest: { eventId: 'bottle-1', occurredAt: '2026-08-19T08:00:00+09:00', newFillMl: 400 }, latestInterval: null },
+      stool: {}, urine: {}, latestWeight: null, notableObservations: [],
+    },
+  })) });
+  const result = api.petHealthGateway_(summaryInput());
+  assert.strictEqual(result.success, true);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(result.data.waterBottle)), { eventCount: 1, latest: { eventId: 'bottle-1', occurredAt: '2026-08-19T08:00:00+09:00', newFillMl: 400 }, latestInterval: null });
 });
 
 console.log(`PASS pet health gateway suite (${passed} assertions)`);
