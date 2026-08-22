@@ -9,6 +9,7 @@ const complete = {morningRecordedAt:'x',morningStaple:'normal',morningProteinSou
 assert.deepStrictEqual(JSON.parse(JSON.stringify(context.evaluateHealthRules_(complete, []))), ['on_track']);
 assert(context.evaluateHealthRules_({}, []).includes('morning_not_recorded'));
 assert(context.evaluateHealthRules_({...complete,morningStaple:'none'}, []).includes('morning_fuel_missing'));
+assert(!context.evaluateHealthRules_({...complete,morningStaple:'none'}, []).includes('morning_not_recorded'));
 assert(!context.evaluateHealthRules_({...complete,postTrainingStatus:'rest_day',postTrainingOnigiriCount:0,postTrainingProteinSource:'none'}, []).includes('post_training_fuel_missing'));
 assert(context.evaluateHealthRules_({...complete,postTrainingStatus:'recorded',postTrainingOnigiriCount:0,postTrainingProteinSource:'none'}, []).includes('post_training_fuel_missing'));
 assert(context.evaluateHealthRules_({...complete,morningProteinSource:'none',lunchProteinSource:'none',dinnerExtraProteinSource:'none'}, []).includes('protein_source_missing'));

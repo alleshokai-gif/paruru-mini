@@ -12,6 +12,17 @@
     { slot: "dinner", title: "夜の健康記録", dueHour: 20 },
     { slot: "condition", title: "体調の健康記録", dueHour: 22 },
   ]);
+  const ROUTINE_STATUS = Object.freeze({
+    RECORDED: "recorded",
+    DUE_MISSING: "due_missing",
+    NOT_DUE: "not_due",
+  });
+  const MISSING_AFTER_HOURS = Object.freeze({
+    morning: 9,
+    lunch: 15,
+    dinner: 22,
+    condition: 23,
+  });
 
   function localHour_(now) {
     const date = now instanceof Date ? now : new Date(now || Date.now());
@@ -26,68 +37,59 @@
     return ROUTINES.slice().reverse().find((routine) => hour >= routine.dueHour) || null;
   }
 
-  function isChecked_(value) {
-    return value === true || String(value || "").toLowerCase() === "true";
+  function isRoutineRecorded(value) {
+    return String(value && value.recordedAt || "").trim() !== "";
   }
 
   function isRoutineComplete(slot, value) {
-    const record = value || {};
-    if (slot === "morning") {
-      return record.morningStaple && record.morningStaple !== "none"
-        && isChecked_(record.morningWater)
-        && isChecked_(record.morningMedication)
-        && isChecked_(record.morningCondition);
-    }
-    if (slot === "lunch") {
-      return record.lunchAmount && record.lunchAmount !== "none"
-        && isChecked_(record.lunchWater)
-        && isChecked_(record.lunchCondition);
-    }
-    if (slot === "post_training") {
-      return record.postTrainingProteinSource && record.postTrainingProteinSource !== "none"
-        && Number(record.postTrainingOnigiriCount) > 0
-        && isChecked_(record.postTrainingWater)
-        && isChecked_(record.postTrainingCondition);
-    }
-    if (slot === "dinner") {
-      return Number(record.dinnerRiceBowls) > 0
-        && isChecked_(record.dinnerMedication)
-        && isChecked_(record.bedtime);
-    }
-    return Boolean(record.recordedAt);
+    return ROUTINES.some((routine) => routine.slot === slot) && isRoutineRecorded(value);
   }
 
-  function getPendingRoutines_(slots) {
-    return ROUTINES.filter((routine) => !isRoutineComplete(routine.slot, slots[routine.slot]));
+  function resolveRoutineStatus(slot, value, now) {
+    if (isRoutineRecorded(value)) return ROUTINE_STATUS.RECORDED;
+    const missingAfterHour = MISSING_AFTER_HOURS[slot];
+    return Number.isFinite(missingAfterHour) && localHour_(now) >= missingAfterHour
+      ? ROUTINE_STATUS.DUE_MISSING
+      : ROUTINE_STATUS.NOT_DUE;
   }
 
-  function getRoutineState_(routine, currentRoutine) {
-    return {
-      overdue: Boolean(currentRoutine && routine.dueHour <= currentRoutine.dueHour),
+  function getPendingRoutineStates_(slots, now) {
+    return ROUTINES.map((routine) => ({
       routine,
-    };
+      status: resolveRoutineStatus(routine.slot, slots[routine.slot], now),
+    })).filter((state) => state.status !== ROUTINE_STATUS.RECORDED);
   }
 
-  function selectNextRoutine_(pending, currentRoutine) {
-    const overdue = pending.filter((routine) => getRoutineState_(routine, currentRoutine).overdue);
-    const selected = (overdue.length ? overdue : pending)[0];
-    return selected ? getRoutineState_(selected, currentRoutine) : null;
+  function selectNextRoutineState_(pending) {
+    const dueMissing = pending.filter((state) => state.status === ROUTINE_STATUS.DUE_MISSING);
+    return (dueMissing.length ? dueMissing : pending)[0] || null;
   }
 
   function resolveNextHealthTask(dailyRecord, now) {
     const slots = dailyRecord && dailyRecord.slots && typeof dailyRecord.slots === "object"
       ? dailyRecord.slots : {};
-    const selectedState = selectNextRoutine_(getPendingRoutines_(slots), resolveCurrentRoutine(now));
+    const selectedState = selectNextRoutineState_(getPendingRoutineStates_(slots, now));
     if (!selectedState) return null;
     const selected = selectedState.routine;
+    const overdue = selectedState.status === ROUTINE_STATUS.DUE_MISSING;
     return {
       slot: selected.slot,
       title: selected.title,
-      overdue: selectedState.overdue,
-      priority: selectedState.overdue ? "high" : "normal",
+      status: selectedState.status,
+      overdue,
+      priority: overdue ? "high" : "normal",
       action: "daily",
     };
   }
 
-  return Object.freeze({ ROUTINES, resolveCurrentRoutine, resolveNextHealthTask, isRoutineComplete });
+  return Object.freeze({
+    ROUTINES,
+    ROUTINE_STATUS,
+    MISSING_AFTER_HOURS,
+    resolveCurrentRoutine,
+    resolveRoutineStatus,
+    resolveNextHealthTask,
+    isRoutineRecorded,
+    isRoutineComplete,
+  });
 }));

@@ -53,10 +53,10 @@ async function nextFor(role, slots) {
   assert.strictEqual(requests[0].targetMemberUserId, 'member-1', 'health task used a different target member');
 
   const complete = {
-    morning: { morningStaple:'normal',morningWater:true,morningMedication:true,morningCondition:true },
-    lunch: { lunchAmount:'all',lunchWater:true,lunchCondition:true },
-    post_training: { postTrainingProteinSource:'protein',postTrainingOnigiriCount:1,postTrainingWater:true,postTrainingCondition:true },
-    dinner: { dinnerRiceBowls:1,dinnerMedication:true,bedtime:true },
+    morning: { recordedAt: '2026-07-29T08:00:00+09:00', morningStaple:'normal',morningWater:true,morningMedication:true,morningCondition:true },
+    lunch: { recordedAt: '2026-07-29T12:00:00+09:00', lunchAmount:'all',lunchWater:true,lunchCondition:true },
+    post_training: { recordedAt: '2026-07-29T17:00:00+09:00', postTrainingProteinSource:'protein',postTrainingOnigiriCount:1,postTrainingWater:true,postTrainingCondition:true },
+    dinner: { recordedAt: '2026-07-29T20:00:00+09:00', dinnerRiceBowls:1,dinnerMedication:true,bedtime:true },
     condition: { recordedAt: '2026-07-29T22:00:00+09:00' },
   };
   assert.strictEqual(await nextFor('self_record', complete), null, 'complete self_record day produced a task');

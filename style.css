@@ -2240,3 +2240,36 @@ body:not(.is-authenticated) .drawer-overlay {
     grid-row: 2;
   }
 }
+
+.nurse-progress-card ul {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.nurse-progress-card li {
+  grid-template-columns: minmax(0, 1fr) auto;
+  place-items: center stretch;
+  min-height: 48px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.nurse-progress-status {
+  font-weight: 700;
+  text-align: right;
+}
+
+.nurse-progress-card li.is-recorded {
+  background: #edf8ee;
+  color: #216b32;
+}
+
+.nurse-progress-card li.is-due_missing {
+  background: #fff4e2;
+  color: #8a5415;
+}
+
+.nurse-progress-card li.is-not_due {
+  background: #f7f7fb;
+  color: #616579;
+}
