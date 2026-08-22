@@ -178,7 +178,10 @@ assert.strictEqual(api.observationTrendModel_(null, 7).state, 'unavailable', 'PH
 assert(featureSource.includes('id="popioObservationToggle"') && featureSource.includes('data-popio-observation-period="7"') && featureSource.includes('data-popio-observation-period="30"'), 'PH-TU01 observation section and period controls missing');
 assert(featureSource.includes('renderWeightTrend_') && featureSource.includes('renderMealTrend_') && featureSource.includes('renderStoolTrend_'), 'PH-TU04/06/08 observation renderers missing');
 assert(cssSource.includes('.popio-observation-card') && cssSource.includes('.popio-weight-chart') && cssSource.includes('.popio-trend-row') && cssSource.includes('grid-template-columns: 40px minmax(0, 1fr) auto auto;'), 'PH-TU01/04/06/08 observation mobile styles missing');
-assert(cssSource.includes('.popio-observation-periods button') && cssSource.includes('min-width: 58px;') && cssSource.includes('flex-shrink: 0;') && cssSource.includes('white-space: nowrap;'), 'PH-COLL09/10 observation period labels may wrap');
+const periodControlsCss = cssSource.slice(cssSource.indexOf('.popio-observation-periods {'), cssSource.indexOf('.popio-observation-periods button[aria-pressed="true"]'));
+assert(periodControlsCss.includes('min-width: 0;') && periodControlsCss.includes('flex-wrap: nowrap;') && periodControlsCss.includes('overflow-x: visible;'), 'PH-COLL09 period container can force horizontal overflow');
+assert(periodControlsCss.includes('width: 64px;') && periodControlsCss.includes('max-width: 64px;') && periodControlsCss.includes('min-width: 64px;') && periodControlsCss.includes('flex: 0 0 64px;') && periodControlsCss.includes('flex-shrink: 0;') && periodControlsCss.includes('white-space: nowrap;'), 'PH-COLL09/10 period buttons can stretch or wrap');
+assert(64 * 2 + 8 <= 360 - 48 - 30, 'PH-COLL10 two fixed period buttons exceed the 360px mobile content contract');
 assert(featureSource.includes("loadDashboard_({ quiet: true })"), 'PH-TU10 correction save no longer refreshes Dashboard');
 
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }

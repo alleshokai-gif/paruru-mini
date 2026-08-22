@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260822-popio-history-observation-collapse-v1";
+globalThis.BUILD_ID = "v20260822-popio-period-toggle-layout-v1";

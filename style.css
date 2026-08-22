@@ -1695,13 +1695,19 @@ body:not(.is-authenticated) .drawer-overlay {
 
 .popio-observation-periods {
   display: flex;
-  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  gap: 8px;
+  justify-content: flex-start;
   flex-wrap: nowrap;
+  overflow-x: visible;
 }
 
 .popio-observation-periods button {
-  min-width: 58px;
-  flex: 0 0 auto;
+  width: 64px;
+  max-width: 64px;
+  min-width: 64px;
+  flex: 0 0 64px;
   flex-shrink: 0;
   padding: 6px 11px;
   border: 1px solid #c8d8c9;
