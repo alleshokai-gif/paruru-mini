@@ -90,7 +90,7 @@
           <p id="popioObservationStatus" class="popio-observation-status" role="status" aria-live="polite"></p>
           <section class="popio-trend-card"><h3>⚖️ 体重</h3><div id="popioWeightTrend" class="popio-weight-trend"></div></section>
           <section class="popio-trend-card"><h3>🍚 食事量</h3><div id="popioMealTrend" class="popio-trend-list"></div></section>
-          <section class="popio-trend-card"><h3>💩 便</h3><div id="popioStoolTrend" class="popio-trend-list"></div></section>
+          <section class="popio-trend-card"><h3>💩 うんち</h3><div id="popioStoolTrend" class="popio-trend-list"></div></section>
         </div>
       </section>`;
     mount.append(root);

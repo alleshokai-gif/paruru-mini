@@ -177,6 +177,7 @@ assert.strictEqual(api.observationTrendModel_(trendFixture, 30).localDates.lengt
 assert.strictEqual(api.observationTrendModel_(null, 7).state, 'unavailable', 'PH-TU09 unavailable trend state');
 assert(featureSource.includes('id="popioObservationToggle"') && featureSource.includes('data-popio-observation-period="7"') && featureSource.includes('data-popio-observation-period="30"'), 'PH-TU01 observation section and period controls missing');
 assert(featureSource.includes('renderWeightTrend_') && featureSource.includes('renderMealTrend_') && featureSource.includes('renderStoolTrend_'), 'PH-TU04/06/08 observation renderers missing');
+assert(featureSource.includes('<h3>💩 うんち</h3>') && !featureSource.includes('<h3>💩 便</h3>'), 'PH-TU08 stool trend label must use うんち');
 assert(cssSource.includes('.popio-observation-card') && cssSource.includes('.popio-weight-chart') && cssSource.includes('.popio-trend-row') && cssSource.includes('grid-template-columns: 40px minmax(0, 1fr) auto auto;'), 'PH-TU01/04/06/08 observation mobile styles missing');
 const periodControlsCss = cssSource.slice(cssSource.indexOf('.popio-observation-periods {'), cssSource.indexOf('.popio-observation-periods button[aria-pressed="true"]'));
 assert(periodControlsCss.includes('min-width: 0;') && periodControlsCss.includes('flex-wrap: nowrap;') && periodControlsCss.includes('overflow-x: visible;'), 'PH-COLL09 period container can force horizontal overflow');
