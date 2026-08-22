@@ -1542,16 +1542,52 @@ body:not(.is-authenticated) .drawer-overlay {
   background: #ffffff;
 }
 
+.popio-history-card,
+.popio-observation-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.popio-section-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #374b3a;
+  box-shadow: none;
+  text-align: left;
+}
+
+.popio-section-toggle-label {
+  min-width: 0;
+  font-size: 1.02rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.popio-section-toggle-chevron {
+  flex: 0 0 auto;
+  color: #58755d;
+  font-size: 0.86rem;
+}
+
+.popio-collapsible-content {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
 .popio-reminder-card h2,
-.popio-history-card h2,
 .popio-history-group h3 {
   margin: 0;
   color: #374b3a;
 }
 
-.popio-reminder-card h2,
-.popio-history-card h2,
-.popio-observation-card h2 {
+.popio-reminder-card h2 {
   font-size: 1.02rem;
 }
 
@@ -1660,10 +1696,13 @@ body:not(.is-authenticated) .drawer-overlay {
 .popio-observation-periods {
   display: flex;
   gap: 6px;
+  flex-wrap: nowrap;
 }
 
 .popio-observation-periods button {
-  min-height: 36px;
+  min-width: 58px;
+  flex: 0 0 auto;
+  flex-shrink: 0;
   padding: 6px 11px;
   border: 1px solid #c8d8c9;
   border-radius: 999px;
@@ -1671,6 +1710,7 @@ body:not(.is-authenticated) .drawer-overlay {
   color: #55745a;
   font-size: 0.78rem;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .popio-observation-periods button[aria-pressed="true"] {

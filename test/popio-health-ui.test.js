@@ -141,6 +141,20 @@ assert.strictEqual(api.historyViewModel_([], 'failed', timestampNow).state, 'fai
 assert.strictEqual(api.historyViewModel_(historyEvents, 'loaded', timestampNow).state, 'loaded', 'PH-H07 summary failure must not affect history model');
 assert.strictEqual(api.summaryDisplayModel_({ meal: { eventCount: 1, totalAmountG: 20 }, water: { eventCount: 0 }, stool: { count: 0 }, latestWeight: null }, 'loaded').meal, '20g', 'PH-H08 recent failure must not affect summary model');
 
+// PH-COLL01 - PH-COLL08: collapsing is PWA-only presentation state.
+let collapsed = api.collapsibleSectionState_({ historyExpanded: false, observationExpanded: false }, 'history');
+assert.deepStrictEqual(plain(collapsed), { historyExpanded: true, observationExpanded: false }, 'PH-COLL01/02 history starts collapsed then opens');
+collapsed = api.collapsibleSectionState_(collapsed, 'history');
+assert.deepStrictEqual(plain(collapsed), { historyExpanded: false, observationExpanded: false }, 'PH-COLL03 history closes');
+collapsed = api.collapsibleSectionState_(collapsed, 'observation');
+assert.deepStrictEqual(plain(collapsed), { historyExpanded: false, observationExpanded: true }, 'PH-COLL04/05 observation starts collapsed then opens');
+collapsed = api.collapsibleSectionState_(collapsed, 'observation');
+assert.deepStrictEqual(plain(collapsed), { historyExpanded: false, observationExpanded: false }, 'PH-COLL06 observation closes');
+assert.deepStrictEqual(plain(api.collapsibleSectionState_(collapsed, 'unknown')), collapsed, 'unknown section cannot change collapse state');
+assert(featureSource.includes('data-popio-section-toggle="history"') && featureSource.includes('data-popio-section-toggle="observation"') && featureSource.includes('aria-expanded="false"'), 'PH-COLL08 collapsible headers must expose aria-expanded');
+const collapseSlice = featureSource.slice(featureSource.indexOf('function toggleCollapsibleSection_'), featureSource.indexOf('function handleTimestampClick_'));
+assert(collapseSlice.includes('content.hidden = !section.expanded') && !collapseSlice.includes('loadDashboard_') && !collapseSlice.includes('call_('), 'PH-COLL07 collapse state must not call the Dashboard API');
+
 const trendFixture = {
   rangeDays: 30, fromLocalDate: '2026-07-23', toLocalDate: '2026-08-21',
   weight: { items: [{ localDate: '2026-08-20', occurredAt: '2026-08-20T08:00:00+09:00', weightKg: 2.3 }], latestWeightKg: 2.3, changeFromFirstKg: 0 },
@@ -161,9 +175,10 @@ assert.strictEqual(api.observationMealLabel_({ knownAmountG: 60, amountStatus: '
 assert.deepStrictEqual(plain(trendSeven.stool.find((item) => item.localDate === '2026-08-20')), { localDate: '2026-08-20', count: 3, forms: { pellet: 0, formed: 1, banana: 2, soft: 0, watery: 0 }, formLabel: 'バナナ' }, 'PH-TU08 stool count and dominant form');
 assert.strictEqual(api.observationTrendModel_(trendFixture, 30).localDates.length, 30, 'PH-TU03 thirty-day model range');
 assert.strictEqual(api.observationTrendModel_(null, 7).state, 'unavailable', 'PH-TU09 unavailable trend state');
-assert(featureSource.includes('id="popioObservationTitle"') && featureSource.includes('data-popio-observation-period="7"') && featureSource.includes('data-popio-observation-period="30"'), 'PH-TU01 observation section and period controls missing');
+assert(featureSource.includes('id="popioObservationToggle"') && featureSource.includes('data-popio-observation-period="7"') && featureSource.includes('data-popio-observation-period="30"'), 'PH-TU01 observation section and period controls missing');
 assert(featureSource.includes('renderWeightTrend_') && featureSource.includes('renderMealTrend_') && featureSource.includes('renderStoolTrend_'), 'PH-TU04/06/08 observation renderers missing');
 assert(cssSource.includes('.popio-observation-card') && cssSource.includes('.popio-weight-chart') && cssSource.includes('.popio-trend-row') && cssSource.includes('grid-template-columns: 40px minmax(0, 1fr) auto auto;'), 'PH-TU01/04/06/08 observation mobile styles missing');
+assert(cssSource.includes('.popio-observation-periods button') && cssSource.includes('min-width: 58px;') && cssSource.includes('flex-shrink: 0;') && cssSource.includes('white-space: nowrap;'), 'PH-COLL09/10 observation period labels may wrap');
 assert(featureSource.includes("loadDashboard_({ quiet: true })"), 'PH-TU10 correction save no longer refreshes Dashboard');
 
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
@@ -486,7 +501,7 @@ async function run() {
   assert(cssSource.includes('.popio-water-bottle-previous') && cssSource.includes('.popio-water-bottle-preview'), 'water-bottle mobile styles missing');
   assert(cssSource.includes('.popio-reminder-item') && cssSource.includes('.popio-history-item'), 'Reminder/History mobile styles missing');
 
-  console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, PH-WU01-PH-WU10, PH-M01-PH-M08, PH-H01-PH-H10, and PH-TU01-PH-TU10 Pet Health UI contracts');
+  console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, PH-WU01-PH-WU10, PH-M01-PH-M08, PH-H01-PH-H10, PH-TU01-PH-TU10, and PH-COLL01-PH-COLL10 Pet Health UI contracts');
 }
 
 run().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

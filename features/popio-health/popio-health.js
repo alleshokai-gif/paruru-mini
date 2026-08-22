@@ -26,6 +26,8 @@
     dashboardFresh: false,
     dashboardCache: null,
     observationPeriod: 7,
+    historyExpanded: false,
+    observationExpanded: false,
     mounted: false,
   };
   let saveFlow_ = null;
@@ -74,17 +76,22 @@
         ${weightForm_()}
         ${observationForm_()}
       </div>
-      <section class="popio-history-card" aria-labelledby="popioHistoryTitle">
-        <h2 id="popioHistoryTitle">📋 最近の記録</h2>
-        <p id="popioHistoryStatus" class="popio-history-status" role="status" aria-live="polite"></p>
-        <div id="popioHistoryList" class="popio-history-list"></div>
+      <section class="popio-history-card" aria-labelledby="popioHistoryToggle">
+        <button id="popioHistoryToggle" class="popio-section-toggle" type="button" data-popio-section-toggle="history" aria-controls="popioHistoryContent" aria-expanded="false"><span class="popio-section-toggle-label">📋 最近の記録</span><span class="popio-section-toggle-chevron" data-popio-section-chevron="history" aria-hidden="true">▼</span></button>
+        <div id="popioHistoryContent" class="popio-collapsible-content" hidden>
+          <p id="popioHistoryStatus" class="popio-history-status" role="status" aria-live="polite"></p>
+          <div id="popioHistoryList" class="popio-history-list"></div>
+        </div>
       </section>
-      <section class="popio-observation-card" aria-labelledby="popioObservationTitle">
-        <div class="popio-observation-heading"><h2 id="popioObservationTitle">📈 観察</h2><div class="popio-observation-periods" role="group" aria-label="表示期間"><button type="button" data-popio-observation-period="7" aria-pressed="true">7日</button><button type="button" data-popio-observation-period="30" aria-pressed="false">30日</button></div></div>
-        <p id="popioObservationStatus" class="popio-observation-status" role="status" aria-live="polite"></p>
-        <section class="popio-trend-card"><h3>⚖️ 体重</h3><div id="popioWeightTrend" class="popio-weight-trend"></div></section>
-        <section class="popio-trend-card"><h3>🍚 食事量</h3><div id="popioMealTrend" class="popio-trend-list"></div></section>
-        <section class="popio-trend-card"><h3>💩 便</h3><div id="popioStoolTrend" class="popio-trend-list"></div></section>
+      <section class="popio-observation-card" aria-labelledby="popioObservationToggle">
+        <button id="popioObservationToggle" class="popio-section-toggle" type="button" data-popio-section-toggle="observation" aria-controls="popioObservationContent" aria-expanded="false"><span class="popio-section-toggle-label">📈 観察</span><span class="popio-section-toggle-chevron" data-popio-section-chevron="observation" aria-hidden="true">▼</span></button>
+        <div id="popioObservationContent" class="popio-collapsible-content" hidden>
+          <div class="popio-observation-periods" role="group" aria-label="表示期間"><button type="button" data-popio-observation-period="7" aria-pressed="true">7日</button><button type="button" data-popio-observation-period="30" aria-pressed="false">30日</button></div>
+          <p id="popioObservationStatus" class="popio-observation-status" role="status" aria-live="polite"></p>
+          <section class="popio-trend-card"><h3>⚖️ 体重</h3><div id="popioWeightTrend" class="popio-weight-trend"></div></section>
+          <section class="popio-trend-card"><h3>🍚 食事量</h3><div id="popioMealTrend" class="popio-trend-list"></div></section>
+          <section class="popio-trend-card"><h3>💩 便</h3><div id="popioStoolTrend" class="popio-trend-list"></div></section>
+        </div>
       </section>`;
     mount.append(root);
     root.addEventListener('submit', submitRecord_);
@@ -97,6 +104,7 @@
     renderSummary_();
     renderRecentEvents_();
     renderObservation_();
+    renderCollapsibleSections_();
   }
 
   function mealForm_() {
@@ -464,7 +472,35 @@
     setFormStatus_(String(form.dataset.eventType || ''), '');
   }
 
+  function collapsibleSectionState_(current, section) {
+    const next = { historyExpanded: Boolean(current && current.historyExpanded), observationExpanded: Boolean(current && current.observationExpanded) };
+    if (section === 'history') next.historyExpanded = !next.historyExpanded;
+    if (section === 'observation') next.observationExpanded = !next.observationExpanded;
+    return next;
+  }
+  function toggleCollapsibleSection_(section) {
+    Object.assign(state, collapsibleSectionState_(state, section));
+    renderCollapsibleSections_();
+  }
+  function renderCollapsibleSections_() {
+    [
+      { key: 'history', expanded: state.historyExpanded, buttonId: 'popioHistoryToggle', contentId: 'popioHistoryContent' },
+      { key: 'observation', expanded: state.observationExpanded, buttonId: 'popioObservationToggle', contentId: 'popioObservationContent' },
+    ].forEach(function (section) {
+      const button = document.getElementById(section.buttonId), content = document.getElementById(section.contentId), chevron = document.querySelector('[data-popio-section-chevron="' + section.key + '"]');
+      if (button) button.setAttribute('aria-expanded', String(section.expanded));
+      if (content) content.hidden = !section.expanded;
+      if (chevron) chevron.textContent = section.expanded ? '▲' : '▼';
+    });
+  }
+
   function handleTimestampClick_(event) {
+    const sectionToggle = event.target && event.target.closest ? event.target.closest('[data-popio-section-toggle]') : null;
+    if (sectionToggle) {
+      event.preventDefault();
+      toggleCollapsibleSection_(sectionToggle.dataset.popioSectionToggle);
+      return;
+    }
     const observationPeriod = event.target && event.target.closest ? event.target.closest('[data-popio-observation-period]') : null;
     if (observationPeriod) {
       event.preventDefault();
@@ -1196,6 +1232,7 @@
     createPetHealthSaveFlow_: createPetHealthSaveFlow_,
     createPetHealthSummaryLoader_: createPetHealthSummaryLoader_,
     historyViewModel_: historyViewModel_,
+    collapsibleSectionState_: collapsibleSectionState_,
     observationTrendModel_: observationTrendModel_,
     observationMealLabel_: observationMealLabel_,
     observationForms_: observationForms_,
