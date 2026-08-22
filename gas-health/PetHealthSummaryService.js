@@ -43,6 +43,47 @@ function petHealthRecentEvents_(body,options){
   const deps=options||{},now=deps.now?deps.now():new Date(),request=petHealthNormalizeRecentRequest_(body),all=petHealthEventSnapshot_(request.homeId,request.petId),today=petHealthLocalDate_(now,deps);
   return petHealthResponse_('pet.health.listRecentEvents',petHealthRecentData_(request,all,today));
 }
+function petHealthTrendRange_(toLocalDate){
+  const days=30;
+  return {days:days,fromLocalDate:petHealthShiftLocalDate_(toLocalDate,-(days-1)),toLocalDate:toLocalDate,localDates:Array.from({length:days},function(_,index){return petHealthShiftLocalDate_(toLocalDate,-(days-1-index));})};
+}
+function petHealthTrendEventsByDate_(all,range,eventType){
+  const grouped={};
+  range.localDates.forEach(function(localDate){grouped[localDate]=[];});
+  (all||[]).forEach(function(event){if(event.eventType===eventType&&grouped[event.localDate])grouped[event.localDate].push(event);});
+  return grouped;
+}
+function petHealthWeightTrend_(all,range){
+  const grouped=petHealthTrendEventsByDate_(all,range,'weight'),items=[];
+  range.localDates.forEach(function(localDate){
+    const daily=grouped[localDate];
+    if(!daily.length)return;
+    const latest=daily[daily.length-1];
+    items.push({localDate:localDate,occurredAt:latest.occurredAt,weightKg:latest.eventData.weightKg});
+  });
+  const first=items[0],latest=items[items.length-1];
+  return {items:items,latestWeightKg:latest?latest.weightKg:null,changeFromFirstKg:latest?Math.round((latest.weightKg-first.weightKg)*1000)/1000:null};
+}
+function petHealthMealTrend_(all,range){
+  const grouped=petHealthTrendEventsByDate_(all,range,'meal');
+  return {daily:range.localDates.map(function(localDate){
+    const amount=petHealthAmountSummary_(grouped[localDate],'amountG');
+    return {localDate:localDate,knownAmountG:amount.known,amountStatus:amount.status};
+  })};
+}
+function petHealthStoolTrend_(all,range){
+  const grouped=petHealthTrendEventsByDate_(all,range,'stool');
+  return {daily:range.localDates.map(function(localDate){
+    const forms={};
+    PET_HEALTH_ENUMS_.stoolForm.forEach(function(form){forms[form]=0;});
+    grouped[localDate].forEach(function(event){const form=event.eventData.stoolForm;if(form)forms[form]++;});
+    return {localDate:localDate,count:grouped[localDate].length,forms:forms};
+  })};
+}
+function petHealthTrendData_(all,toLocalDate){
+  const range=petHealthTrendRange_(toLocalDate);
+  return {rangeDays:range.days,fromLocalDate:range.fromLocalDate,toLocalDate:range.toLocalDate,weight:petHealthWeightTrend_(all,range),meal:petHealthMealTrend_(all,range),stool:petHealthStoolTrend_(all,range)};
+}
 function petHealthSummaryData_(request,all){
   const start=petHealthParseInstant_(request.localDate+'T00:00:00+09:00').getTime(),end=start+24*60*60*1000;
   const daily=all.filter(function(event){if(event.localDate===request.localDate&&(event.instantMs<start||event.instantMs>=end))throw healthErr_('DATA_INTEGRITY_ERROR');return event.localDate===request.localDate;});
@@ -61,7 +102,7 @@ function petHealthSummary_(body,options){
   return petHealthResponse_('pet.health.getDailySummary',petHealthSummaryData_(request,all));
 }
 function petHealthDashboard_(body,options){
-  const deps=options||{},now=deps.now?deps.now():new Date(),request=petHealthNormalizeDashboardRequest_(body,now,deps),all=petHealthEventSnapshot_(request.homeId,request.petId),summary=petHealthSummaryData_(request,all),recent=petHealthRecentData_(request,all,request.localDate);
-  return petHealthResponse_('pet.health.getDashboard',{petId:request.petId,localDate:request.localDate,timezone:PET_HEALTH_TIMEZONE_,summary:summary,recentEvents:recent.events});
+  const deps=options||{},now=deps.now?deps.now():new Date(),request=petHealthNormalizeDashboardRequest_(body,now,deps),all=petHealthEventSnapshot_(request.homeId,request.petId),summary=petHealthSummaryData_(request,all),recent=petHealthRecentData_(request,all,request.localDate),trends=petHealthTrendData_(all,request.localDate);
+  return petHealthResponse_('pet.health.getDashboard',{petId:request.petId,localDate:request.localDate,timezone:PET_HEALTH_TIMEZONE_,summary:summary,recentEvents:recent.events,trends:trends});
 }
 function petHealthDispatch_(body){if(body.operation==='pet.health.record')return petHealthRecord_(body);if(body.operation==='pet.health.correct')return petHealthCorrect_(body);if(body.operation==='pet.health.void')return petHealthVoid_(body);if(body.operation==='pet.health.getDailySummary')return petHealthSummary_(body);if(body.operation==='pet.health.listRecentEvents')return petHealthRecentEvents_(body);if(body.operation==='pet.health.getDashboard')return petHealthDashboard_(body);throw healthErr_('UNSUPPORTED_ACTION');}

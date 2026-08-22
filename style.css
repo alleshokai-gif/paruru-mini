@@ -1533,7 +1533,8 @@ body:not(.is-authenticated) .drawer-overlay {
 }
 
 .popio-reminder-card,
-.popio-history-card {
+.popio-history-card,
+.popio-observation-card {
   margin-bottom: 14px;
   padding: 14px;
   border: 1px solid #dce5dc;
@@ -1549,7 +1550,8 @@ body:not(.is-authenticated) .drawer-overlay {
 }
 
 .popio-reminder-card h2,
-.popio-history-card h2 {
+.popio-history-card h2,
+.popio-observation-card h2 {
   font-size: 1.02rem;
 }
 
@@ -1641,6 +1643,166 @@ body:not(.is-authenticated) .drawer-overlay {
 
 .popio-history-card {
   margin-top: 16px;
+}
+
+.popio-observation-card {
+  display: grid;
+  gap: 10px;
+}
+
+.popio-observation-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.popio-observation-periods {
+  display: flex;
+  gap: 6px;
+}
+
+.popio-observation-periods button {
+  min-height: 36px;
+  padding: 6px 11px;
+  border: 1px solid #c8d8c9;
+  border-radius: 999px;
+  background: #fff;
+  color: #55745a;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.popio-observation-periods button[aria-pressed="true"] {
+  border-color: #79a683;
+  background: #e8f3e9;
+  color: #315e39;
+}
+
+.popio-observation-status {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.popio-trend-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #edf1ed;
+  border-radius: 14px;
+  background: #fbfdfb;
+}
+
+.popio-trend-card h3,
+.popio-trend-caption,
+.popio-trend-empty {
+  margin: 0;
+}
+
+.popio-trend-card h3 {
+  color: #374b3a;
+  font-size: 0.95rem;
+}
+
+.popio-weight-trend {
+  display: grid;
+  gap: 5px;
+}
+
+.popio-weight-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  border-bottom: 1px solid #dce7de;
+}
+
+.popio-weight-line {
+  stroke: #669e72;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.popio-weight-point {
+  fill: #fff;
+  stroke: #3e774b;
+  stroke-width: 3;
+}
+
+.popio-trend-caption {
+  color: #3e6546;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.popio-trend-axis,
+.popio-trend-empty {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.popio-trend-axis {
+  display: flex;
+  justify-content: space-between;
+}
+
+.popio-trend-list {
+  display: grid;
+  gap: 6px;
+}
+
+.popio-trend-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #405144;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.popio-trend-row > span:first-child {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.popio-trend-bar {
+  display: block;
+  min-width: 0;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5eee6;
+}
+
+.popio-trend-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #78a886;
+}
+
+.popio-trend-row.is-missing .popio-trend-bar {
+  background: repeating-linear-gradient(135deg, #eef2ef 0 4px, #e4ebe5 4px 8px);
+}
+
+.popio-trend-row strong {
+  min-width: 34px;
+  color: #374b3a;
+  text-align: right;
+}
+
+.popio-trend-row small {
+  min-width: 48px;
+  color: #6d716e;
+  font-size: 0.75rem;
+  text-align: right;
 }
 
 .popio-history-group {

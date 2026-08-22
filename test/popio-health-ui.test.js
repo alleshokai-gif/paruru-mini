@@ -141,6 +141,31 @@ assert.strictEqual(api.historyViewModel_([], 'failed', timestampNow).state, 'fai
 assert.strictEqual(api.historyViewModel_(historyEvents, 'loaded', timestampNow).state, 'loaded', 'PH-H07 summary failure must not affect history model');
 assert.strictEqual(api.summaryDisplayModel_({ meal: { eventCount: 1, totalAmountG: 20 }, water: { eventCount: 0 }, stool: { count: 0 }, latestWeight: null }, 'loaded').meal, '20g', 'PH-H08 recent failure must not affect summary model');
 
+const trendFixture = {
+  rangeDays: 30, fromLocalDate: '2026-07-23', toLocalDate: '2026-08-21',
+  weight: { items: [{ localDate: '2026-08-20', occurredAt: '2026-08-20T08:00:00+09:00', weightKg: 2.3 }], latestWeightKg: 2.3, changeFromFirstKg: 0 },
+  meal: { daily: [
+    { localDate: '2026-08-15', knownAmountG: 70, amountStatus: 'complete' },
+    { localDate: '2026-08-16', knownAmountG: 60, amountStatus: 'partial' },
+    { localDate: '2026-08-17', knownAmountG: 0, amountStatus: 'no_events' },
+  ] },
+  stool: { daily: [{ localDate: '2026-08-20', count: 3, forms: { pellet: 0, formed: 1, banana: 2, soft: 0, watery: 0 } }] },
+};
+const trendSeven = api.observationTrendModel_(trendFixture, 7);
+assert.strictEqual(trendSeven.state, 'loaded', 'PH-TU01 observation model loads');
+assert.strictEqual(trendSeven.period, 7, 'PH-TU02 seven days is the default period');
+assert.strictEqual(api.observationPeriod_('30'), 30, 'PH-TU03 thirty-day toggle');
+assert.strictEqual(trendSeven.weight.length, 1, 'PH-TU04/05 one weight point is retained');
+assert.strictEqual(api.observationMealLabel_(trendSeven.meal.find((item) => item.localDate === '2026-08-17')), '--', 'PH-TU06 missing meal stays a gap');
+assert.strictEqual(api.observationMealLabel_({ knownAmountG: 60, amountStatus: 'partial' }), '60g+', 'PH-TU07 partial meal label');
+assert.deepStrictEqual(plain(trendSeven.stool.find((item) => item.localDate === '2026-08-20')), { localDate: '2026-08-20', count: 3, forms: { pellet: 0, formed: 1, banana: 2, soft: 0, watery: 0 }, formLabel: 'バナナ' }, 'PH-TU08 stool count and dominant form');
+assert.strictEqual(api.observationTrendModel_(trendFixture, 30).localDates.length, 30, 'PH-TU03 thirty-day model range');
+assert.strictEqual(api.observationTrendModel_(null, 7).state, 'unavailable', 'PH-TU09 unavailable trend state');
+assert(featureSource.includes('id="popioObservationTitle"') && featureSource.includes('data-popio-observation-period="7"') && featureSource.includes('data-popio-observation-period="30"'), 'PH-TU01 observation section and period controls missing');
+assert(featureSource.includes('renderWeightTrend_') && featureSource.includes('renderMealTrend_') && featureSource.includes('renderStoolTrend_'), 'PH-TU04/06/08 observation renderers missing');
+assert(cssSource.includes('.popio-observation-card') && cssSource.includes('.popio-weight-chart') && cssSource.includes('.popio-trend-row') && cssSource.includes('grid-template-columns: 40px minmax(0, 1fr) auto auto;'), 'PH-TU01/04/06/08 observation mobile styles missing');
+assert(featureSource.includes("loadDashboard_({ quiet: true })"), 'PH-TU10 correction save no longer refreshes Dashboard');
+
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
 
 async function run() {
@@ -341,6 +366,7 @@ async function run() {
     petId: 'popio', localDate: '2026-08-21', timezone: 'Asia/Tokyo',
     summary: { meal: { bySlot: { breakfast: { eventCount: 1 }, dinner: { eventCount: 1 } } }, water: {}, waterBottle: { eventCount: 0, latest: null, latestInterval: null }, stool: {}, urine: {}, latestWeight: null, notableObservations: [] },
     recentEvents: [{ eventId: 'dashboard-event', eventType: 'meal', occurredAt: '2026-08-21T08:00:00+09:00', localDate: '2026-08-21', recordedAt: '2026-08-21T08:01:00+09:00', mealSlot: 'breakfast', completion: 'finished' }],
+    trends: trendFixture,
   };
   const dashboardCalls = [];
   const dashboardLoader = api.createPetHealthDashboardLoader_({ localDate: () => '2026-08-21', call: async (action, body) => { dashboardCalls.push({ action, body: plain(body) }); return dashboardFixture; } });
@@ -351,6 +377,7 @@ async function run() {
   assert.strictEqual(api.dashboardDataValid_(dashboardFixture), true, 'PH-DU03 cache accepts a valid Dashboard');
   assert.deepStrictEqual(plain(api.dashboardSnapshotState_(dashboardFixture, false)), { dashboard: dashboardFixture, summary: dashboardFixture.summary, summaryStatus: 'loaded', recentEvents: dashboardFixture.recentEvents, recentStatus: 'loaded', dashboardFresh: false }, 'PH-DU03 cache renders immediately as stale');
   assert.deepStrictEqual(plain(api.dashboardSnapshotState_(dashboardFixture, true)).dashboard, dashboardFixture, 'PH-DU04 fresh success replaces the cached snapshot');
+  assert.deepStrictEqual(plain(api.dashboardSnapshotState_(dashboardFixture, false)).dashboard.trends, trendFixture, 'PH-TU09 cached Dashboard retains trend data');
   assert.deepStrictEqual(plain(api.dashboardFailureState_(dashboardFixture)).summary, dashboardFixture.summary, 'PH-DU05 fresh failure keeps last-good summary');
   assert.deepStrictEqual(plain(api.dashboardFailureState_(null)), { dashboard: null, summary: null, summaryStatus: 'failed', recentEvents: [], recentStatus: 'failed', dashboardFresh: false }, 'PH-DU06 cacheless failure is a settled failed state');
   assert(featureSource.includes('dashboardLoad_ = null'), 'PH-DU07 Dashboard loading does not always settle');
@@ -459,7 +486,7 @@ async function run() {
   assert(cssSource.includes('.popio-water-bottle-previous') && cssSource.includes('.popio-water-bottle-preview'), 'water-bottle mobile styles missing');
   assert(cssSource.includes('.popio-reminder-item') && cssSource.includes('.popio-history-item'), 'Reminder/History mobile styles missing');
 
-  console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, PH-WU01-PH-WU10, PH-M01-PH-M08, and PH-H01-PH-H10 Pet Health UI contracts');
+  console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, PH-WU01-PH-WU10, PH-M01-PH-M08, PH-H01-PH-H10, and PH-TU01-PH-TU10 Pet Health UI contracts');
 }
 
 run().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

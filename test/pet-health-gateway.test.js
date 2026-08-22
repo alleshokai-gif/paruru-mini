@@ -85,6 +85,11 @@ function backendDashboard(overrides) {
       petId: 'popio', localDate: '2026-08-19', timezone: 'Asia/Tokyo',
       summary,
       recentEvents: recent.events,
+      trends: {
+        rangeDays: 30, fromLocalDate: '2026-07-21', toLocalDate: '2026-08-19',
+        weight: { items: [], latestWeightKg: null, changeFromFirstKg: null },
+        meal: { daily: [] }, stool: { daily: [] },
+      },
     },
     warnings: [],
     error: null,
@@ -459,6 +464,7 @@ test('PH-DG03', 'Dashboard makes one trusted Health request', () => {
   assert.strictEqual(state.forwarded.length, 1);
   assert.deepStrictEqual(state.forwarded[0], { operation: 'pet.health.getDashboard', serviceToken: SERVER_TOKEN, homeId: 'home-server', actorUserId: 'member-server', petId: 'popio', localDate: '2026-08-19' });
   assert.strictEqual(Object.hasOwn(result.data.recentEvents[0], 'homeId'), false);
+  assert.strictEqual(result.data.trends.rangeDays, 30, 'PH-TD01 Dashboard trends pass through the unchanged Mini read boundary');
 });
 
 test('PH-DG04', 'Dashboard rejects spoofed identity fields', () => {

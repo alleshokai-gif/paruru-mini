@@ -10,6 +10,7 @@
   const PET_ID = 'popio';
   const TOKYO_TIME_ZONE = 'Asia/Tokyo';
   const RECENT_EVENT_DAYS = 7;
+  const OBSERVATION_PERIODS = Object.freeze([7, 30]);
   const REMINDER_HOURS = Object.freeze({ breakfast: 10, dinner: 22 });
   const PET_HEALTH_READ_ACTIONS = Object.freeze({ 'pet.health.getDailySummary': true, 'pet.health.listRecentEvents': true, 'pet.health.getDashboard': true });
   const FLAG_ORDER = Object.freeze(['vomiting', 'sneeze_cough', 'pain_behavior']);
@@ -24,6 +25,7 @@
     dashboardStatus: 'idle',
     dashboardFresh: false,
     dashboardCache: null,
+    observationPeriod: 7,
     mounted: false,
   };
   let saveFlow_ = null;
@@ -76,6 +78,13 @@
         <h2 id="popioHistoryTitle">📋 最近の記録</h2>
         <p id="popioHistoryStatus" class="popio-history-status" role="status" aria-live="polite"></p>
         <div id="popioHistoryList" class="popio-history-list"></div>
+      </section>
+      <section class="popio-observation-card" aria-labelledby="popioObservationTitle">
+        <div class="popio-observation-heading"><h2 id="popioObservationTitle">📈 観察</h2><div class="popio-observation-periods" role="group" aria-label="表示期間"><button type="button" data-popio-observation-period="7" aria-pressed="true">7日</button><button type="button" data-popio-observation-period="30" aria-pressed="false">30日</button></div></div>
+        <p id="popioObservationStatus" class="popio-observation-status" role="status" aria-live="polite"></p>
+        <section class="popio-trend-card"><h3>⚖️ 体重</h3><div id="popioWeightTrend" class="popio-weight-trend"></div></section>
+        <section class="popio-trend-card"><h3>🍚 食事量</h3><div id="popioMealTrend" class="popio-trend-list"></div></section>
+        <section class="popio-trend-card"><h3>💩 便</h3><div id="popioStoolTrend" class="popio-trend-list"></div></section>
       </section>`;
     mount.append(root);
     root.addEventListener('submit', submitRecord_);
@@ -87,6 +96,7 @@
     renderDate_();
     renderSummary_();
     renderRecentEvents_();
+    renderObservation_();
   }
 
   function mealForm_() {
@@ -455,6 +465,13 @@
   }
 
   function handleTimestampClick_(event) {
+    const observationPeriod = event.target && event.target.closest ? event.target.closest('[data-popio-observation-period]') : null;
+    if (observationPeriod) {
+      event.preventDefault();
+      state.observationPeriod = observationPeriod_(observationPeriod.dataset.popioObservationPeriod);
+      renderObservation_();
+      return;
+    }
     const correction = event.target && event.target.closest ? event.target.closest('[data-popio-correction-event-id]') : null;
     if (correction) {
       event.preventDefault();
@@ -812,6 +829,7 @@
     Object.assign(state, next);
     renderSummary_();
     renderRecentEvents_();
+    renderObservation_();
     return true;
   }
   function hydrateDashboardCache_() {
@@ -844,6 +862,7 @@
     if (!quiet) setRootStatus_(hadSnapshot ? '更新中…' : '読み込み中…');
     setDashboardReloadVisible_(false);
     renderSummary_();
+    renderObservation_();
     const work = createPetHealthDashboardLoader_({ call: call_, localDate: tokyoDate_ }).load()
       .then(function (dashboard) {
         if (!dashboardDataValid_(dashboard)) { const error = new Error('PET_HEALTH_UNAVAILABLE'); error.code = 'PET_HEALTH_UNAVAILABLE'; throw error; }
@@ -860,6 +879,7 @@
         Object.assign(state, dashboardFailureState_(hadSnapshot ? state.dashboard : null));
         renderSummary_();
         renderRecentEvents_();
+        renderObservation_();
         setRootStatus_(hadSnapshot ? '最新情報を更新できませんでした' : (error && error.code === 'OFFLINE' ? 'オフライン中。読み込めませんでした' : '読み込めませんでした'));
         setDashboardReloadVisible_(true);
         return false;
@@ -1035,6 +1055,104 @@
       list.append(section);
     });
   }
+  function observationPeriod_(value) {
+    const period = Number(value);
+    return OBSERVATION_PERIODS.indexOf(period) >= 0 ? period : 7;
+  }
+  function shiftObservationDate_(localDate, days) {
+    const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(String(localDate || ''));
+    if (!match) return '';
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + Number(days || 0)));
+    return date.toISOString().slice(0, 10);
+  }
+  function observationDateLabel_(localDate) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(localDate || '')) ? Number(localDate.slice(5, 7)) + '/' + Number(localDate.slice(8, 10)) : '--';
+  }
+  function observationForms_(forms) {
+    const labels = { pellet: 'コロコロ', formed: '形あり', banana: 'バナナ', soft: 'やわらかい', watery: '水様' };
+    const counts = forms && typeof forms === 'object' ? forms : {}, max = Math.max.apply(null, Object.keys(labels).map(function (key) { return Number(counts[key]) || 0; }));
+    if (!max) return '';
+    const winners = Object.keys(labels).filter(function (key) { return Number(counts[key]) === max; });
+    return winners.length === 1 ? labels[winners[0]] : '複数';
+  }
+  function observationTrendModel_(trends, period) {
+    const days = observationPeriod_(period);
+    if (!trends || typeof trends !== 'object' || trends.rangeDays !== 30 || !/^\d{4}-\d{2}-\d{2}$/.test(String(trends.toLocalDate || '')) || !trends.weight || !trends.meal || !trends.stool || !Array.isArray(trends.weight.items) || !Array.isArray(trends.meal.daily) || !Array.isArray(trends.stool.daily)) return { state: 'unavailable', period: days, localDates: [], weight: [], meal: [], stool: [] };
+    const fromLocalDate = shiftObservationDate_(trends.toLocalDate, -(days - 1)), localDates = Array.from({ length: days }, function (_, index) { return shiftObservationDate_(fromLocalDate, index); });
+    const allowed = new Set(localDates), mealByDate = Object.create(null), stoolByDate = Object.create(null);
+    trends.meal.daily.forEach(function (item) { if (item && allowed.has(item.localDate)) mealByDate[item.localDate] = item; });
+    trends.stool.daily.forEach(function (item) { if (item && allowed.has(item.localDate)) stoolByDate[item.localDate] = item; });
+    const weight = trends.weight.items.filter(function (item) { return item && allowed.has(item.localDate) && typeof item.weightKg === 'number' && Number.isFinite(item.weightKg) && Number.isFinite(new Date(String(item.occurredAt || '')).getTime()); }).slice().sort(function (a, b) { return String(a.localDate).localeCompare(String(b.localDate)) || new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(); });
+    const meal = localDates.map(function (localDate) {
+      const item = mealByDate[localDate] || {};
+      return { localDate: localDate, knownAmountG: typeof item.knownAmountG === 'number' && Number.isFinite(item.knownAmountG) ? item.knownAmountG : 0, amountStatus: ['complete', 'partial', 'unknown', 'no_events'].indexOf(item.amountStatus) >= 0 ? item.amountStatus : 'no_events' };
+    });
+    const stool = localDates.map(function (localDate) {
+      const item = stoolByDate[localDate] || {}, forms = item.forms && typeof item.forms === 'object' ? item.forms : {};
+      return { localDate: localDate, count: Number.isSafeInteger(Number(item.count)) && Number(item.count) >= 0 ? Number(item.count) : 0, forms: forms, formLabel: observationForms_(forms) };
+    });
+    return { state: 'loaded', period: days, localDates: localDates, weight: weight, meal: meal, stool: stool };
+  }
+  function observationMealLabel_(item) {
+    if (!item || item.amountStatus === 'no_events' || item.amountStatus === 'unknown') return '--';
+    return String(item.knownAmountG) + 'g' + (item.amountStatus === 'partial' ? '+' : '');
+  }
+  function renderTrendEmpty_(target, message) {
+    if (!target) return;
+    target.textContent = '';
+    const text = document.createElement('p');
+    text.className = 'popio-trend-empty';
+    text.textContent = message;
+    target.append(text);
+  }
+  function renderWeightTrend_(target, model) {
+    if (!target) return;
+    target.textContent = '';
+    if (!model.weight.length) { renderTrendEmpty_(target, '体重記録はまだないで'); return; }
+    const values = model.weight.map(function (item) { return item.weightKg; }), minimum = Math.min.apply(null, values), maximum = Math.max.apply(null, values), span = maximum - minimum || 0.1, lower = minimum - span * 0.2, upper = maximum + span * 0.2, width = 320, height = 132, padding = 20;
+    const x = function (item) { const index = Math.max(0, model.localDates.indexOf(item.localDate)); return padding + (width - padding * 2) * (model.localDates.length === 1 ? 0.5 : index / (model.localDates.length - 1)); };
+    const y = function (item) { return height - padding - (height - padding * 2) * ((item.weightKg - lower) / (upper - lower)); };
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'popio-weight-chart'); svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height); svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', '体重推移');
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    line.setAttribute('points', model.weight.map(function (item) { return x(item) + ',' + y(item); }).join(' ')); line.setAttribute('fill', 'none'); line.setAttribute('class', 'popio-weight-line'); svg.append(line);
+    model.weight.forEach(function (item) { const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle'); point.setAttribute('cx', x(item)); point.setAttribute('cy', y(item)); point.setAttribute('r', '4'); point.setAttribute('class', 'popio-weight-point'); svg.append(point); });
+    const summary = document.createElement('p'), axis = document.createElement('div');
+    summary.className = 'popio-trend-caption'; summary.textContent = '最新 ' + model.weight[model.weight.length - 1].weightKg + 'kg';
+    axis.className = 'popio-trend-axis'; axis.textContent = observationDateLabel_(model.localDates[0]) + ' 〜 ' + observationDateLabel_(model.localDates[model.localDates.length - 1]);
+    target.append(svg, summary, axis);
+  }
+  function renderMealTrend_(target, model) {
+    if (!target) return;
+    target.textContent = '';
+    const maximum = Math.max.apply(null, model.meal.map(function (item) { return item.amountStatus === 'complete' || item.amountStatus === 'partial' ? item.knownAmountG : 0; }).concat([1]));
+    model.meal.forEach(function (item) {
+      const row = document.createElement('div'), date = document.createElement('span'), track = document.createElement('span'), fill = document.createElement('i'), value = document.createElement('strong'), known = item.amountStatus === 'complete' || item.amountStatus === 'partial';
+      row.className = 'popio-trend-row' + (known ? '' : ' is-missing'); date.textContent = observationDateLabel_(item.localDate); track.className = 'popio-trend-bar'; fill.style.width = known ? Math.round(item.knownAmountG / maximum * 100) + '%' : '0%'; value.textContent = observationMealLabel_(item); track.append(fill); row.append(date, track, value); target.append(row);
+    });
+  }
+  function renderStoolTrend_(target, model) {
+    if (!target) return;
+    target.textContent = '';
+    const maximum = Math.max.apply(null, model.stool.map(function (item) { return item.count; }).concat([1]));
+    model.stool.forEach(function (item) {
+      const row = document.createElement('div'), date = document.createElement('span'), track = document.createElement('span'), fill = document.createElement('i'), value = document.createElement('strong'), form = document.createElement('small');
+      row.className = 'popio-trend-row'; date.textContent = observationDateLabel_(item.localDate); track.className = 'popio-trend-bar'; fill.style.width = Math.round(item.count / maximum * 100) + '%'; value.textContent = item.count + '回'; form.textContent = item.formLabel; track.append(fill); row.append(date, track, value, form); target.append(row);
+    });
+  }
+  function renderObservation_() {
+    const status = document.getElementById('popioObservationStatus'), weight = document.getElementById('popioWeightTrend'), meal = document.getElementById('popioMealTrend'), stool = document.getElementById('popioStoolTrend');
+    if (!status || !weight || !meal || !stool) return;
+    document.querySelectorAll('[data-popio-observation-period]').forEach(function (button) { const active = observationPeriod_(button.dataset.popioObservationPeriod) === state.observationPeriod; button.setAttribute('aria-pressed', String(active)); });
+    const model = observationTrendModel_(state.dashboard && state.dashboard.trends, state.observationPeriod);
+    if (model.state !== 'loaded') {
+      status.textContent = state.dashboardStatus === 'loading' || state.dashboardStatus === 'cached' ? '観察データを読み込み中…' : '観察データを読み込めませんでした';
+      renderTrendEmpty_(weight, '体重記録はまだないで'); renderTrendEmpty_(meal, '--'); renderTrendEmpty_(stool, '--');
+      return;
+    }
+    status.textContent = '';
+    renderWeightTrend_(weight, model); renderMealTrend_(meal, model); renderStoolTrend_(stool, model);
+  }
   function renderSummary_() {
     const model = summaryDisplayModel_(state.summary, state.summaryStatus);
     setText_('popioSummaryMeal', model.meal); setText_('popioSummaryWater', model.water); setText_('popioSummaryStool', model.stool); setText_('popioSummaryWeight', model.weight);
@@ -1078,6 +1196,10 @@
     createPetHealthSaveFlow_: createPetHealthSaveFlow_,
     createPetHealthSummaryLoader_: createPetHealthSummaryLoader_,
     historyViewModel_: historyViewModel_,
+    observationTrendModel_: observationTrendModel_,
+    observationMealLabel_: observationMealLabel_,
+    observationForms_: observationForms_,
+    observationPeriod_: observationPeriod_,
     dashboardDataValid_: dashboardDataValid_,
     dashboardFailureState_: dashboardFailureState_,
     dashboardSnapshotState_: dashboardSnapshotState_,

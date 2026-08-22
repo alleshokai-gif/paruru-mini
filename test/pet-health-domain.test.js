@@ -442,6 +442,12 @@ function dashboard(context,localDate='2026-08-21',homeId='home-main'){
   assert.deepStrictEqual(plain(dashboardValue.recentEvents),plain(value.events),'PH-DASH01 Dashboard recent events use the same snapshot');
   assert.strictEqual(dashboardValue.summary.waterBottle.latest.newFillMl,400,'PH-DASH05 Dashboard water bottle state');
   assert.strictEqual(dashboardValue.summary.latestWeight.weightKg,2.3,'PH-DASH06 Dashboard latest weight');
+  assert.strictEqual(dashboardValue.trends.rangeDays,30,'PH-TD01 trends are included in Dashboard');
+  assert.strictEqual(dashboardValue.trends.fromLocalDate,'2026-07-23','PH-TR10 30-day boundary start');
+  assert.deepStrictEqual(plain(dashboardValue.trends.weight.items),[{localDate:'2026-08-17',occurredAt:'2026-08-17T10:00:00+09:00',weightKg:2.3}],'PH-TR01 weight trend uses the shared snapshot');
+  assert.deepStrictEqual(plain(dashboardValue.trends.meal.daily.find((item)=>item.localDate==='2026-08-21')),{localDate:'2026-08-21',knownAmountG:20,amountStatus:'complete'},'PH-TR03 meal daily total');
+  assert.deepStrictEqual(plain(dashboardValue.trends.meal.daily.find((item)=>item.localDate==='2026-08-20')),{localDate:'2026-08-20',knownAmountG:0,amountStatus:'no_events'},'PH-TR04 meal missing is not zero');
+  assert.deepStrictEqual(plain(dashboardValue.trends.stool.daily.find((item)=>item.localDate==='2026-08-20')),{localDate:'2026-08-20',count:1,forms:{pellet:0,formed:0,banana:1,soft:0,watery:0}},'PH-TR06/07 stool count and forms');
   assert.strictEqual(dashboardValue.recentEvents.some((event)=>event.amountG===999),false,'PH-DASH03 Dashboard home isolation');
   assert.strictEqual(dashboardValue.recentEvents.some((event)=>event.petId==='other-pet'),false,'PH-DASH04 Dashboard pet isolation');
   assert.throws(()=>recent(context,6),(error)=>error.code==='INVALID_INPUT','Recent days must be fixed at seven');
@@ -471,6 +477,7 @@ function dashboard(context,localDate='2026-08-21',homeId='home-main'){
   assert.strictEqual(spreadsheet.sheets.Pet_Health_Events.getLastRow(),3,'PH-C01/02 append-only correction');
   assert.strictEqual(summary(context,'2026-08-20').data.meal.totalAmountG,18,'PH-C04/CR01 original excluded from effective summary');
   assert.strictEqual(recent(context,7,'home-main','2026-08-21T12:00:00+09:00').data.events[0].eventId,firstCorrection.data.event.eventId,'PH-CR02 recent returns the effective correction');
+  assert.strictEqual(dashboard(context,'2026-08-20').data.trends.meal.daily.find((item)=>item.localDate==='2026-08-20').knownAmountG,18,'PH-TR08 corrected meal is reflected in trends');
   const secondCorrection=correct(context,baseCorrect({eventType:'meal',occurredAt:'2026-08-20T09:00:00+09:00',mealSlot:'breakfast',amountG:17,completion:'finished'},firstCorrection.data.event.eventId,requestId(202)),now);
   assert.strictEqual(summary(context,'2026-08-20').data.meal.totalAmountG,17,'PH-C05 second correction wins');
   const correctionReplay=correct(context,baseCorrect({eventType:'meal',occurredAt:'2026-08-20T09:00:00+09:00',mealSlot:'breakfast',amountG:17,completion:'finished'},firstCorrection.data.event.eventId,requestId(202)),now);
@@ -480,6 +487,7 @@ function dashboard(context,localDate='2026-08-21',homeId='home-main'){
   assert.strictEqual(voidResponse.operation,'pet.health.void','PH-C07 void corrected event');
   assert.strictEqual(summary(context,'2026-08-20').data.meal.eventCount,0,'PH-C07/CR03 void hides effective event');
   assert.strictEqual(recent(context,7,'home-main','2026-08-21T12:00:00+09:00').data.events.length,0,'PH-CR03 void hidden from recent history');
+  assert.strictEqual(dashboard(context,'2026-08-20').data.trends.meal.daily.find((item)=>item.localDate==='2026-08-20').amountStatus,'no_events','PH-TR09 void is reflected in trends');
   assert.throws(()=>correct(context,baseCorrect({eventType:'meal',mealSlot:'breakfast',completion:'finished'},requestId(299),requestId(204)),now),(error)=>error.code==='INVALID_INPUT','PH-C08 nonexistent target rejects');
   assert.throws(()=>correct(context,baseCorrect({eventType:'water',amountMl:150},originalId,requestId(205)),now),(error)=>error.code==='INVALID_INPUT','PH-C10 event type mismatch rejects');
   const rawCycle=[
@@ -505,6 +513,20 @@ function dashboard(context,localDate='2026-08-21',homeId='home-main'){
   const value=summary(context,'2026-08-20').data;
   assert.strictEqual(value.latestWeight.eventId,corrected.data.event.eventId,'PH-CR04 latest weight uses the effective correction');
   assert.strictEqual(value.latestWeight.weightKg,2.2,'PH-CR04 corrected latest weight value');
+  const weightTrend=dashboard(context,'2026-08-20').data.trends.weight;
+  assert.deepStrictEqual(plain(weightTrend.items),[{localDate:'2026-08-20',occurredAt:'2026-08-20T09:00:00+09:00',weightKg:2.2}],'PH-TR02 same-day latest weight is used');
+  assert.strictEqual(weightTrend.changeFromFirstKg,0,'PH-TR02 one weight has no change');
+}
+
+{
+  const {context}=createHarness(),now='2026-08-22T12:00:00+09:00';
+  record(context,baseRecord({eventType:'meal',occurredAt:'2026-08-20T08:00:00+09:00',mealSlot:'breakfast',amountG:20,completion:'finished'},requestId(240)),now);
+  record(context,baseRecord({eventType:'meal',occurredAt:'2026-08-20T18:00:00+09:00',mealSlot:'dinner',completion:'finished'},requestId(241)),now);
+  record(context,baseRecord({eventType:'weight',occurredAt:'2026-07-22T08:00:00+09:00',weightKg:1.9},requestId(242)),now);
+  record(context,baseRecord({eventType:'weight',occurredAt:'2026-07-23T08:00:00+09:00',weightKg:2.0},requestId(243)),now);
+  const trends=dashboard(context,'2026-08-21').data.trends;
+  assert.deepStrictEqual(plain(trends.meal.daily.find((item)=>item.localDate==='2026-08-20')),{localDate:'2026-08-20',knownAmountG:20,amountStatus:'partial'},'PH-TR05 partial meal keeps only known amount');
+  assert.deepStrictEqual(plain(trends.weight.items),[{localDate:'2026-07-23',occurredAt:'2026-07-23T08:00:00+09:00',weightKg:2}],'PH-TR10 excludes data older than 30 local dates');
 }
 
 {
@@ -520,4 +542,4 @@ function dashboard(context,localDate='2026-08-21',homeId='home-main'){
   assert.strictEqual(bottle.latestInterval,null,'PH-C14 bottle void removes the derived interval');
 }
 
-console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, PH-W01..10, PH-WS01..05, PH-R01..09, PH-DASH01..06, schema, token, and dispatch');
+console.log('PASS Pet Health PH-D01..15, PH-T01..04, PH-I01..16, PH-S01..10, PH-W01..10, PH-WS01..05, PH-R01..09, PH-DASH01..06, PH-TR01..10, schema, token, and dispatch');
