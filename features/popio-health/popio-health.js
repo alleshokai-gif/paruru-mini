@@ -993,8 +993,8 @@
     const hasBottleInterval = Number.isFinite(normalized24hMl) && normalized24hMl >= 0;
     const hasBottleSet = Boolean(waterBottle && waterBottle.latest && typeof waterBottle.latest === 'object');
     const hasLegacyWater = summary.water && Number(summary.water.eventCount) > 0 && Number.isFinite(Number(summary.water.totalAmountMl));
-    const water = hasBottleInterval ? normalized24hMl + 'mL/24h' : hasBottleSet ? '計測中' : hasLegacyWater ? Number(summary.water.totalAmountMl) + 'mL' : '--';
-    const waterHint = hasBottleInterval ? (Number.isFinite(elapsedHours) && elapsedHours < 6 ? '短時間データのため参考' : '直近交換区間から換算') : hasBottleSet ? '次回交換で算出' : '';
+    const water = hasBottleInterval ? normalized24hMl + 'mL' : hasBottleSet ? '計測中' : hasLegacyWater ? Number(summary.water.totalAmountMl) + 'mL' : '--';
+    const waterHint = hasBottleInterval ? (Number.isFinite(elapsedHours) && elapsedHours < 6 ? '短時間データのため参考' : '直近区間を24h換算') : hasBottleSet ? '次回交換で算出' : '';
     const stool = summary.stool && Number.isFinite(Number(summary.stool.count)) ? String(Number(summary.stool.count)) + '回' : '--';
     const weight = summary.latestWeight && typeof summary.latestWeight.weightKg === 'number' ? summary.latestWeight.weightKg + 'kg' : '--';
     return { meal: meal, water: water, waterHint: waterHint, stool: stool, weight: weight };

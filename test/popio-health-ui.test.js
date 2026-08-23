@@ -142,17 +142,17 @@ assert.strictEqual(api.historyViewModel_(historyEvents, 'loaded', timestampNow).
 assert.strictEqual(api.summaryDisplayModel_({ meal: { eventCount: 1, totalAmountG: 20 }, water: { eventCount: 0 }, stool: { count: 0 }, latestWeight: null }, 'loaded').meal, '20g', 'PH-H08 recent failure must not affect summary model');
 
 // PH-WK01 - PH-WK06: Water KPI represents the most recently confirmed bottle interval, not a calendar-day total.
-const waterBottleIntervalSummary = { water: { eventCount: 1, totalAmountMl: 300 }, waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 18, normalized24hMl: 360 } } };
+const waterBottleIntervalSummary = { water: { eventCount: 1, totalAmountMl: 300 }, waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 18, normalized24hMl: 234 } } };
 const waterBottleIntervalModel = api.summaryDisplayModel_(waterBottleIntervalSummary, 'loaded');
-assert.strictEqual(waterBottleIntervalModel.water, '360mL/24h', 'PH-WK01 latest bottle interval must render normalized water');
-assert.strictEqual(waterBottleIntervalModel.waterHint, '直近交換区間から換算', 'PH-WK01 bottle interval hint missing');
-assert.strictEqual(api.summaryDisplayModel_({ waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 0, elapsedHours: 18, normalized24hMl: 0 } } }, 'loaded').water, '0mL/24h', 'PH-WK02 zero bottle interval is a valid value');
+assert.strictEqual(waterBottleIntervalModel.water, '234mL', 'PH-WK01 latest bottle interval must render normalized water without duplicating its period');
+assert.strictEqual(waterBottleIntervalModel.waterHint, '直近区間を24h換算', 'PH-WK01 bottle interval hint missing');
+assert.strictEqual(api.summaryDisplayModel_({ waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 0, elapsedHours: 18, normalized24hMl: 0 } } }, 'loaded').water, '0mL', 'PH-WK02 zero bottle interval is a valid value');
 const firstBottleSetModel = api.summaryDisplayModel_({ waterBottle: { latest: { newFillMl: 400 }, latestInterval: null } }, 'loaded');
 assert.strictEqual(firstBottleSetModel.water, '計測中', 'PH-WK03 first bottle set must not pretend to be a measured amount');
 assert.strictEqual(firstBottleSetModel.waterHint, '次回交換で算出', 'PH-WK03 first bottle set hint missing');
 assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 2, totalAmountMl: 300 }, waterBottle: { latest: null, latestInterval: null } }, 'loaded').water, '300mL', 'PH-WK04 legacy water remains available without bottle data');
 assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 0, totalAmountMl: null }, waterBottle: { latest: null, latestInterval: null } }, 'loaded').water, '--', 'PH-WK05 missing water data must not appear as zero');
-assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 2, totalAmountMl: 300 }, waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 3, normalized24hMl: 2160 } } }, 'loaded').water, '2160mL/24h', 'PH-WK06 bottle interval must take priority over legacy water');
+assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 2, totalAmountMl: 300 }, waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 3, normalized24hMl: 2160 } } }, 'loaded').water, '2160mL', 'PH-WK06 bottle interval must take priority over legacy water');
 assert.strictEqual(api.summaryDisplayModel_({ waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 3, normalized24hMl: 2160 } } }, 'loaded').waterHint, '短時間データのため参考', 'PH-WK06 short interval hint missing');
 assert(featureSource.includes('id="popioSummaryWaterHint"') && featureSource.includes("setText_('popioSummaryWaterHint', model.waterHint)"), 'PH-WK01 water KPI hint render boundary missing');
 assert(cssSource.includes('.popio-summary-water strong') && cssSource.includes('.popio-summary-water small') && cssSource.includes('overflow-wrap: anywhere;'), 'PH-WK01 water KPI mobile text contract missing');
