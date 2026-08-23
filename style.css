@@ -2383,3 +2383,71 @@ body:not(.is-authenticated) .drawer-overlay {
   background: #f1f1f5;
   color: #616579;
 }
+
+.nurse-inline-edit {
+  min-height: 32px !important;
+  padding: 4px 8px;
+  border: 1px solid #d8d0c8;
+  border-radius: 8px;
+  background: #fff;
+  color: #57607a;
+  font-size: .78rem !important;
+  font-weight: 700;
+}
+
+.nurse-progress-card li.is-recorded {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 8px;
+}
+
+.nurse-slot-correction,
+.nurse-weight-correction {
+  border-top: 1px solid #eee8e1;
+  padding-top: 8px;
+}
+
+.nurse-correction-reason {
+  display: grid !important;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: .9rem;
+}
+
+.nurse-correction-reason input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.nurse-correction-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.nurse-correction-actions button[type="button"] {
+  border: 1px solid #d8d0c8;
+  border-radius: 12px;
+  background: #fff;
+  color: #57607a;
+}
+
+.nurse-weight-correction {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.nurse-weight-correction p,
+.nurse-weight-correction .nurse-correction-reason,
+.nurse-weight-correction .nurse-correction-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 390px) {
+  .nurse-progress-card li.is-recorded {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .nurse-weight-correction {
+    grid-template-columns: 1fr;
+  }
+}

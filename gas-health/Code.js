@@ -18,4 +18,4 @@ function doPost(e) {
     return healthJson_({ success: false, error: { code: ['UNAUTHORIZED', 'CONFIGURATION_ERROR', 'INVALID_INPUT', 'UNSUPPORTED_ACTION', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR'].indexOf(code) >= 0 ? code : 'INTERNAL_ERROR' } });
   }
 }
-const HEALTH_OPERATIONS_ = Object.freeze({'health.context.get':true,'health.daily.get':true,'health.daily.list':true,'health.daily.recordSlot':true,'health.weight.list':true,'health.weight.record':true});
+const HEALTH_OPERATIONS_ = Object.freeze({'health.context.get':true,'health.daily.get':true,'health.daily.list':true,'health.daily.recordSlot':true,'health.weight.list':true,'health.weight.record':true,'health.weight.correct':true});

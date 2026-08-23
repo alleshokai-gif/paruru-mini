@@ -1,6 +1,6 @@
 const HEALTH_OPS = Object.freeze({
   'health.context.get': true, 'health.daily.get': true, 'health.daily.list': true, 'health.daily.recordSlot': true,
-  'health.weight.list': true, 'health.weight.record': true,
+  'health.weight.list': true, 'health.weight.record': true, 'health.weight.correct': true,
 });
 
 function healthGateway_(body) {
@@ -29,8 +29,9 @@ function healthGateway_(body) {
       homeId: actor.homeId, actorUserId: actor.memberUserId, actorRole: actor.role,
       targetUserId: targetUserId, localDate: input.localDate, slot: input.slot,
       fromLocalDate: input.fromLocalDate, toLocalDate: input.toLocalDate,
-      payload: input.payload, clientRequestId: input.clientRequestId,
-      measuredDate: input.measuredDate, weightKg: input.weightKg, limit: input.limit,
+      payload: input.payload, clientRequestId: input.clientRequestId, isCorrection: input.isCorrection,
+      measuredDate: input.measuredDate, weightKg: input.weightKg, recordId: input.recordId,
+      correctionReason: input.correctionReason, limit: input.limit,
     };
     const response = UrlFetchApp.fetch(url, {
       method: 'post', contentType: 'application/json', payload: JSON.stringify(forwarded), muteHttpExceptions: true,
@@ -39,7 +40,8 @@ function healthGateway_(body) {
     let result;
     try { result = JSON.parse(String(response.getContentText() || '')); } catch (_) { throw healthGatewayError_('HEALTH_UNAVAILABLE'); }
     if (!result || result.success !== true || !result.data || typeof result.data !== 'object') {
-      throw healthGatewayError_(result && result.error && result.error.code === 'INVALID_INPUT' ? 'INVALID_INPUT' : 'HEALTH_UNAVAILABLE');
+      const upstreamCode = result && result.error && result.error.code;
+      throw healthGatewayError_(['INVALID_INPUT', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR'].indexOf(upstreamCode) >= 0 ? upstreamCode : 'HEALTH_UNAVAILABLE');
     }
     if (input.action === 'health.context.get') {
       const actorMember = getHomeMember_(actor.homeId, actor.memberUserId);
@@ -53,7 +55,7 @@ function healthGateway_(body) {
     return json_({ success: true, data: result.data, message: 'ok' });
   } catch (error) {
     const code = error && error.code;
-    return json_({ success: false, data: {}, error: { code: ['UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'FORBIDDEN', 'CONFIGURATION_ERROR', 'INVALID_INPUT', 'HEALTH_UNAVAILABLE'].indexOf(code) >= 0 ? code : 'HEALTH_UNAVAILABLE' }, message: 'health request failed' });
+    return json_({ success: false, data: {}, error: { code: ['UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'FORBIDDEN', 'CONFIGURATION_ERROR', 'INVALID_INPUT', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR', 'HEALTH_UNAVAILABLE'].indexOf(code) >= 0 ? code : 'HEALTH_UNAVAILABLE' }, message: 'health request failed' });
   }
 }
 

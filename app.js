@@ -502,6 +502,7 @@ const NURSE_OKAN_HEALTH_ACTIONS = new Set([
   "health.daily.recordSlot",
   "health.weight.list",
   "health.weight.record",
+  "health.weight.correct",
 ]);
 const PET_HEALTH_ACTIONS = new Set([
   "pet.health.record",

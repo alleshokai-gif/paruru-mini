@@ -60,6 +60,7 @@ const pollingSource = sourceBetween('async function pollHomeControlPairing()', '
 const authenticationStateSource = sourceBetween('let appAuthenticationState = "booting";', 'const NURSE_OKAN_HEALTH_ACTIONS');
 const healthFacadeSource = sourceBetween('const NURSE_OKAN_HEALTH_ACTIONS = new Set([', 'function showAuthenticationState');
 assert(healthFacadeSource.includes('"health.daily.list"'), 'health.daily.list is not allowlisted by the authenticated facade');
+assert(healthFacadeSource.includes('"health.weight.correct"'), 'health.weight.correct is not allowlisted by the authenticated facade');
 const authSource = sourceBetween('function showAuthenticationState', 'window.addEventListener("load"');
 
 function createHarness(options = {}) {
