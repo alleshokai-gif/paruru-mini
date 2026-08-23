@@ -2434,6 +2434,130 @@ body:not(.is-authenticated) .drawer-overlay {
   overflow-wrap: anywhere;
 }
 
+.nurse-weight-trend-card {
+  overflow: hidden;
+}
+
+.nurse-weight-trend-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.nurse-weight-trend-periods {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #f2f3f7;
+}
+
+.nurse-weight-trend-periods button {
+  min-width: 48px;
+  min-height: 48px;
+  margin: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #616579;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.nurse-weight-trend-periods button[aria-pressed="true"] {
+  background: #fff;
+  color: #3e4cad;
+  box-shadow: 0 1px 3px rgba(51, 58, 104, .16);
+}
+
+.nurse-weight-trend-status:not(:empty) {
+  margin: 10px 0 0;
+  color: #6f625b;
+  font-size: .86rem;
+}
+
+.nurse-weight-trend-body {
+  min-width: 0;
+}
+
+.nurse-weight-trend-latest,
+.nurse-weight-trend-empty,
+.nurse-weight-trend-caption {
+  margin: 10px 0 0;
+}
+
+.nurse-weight-trend-latest {
+  font-size: .92rem;
+  font-weight: 800;
+}
+
+.nurse-weight-trend-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.nurse-weight-trend-metrics div {
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: #f7f7fb;
+}
+
+.nurse-weight-trend-metrics span,
+.nurse-weight-trend-metrics strong {
+  display: block;
+}
+
+.nurse-weight-trend-metrics span {
+  color: #616579;
+  font-size: .78rem;
+}
+
+.nurse-weight-trend-metrics strong {
+  margin-top: 3px;
+  font-size: 1rem;
+}
+
+.nurse-weight-trend-empty,
+.nurse-weight-trend-caption {
+  color: #6f625b;
+  font-size: .8rem;
+}
+
+.nurse-weight-trend-graph {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.nurse-weight-trend-axis {
+  stroke: #d9dce8;
+  stroke-width: 1;
+}
+
+.nurse-weight-trend-line {
+  fill: none;
+  stroke: #5c6bc0;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.nurse-weight-trend-dot {
+  fill: #fff;
+  stroke: #5c6bc0;
+  stroke-width: 2.5;
+}
+
 .nurse-slot-correction,
 .nurse-weight-correction {
   border-top: 1px solid #eee8e1;
@@ -2477,6 +2601,14 @@ body:not(.is-authenticated) .drawer-overlay {
 }
 
 @media (max-width: 390px) {
+  .nurse-weight-trend-heading {
+    align-items: flex-start;
+  }
+
+  .nurse-weight-trend-metrics {
+    gap: 6px;
+  }
+
   .nurse-progress-card li.is-recorded {
     grid-template-columns: minmax(0, 1fr) auto auto;
   }
