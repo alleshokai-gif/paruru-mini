@@ -2400,6 +2400,25 @@ body:not(.is-authenticated) .drawer-overlay {
   column-gap: 8px;
 }
 
+.nurse-progress-summary {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: inherit;
+  font-size: .9rem;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.nurse-history-summary {
+  display: block;
+  color: inherit;
+  font-size: .8rem;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .nurse-slot-correction,
 .nurse-weight-correction {
   border-top: 1px solid #eee8e1;

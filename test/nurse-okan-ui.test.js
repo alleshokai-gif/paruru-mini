@@ -21,9 +21,9 @@ const progressAtNoon=api.buildProgressState_({slots:{
   post_training:{recordedAt:'2026-07-24T08:00:00+09:00',postTrainingStatus:'rest_day'},
 }},new Date('2026-07-24T12:00:00+09:00'));
 assert.deepStrictEqual(JSON.parse(JSON.stringify(progressAtNoon)),[
-  {slot:'morning',label:'☀️ 朝食',status:'recorded',statusLabel:'✓ 記録済み'},
+  {slot:'morning',label:'☀️ 朝食',status:'recorded',statusLabel:'✓ 記録済み',summary:'詳細なし'},
   {slot:'lunch',label:'🍱 昼食',status:'not_due',statusLabel:'まだ'},
-  {slot:'post_training',label:'🏀 部活後',status:'recorded',statusLabel:'✓ 記録済み'},
+  {slot:'post_training',label:'🏀 部活後',status:'recorded',statusLabel:'✓ 記録済み',summary:'部活なし'},
   {slot:'dinner',label:'🍚 夕食',status:'not_due',statusLabel:'まだ'},
   {slot:'condition',label:'🩺 体調',status:'not_due',statusLabel:'まだ'},
 ]);

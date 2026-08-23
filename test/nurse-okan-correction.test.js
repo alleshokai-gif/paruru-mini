@@ -22,9 +22,15 @@ assert.strictEqual(api.formRequestId_(form), '11111111-1111-4111-8111-1111111111
 assert.strictEqual(api.formRequestId_(form), '11111111-1111-4111-8111-111111111111', 'retry must reuse the form request id');
 const source = fs.readFileSync('features/nurse-okan/nurse-okan.js', 'utf8');
 const css = fs.readFileSync('style.css', 'utf8');
+const appSource = fs.readFileSync('app.js', 'utf8');
 assert(source.includes('renderCorrectionSlotCard_') && source.includes('renderWeightCorrection_'), 'Daily and Weight correction forms are missing');
 assert(source.includes("'health.weight.correct'") && source.includes('correctionReason'), 'Weight correction operation or reason is missing');
 assert(source.includes('data-nurse-correction-slot') && source.includes('data-nurse-correction-cancel'), 'Correction controls are missing');
 assert(css.includes('.nurse-inline-edit') && css.includes('.nurse-weight-correction'), 'Correction styles are missing');
 assert(!css.match(/\.nurse-weight-correction[^}]*overflow-x\s*:\s*(auto|scroll)/s), 'Weight correction introduces horizontal scrolling');
+const correctionOpen = source.slice(source.indexOf('function openSlotCorrection_'), source.indexOf('function openWeightCorrection_'));
+assert(correctionOpen.includes("state.editingSlot=slot;state.editingWeightRecordId='';render_()") && !correctionOpen.includes('paruru:view-request') && !correctionOpen.includes('switchView('), 'M7: correction must render in Nurse Okan without requesting Home navigation');
+assert(/rememberViewForControllerChange_\(\);\s*location\.reload\(\);/.test(appSource) && /if \(restoredView\) activeView = restoredView;\s*void switchView\(activeView\);/.test(appSource), 'M8: a controller-change reload must restore the active Nurse Okan view');
+assert(source.includes('state.daily=data;state.editingSlot=\'\';') && source.includes('void loadRecentHistory_();') && source.includes('render_();focusPendingOpen_();'), 'M9: correction save must render the updated current state and refresh history in place');
+assert(css.includes('.nurse-progress-summary') && css.includes('.nurse-history-summary') && css.includes('overflow-wrap: anywhere'), 'M10: summary layout must wrap rather than horizontally scroll');
 console.log('PASS Nurse Okan correction request boundary and retry identity');

@@ -30,6 +30,17 @@ assert(rows[2].slots.every((slot) => slot.status === 'missing'), 'B5: past missi
 assert(rows[2].slots.every((slot) => slot.statusLabel === '未記録'), 'B6: missing must be labelled 未記録');
 assert(!rows[2].slots.some((slot) => /^(0|なし|食べなかった)$/.test(slot.statusLabel)), 'B6: missing was rendered as zero or no intake');
 
+const bananaMorning = { recordedAt: '2026-08-23T08:00:00+09:00', morningStaple: 'normal', morningMealType: 'banana_1', morningWater: true, morningWaterType: 'milk_glass_1', morningCondition: true, morningConditionType: 'good' };
+const riceMorning = Object.assign({}, bananaMorning, { morningMealType: 'rice_1' });
+assert.strictEqual(api.formatHealthSlotSummary_('morning', bananaMorning), 'バナナ1本 / 牛乳1杯 / 体調よい', 'M1: recorded morning must expose its saved content');
+assert.strictEqual(api.formatHealthSlotSummary_('morning', riceMorning), 'ご飯1杯 / 牛乳1杯 / 体調よい', 'M2: corrected morning summary must use the new current value');
+const todayProgress = api.buildProgressState_({ slots: { morning: riceMorning } }, new Date('2026-08-23T12:00:00+09:00'));
+const todayHistory = api.buildHistoryRows_([{ localDate: '2026-08-23', slots: { morning: riceMorning } }], '2026-08-23', new Date('2026-08-23T12:00:00+09:00'));
+assert.strictEqual(todayProgress[0].summary, todayHistory[0].slots[0].summary, 'M3: progress and history must share the same formatter result');
+assert.strictEqual(api.formatHealthSlotSummary_('morning', {}), '', 'M4: unrecorded slots must not invent content');
+assert.strictEqual(api.formatHealthSlotSummary_('post_training', { recordedAt: '2026-08-22T18:00:00+09:00', postTrainingStatus: 'rest_day' }), '部活なし', 'M5: saved rest day must be explicit');
+assert.strictEqual(api.formatHealthSlotSummary_('condition', { recordedAt: '2026-08-23T21:00:00+09:00', conditionAppetite: 'good', symptoms: [] }), '食欲良好 / 症状なし', 'M6: symptom-free condition must stay natural');
+
 (async () => {
   let todayVisible = true;
   let historyMessage = '';

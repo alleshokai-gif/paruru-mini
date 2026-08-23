@@ -251,6 +251,7 @@ const categoryRules = {
 };
 
 const DUMMY_STORAGE_KEY = "paruru-mini-inbox";
+const CONTROLLER_CHANGE_VIEW_STORAGE_KEY = "paruru-mini-controller-change-view";
 
 let inboxItems = [];
 let selectedItemId = "";
@@ -272,6 +273,23 @@ let notificationBoundaryTimerId = null;
 let notificationBoundaryTimerEnabled = false;
 let originalEditDueDate = "";
 let shoppingTimingTouched = false;
+
+function rememberViewForControllerChange_() {
+  if (activeView !== "nurse-okan") return;
+  try {
+    sessionStorage.setItem(CONTROLLER_CHANGE_VIEW_STORAGE_KEY, activeView);
+  } catch (_) {}
+}
+
+function consumeViewAfterControllerChange_() {
+  try {
+    const viewName = String(sessionStorage.getItem(CONTROLLER_CHANGE_VIEW_STORAGE_KEY) || "");
+    sessionStorage.removeItem(CONTROLLER_CHANGE_VIEW_STORAGE_KEY);
+    return viewName === "nurse-okan" && isViewAllowed_(viewName) ? viewName : "";
+  } catch (_) {
+    return "";
+  }
+}
 
 const form = document.querySelector("#inboxForm");
 const memoInput = document.querySelector("#memo");
@@ -463,6 +481,7 @@ if ("serviceWorker" in navigator) {
       return;
     }
     refreshingForNewServiceWorker = true;
+    rememberViewForControllerChange_();
     location.reload();
   });
 
@@ -825,6 +844,8 @@ const activateMembershipContext_ = function(membershipContext) {
       petHealthDashboardCache: petHealthDashboardCacheFacade_(),
     },
   }));
+  const restoredView = consumeViewAfterControllerChange_();
+  if (restoredView) activeView = restoredView;
   void switchView(activeView);
 };
 

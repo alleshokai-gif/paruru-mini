@@ -59,6 +59,7 @@ const pendingSource = sourceBetween('function getHomeControlPending()', 'async f
 const pollingSource = sourceBetween('async function pollHomeControlPairing()', 'async function approveHomeControlPairing()');
 const authenticationStateSource = sourceBetween('let appAuthenticationState = "booting";', 'const NURSE_OKAN_HEALTH_ACTIONS');
 const healthFacadeSource = sourceBetween('const NURSE_OKAN_HEALTH_ACTIONS = new Set([', 'function showAuthenticationState');
+const controllerChangeViewSource = sourceBetween('const CONTROLLER_CHANGE_VIEW_STORAGE_KEY', 'const form = document.querySelector');
 assert(healthFacadeSource.includes('"health.daily.list"'), 'health.daily.list is not allowlisted by the authenticated facade');
 assert(healthFacadeSource.includes('"health.weight.correct"'), 'health.weight.correct is not allowlisted by the authenticated facade');
 const authSource = sourceBetween('function showAuthenticationState', 'window.addEventListener("load"');
@@ -162,7 +163,7 @@ function createHarness(options = {}) {
     console,
   };
   vm.createContext(context);
-  vm.runInContext(`${pendingSource}\n${pollingSource}\n${authenticationStateSource}\n${healthFacadeSource}\n${authSource}\nglobalThis.getState_ = () => appAuthenticationState;`, context);
+  vm.runInContext(`${pendingSource}\n${pollingSource}\n${authenticationStateSource}\n${healthFacadeSource}\n${controllerChangeViewSource}\n${authSource}\nglobalThis.getState_ = () => appAuthenticationState;`, context);
   return {
     context,
     panels,
