@@ -64,9 +64,15 @@ assert(chart.points[1].x - chart.points[0].x < chart.points[3].x - chart.points[
 assert(source.includes("call_('health.weight.list',weightTrendRange_(date_(),30))"), 'D11: opening must use one date-range weight read for KPI and trend');
 assert(source.includes("state.weightError='体重推移を読み込めませんでした'"), 'D11: trend failure must have an isolated message');
 assert(source.includes('data-weight-trend-period="7"') && source.includes('data-weight-trend-period="30"'), 'D10: period controls are missing');
+assert(source.includes('class="popio-observation-heading"') && source.includes('class="popio-observation-periods"'), 'D10: Nurse Okan must reuse the Popio period-toggle DOM classes');
+assert(source.includes("button.setAttribute('aria-pressed',String(Number(button.dataset.weightTrendPeriod)===period))"), 'D10: active and inactive period state must remain aria-pressed based');
 const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
 assert(/\.nurse-weight-trend-graph\s*\{[^}]*width:\s*100%[^}]*max-width:\s*100%/s.test(css), 'D12: graph must fit its card width');
 assert(/\.nurse-weight-trend-card\s*\{[^}]*overflow:\s*hidden/s.test(css), 'D12: trend card must prevent horizontal overflow');
-assert(/\.nurse-weight-trend-periods button\s*\{[^}]*min-height:\s*48px[^}]*font-size:\s*16px/s.test(css), 'D12: period buttons must preserve the Nurse Okan mobile tap and text size contract');
+const popioPeriodCss = css.slice(css.indexOf('.popio-observation-periods {'), css.indexOf('.popio-observation-status {'));
+assert(popioPeriodCss.includes('min-width: 0;') && popioPeriodCss.includes('max-width: 100%;') && popioPeriodCss.includes('flex-wrap: nowrap;') && popioPeriodCss.includes('overflow-x: visible;'), 'D12: Nurse Okan must inherit the Popio no-wrap period container contract');
+assert(popioPeriodCss.includes('width: 64px;') && popioPeriodCss.includes('max-width: 64px;') && popioPeriodCss.includes('min-width: 64px;') && popioPeriodCss.includes('flex: 0 0 64px;') && popioPeriodCss.includes('flex-shrink: 0;') && popioPeriodCss.includes('white-space: nowrap;'), 'D12: Nurse Okan must inherit the Popio fixed period-button contract');
+assert(!/\.nurse-weight-trend-periods\b/.test(css), 'D12: Nurse Okan must not retain a separate period-toggle CSS implementation');
+assert(64 * 2 + 8 <= 390 - 34, 'D12: two Popio period buttons must fit inside a 390px Nurse Okan card');
 
 console.log('PASS Nurse Okan N2-D weight trend summary, active-only, date-range, and mobile layout contracts');

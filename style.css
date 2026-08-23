@@ -2438,42 +2438,6 @@ body:not(.is-authenticated) .drawer-overlay {
   overflow: hidden;
 }
 
-.nurse-weight-trend-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.nurse-weight-trend-periods {
-  display: inline-flex;
-  flex: 0 0 auto;
-  gap: 4px;
-  padding: 3px;
-  border-radius: 10px;
-  background: #f2f3f7;
-}
-
-.nurse-weight-trend-periods button {
-  min-width: 48px;
-  min-height: 48px;
-  margin: 0;
-  padding: 4px 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #616579;
-  font: inherit;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.nurse-weight-trend-periods button[aria-pressed="true"] {
-  background: #fff;
-  color: #3e4cad;
-  box-shadow: 0 1px 3px rgba(51, 58, 104, .16);
-}
-
 .nurse-weight-trend-status:not(:empty) {
   margin: 10px 0 0;
   color: #6f625b;
@@ -2601,10 +2565,6 @@ body:not(.is-authenticated) .drawer-overlay {
 }
 
 @media (max-width: 390px) {
-  .nurse-weight-trend-heading {
-    align-items: flex-start;
-  }
-
   .nurse-weight-trend-metrics {
     gap: 6px;
   }
