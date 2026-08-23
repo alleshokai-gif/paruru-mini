@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260823-nurse-okan-n2c-saving-v1";
+globalThis.BUILD_ID = "v20260823-paluru-splash-label-v1";
