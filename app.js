@@ -556,6 +556,23 @@ async function callAuthenticatedHealth_(action, body = {}) {
   }
 }
 
+async function callNurseOkanComment_(body = {}) {
+  if (appAuthenticationState !== "active_member" || !normalPwaInitialized) {
+    throw createHomeControlError("AUTHENTICATION_REQUIRED");
+  }
+  const token = getHomeAgentPairingToken();
+  if (!token || !userProfile?.deviceId) {
+    throw createHomeControlError("AUTHENTICATION_REQUIRED");
+  }
+  return callHomeControlApi({
+    action: "nurseOkanComment",
+    targetMemberUserId: String(body.targetMemberUserId || "").trim(),
+    clientRequestId: String(body.clientRequestId || "").trim(),
+    deviceId: userProfile.deviceId,
+    pairingToken: token,
+  });
+}
+
 function buildAuthenticatedPetHealthPayload_(action, body = {}) {
   const input = body && typeof body === "object" ? body : {};
   if (action === "pet.health.record") {
@@ -840,6 +857,7 @@ const activateMembershipContext_ = function(membershipContext) {
         allowedViews: membershipContext.allowedViews,
       },
       healthApi: callAuthenticatedHealth_,
+      nurseOkanCommentApi: callNurseOkanComment_,
       petHealthApi: callAuthenticatedPetHealth_,
       petHealthDashboardCache: petHealthDashboardCacheFacade_(),
     },

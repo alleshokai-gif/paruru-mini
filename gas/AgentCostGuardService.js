@@ -1,5 +1,5 @@
-// Agent Chat only. This service deliberately has no dependency on client
-// role, device, session, message, or reply content.
+// Bounded Agent generation only. This service deliberately has no dependency
+// on client role, device, session, message, Health facts, or reply content.
 const AgentCostGuardService = (function() {
   const DAILY_SHEET_NAME = 'Agent_Cost_Daily';
   const LEDGER_SHEET_NAME = 'Agent_Cost_Ledger';
@@ -24,7 +24,7 @@ const AgentCostGuardService = (function() {
   const DAILY_LIMITS = Object.freeze({ admin: 300, guardian: 100, self_record: 60 });
   const RESPONSE_POLICIES = Object.freeze({ normal: true, concise: true });
   const INTERACTION_CLASSES = Object.freeze({
-    general_no_data: true, tool_read: true, legacy: true, unclassified: true
+    general_no_data: true, tool_read: true, legacy: true, health_comment: true, unclassified: true
   });
   const COST_GUARD_FAILURE_REASONS = Object.freeze({
     COST_GUARD_STORAGE_UNAVAILABLE: true,
@@ -114,6 +114,7 @@ const AgentCostGuardService = (function() {
         memberUserId: input.memberUserId,
         localDate: dailyKey.localDate,
         responsePolicyId: input.responsePolicyId,
+        interactionClass: input.interactionClass,
         stateRowNumber: rowNumber
       };
     } catch (error) {
@@ -219,7 +220,10 @@ const AgentCostGuardService = (function() {
       memberUserId: memberUserId,
       role: role,
       guardRequestId: guardRequestId,
-      responsePolicyId: RESPONSE_POLICIES[requestedPolicy] ? requestedPolicy : 'normal'
+      responsePolicyId: RESPONSE_POLICIES[requestedPolicy] ? requestedPolicy : 'normal',
+      interactionClass: INTERACTION_CLASSES[String(source.interactionClass || '').trim()]
+        ? String(source.interactionClass || '').trim()
+        : 'unclassified'
     };
   }
 
@@ -231,7 +235,10 @@ const AgentCostGuardService = (function() {
       memberUserId: safeKey_(source.memberUserId, 100),
       localDate: canonicalLocalDate_(source.localDate),
       stateRowNumber: safeRowNumber_(source.stateRowNumber),
-      responsePolicyId: RESPONSE_POLICIES[source.responsePolicyId] ? source.responsePolicyId : 'normal'
+      responsePolicyId: RESPONSE_POLICIES[source.responsePolicyId] ? source.responsePolicyId : 'normal',
+      interactionClass: INTERACTION_CLASSES[String(source.interactionClass || '').trim()]
+        ? String(source.interactionClass || '').trim()
+        : 'unclassified'
     };
     if (!normalized.guardRequestId || !normalized.homeId || !normalized.memberUserId || !normalized.localDate) throw safeCostGuardError_();
     return normalized;
@@ -294,7 +301,7 @@ const AgentCostGuardService = (function() {
       localDate: localDate,
       responsePolicyId: input.responsePolicyId,
       model: UNKNOWN_MODEL,
-      interactionClass: 'unclassified',
+      interactionClass: input.interactionClass,
       resultStatus: '',
       modelCallCount: null,
       inputTokens: null,

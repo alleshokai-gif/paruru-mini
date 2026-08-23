@@ -413,6 +413,15 @@ test('new state and ledger sheets use the specified header order', () => {
   assert(env.lock.held === false && env.lock.waits >= 2, 'Lock was not released around preflight and settle');
 });
 
+test('N2E health comments retain an independent interaction class in the Cost Ledger', () => {
+  const env = createEnvironment();
+  const healthComment = service.preflight(Object.assign(request('health-comment'), { interactionClass: 'health_comment' }), env.deps);
+  assert(healthComment.allowed === true && healthComment.interactionClass === 'health_comment', 'health comment preflight lost its interaction class');
+  settle(env, healthComment, { interactionClass: 'health_comment', usage: completeUsage(1) });
+  const ledger = rows(env, 'Agent_Cost_Ledger');
+  assert(ledger.length === 1 && ledger[0].interactionClass === 'health_comment', 'health comment cost was mixed into the generic interaction class');
+});
+
 let failures = 0;
 tests.forEach((item) => {
   try { item.fn(); console.log('PASS ' + item.name); }

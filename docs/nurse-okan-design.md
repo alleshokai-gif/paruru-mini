@@ -121,6 +121,14 @@ MVPの一括入力UIは、canonical slot名である `morning`、`lunch`、`post
 
 MiniはpairingとMembershipから `homeId`、actor、targetをserver-sideで解決し、client由来の `homeId`、`actorUserId`、`role`、`recordedBy` を認可根拠にしない。Read capabilityは `health.daily.get` と同一とする。
 
+### N2-E おかんコメント境界
+
+`nurseOkanComment` は、記録・ルール評価を変更しないbounded read generationである。次の3条件を固定する。
+
+1. `health_comment` はCost Guard上の独立interaction classであり、Read only、Tool 0、Model call最大1とする。
+2. Agentが事実として採用するのは、Miniが既存Health Readからserver-sideで組み立てたcompact DTOだけとする。PWAはHealthの内容を送らない。
+3. 100文字超、schema不正、timeout、OpenAI失敗はすべてdeterministic fallbackにし、日次記録・訂正・体重・履歴の表示を失敗させない。
+
 ## 実装Phase
 
 1. **Phase 0: 認可境界と記録** — pairing + Membership、既存5枠・体重保存、ヘッダー名ベースのHealthデータ。

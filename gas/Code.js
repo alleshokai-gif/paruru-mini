@@ -114,6 +114,10 @@ function doPost(e) {
       return agentChat_(body);
     }
 
+    if (action === 'nurseOkanComment') {
+      return nurseOkanComment_(body);
+    }
+
     if (action === 'agentActionConfirm') {
       return agentActionConfirm_(body);
     }
