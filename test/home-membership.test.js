@@ -81,11 +81,14 @@ spreadsheet.sheets.Home_Members.values[1][fatherRoleColumn] = 'self_record';
 expectCode(() => api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
 spreadsheet.sheets.Home_Members.values[1][fatherRoleColumn] = 'admin';
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'second_son', 'health.weight.record'), true);
+assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'second_son', 'health.daily.list'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'mother', 'health.weight.record'), true);
+assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'second_son', 'health.daily.list'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'second_son', 'health.weight.record'), true);
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'father', 'health.weight.record'), 'FORBIDDEN');
 expectCode(() => api.getMembershipApprovalTemplate_('mother_initial'), 'INVALID_MEMBERSHIP_TEMPLATE');
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.weight.record'), 'FORBIDDEN');
+expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.daily.list'), 'FORBIDDEN');
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'other_child', 'health.weight.record'), 'FORBIDDEN');
 
 const missingHeaders = new Spreadsheet();

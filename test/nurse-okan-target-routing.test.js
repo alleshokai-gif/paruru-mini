@@ -9,7 +9,7 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(api.targetUiState_({role:'self_
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.targetUiState_({role:'admin'},[{userId:'son-a',displayName:'長男'}],'son-a'))),{visible:true,selectable:false,current:{userId:'son-a',displayName:'長男'}},'admin with one target must show the current name without a selector');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.targetUiState_({role:'admin'},[{userId:'son-a',displayName:'長男'},{userId:'son-b',displayName:'次男'}],'son-b'))),{visible:true,selectable:true,current:{userId:'son-b',displayName:'次男'}},'admin with multiple targets must show a selector for the current target');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.targetUiState_({role:'admin'},[{userId:'son-a',displayName:'長男'},{userId:'son-b',displayName:'次男'}],''))),{visible:true,selectable:true,current:null},'admin without a selected target must remain in selection-required state');
-['health.context.get','health.daily.get','health.daily.recordSlot','health.weight.list','health.weight.record'].forEach(action=>{
+['health.context.get','health.daily.get','health.daily.list','health.daily.recordSlot','health.weight.list','health.weight.record'].forEach(action=>{
   const request=api.buildHealthRequest_(action,targetUserId,{sample:true});
   assert.strictEqual(request.targetMemberUserId,targetUserId,`${action} lost the target member`);
 });

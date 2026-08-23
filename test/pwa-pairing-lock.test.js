@@ -59,6 +59,7 @@ const pendingSource = sourceBetween('function getHomeControlPending()', 'async f
 const pollingSource = sourceBetween('async function pollHomeControlPairing()', 'async function approveHomeControlPairing()');
 const authenticationStateSource = sourceBetween('let appAuthenticationState = "booting";', 'const NURSE_OKAN_HEALTH_ACTIONS');
 const healthFacadeSource = sourceBetween('const NURSE_OKAN_HEALTH_ACTIONS = new Set([', 'function showAuthenticationState');
+assert(healthFacadeSource.includes('"health.daily.list"'), 'health.daily.list is not allowlisted by the authenticated facade');
 const authSource = sourceBetween('function showAuthenticationState', 'window.addEventListener("load"');
 
 function createHarness(options = {}) {

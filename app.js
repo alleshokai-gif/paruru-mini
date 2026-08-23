@@ -498,6 +498,7 @@ function canUseHomeControl_() {
 const NURSE_OKAN_HEALTH_ACTIONS = new Set([
   "health.context.get",
   "health.daily.get",
+  "health.daily.list",
   "health.daily.recordSlot",
   "health.weight.list",
   "health.weight.record",

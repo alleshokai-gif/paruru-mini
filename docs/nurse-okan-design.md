@@ -104,6 +104,7 @@ deep linkは表示位置を指定するだけで、対象者・home・権限を�
 |---|---|---|
 | `health.context.get` | actor、対象者候補、capabilities、未完了概要 | 本人は自己のみ、父は監督対象を取得可能 |
 | `health.daily.get` | 1日の5枠と評価・タスク状態 | 表示対象へのread capability |
+| `health.daily.list` | 指定期間の日次記録一覧 | `health.daily.get` と同じread capability |
 | `health.daily.recordSlot` | 1枠を保存 | 自己記録、または父の監督記録 capability |
 | `health.weight.record` | 体重を保存 | 自己記録、または父の監督記録 capability |
 | `health.task.list` | ホーム/専用ビュー用のタスク一覧 | actorのread capabilityの範囲のみ |
@@ -113,6 +114,12 @@ deep linkは表示位置を指定するだけで、対象者・home・権限を�
 書込は全てclientRequestIdで冪等化する。タスク判定・scary表示済み・通知送信も、同じくサーバー側の冪等キーで処理する。
 
 MVPの一括入力UIは、canonical slot名である `morning`、`lunch`、`post_training`、`dinner`、`condition` ごとに `health.daily.recordSlot` を呼ぶ。一括専用の `health.daily.recordAll` はMVP外であり、API案に含めない。
+
+### N2-B `health.daily.list` 契約
+
+`fromLocalDate` と `toLocalDate` は `YYYY-MM-DD` で指定し、両端を含む最大31日とする。`fromLocalDate > toLocalDate`、実在しない日付、31日超過は `INVALID_INPUT`。responseの `items` は日付昇順で、Spreadsheet rowがない日も `{ localDate, slots: {}, ruleCodes }` を返す。
+
+MiniはpairingとMembershipから `homeId`、actor、targetをserver-sideで解決し、client由来の `homeId`、`actorUserId`、`role`、`recordedBy` を認可根拠にしない。Read capabilityは `health.daily.get` と同一とする。
 
 ## 実装Phase
 

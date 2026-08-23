@@ -2273,3 +2273,113 @@ body:not(.is-authenticated) .drawer-overlay {
   background: #f7f7fb;
   color: #616579;
 }
+
+.nurse-history-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.nurse-history-card summary {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 1.08rem;
+  font-weight: 700;
+  list-style: none;
+}
+
+.nurse-history-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.nurse-history-card summary::after {
+  content: "＋";
+  margin-left: auto;
+  color: #616579;
+}
+
+.nurse-history-card[open] summary {
+  border-bottom: 1px solid #e6e6ee;
+}
+
+.nurse-history-card[open] summary::after {
+  content: "−";
+}
+
+.nurse-history-status:not(:empty) {
+  margin: 12px 16px;
+  color: #6f625b;
+  font-size: .86rem;
+}
+
+.nurse-history-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 16px 16px;
+  list-style: none;
+}
+
+.nurse-history-day {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 14px;
+  background: #f8f8fb;
+}
+
+.nurse-history-day > time {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 800;
+}
+
+.nurse-history-slots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nurse-history-slots li {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.nurse-history-slots span {
+  color: #616579;
+  font-size: .72rem;
+}
+
+.nurse-history-slots strong {
+  overflow-wrap: anywhere;
+  font-size: .78rem;
+}
+
+.nurse-history-slots li.is-recorded {
+  background: #edf8ee;
+  color: #216b32;
+}
+
+.nurse-history-slots li.is-rest_day {
+  background: #eef1ff;
+  color: #4353a3;
+}
+
+.nurse-history-slots li.is-missing,
+.nurse-history-slots li.is-due_missing {
+  background: #fff4e2;
+  color: #8a5415;
+}
+
+.nurse-history-slots li.is-not_due {
+  background: #f1f1f5;
+  color: #616579;
+}

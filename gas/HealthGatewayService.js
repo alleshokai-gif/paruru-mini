@@ -1,5 +1,5 @@
 const HEALTH_OPS = Object.freeze({
-  'health.context.get': true, 'health.daily.get': true, 'health.daily.recordSlot': true,
+  'health.context.get': true, 'health.daily.get': true, 'health.daily.list': true, 'health.daily.recordSlot': true,
   'health.weight.list': true, 'health.weight.record': true,
 });
 
@@ -28,6 +28,7 @@ function healthGateway_(body) {
       operation: input.action, serviceToken: serviceToken,
       homeId: actor.homeId, actorUserId: actor.memberUserId, actorRole: actor.role,
       targetUserId: targetUserId, localDate: input.localDate, slot: input.slot,
+      fromLocalDate: input.fromLocalDate, toLocalDate: input.toLocalDate,
       payload: input.payload, clientRequestId: input.clientRequestId,
       measuredDate: input.measuredDate, weightKg: input.weightKg, limit: input.limit,
     };
