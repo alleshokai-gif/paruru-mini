@@ -64,10 +64,11 @@
       </section>
       <section class="popio-summary-card" aria-label="今日のまとめ">
         <div><span>🍚 ごはん</span><strong id="popioSummaryMeal">--</strong></div>
-        <div class="popio-summary-water"><span>💧 水</span><strong id="popioSummaryWater">--</strong><small id="popioSummaryWaterHint"></small></div>
+        <div><span>💧 水</span><strong id="popioSummaryWater">--</strong></div>
         <div><span>💩 うんち</span><strong id="popioSummaryStool">--</strong></div>
         <div><span>⚖️ 体重</span><strong id="popioSummaryWeight">--</strong></div>
       </section>
+      <p id="popioSummaryWaterHint" class="popio-summary-note" aria-live="polite"></p>
       <div class="popio-record-list">
         ${mealForm_()}
         ${stoolForm_()}
@@ -1221,7 +1222,7 @@
   }
   function renderSummary_() {
     const model = summaryDisplayModel_(state.summary, state.summaryStatus);
-    setText_('popioSummaryMeal', model.meal); setText_('popioSummaryWater', model.water); setText_('popioSummaryWaterHint', model.waterHint); setText_('popioSummaryStool', model.stool); setText_('popioSummaryWeight', model.weight);
+    setText_('popioSummaryMeal', model.meal); setText_('popioSummaryWater', model.water); setText_('popioSummaryWaterHint', model.waterHint ? '💧 水：' + model.waterHint : ''); setText_('popioSummaryStool', model.stool); setText_('popioSummaryWeight', model.weight);
     renderReminder_();
     renderWaterBottle_();
   }

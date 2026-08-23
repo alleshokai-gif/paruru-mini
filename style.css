@@ -1687,23 +1687,18 @@ body:not(.is-authenticated) .drawer-overlay {
   font-size: 1.2rem;
 }
 
-.popio-summary-water strong {
-  font-size: 0.9rem;
-  letter-spacing: -0.04em;
-}
-
-.popio-summary-water small {
-  display: block;
-  min-height: 1.25em;
-  margin-top: 3px;
+.popio-summary-note {
+  min-width: 0;
+  max-width: 100%;
+  margin: 6px 0 0;
   color: var(--muted);
-  font-size: 0.58rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
+  line-height: 1.35;
+  overflow-wrap: break-word;
 }
 
-.popio-summary-water small:empty {
+.popio-summary-note:empty {
   display: none;
 }
 
@@ -2252,10 +2247,6 @@ body:not(.is-authenticated) .drawer-overlay {
 
   .popio-summary-card strong {
     font-size: 1.02rem;
-  }
-
-  .popio-summary-water strong {
-    font-size: 0.78rem;
   }
 
   .popio-reminder-item {

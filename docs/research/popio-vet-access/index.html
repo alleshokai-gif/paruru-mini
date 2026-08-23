@@ -1,0 +1,2158 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="ぽぴおの動物病院・医療アクセス調査結果。2026-08-24時点の公開情報スナップショット。">
+  <title>ぽぴお病院MAP | 医療アクセス調査</title>
+  <style>
+    :root {
+      --ink: #282522;
+      --muted: #68615b;
+      --paper: #fffdf9;
+      --surface: #ffffff;
+      --line: #eadfd3;
+      --peach: #fff6ec;
+      --peach-strong: #f06c3b;
+      --indigo: #5366c8;
+      --indigo-soft: #edf0ff;
+      --green: #24734a;
+      --green-soft: #eef9f1;
+      --red: #a3453b;
+      --red-soft: #fff0ee;
+      --yellow: #866300;
+      --yellow-soft: #fff8df;
+      --shadow: 0 8px 22px rgba(79, 56, 38, .08);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; background: var(--paper); }
+    body { margin: 0; background: linear-gradient(180deg, #fff8f0 0, var(--paper) 340px); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif; font-size: 16px; line-height: 1.65; }
+    a { color: inherit; }
+    button, input, select { font: inherit; }
+    button, a.button-link { min-height: 48px; }
+
+    .shell { width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 20px 0 52px; }
+    .eyebrow { margin: 0 0 4px; color: var(--indigo); font-size: .82rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 8px; font-size: clamp(1.9rem, 6vw, 3.1rem); line-height: 1.2; letter-spacing: -.035em; }
+    h2 { margin-bottom: 6px; font-size: clamp(1.25rem, 3vw, 1.6rem); line-height: 1.35; }
+    h3 { margin-bottom: 4px; font-size: 1.06rem; line-height: 1.45; }
+    .lede { max-width: 760px; margin-bottom: 0; color: var(--muted); }
+    .snapshot { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 5px 10px; border: 1px solid #f0d6bb; border-radius: 999px; background: #fff7ed; color: #7e4a23; font-size: .82rem; font-weight: 750; }
+
+    .quick-nav { display: flex; gap: 8px; overflow-x: auto; margin: 20px -2px 22px; padding: 2px; scrollbar-width: thin; }
+    .quick-nav a { flex: 0 0 auto; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.8); color: #4d4741; font-size: .88rem; font-weight: 700; text-decoration: none; }
+    .quick-nav a:focus-visible, .action:focus-visible, .filter-control:focus-visible, summary:focus-visible { outline: 3px solid rgba(83,102,200,.42); outline-offset: 2px; }
+
+    .section { margin-top: 32px; scroll-margin-top: 16px; }
+    .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .section-heading > p { margin: 0; color: var(--muted); font-size: .92rem; }
+    .card { border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); }
+
+    .recommendation-plan { display: grid; grid-template-columns: repeat(7, minmax(145px, 1fr)); gap: 10px; overflow-x: auto; padding: 2px 1px 10px; }
+    .plan-item { position: relative; min-height: 148px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+    .plan-item.emergency { border-color: #f2c1b9; background: #fff9f8; }
+    .plan-item.advanced { border-color: #cdd4ff; background: #f8f9ff; }
+    .plan-index { display: block; margin-bottom: 5px; color: var(--indigo); font-size: .76rem; font-weight: 800; }
+    .plan-item h3 { font-size: .98rem; }
+    .plan-item p { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.45; }
+
+    .role-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .role-card { padding: 16px; }
+    .role-card.is-emergency { border-color: #f2c1b9; background: linear-gradient(135deg, #fff7f5, #fff); }
+    .role-card.is-advanced { border-color: #ced5ff; background: linear-gradient(135deg, #f7f8ff, #fff); }
+    .role-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .role-card h3 { margin-bottom: 5px; }
+    .role-card p { margin-bottom: 10px; color: var(--muted); font-size: .9rem; }
+
+    .badge { display: inline-flex; align-items: center; min-height: 25px; padding: 2px 8px; border-radius: 999px; background: #f4f1ed; color: #5b544d; font-size: .76rem; font-weight: 800; line-height: 1.3; }
+    .badge.ipet { background: var(--indigo-soft); color: #3e51ae; }
+    .badge.good { background: var(--green-soft); color: var(--green); }
+    .badge.warn { background: var(--yellow-soft); color: var(--yellow); }
+    .badge.emergency { background: var(--red-soft); color: var(--red); }
+    .badge.advanced { background: var(--indigo-soft); color: #4659bd; }
+
+    .top-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .hospital-card { overflow: hidden; }
+    .hospital-card.is-emergency { border-color: #efbcb5; }
+    .hospital-card.is-advanced { border-color: #cbd4ff; }
+    .hospital-main { padding: 18px; }
+    .hospital-name-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .hospital-name-row h3 { margin: 0; font-size: 1.18rem; }
+    .score-total { flex: 0 0 auto; min-width: 58px; padding: 5px 7px; border-radius: 13px; background: var(--peach); color: #934421; font-size: .78rem; font-weight: 800; text-align: center; }
+    .score-total strong { display: block; margin-top: -3px; font-size: 1.42rem; line-height: 1.05; }
+    .hospital-role-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0 12px; }
+    .hospital-overview { margin-bottom: 12px; color: var(--muted); font-size: .9rem; }
+    .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; border: 1px solid #eee5dc; border-radius: 14px; }
+    .metric { min-width: 0; padding: 8px 6px; border-right: 1px solid #eee5dc; text-align: center; }
+    .metric:last-child { border-right: 0; }
+    .metric span, .metric strong { display: block; }
+    .metric span { overflow: hidden; color: var(--muted); font-size: .69rem; text-overflow: ellipsis; white-space: nowrap; }
+    .metric strong { margin-top: 1px; font-size: 1.1rem; letter-spacing: -.04em; }
+    .facts { display: grid; gap: 6px; margin: 13px 0; padding: 0; list-style: none; font-size: .88rem; }
+    .facts li { display: grid; grid-template-columns: 5.7em minmax(0, 1fr); gap: 8px; }
+    .facts b { color: #615850; font-size: .79rem; }
+    .signal-box { display: grid; gap: 8px; margin-top: 12px; }
+    .signal-row { padding: 9px 10px; border-radius: 12px; font-size: .84rem; line-height: 1.5; }
+    .signal-row.positive { background: var(--green-soft); color: #235d3e; }
+    .signal-row.negative { background: var(--red-soft); color: #813c34; }
+    .signal-row b { display: block; margin-bottom: 2px; font-size: .75rem; }
+    .actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding: 11px 14px; border-top: 1px solid var(--line); background: #fffaf5; }
+    .action { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px; border-radius: 11px; background: #fff; color: #504941; font-size: .8rem; font-weight: 800; text-align: center; text-decoration: none; }
+    .action.primary { background: var(--indigo); color: #fff; }
+    .action.call { background: #fcefe4; color: #95441f; }
+    .action.disabled { background: #f2efeb; color: #aaa39c; pointer-events: none; }
+
+    .compare-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 250px); gap: 10px; margin-bottom: 11px; }
+    .filter-control { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #d9d0c7; border-radius: 12px; background: #fff; color: var(--ink); }
+    .comparison-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
+    table { width: 100%; min-width: 960px; border-collapse: collapse; font-size: .83rem; }
+    th, td { padding: 11px 10px; border-bottom: 1px solid #eee8e1; text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; z-index: 1; background: #fff8f0; color: #5b5148; font-size: .76rem; white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    tr.is-emergency td:first-child { box-shadow: inset 4px 0 0 #e27362; }
+    tr.is-advanced td:first-child { box-shadow: inset 4px 0 0 #6578dd; }
+    .small-link { color: #4255b8; font-weight: 800; text-decoration: none; }
+
+    .review-list { display: grid; gap: 10px; }
+    .review-item { overflow: hidden; }
+    .review-item summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 13px 16px; cursor: pointer; font-size: 1rem; font-weight: 800; list-style: none; }
+    .review-item summary::-webkit-details-marker { display: none; }
+    .review-item summary::after { content: "＋"; flex: 0 0 auto; color: var(--indigo); font-size: 1.3rem; }
+    .review-item[open] summary::after { content: "−"; }
+    .review-content { padding: 0 16px 16px; border-top: 1px solid var(--line); }
+    .review-summary { margin: 12px 0; color: var(--muted); font-size: .9rem; }
+    .review-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .review-panel { min-width: 0; padding: 12px; border-radius: 14px; }
+    .review-panel h4 { margin: 0 0 8px; font-size: .9rem; }
+    .review-panel.positive { background: var(--green-soft); }
+    .review-panel.medical { background: var(--red-soft); }
+    .review-panel.service { background: var(--yellow-soft); }
+    .review-panel ul { display: grid; gap: 8px; margin: 0; padding-left: 1.1em; font-size: .82rem; line-height: 1.5; }
+    .cross-signals { display: grid; gap: 8px; margin-top: 12px; }
+    .cross-signal { padding: 10px 12px; border: 1px solid #dbe0fc; border-radius: 12px; background: #f8f9ff; font-size: .84rem; }
+    .cross-signal.negative { border-color: #f0c8c2; background: #fff8f7; }
+    .cross-signal .badge { margin-right: 6px; }
+    .source-line { margin: 12px 0 0; color: var(--muted); font-size: .78rem; }
+
+    .notice { padding: 18px; border: 1px solid #f0d3b4; border-radius: 20px; background: #fff8ef; }
+    .notice ul { display: grid; gap: 8px; margin: 10px 0 0; padding-left: 1.2em; }
+    .notice li { font-size: .9rem; }
+    .source-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .source-links a { min-height: 38px; padding: 7px 10px; border: 1px solid #e3d9cf; border-radius: 10px; background: #fff; color: #4b5dbd; font-size: .8rem; font-weight: 800; text-decoration: none; }
+    .footer { margin-top: 30px; color: var(--muted); font-size: .78rem; text-align: center; }
+
+    @media (max-width: 720px) {
+      .shell { width: min(100% - 20px, 540px); padding-top: 14px; }
+      .section { margin-top: 25px; }
+      .role-grid, .top-grid { grid-template-columns: 1fr; }
+      .recommendation-plan { grid-template-columns: repeat(7, minmax(175px, 1fr)); }
+      .compare-tools { grid-template-columns: 1fr; }
+      .review-columns { grid-template-columns: 1fr; }
+      .section-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
+    }
+
+    @media (max-width: 390px) {
+      body { font-size: 16px; }
+      .shell { width: min(100% - 16px, 540px); }
+      .hospital-main { padding: 14px; }
+      .metric { padding: 8px 3px; }
+      .metric span { font-size: .62rem; }
+      .metric strong { font-size: 1rem; }
+      .actions { grid-template-columns: 1fr; }
+      .action { min-height: 48px; }
+      .facts li { grid-template-columns: 5.25em minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">Popio Veterinary Access</p>
+      <h1>🐶 ぽぴお病院MAP</h1>
+      <p class="lede">ミニチュアダックス「ぽぴお」の日常診療から夜間救急・整形神経・高度医療までを、役割別に確認するための静的ビュー。</p>
+      <p class="snapshot">📌 2026-08-24時点の公開情報スナップショット</p>
+    </header>
+
+    <nav class="quick-nav" aria-label="ページ内メニュー">
+      <a href="#recommendations">推薦構成</a>
+      <a href="#roles">役割別おすすめ</a>
+      <a href="#top">TOP候補</a>
+      <a href="#all">全20院比較</a>
+      <a href="#reviews">口コミ分析</a>
+      <a href="#notes">注意事項</a>
+    </nav>
+
+    <section id="recommendations" class="section" aria-labelledby="recommendations-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">Recommended coverage</p><h2 id="recommendations-title">今回の推薦構成</h2></div>
+        <p>一院完結ではなく、役割ごとのアクセスを確保する。</p>
+      </div>
+      <div id="recommendationPlan" class="recommendation-plan" aria-label="役割別の推薦構成"></div>
+    </section>
+
+    <section id="roles" class="section" aria-labelledby="roles-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">Role first</p><h2 id="roles-title">役割別おすすめ</h2></div>
+        <p>緊急系は、受診前に必ず電話で受付可否を確認。</p>
+      </div>
+      <div id="roleCards" class="role-grid"></div>
+    </section>
+
+    <section id="top" class="section" aria-labelledby="top-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">Top candidates</p><h2 id="top-title">TOP候補</h2></div>
+        <p>役割の異なる施設を総合点だけで順位付けしない。</p>
+      </div>
+      <div id="topCards" class="top-grid"></div>
+    </section>
+
+    <section id="all" class="section" aria-labelledby="all-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">All candidates</p><h2 id="all-title">全20院比較</h2></div>
+        <p>横にスクロールして比較できる。数値は公開情報の参考値。</p>
+      </div>
+      <div class="compare-tools">
+        <label><span class="eyebrow">病院名・役割で絞り込み</span><input id="searchInput" class="filter-control" type="search" placeholder="例：夜間、整形、鈴木"></label>
+        <label><span class="eyebrow">役割フィルタ</span><select id="roleFilter" class="filter-control"><option value="">すべて表示</option></select></label>
+      </div>
+      <div class="comparison-wrap" role="region" aria-label="全20院比較表" tabindex="0">
+        <table>
+          <thead><tr><th>病院</th><th>役割</th><th>総合</th><th>Home</th><th>緊急</th><th>ダックス</th><th>Google</th><th>Caloo</th><th>iPet</th><th>車</th><th>日/祝</th><th>夜間</th><th>リンク</th></tr></thead>
+          <tbody id="comparisonRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="reviews" class="section" aria-labelledby="reviews-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">Review signals</p><h2 id="reviews-title">口コミ分析</h2></div>
+        <p>医療面の申告と、待ち時間・接遇等の運用面を分離して表示。</p>
+      </div>
+      <div id="reviewList" class="review-list"></div>
+    </section>
+
+    <section id="notes" class="section" aria-labelledby="notes-title">
+      <div class="notice">
+        <p class="eyebrow">Read before visiting</p>
+        <h2 id="notes-title">注意事項</h2>
+        <ul>
+          <li>これは<strong>2026-08-24時点の公開情報スナップショット</strong>。診療時間・体制は変わりうる。</li>
+          <li>当日の受付可否、担当医、空床、保険適用、時間外費用は、受診前に病院へ確認する。</li>
+          <li>口コミは利用者の申告であり、医療品質や治療結果を直接保証しない。単独の重大な申告は事実認定していない。</li>
+          <li>車時間と距離は、川崎市宮前区神木本町2丁目の代表地点からの概算。自宅の正確な住所・交通状況で変動する。</li>
+          <li>JARMeC川崎本院は<strong>紹介制の二次診療</strong>で、公式FAQ上、救急外来ではない。</li>
+          <li>川崎市獣医師会 夜間動物救急センターは<strong>入院不可</strong>。継続入院が必要な場合の代替先を別に持つ。</li>
+        </ul>
+        <div class="source-links">
+          <a href="README.md">調査レポート</a>
+          <a href="comparison.md">比較表（Markdown）</a>
+          <a href="top-candidates.md">TOP候補詳細</a>
+          <a href="hospitals.json">Raw Data JSON</a>
+          <a href="review-signals.json">口コミ分析JSON</a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">静的HTML。外部API・PALURU・GASには接続しない。データ更新時は元JSONから再生成する。</footer>
+  </main>
+
+  <script id="hospitalData" type="application/json">{
+  "schema_version": "1.0.0",
+  "dataset_id": "popio-vet-access",
+  "generated_at": "2026-08-24T22:30:00+09:00",
+  "timezone": "Asia/Tokyo",
+  "routing_origin": {
+    "label": "川崎市宮前区神木本町2丁目（代表地点）",
+    "precision": "neighborhood_representative",
+    "privacy_note": "自宅の正確な住所は保存せず、町丁目代表地点を経路比較に使用した。"
+  },
+  "coordinate_source": {
+    "provider": "国土地理院 住所検索",
+    "url": "https://msearch.gsi.go.jp/address-search/AddressSearch",
+    "checked_at": "2026-08-24",
+    "precision_note": "住所文字列から得た街区相当の代表座標。病院入口や駐車場入口を保証しない。"
+  },
+  "hospitals": [
+    {
+      "hospital_id": "uehara",
+      "name": "上原どうぶつ病院",
+      "roles": ["general_candidate"],
+      "address": "神奈川県川崎市宮前区菅生3-1-14",
+      "latitude": 35.596058,
+      "longitude": 139.553101,
+      "coordinate_precision": "block_level",
+      "phone": "044-978-5260",
+      "alternate_phone": null,
+      "website_url": null,
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.596058%2C139.553101",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式の宮前区検索に掲載。",
+      "distance": { "value": 3.4, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 11, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。交通状況で変動する。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": 1, "note": "川崎市獣医師会掲載。" },
+      "opening_hours": { "display": "10:00–12:00、午後は16:00–19:00または21:00。木休、日祝午前", "structured_status": "conflicting", "note": "iPetは午後19時まで、川崎市獣医師会は21時まで。受診前の電話確認が必要。" },
+      "holidays": "日曜・祝日は午前診療の掲載あり。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": null, "same_day": null, "reservation_note": "予約方法は公開情報で確認できず。" },
+      "emergency": null,
+      "night_service": { "available": null, "display": "不明", "admission": null, "call_first": null },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "不明",
+        "specialties": [],
+        "hospitalization": null,
+        "surgery": null,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": null,
+        "vaccination": true,
+        "neutering": null,
+        "referral": { "officially_stated": null, "destinations": [], "note": "Google公開レビューには対応限界を説明して高度施設を案内したとの投稿があるが、公式記載ではない。" },
+        "note": "公式サイトを確認できず、設備・専門性は不明。"
+      },
+      "google_rating": 4.3,
+      "google_review_count": 14,
+      "caloo_rating": 3.62,
+      "caloo_review_count": 2,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.3, "review_count": 14, "url": "https://www.google.com/maps/search/?api=1&query=35.596058%2C139.553101", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 3.62, "review_count": 2, "url": "https://pet.caloo.jp/hospitals/search/14136/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "宮前区一覧の表示値。" }
+      ],
+      "reputation_summary": "件数が少なく判断幅が大きい。診療・手術・紹介説明への肯定が見えるが、複数ソースでの十分な再現性はない。",
+      "positive_signals": [
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps"], "replication": "single_source", "assessment": "対応可能範囲を説明し高度施設へつないだという公開投稿。" }
+      ],
+      "negative_signals": [
+        { "category": "owner_handling", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "古い接遇・相性面の不満が見えるが、医療懸念としては扱わない。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 67,
+      "emergency_score": 42,
+      "dachshund_score": 25,
+      "medical_capability_score": 40,
+      "accessibility_score": 83,
+      "overall_reference_score": 49,
+      "confidence": 42,
+      "score_note": "設備・獣医師数・専門性の未知項目が多いため能力スコアを抑制。",
+      "uncertainties": ["午後診療の終了時刻", "設備", "獣医師数", "時間外対応"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet", "address", "phone", "hours"] },
+        { "url": "https://www.k-vma.com/member-map/uehara/", "source_type": "official_association", "checked_at": "2026-08-24", "supports": ["hours", "parking"], "note": "iPetと午後終了時刻が矛盾。" },
+        { "url": "https://www.google.com/maps/search/?api=1&query=35.596058%2C139.553101", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
+      ]
+    },
+    {
+      "hospital_id": "takada",
+      "name": "タカダ動物病院",
+      "roles": ["home_doctor", "holiday_backup"],
+      "address": "神奈川県川崎市宮前区馬絹2-5-2",
+      "latitude": 35.581768,
+      "longitude": 139.594971,
+      "coordinate_precision": "block_level",
+      "phone": "044-852-6446",
+      "alternate_phone": null,
+      "website_url": null,
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.581768%2C139.594971",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式の宮前区検索に掲載。",
+      "distance": { "value": 3.3, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 10, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": null, "spaces": null, "note": "第三者サイトには駐車場表示があるが、公式根拠を確認できず。" },
+      "opening_hours": { "display": "月・水〜日祝9:00–12:00、月・水〜土祝16:00–20:00。火休", "structured_status": "verified_current", "note": "iPet公式掲載。" },
+      "holidays": "火曜を除き祝日診療の掲載あり。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": false, "same_day": true, "reservation_note": "電話予約。公開レビューに休診中のかかりつけから当日受入された例あり。" },
+      "emergency": true,
+      "night_service": { "available": null, "display": "第三者サイトに時間外は電話相談の記載。常時受入は未確認。", "admission": null, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "不明",
+        "specialties": [],
+        "hospitalization": null,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": null, "destinations": [], "note": "不明" },
+        "note": "公式サイトを確認できず、設備は不明。手術は口コミでの受診経験に基づくため、術式範囲は未確認。"
+      },
+      "google_rating": 4.2,
+      "google_review_count": 30,
+      "caloo_rating": 4.24,
+      "caloo_review_count": 3,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 30, "url": "https://www.google.com/maps/search/?api=1&query=35.581768%2C139.594971", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 4.24, "review_count": 3, "url": "https://pet.caloo.jp/hospitals/search/14136/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "宮前区一覧の表示値。" }
+      ],
+      "reputation_summary": "急な受入、長期通院、手術、丁寧な診察の肯定がある。待ち時間は運用面の注意。Caloo件数は少ない。",
+      "positive_signals": [
+        { "category": "emergency", "signal": "positive", "sources": ["Google Maps"], "replication": "single_source", "assessment": "休診中のかかりつけに代わり当日受入したとの最近の投稿。" },
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "丁寧な診察・説明の傾向。" }
+      ],
+      "negative_signals": [
+        { "category": "waiting", "signal": "negative", "sources": ["Calooペット"], "replication": "single_source", "assessment": "丁寧さと引き換えに待ち時間が長いとの指摘。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 75,
+      "emergency_score": 65,
+      "dachshund_score": 30,
+      "medical_capability_score": 45,
+      "accessibility_score": 82,
+      "overall_reference_score": 58,
+      "confidence": 58,
+      "score_note": "休日と当日対応を評価。時間外常時受入・設備は未確認。",
+      "uncertainties": ["駐車場の公式確認", "設備", "時間外受入条件", "紹介先"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet", "address", "phone", "hours"] },
+        { "url": "https://www.y-petnavi.jp/pet/takadadoubutubyouin/", "source_type": "directory", "checked_at": "2026-08-24", "supports": ["reservation", "after_hours"], "note": "病院公式ではないため補助情報。" },
+        { "url": "https://www.google.com/maps/search/?api=1&query=35.581768%2C139.594971", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
+      ]
+    },
+    {
+      "hospital_id": "yuimaru",
+      "name": "ゆいまーる動物病院",
+      "roles": ["general_candidate"],
+      "address": "神奈川県川崎市宮前区東有馬3-5-28",
+      "latitude": 35.57233,
+      "longitude": 139.586899,
+      "coordinate_precision": "block_level",
+      "phone": "044-948-5462",
+      "alternate_phone": null,
+      "website_url": "https://www.yuimaruah.jp/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.572330%2C139.586899",
+      "ipet_supported": true,
+      "ipet_note": "公式サイトとiPet公式掲載で確認。",
+      "distance": { "value": 5.7, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 15, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": null, "spaces": null, "note": "不明" },
+      "opening_hours": { "display": "9:00–12:00、16:00–19:00。木休、日曜午後休、祝休", "structured_status": "verified_current", "note": "公式サイト確認。" },
+      "holidays": "祝日休診。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": false, "web_reservation": null, "same_day": null, "reservation_note": "不明" },
+      "emergency": null,
+      "night_service": { "available": false, "display": "夜間診療の公式記載を確認できず。", "admission": null, "call_first": null },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "不明",
+        "specialties": ["腫瘍診療"],
+        "hospitalization": null,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": null, "destinations": [], "note": "不明" },
+        "note": "腫瘍診療を公式に掲げる。画像設備・整形神経は不明。"
+      },
+      "google_rating": 4.6,
+      "google_review_count": 46,
+      "caloo_rating": 4.33,
+      "caloo_review_count": 4,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.6, "review_count": 46, "url": "https://www.google.com/maps/search/?api=1&query=35.572330%2C139.586899", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 4.33, "review_count": 4, "url": "https://pet.caloo.jp/hospitals/search/14136/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "宮前区一覧の表示値。" }
+      ],
+      "reputation_summary": "手術・日曜診療の肯定がある一方、Googleに診断・接し方への重大な単独申告がある。Calooの傾向には再現せず、事実認定はできない。",
+      "positive_signals": [
+        { "category": "surgery", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "手術・治療への肯定が複数ソースにある。" }
+      ],
+      "negative_signals": [
+        { "category": "diagnosis", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "死亡症例と診察姿勢に関する重大申告。単独投稿であり事実認定しないが初診時の確認項目とする。" },
+        { "category": "animal_handling", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "動物への触れ方・診察の進め方への不満。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 74,
+      "emergency_score": 45,
+      "dachshund_score": 25,
+      "medical_capability_score": 50,
+      "accessibility_score": 73,
+      "overall_reference_score": 52,
+      "confidence": 64,
+      "score_note": "口コミの重大な単独申告によりホーム適性を保守的に評価。",
+      "uncertainties": ["画像設備", "整形・神経対応", "入院", "紹介先"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://www.yuimaruah.jp/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "specialty", "preventive_care", "iPet"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet", "address", "phone"] },
+        { "url": "https://www.google.com/maps/search/?api=1&query=35.572330%2C139.586899", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
+      ]
+    },
+    {
+      "hospital_id": "miyamaedaira",
+      "name": "みやまえだいら動物病院",
+      "roles": ["home_doctor", "holiday_backup"],
+      "address": "神奈川県川崎市宮前区宮前平1-4-142",
+      "latitude": 35.584171,
+      "longitude": 139.588074,
+      "coordinate_precision": "block_level",
+      "phone": "044-855-7061",
+      "alternate_phone": null,
+      "website_url": "https://miyamaedaira-ah.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.584171%2C139.588074",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式掲載。",
+      "distance": { "value": 3.4, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 11, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": 2, "note": "公式サイト確認。" },
+      "opening_hours": { "display": "9:30–12:30、15:30–19:00。火曜午後は17:30まで、水休。土日祝も午前・午後", "structured_status": "verified_current", "note": "公式サイトの現体制。" },
+      "holidays": "祝日も午前・午後診療。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": false, "same_day": true, "reservation_note": "予約不要、来院順。" },
+      "emergency": true,
+      "night_service": { "available": false, "display": "夜間診療なし。", "admission": true, "call_first": true },
+      "medical": {
+        "veterinarian_count": 1,
+        "veterinarian_count_note": "現公式サイトで院長1名を確認。勤務医の有無は不明。",
+        "specialties": ["一般診療", "循環器診療"],
+        "hospitalization": true,
+        "surgery": true,
+        "xray": true,
+        "ultrasound": true,
+        "ct": false,
+        "mri": false,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": null, "destinations": [], "note": "高度医療への具体的紹介先は公式確認できず。" },
+        "note": "X線・超音波、手術、一般予防を公式確認。"
+      },
+      "google_rating": 4.6,
+      "google_review_count": 62,
+      "caloo_rating": 4.41,
+      "caloo_review_count": 6,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.6, "review_count": 62, "url": "https://www.google.com/maps/search/?api=1&query=35.584171%2C139.588074", "checked_at": "2026-08-24", "status": "verified", "note": "2024年9月の承継後レビューを重視。" },
+        { "source": "Calooペット", "rating": 4.41, "review_count": 6, "url": "https://pet.caloo.jp/hospitals/search/14136/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "表示値。承継前後の混在に注意。" },
+        { "source": "EPARKペットライフ", "rating": 4.5, "review_count": 3, "url": "https://petlife.asia/hospital/6097/", "checked_at": "2026-08-24", "status": "stale", "note": "2021–2023年で承継前。現体制評価には直接加点しない。" }
+      ],
+      "reputation_summary": "現体制のGoogleとCalooで説明、動物への接し方、料金説明が概ね肯定的。2024年9月の承継前レビューは別体制として重みを下げた。",
+      "positive_signals": [
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "説明の丁寧さが再現。" },
+        { "category": "animal_handling", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "子犬・猫への優しい対応の投稿。" }
+      ],
+      "negative_signals": [
+        { "category": "waiting", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "来院順による待ち時間の運用注意。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 88,
+      "emergency_score": 56,
+      "dachshund_score": 35,
+      "medical_capability_score": 58,
+      "accessibility_score": 85,
+      "overall_reference_score": 64,
+      "confidence": 62,
+      "score_note": "日常アクセスと現体制の説明評価を重視。専門画像・神経は未知。",
+      "uncertainties": ["整形・神経・IVDD対応範囲", "紹介先", "勤務医体制"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://miyamaedaira-ah.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "parking", "medical_services", "ownership_change"] },
+        { "url": "https://miyamaedaira-ah.com/clinic/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["xray", "ultrasound", "facilities"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] },
+        { "url": "https://www.google.com/maps/search/?api=1&query=35.584171%2C139.588074", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
+      ]
+    },
+    {
+      "hospital_id": "root",
+      "name": "ルート動物病院",
+      "roles": ["home_doctor", "orthopedics_neurology"],
+      "address": "神奈川県川崎市宮前区宮崎6-8-7",
+      "latitude": 35.590591,
+      "longitude": 139.581665,
+      "coordinate_precision": "block_level",
+      "phone": "044-863-5610",
+      "alternate_phone": null,
+      "website_url": "https://www.root-vc.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.590591%2C139.581665",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式掲載。",
+      "distance": { "value": 2.6, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 8, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": 2, "note": "公式アクセスページ。獣医師会の古い情報は3台で相違。" },
+      "opening_hours": { "display": "9:00–12:00、16:00–19:00。木休、日曜午後休", "structured_status": "conflicting", "note": "公式本文に日祝通常診療の表現がある一方、診療表・フッターは日曜午後休。診療表を優先し電話確認。" },
+      "holidays": "公式本文は祝日通常診療。臨時変更は要確認。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": false, "same_day": true, "reservation_note": "電話予約優先。" },
+      "emergency": true,
+      "night_service": { "available": false, "display": "院内夜間なし。川崎夜間救急センターとTRVAを案内。", "admission": true, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "公式スタッフページの人数は変動しうるため固定値化せず。",
+        "specialties": ["整形外科", "椎間板疾患", "循環器専門診療", "皮膚科専門診療"],
+        "hospitalization": true,
+        "surgery": true,
+        "xray": true,
+        "ultrasound": true,
+        "ct": false,
+        "mri": false,
+        "orthopedics": true,
+        "neurology": null,
+        "ivdd": true,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": true, "destinations": ["川崎市獣医師会 夜間動物救急センター", "TRVA動物医療センター"], "note": "夜間案内を公式確認。高度画像・JARMeCの明示は確認できず。" },
+        "note": "IVDD・整形手術を公式に確認。MRI/CTは院内なし。"
+      },
+      "google_rating": 4.1,
+      "google_review_count": 44,
+      "caloo_rating": 3.58,
+      "caloo_review_count": 1,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.1, "review_count": 44, "url": "https://www.google.com/maps/search/?api=1&query=35.590591%2C139.581665", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 3.58, "review_count": 1, "url": "https://pet.caloo.jp/hospitals/search/14136/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "件数が少ない。" }
+      ],
+      "reputation_summary": "手術・説明・地域での継続診療の肯定がある。口調や専門診療の追加費用への不満は接遇・費用として分離。医療懸念の複数ソース再現は未確認。",
+      "positive_signals": [
+        { "category": "surgery", "signal": "positive", "sources": ["Google Maps"], "replication": "single_source", "assessment": "手術と継続診療への肯定。" }
+      ],
+      "negative_signals": [
+        { "category": "owner_handling", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "説明時の口調・相性への不満。" },
+        { "category": "fee", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "専門診療の追加費用への指摘。事前見積り確認が必要。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 82,
+      "emergency_score": 50,
+      "dachshund_score": 82,
+      "medical_capability_score": 68,
+      "accessibility_score": 87,
+      "overall_reference_score": 74,
+      "confidence": 58,
+      "score_note": "近距離の公式IVDD・整形対応を高く評価。MRI/CTと神経範囲は未確認。",
+      "uncertainties": ["日曜・祝日の最新診療表", "神経科の範囲", "MRI紹介先", "リハビリ"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://www.root-vc.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "reservation", "night_referral"] },
+        { "url": "https://www.root-vc.com/medical/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["orthopedics", "ivdd", "surgery"] },
+        { "url": "https://www.root-vc.com/facility/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["xray", "ultrasound", "hospitalization"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] }
+      ]
+    },
+    {
+      "hospital_id": "suzuki",
+      "name": "鈴木ペットクリニック",
+      "roles": ["home_doctor", "holiday_backup"],
+      "address": "神奈川県川崎市宮前区神木本町2-4-1",
+      "latitude": 35.601082,
+      "longitude": 139.585907,
+      "coordinate_precision": "block_level",
+      "phone": "044-877-6745",
+      "alternate_phone": null,
+      "website_url": "https://www.suzuki-pc.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.601082%2C139.585907",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式掲載。",
+      "distance": { "value": 0.28, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 2, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "町丁目代表地点から。徒歩圏の可能性があるが徒歩時間は未計測。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": 3, "note": "公式アクセスページ。" },
+      "opening_hours": { "display": "月火水土9:30–13:00/15:00–18:00、金日祝9:30–13:00/15:00–17:00、木10:00–15:00", "structured_status": "verified_current", "note": "原則年中診療。獣医師ごとの休み・臨時変更あり。" },
+      "holidays": "祝日も9:30–13:00、15:00–17:00の掲載。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": false, "same_day": true, "reservation_note": "電話予約。" },
+      "emergency": true,
+      "night_service": { "available": false, "display": "院内夜間なし。川崎夜間救急センターを案内。", "admission": true, "call_first": true },
+      "medical": {
+        "veterinarian_count": 2,
+        "veterinarian_count_note": "現公式トップの表示。古い院長紹介記事は3名で相違するため、勤務シフトは要確認。",
+        "specialties": ["一般診療"],
+        "hospitalization": true,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": true, "destinations": [], "note": "高度医療が必要な場合の紹介方針は公式記載。具体的な主紹介先は不明。" },
+        "note": "手術室、内視鏡、犬猫別入院室を公式確認。X線・超音波の明示は今回確認できず。"
+      },
+      "google_rating": 4.2,
+      "google_review_count": 66,
+      "caloo_rating": 3.06,
+      "caloo_review_count": 8,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 66, "url": "https://www.google.com/maps/search/?api=1&query=35.601082%2C139.585907", "checked_at": "2026-08-24", "status": "verified", "note": "最近の説明・長期通院の肯定が複数。" },
+        { "source": "Calooペット", "rating": 3.06, "review_count": 8, "url": "https://pet.caloo.jp/hospitals/detail/140429", "checked_at": "2026-08-24", "status": "conflicting", "note": "検索一覧は3.06/8、詳細ページの検索キャッシュは3.13/6で不一致。レビューは古いものが多い。" }
+      ],
+      "reputation_summary": "Googleでは説明・長期通院・スタッフの記憶への肯定が複数。Caloo表示は低めで古い接遇相性の指摘がある。医療Negative Signalの複数ソース再現は確認できない。",
+      "positive_signals": [
+        { "category": "continuity", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "長期通院・予防診療の継続性。" },
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps"], "replication": "single_source", "assessment": "最近の説明とスタッフ対応の肯定。" }
+      ],
+      "negative_signals": [
+        { "category": "crowding", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "混雑の指摘。" },
+        { "category": "owner_handling", "signal": "negative", "sources": ["Calooペット"], "replication": "single_source", "assessment": "古い対話・相性面の不満。医療懸念と分離。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 85,
+      "emergency_score": 55,
+      "dachshund_score": 45,
+      "medical_capability_score": 62,
+      "accessibility_score": 98,
+      "overall_reference_score": 67,
+      "confidence": 67,
+      "score_note": "圧倒的な近さ、iPet、年中診療を評価。専門性の未知と口コミソース乖離を反映。",
+      "uncertainties": ["現在の獣医師シフト", "X線・超音波", "整形・神経・IVDD", "具体的紹介先"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://www.suzuki-pc.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "staff", "reservation"] },
+        { "url": "https://www.suzuki-pc.com/facilities.html", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hospitalization", "surgery", "equipment"] },
+        { "url": "https://www.suzuki-pc.com/access.html", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["parking", "address"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] }
+      ]
+    },
+    {
+      "hospital_id": "mullk",
+      "name": "マルクペットクリニック",
+      "roles": ["home_doctor"],
+      "address": "神奈川県川崎市宮前区菅生1-9-28-102",
+      "latitude": 35.600735,
+      "longitude": 139.553284,
+      "coordinate_precision": "block_level",
+      "phone": "044-982-1190",
+      "alternate_phone": null,
+      "website_url": "https://mullkpc2017.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.600735%2C139.553284",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式掲載。",
+      "distance": { "value": 3.7, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 11, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": 4, "note": "EPARK掲載。公式アクセスページでは位置案内を確認。" },
+      "opening_hours": { "display": "9:30–12:30、17:00–19:40。水休、火曜午後予約のみ、日祝午前", "structured_status": "verified_current", "note": "公式サイト確認。" },
+      "holidays": "日曜・祝日は午前診療。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": false, "same_day": true, "reservation_note": "火曜午後のみ予約制、通常は来院順。" },
+      "emergency": null,
+      "night_service": { "available": false, "display": "夜間診療の公式記載なし。", "admission": true, "call_first": true },
+      "medical": {
+        "veterinarian_count": 1,
+        "veterinarian_count_note": "EPARK掲載。現行シフトは要確認。",
+        "specialties": ["一般診療", "セカンドオピニオン"],
+        "hospitalization": true,
+        "surgery": true,
+        "xray": true,
+        "ultrasound": true,
+        "ct": false,
+        "mri": false,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": true, "destinations": [], "note": "対応困難時の外部検査・紹介とセカンドオピニオン方針を確認。具体先は不明。" },
+        "note": "X線・超音波・手術・入院を確認。脳手術は対象外との第三者編集情報があり、神経外科対応を肯定しない。"
+      },
+      "google_rating": 4.3,
+      "google_review_count": 29,
+      "caloo_rating": 4.36,
+      "caloo_review_count": 8,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.3, "review_count": 29, "url": "https://www.google.com/maps/search/?api=1&query=35.600735%2C139.553284", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 4.36, "review_count": 8, "url": "https://pet.caloo.jp/hospitals/search/14136/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "宮前区一覧。" },
+        { "source": "EPARKペットライフ", "rating": 4.6, "review_count": 5, "url": "https://petlife.asia/hospital/11254/", "checked_at": "2026-08-24", "status": "verified", "note": "2025年を含む公開レビュー。" }
+      ],
+      "reputation_summary": "説明、選択肢、必要時の外部検査への肯定が3ソースで見える。Googleに見落としを訴える重大な単独投稿があるが、他ソース再現はない。",
+      "positive_signals": [
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps", "Calooペット", "EPARKペットライフ"], "replication": "cross_source", "assessment": "説明と治療選択肢の提示が再現。" },
+        { "category": "second_opinion", "signal": "positive", "sources": ["Google Maps", "公式サイト"], "replication": "cross_source", "assessment": "外部検査や別選択肢の提示。" }
+      ],
+      "negative_signals": [
+        { "category": "diagnosis", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "誤嚥性肺炎の見落としを訴える単独投稿。事実認定しないが確認仮説として保持。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 79,
+      "emergency_score": 47,
+      "dachshund_score": 35,
+      "medical_capability_score": 58,
+      "accessibility_score": 86,
+      "overall_reference_score": 59,
+      "confidence": 66,
+      "score_note": "説明評価と三ソースを評価。単独獣医師体制と専門神経の未知を反映。",
+      "uncertainties": ["整形・神経・IVDD", "時間外", "具体的紹介先", "現行獣医師数"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://mullkpc2017.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "reservation", "medical_policy"] },
+        { "url": "https://mullkpc2017.com/guid4.html", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["facilities", "surgery", "hospitalization"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] },
+        { "url": "https://petlife.asia/hospital/11254/", "source_type": "review_site", "checked_at": "2026-08-24", "supports": ["reviews", "parking", "veterinarian_count"] }
+      ]
+    },
+    {
+      "hospital_id": "murayama",
+      "name": "村山動物病院",
+      "roles": ["general_candidate", "holiday_backup"],
+      "address": "神奈川県川崎市宮前区水沢2-3-11",
+      "latitude": 35.591618,
+      "longitude": 139.545105,
+      "coordinate_precision": "block_level",
+      "phone": "044-977-8829",
+      "alternate_phone": null,
+      "website_url": "https://www.murayama-ah.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.591618%2C139.545105",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式掲載。Calooの保険表示と矛盾する場合はiPet公式を優先。",
+      "distance": { "value": 4.9, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 15, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": null, "note": "隣接ノジマ駐車場を利用可。" },
+      "opening_hours": { "display": "月〜土9:00–12:00/16:00–19:00、祝9:00–12:00、日休", "structured_status": "verified_current", "note": "公式サイト。2026-09-01に『はるも動物病院』へ承継予定。" },
+      "holidays": "祝日は午前診療、午後休。",
+      "access": { "saturday": true, "sunday": false, "public_holiday": true, "web_reservation": false, "same_day": true, "reservation_note": "電話予約制。" },
+      "emergency": null,
+      "night_service": { "available": false, "display": "夜間診療の公式記載なし。", "admission": null, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "承継前で体制変更予定のため固定しない。",
+        "specialties": ["循環器", "腫瘍", "鍼灸"],
+        "hospitalization": null,
+        "surgery": null,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": true, "destinations": [], "note": "公式サイトに獣医師向け紹介状を用意。ただし主な紹介先は不明。" },
+        "note": "2026-09-01の院名・院長変更予定により、診療体制を再確認する必要がある。"
+      },
+      "google_rating": 4.2,
+      "google_review_count": 15,
+      "caloo_rating": null,
+      "caloo_review_count": 0,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 15, "url": "https://www.google.com/maps/search/?api=1&query=35.591618%2C139.545105", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": null, "review_count": 0, "url": "https://pet.caloo.jp/hospitals/search/14136/all/all", "checked_at": "2026-08-24", "status": "not_found", "note": "レビュー0件表示。" }
+      ],
+      "reputation_summary": "Googleでは親身さ、緊急時の対応、対応限界の説明が肯定されるが、件数が少なくCalooレビューもない。承継後は別体制として再評価が必要。",
+      "positive_signals": [
+        { "category": "owner_handling", "signal": "positive", "sources": ["Google Maps"], "replication": "single_source", "assessment": "親身な対応の投稿。" }
+      ],
+      "negative_signals": [],
+      "local_signals": [],
+      "home_doctor_score": 63,
+      "emergency_score": 35,
+      "dachshund_score": 20,
+      "medical_capability_score": 35,
+      "accessibility_score": 70,
+      "overall_reference_score": 43,
+      "confidence": 38,
+      "score_note": "2026-09-01の承継予定と設備未知により低信頼。",
+      "uncertainties": ["承継後の院名・獣医師・診療時間", "設備", "入院・手術", "整形・神経"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://www.murayama-ah.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "succession_notice", "specialties", "address"] },
+        { "url": "https://www.k-vma.com/member-map/murayama/", "source_type": "official_association", "checked_at": "2026-08-24", "supports": ["hours", "parking", "reservation"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] }
+      ]
+    },
+    {
+      "hospital_id": "mominoki",
+      "name": "かわさきもみの木動物病院",
+      "roles": ["home_doctor"],
+      "address": "神奈川県川崎市高津区下作延3-3-1",
+      "latitude": 35.596539,
+      "longitude": 139.600769,
+      "coordinate_precision": "block_level",
+      "phone": "044-870-5055",
+      "alternate_phone": null,
+      "website_url": "https://www.1122mominoki.net/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.596539%2C139.600769",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式の高津区検索に掲載。",
+      "distance": { "value": 1.8, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 5, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": 2, "note": "アニコム病院検索。" },
+      "opening_hours": { "display": "9:00–12:00、16:00–19:00。木・日曜午後休、祝休", "structured_status": "verified_current", "note": "公式サイト確認。" },
+      "holidays": "祝日休診。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": false, "web_reservation": false, "same_day": true, "reservation_note": "前日までの電話予約を案内。緊急時は電話相談。" },
+      "emergency": true,
+      "night_service": { "available": false, "display": "夜間診療の公式記載なし。", "admission": null, "call_first": true },
+      "medical": {
+        "veterinarian_count": 1,
+        "veterinarian_count_note": "アニコム病院検索掲載。現行体制は要確認。",
+        "specialties": ["一般診療"],
+        "hospitalization": null,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": null, "destinations": [], "note": "不明" },
+        "note": "口コミに脊椎症の診療例があるが、公式な整形・神経専門性の根拠にはしない。"
+      },
+      "google_rating": 4.4,
+      "google_review_count": 40,
+      "caloo_rating": 3.81,
+      "caloo_review_count": 3,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.4, "review_count": 40, "url": "https://www.google.com/maps/search/?api=1&query=35.596539%2C139.600769", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 3.81, "review_count": 3, "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "2025年の脊椎症レビューを含む。" }
+      ],
+      "reputation_summary": "GoogleとCalooで説明、手術、動物中心の対応が概ね肯定。費用の単独指摘はある。設備・専門の公式開示が少ない。",
+      "positive_signals": [
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "説明と動物中心の対応が再現。" }
+      ],
+      "negative_signals": [
+        { "category": "fee", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "費用への単独指摘。料金説明と分離して初診確認。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 82,
+      "emergency_score": 50,
+      "dachshund_score": 35,
+      "medical_capability_score": 52,
+      "accessibility_score": 88,
+      "overall_reference_score": 60,
+      "confidence": 58,
+      "score_note": "近さと説明の複数ソース一致を評価。専門性は未知。",
+      "uncertainties": ["設備", "入院", "整形・神経・IVDD", "紹介先"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://www.1122mominoki.net/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "reservation", "emergency_contact"] },
+        { "url": "https://www.anicom-ah.com/vh/anicom?id=471", "source_type": "directory", "checked_at": "2026-08-24", "supports": ["parking", "veterinarian_count"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141348&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] }
+      ]
+    },
+    {
+      "hospital_id": "rika",
+      "name": "りかペットクリニック",
+      "roles": ["general_candidate"],
+      "address": "神奈川県川崎市高津区久地4-11-47",
+      "latitude": 35.610554,
+      "longitude": 139.595261,
+      "coordinate_precision": "block_level",
+      "phone": "044-813-6522",
+      "alternate_phone": null,
+      "website_url": "https://rika-pet.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.610554%2C139.595261",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式の高津区検索に掲載。",
+      "distance": { "value": 4.5, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 12, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": null, "spaces": null, "note": "不明" },
+      "opening_hours": { "display": "9:00–12:00、16:00–19:00。火休、土曜午後18:00まで、日祝午前", "structured_status": "verified_current", "note": "公式サイト・獣医師会掲載。" },
+      "holidays": "日曜・祝日は午前診療。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": false, "same_day": true, "reservation_note": "電話・メール予約の案内。" },
+      "emergency": null,
+      "night_service": { "available": false, "display": "夜間診療の公式記載なし。", "admission": null, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "不明",
+        "specialties": ["一般診療"],
+        "hospitalization": null,
+        "surgery": null,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": null, "destinations": [], "note": "不明" },
+        "note": "設備・専門領域の公開確認が不足。"
+      },
+      "google_rating": 3.6,
+      "google_review_count": 25,
+      "caloo_rating": null,
+      "caloo_review_count": 0,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 3.6, "review_count": 25, "url": "https://www.google.com/maps/search/?api=1&query=35.610554%2C139.595261", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": null, "review_count": 0, "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "checked_at": "2026-08-24", "status": "not_found", "note": "レビュー0件表示。" }
+      ],
+      "reputation_summary": "最近の説明評価は肯定もあるが、Googleのみで証拠量は限定。費用と、猫を飼い主から離して処置した運用への不満は医療結果と分離した。",
+      "positive_signals": [
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps"], "replication": "single_source", "assessment": "最近の説明への肯定。" }
+      ],
+      "negative_signals": [
+        { "category": "fee", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "費用が高いとの指摘。" },
+        { "category": "animal_handling", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "処置時に飼い主と分離する運用への不満。診断・治療失敗とは分離。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 68,
+      "emergency_score": 42,
+      "dachshund_score": 25,
+      "medical_capability_score": 38,
+      "accessibility_score": 76,
+      "overall_reference_score": 48,
+      "confidence": 40,
+      "score_note": "第三レビューソースと設備情報が不足。",
+      "uncertainties": ["駐車場", "設備", "入院・手術", "専門性", "紹介先"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://rika-pet.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "reservation", "address"] },
+        { "url": "https://www.k-vma.com/member-map/rika/", "source_type": "official_association", "checked_at": "2026-08-24", "supports": ["hours", "phone"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141348&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] }
+      ]
+    },
+    {
+      "hospital_id": "tachibana",
+      "name": "たちばなペットクリニック",
+      "roles": ["general_candidate", "holiday_backup"],
+      "address": "神奈川県川崎市高津区新作4-3-17",
+      "latitude": 35.588024,
+      "longitude": 139.618866,
+      "coordinate_precision": "block_level",
+      "phone": "044-571-1788",
+      "alternate_phone": null,
+      "website_url": null,
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.588024%2C139.618866",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式の高津区検索に掲載。",
+      "distance": { "value": 4.0, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 12, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": null, "spaces": null, "note": "公式確認できず。" },
+      "opening_hours": { "display": "月火水金は予約制早朝7:15–8:00、月火水金土9:00–11:30/16:00–18:30、日祝9:00–12:30、木休", "structured_status": "verified_current", "note": "Calooと公開予約ページで確認。早朝は予約制。" },
+      "holidays": "祝日は9:00–12:30。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": true, "same_day": true, "reservation_note": "早朝・オンライン当日予約あり。直前は電話・留守番電話。" },
+      "emergency": true,
+      "night_service": { "available": false, "display": "夜間常時診療は未確認。早朝予約枠あり。", "admission": null, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "不明",
+        "specialties": ["一般診療"],
+        "hospitalization": null,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": null, "destinations": [], "note": "不明" },
+        "note": "公開口コミにミニチュアダックスの緊急手術例があるが、公式な整形・神経専門性の根拠にはしない。"
+      },
+      "google_rating": 4.2,
+      "google_review_count": 50,
+      "caloo_rating": 3.8,
+      "caloo_review_count": 2,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 50, "url": "https://www.google.com/maps/search/?api=1&query=35.588024%2C139.618866", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 3.8, "review_count": 2, "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "ミニチュアダックスの緊急手術を含む肯定投稿。" }
+      ],
+      "reputation_summary": "説明・技術への肯定がある一方、Googleに猫の検査・扱いへの医療上の懸念が複数見える。Calooは少数ながら肯定で、ソース間は乖離。",
+      "positive_signals": [
+        { "category": "surgery", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "緊急手術・技術への肯定。" }
+      ],
+      "negative_signals": [
+        { "category": "examination", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "猫の検査範囲が不十分だったとの複数投稿。医療懸念として初診前に確認。" },
+        { "category": "animal_handling", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "猫への扱いに関する申告。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 65,
+      "emergency_score": 60,
+      "dachshund_score": 35,
+      "medical_capability_score": 50,
+      "accessibility_score": 81,
+      "overall_reference_score": 56,
+      "confidence": 56,
+      "score_note": "早朝・休日アクセスを評価し、医療口コミのソース乖離を反映。",
+      "uncertainties": ["公式サイト", "設備", "入院", "専門性", "紹介先"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141348&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet", "address", "phone"] },
+        { "url": "https://vet.saisoncard.co.jp/hospital/detail/51", "source_type": "directory", "checked_at": "2026-08-24", "supports": ["early_morning_reservation", "same_day_reservation"], "note": "予約サービス公開ページ。" },
+        { "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "source_type": "review_site", "checked_at": "2026-08-24", "supports": ["hours", "reviews"] }
+      ]
+    },
+    {
+      "hospital_id": "kurata",
+      "name": "くらた動物病院",
+      "roles": ["general_candidate"],
+      "address": "神奈川県川崎市高津区二子5-3-6",
+      "latitude": 35.602341,
+      "longitude": 139.61763,
+      "coordinate_precision": "block_level",
+      "phone": "044-814-5521",
+      "alternate_phone": null,
+      "website_url": "https://kurata-vet.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.602341%2C139.617630",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式の高津区検索に掲載。",
+      "distance": { "value": 4.3, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 14, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": null, "spaces": null, "note": "不明" },
+      "opening_hours": { "display": "月火木土祝9:30–11:30、月火木土14:00–17:00。水金日休、祝日午後休", "structured_status": "verified_current", "note": "完全予約制。" },
+      "holidays": "祝日は午前診療。",
+      "access": { "saturday": true, "sunday": false, "public_holiday": true, "web_reservation": false, "same_day": false, "reservation_note": "完全予約制。" },
+      "emergency": false,
+      "night_service": { "available": false, "display": "夜間診療なし。", "admission": null, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "不明",
+        "specialties": ["エキゾチックアニマル", "一般診療"],
+        "hospitalization": null,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": null, "destinations": [], "note": "不明" },
+        "note": "評判量は多いがエキゾチックアニマル症例の比重が高く、犬のホーム適性へそのまま転用しない。"
+      },
+      "google_rating": 4.4,
+      "google_review_count": 109,
+      "caloo_rating": 4.2,
+      "caloo_review_count": 31,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.4, "review_count": 109, "url": "https://www.google.com/maps/search/?api=1&query=35.602341%2C139.617630", "checked_at": "2026-08-24", "status": "verified", "note": "エキゾチック症例が多い。" },
+        { "source": "Calooペット", "rating": 4.2, "review_count": 31, "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "高津区内で件数が多い。" }
+      ],
+      "reputation_summary": "GoogleとCalooで具体的な診療・説明の肯定が多いが、エキゾチック症例中心のためダックス適性の証拠としては割り引く。",
+      "positive_signals": [
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "詳細な説明と診療への肯定が再現。" }
+      ],
+      "negative_signals": [],
+      "local_signals": [],
+      "home_doctor_score": 55,
+      "emergency_score": 20,
+      "dachshund_score": 20,
+      "medical_capability_score": 55,
+      "accessibility_score": 60,
+      "overall_reference_score": 40,
+      "confidence": 85,
+      "score_note": "評判信頼性は高いが、犬・ダックスの役割適合と当日アクセスを分離評価。",
+      "uncertainties": ["犬の診療比率", "犬の整形・神経", "設備", "入院", "紹介先"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://kurata-vet.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "reservation", "species"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141348&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] },
+        { "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "source_type": "review_site", "checked_at": "2026-08-24", "supports": ["reviews", "hours"] }
+      ]
+    },
+    {
+      "hospital_id": "tayama",
+      "name": "田山獣医科病院",
+      "roles": ["home_doctor", "holiday_backup"],
+      "address": "神奈川県川崎市高津区下作延1-7-1",
+      "latitude": 35.601646,
+      "longitude": 139.606827,
+      "coordinate_precision": "block_level",
+      "phone": "044-822-2872",
+      "alternate_phone": null,
+      "website_url": "https://tayama-vet.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.601646%2C139.606827",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式掲載。Calooの保険表示と矛盾する場合はiPet公式を優先。",
+      "distance": { "value": 2.3, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 10, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": null, "note": "公式アクセス情報で駐車場あり。台数不明。" },
+      "opening_hours": { "display": "月9–12/14–19、火9–12/17–20、水休、木金9–12/14–19、土9–12/16–19、日9–13、祝9–12/14–17", "structured_status": "partial", "note": "通常表に加えて臨時休診・手術による変更が多く、公式NEWSの直前確認が必要。" },
+      "holidays": "祝日診療あり。ただし臨時休診告知あり。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": false, "same_day": true, "reservation_note": "電話確認推奨。" },
+      "emergency": true,
+      "night_service": { "available": false, "display": "院内夜間なし。公式サイトでTRVAを案内。", "admission": null, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "複数担当医の告知あり。現行人数は固定せず。",
+        "specialties": ["一般診療", "地域一次診療"],
+        "hospitalization": true,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": true, "destinations": ["TRVA動物医療センター"], "note": "公式サイトに案内あり。JARMeC連携は不明。" },
+        "note": "手術・検査による診療時間変更の告知あり。設備詳細は不明。"
+      },
+      "google_rating": 4.5,
+      "google_review_count": 51,
+      "caloo_rating": 3.87,
+      "caloo_review_count": 3,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.5, "review_count": 51, "url": "https://www.google.com/maps/search/?api=1&query=35.601646%2C139.606827", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 3.87, "review_count": 3, "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "件数は少ない。" }
+      ],
+      "reputation_summary": "休日の急な受入、説明、長期の地域診療への肯定が複数ソースで概ね一致。臨時時間変更は運用上の注意。",
+      "positive_signals": [
+        { "category": "emergency", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "休日・急な症状への受入の肯定。" },
+        { "category": "owner_handling", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "飼い主への支援と説明。" }
+      ],
+      "negative_signals": [],
+      "local_signals": [],
+      "home_doctor_score": 81,
+      "emergency_score": 62,
+      "dachshund_score": 35,
+      "medical_capability_score": 50,
+      "accessibility_score": 91,
+      "overall_reference_score": 62,
+      "confidence": 61,
+      "score_note": "休日アクセスと地域継続性を評価。専門設備は未知。",
+      "uncertainties": ["設備", "整形・神経・IVDD", "入院詳細", "JARMeC紹介"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://tayama-vet.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "staff", "temporary_closures", "referral"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141348&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] },
+        { "url": "https://www.google.com/maps/search/?api=1&query=35.601646%2C139.606827", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
+      ]
+    },
+    {
+      "hospital_id": "mizonokuchi",
+      "name": "溝の口犬猫病院",
+      "roles": ["general_candidate"],
+      "address": "神奈川県川崎市高津区溝口4-18-30",
+      "latitude": 35.604385,
+      "longitude": 139.614517,
+      "coordinate_precision": "block_level",
+      "phone": "044-819-7927",
+      "alternate_phone": null,
+      "website_url": "https://mizonokuchi-ah.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.604385%2C139.614517",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式の高津区検索に掲載。",
+      "distance": { "value": 3.6, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 11, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": 2, "note": "公式予約ページ。近隣有料駐車場も案内。" },
+      "opening_hours": { "display": "9:00–13:00、16:00–19:00。木休、日曜午後休、祝休", "structured_status": "verified_current", "note": "公式サイト。" },
+      "holidays": "祝日休診。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": false, "web_reservation": true, "same_day": true, "reservation_note": "オンライン予約。緊急症状は表示枠外も電話相談。" },
+      "emergency": true,
+      "night_service": { "available": false, "display": "夜間診療の公式記載なし。", "admission": null, "call_first": true },
+      "medical": {
+        "veterinarian_count": 1,
+        "veterinarian_count_note": "公式スタッフ紹介で院長1名。退職告知後の勤務医は確認できず。",
+        "specialties": ["犬猫一般診療", "予防医学"],
+        "hospitalization": null,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": null, "destinations": [], "note": "不明" },
+        "note": "設備・入院・専門領域は公式確認不足。"
+      },
+      "google_rating": 4.2,
+      "google_review_count": 91,
+      "caloo_rating": 3.32,
+      "caloo_review_count": 7,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 91, "url": "https://www.google.com/maps/search/?api=1&query=35.604385%2C139.614517", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 3.32, "review_count": 7, "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "2025年の眼科治療に関する低評価を含む。" },
+        { "source": "Yahoo!マップ", "rating": null, "review_count": null, "url": "https://map.yahoo.co.jp/v3/place/_NkdY6VDX8k", "checked_at": "2026-08-24", "status": "not_accessible", "note": "施設ページのみ確認。比較可能な口コミ値は取得せず。" }
+      ],
+      "reputation_summary": "説明・Web予約の肯定がある一方、診断・投薬・眼科治療への懸念がGoogleとCalooで同方向に見える。接遇不満とは別に医療Negative Signalとして保持。",
+      "positive_signals": [
+        { "category": "reservation", "signal": "positive", "sources": ["Google Maps", "公式予約ページ"], "replication": "cross_source", "assessment": "Web予約の利便性。" },
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps"], "replication": "single_source", "assessment": "説明への肯定も複数ある。" }
+      ],
+      "negative_signals": [
+        { "category": "diagnosis", "signal": "negative", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "検査・診断・治療方針が不十分だったとの同方向申告。個別事実は認定しないが選定上の確認項目。" },
+        { "category": "reception", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "受付・バックヤードの発言に関する接遇不満。医療懸念と分離。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 65,
+      "emergency_score": 45,
+      "dachshund_score": 30,
+      "medical_capability_score": 55,
+      "accessibility_score": 78,
+      "overall_reference_score": 52,
+      "confidence": 73,
+      "score_note": "医療Negative Signalの複数ソース再現によりホーム適性を抑制。",
+      "uncertainties": ["設備", "入院", "整形・神経・IVDD", "紹介先"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://mizonokuchi-ah.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "staff", "preventive_care"] },
+        { "url": "https://pet.apokul.jp/web/403/reservations/add", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["web_reservation", "parking", "same_day_emergency"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141348&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] }
+      ]
+    },
+    {
+      "hospital_id": "watanabe",
+      "name": "ワタナベ獣医科病院",
+      "roles": ["home_doctor", "holiday_backup"],
+      "address": "神奈川県川崎市高津区下作延3-14-37",
+      "latitude": 35.59259,
+      "longitude": 139.600555,
+      "coordinate_precision": "block_level",
+      "phone": "044-877-6106",
+      "alternate_phone": null,
+      "website_url": "https://jakobi5200.wixsite.com/watanabe-vet",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.592590%2C139.600555",
+      "ipet_supported": true,
+      "ipet_note": "iPet公式の高津区検索に掲載。",
+      "distance": { "value": 2.4, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 9, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": null, "spaces": null, "note": "不明" },
+      "opening_hours": { "display": "9:15–12:15、13:30–18:15。水休、日祝午前", "structured_status": "verified_current", "note": "iPet・公式サイト掲載。" },
+      "holidays": "日曜・祝日は午前診療。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": null, "same_day": null, "reservation_note": "予約方法は要確認。" },
+      "emergency": null,
+      "night_service": { "available": false, "display": "夜間診療の公式記載なし。", "admission": null, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "不明",
+        "specialties": ["一般診療"],
+        "hospitalization": null,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": null, "destinations": [], "note": "不明" },
+        "note": "設備・専門領域の公開確認が不足。"
+      },
+      "google_rating": 4.3,
+      "google_review_count": 33,
+      "caloo_rating": 3.62,
+      "caloo_review_count": 4,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.3, "review_count": 33, "url": "https://www.google.com/maps/search/?api=1&query=35.592590%2C139.600555", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 3.62, "review_count": 4, "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "高津区一覧。" }
+      ],
+      "reputation_summary": "長期通院、子犬時からの診療、説明への肯定が中心。Caloo件数は少なく、専門性判断には不足。",
+      "positive_signals": [
+        { "category": "continuity", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "子犬・予防からの長期診療。" }
+      ],
+      "negative_signals": [],
+      "local_signals": [],
+      "home_doctor_score": 79,
+      "emergency_score": 43,
+      "dachshund_score": 35,
+      "medical_capability_score": 50,
+      "accessibility_score": 81,
+      "overall_reference_score": 57,
+      "confidence": 55,
+      "score_note": "近さと継続性を評価。設備・専門は未知。",
+      "uncertainties": ["駐車場", "設備", "入院", "専門性", "紹介先"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://jakobi5200.wixsite.com/watanabe-vet", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "address", "phone"] },
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141348&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet"] },
+        { "url": "https://www.google.com/maps/search/?api=1&query=35.592590%2C139.600555", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
+      ]
+    },
+    {
+      "hospital_id": "jarmec-kawasaki",
+      "name": "日本動物高度医療センター 川崎本院",
+      "roles": ["orthopedics_neurology", "secondary_advanced"],
+      "address": "神奈川県川崎市高津区久地2-5-8",
+      "latitude": 35.612053,
+      "longitude": 139.61171,
+      "coordinate_precision": "block_level",
+      "phone": "044-850-1280",
+      "alternate_phone": null,
+      "website_url": "https://jarmec.jp/kawasaki/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.612053%2C139.611710",
+      "ipet_supported": false,
+      "ipet_note": "iPet公式の高津区窓口精算検索には掲載なし。二次診療のため保険請求方法を紹介時に確認。",
+      "distance": { "value": 4.6, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 14, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": null, "note": "公式アクセスで駐車案内あり。台数未固定。" },
+      "opening_hours": { "display": "年中無休。診療科別の予約時間は紹介時に確定", "structured_status": "verified_current", "note": "完全予約制・一次病院からの紹介制。診療科により休診日あり。" },
+      "holidays": "年中無休だが診療科別休診あり。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": false, "same_day": false, "reservation_note": "かかりつけ病院から紹介・予約。飼い主の直接予約不可。" },
+      "emergency": false,
+      "night_service": { "available": false, "display": "公式FAQで救急外来なし。", "admission": true, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "診療科別の多数体制。変動するため固定値化せず。",
+        "specialties": ["脳神経科", "整形科", "画像診断科", "集中治療科", "麻酔科", "腫瘍科"],
+        "hospitalization": true,
+        "surgery": true,
+        "xray": true,
+        "ultrasound": true,
+        "ct": true,
+        "mri": true,
+        "orthopedics": true,
+        "neurology": true,
+        "ivdd": true,
+        "rehabilitation": null,
+        "puppy_care": false,
+        "vaccination": false,
+        "neutering": false,
+        "referral": { "officially_stated": true, "destinations": ["JARMeCグループ内の専門診療科"], "note": "一次病院からの紹介を前提とする二次診療。" },
+        "note": "CT、MRI、X線、超音波、手術室、犬猫入院室、ICU、ER設備を公式確認。救急外来は行わない。"
+      },
+      "google_rating": 4.1,
+      "google_review_count": 404,
+      "caloo_rating": 3.6,
+      "caloo_review_count": 36,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.1, "review_count": 404, "url": "https://www.google.com/maps/search/?api=1&query=35.612053%2C139.611710", "checked_at": "2026-08-24", "status": "verified", "note": "高度・重症紹介例のケースミックスに注意。" },
+        { "source": "Calooペット", "rating": 3.6, "review_count": 36, "url": "https://pet.caloo.jp/hospitals/search/14134/all/all", "checked_at": "2026-08-24", "status": "verified", "note": "高度治療の肯定と説明・費用・治療結果の否定が混在。" }
+      ],
+      "reputation_summary": "IVDD、MRI、手術、高度治療の肯定が多数ある一方、説明・費用・治療結果の否定も両ソースにある。重症紹介例の結果を一次病院と単純比較しない。",
+      "positive_signals": [
+        { "category": "surgery", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "高度手術・IVDD治療への肯定が再現。" },
+        { "category": "examination", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "MRI・CT等の高度検査。" }
+      ],
+      "negative_signals": [
+        { "category": "explanation", "signal": "negative", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "説明・コミュニケーションへの不満も存在。" },
+        { "category": "high_cost", "signal": "negative", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "高額費用の指摘。二次診療の検査・治療内容とともに見積り確認が必要。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 10,
+      "emergency_score": 5,
+      "dachshund_score": 100,
+      "medical_capability_score": 100,
+      "accessibility_score": 68,
+      "overall_reference_score": 51,
+      "confidence": 91,
+      "score_note": "高度医療能力は最大評価。ホーム・救急外来ではないため役割スコアは低い。",
+      "uncertainties": ["紹介時の最短予約", "診療科別休診", "iPet保険請求方法", "リハビリ連携"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://jarmec.jp/kawasaki/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["secondary_care", "departments", "address", "referral_required"] },
+        { "url": "https://jarmec.jp/faq/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["no_emergency_outpatient", "appointment"] },
+        { "url": "https://jarmec.jp/wpcms/wp-content/uploads/2025/02/JARMeC-NEWS-Vol.19.pdf", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["ct", "mri", "xray", "ultrasound", "departments"] },
+        { "url": "https://jarmec.jp/referral/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["referral_process"] }
+      ]
+    },
+    {
+      "hospital_id": "kawasaki-night",
+      "name": "川崎市獣医師会 夜間動物救急センター",
+      "roles": ["night_emergency"],
+      "address": "神奈川県川崎市高津区久地2-5-8",
+      "latitude": 35.612053,
+      "longitude": 139.61171,
+      "coordinate_precision": "block_level",
+      "phone": "044-811-9950",
+      "alternate_phone": "044-819-8571",
+      "website_url": "https://kvma9950.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.612053%2C139.611710",
+      "ipet_supported": false,
+      "ipet_note": "iPet公式の高津区窓口精算検索に掲載なし。",
+      "distance": { "value": 4.6, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 14, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "JARMeCと同一所在地。確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": null, "note": "公式案内。" },
+      "opening_hours": { "display": "毎日20:00–23:30最終受付", "structured_status": "verified_current", "note": "完全予約制。必ず受診前に電話。" },
+      "holidays": "年中無休の夜間枠。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": false, "same_day": true, "reservation_note": "電話による完全予約。" },
+      "emergency": true,
+      "night_service": { "available": true, "display": "20:00–23:30最終受付。入院不可で診療後は必ず退院。", "admission": false, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "当番体制。人数は日ごとに変動。",
+        "specialties": ["夜間初期救急"],
+        "hospitalization": false,
+        "surgery": true,
+        "xray": null,
+        "ultrasound": null,
+        "ct": false,
+        "mri": false,
+        "orthopedics": false,
+        "neurology": false,
+        "ivdd": false,
+        "rehabilitation": false,
+        "puppy_care": true,
+        "vaccination": false,
+        "neutering": false,
+        "referral": { "officially_stated": true, "destinations": ["かかりつけ動物病院"], "note": "検査結果と診療内容を翌日かかりつけへ引継ぐ。" },
+        "note": "応急処置・検査・場合により緊急手術。継続治療・入院は行わない。"
+      },
+      "google_rating": 4.2,
+      "google_review_count": 60,
+      "caloo_rating": null,
+      "caloo_review_count": 0,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 60, "url": "https://www.google.com/maps/search/?api=1&query=35.612053%2C139.611710", "checked_at": "2026-08-24", "status": "verified", "note": "JARMeCと同一地点のため施設名表示を確認して閲覧。" },
+        { "source": "Calooペット", "rating": null, "review_count": 0, "url": null, "checked_at": "2026-08-24", "status": "not_found", "note": "施設単独の比較可能ページを確認できず。" }
+      ],
+      "reputation_summary": "電話対応、異物・急変処置、説明、翌日のかかりつけ引継ぎが肯定的。入院不可は不満ではなく施設の公式役割制約。",
+      "positive_signals": [
+        { "category": "emergency", "signal": "positive", "sources": ["Google Maps", "公式サイト"], "replication": "cross_source", "assessment": "夜間の初期救急と引継ぎ。" },
+        { "category": "phone", "signal": "positive", "sources": ["Google Maps"], "replication": "single_source", "assessment": "受診前電話の案内・対応への肯定。" }
+      ],
+      "negative_signals": [],
+      "local_signals": [],
+      "home_doctor_score": 5,
+      "emergency_score": 92,
+      "dachshund_score": 20,
+      "medical_capability_score": 55,
+      "accessibility_score": 66,
+      "overall_reference_score": 40,
+      "confidence": 65,
+      "score_note": "夜間救急役割を高評価。入院不可・23:30終了を明確に減点。",
+      "uncertainties": ["当日の受入余力", "検査設備の詳細", "緊急手術の適応範囲"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://kvma9950.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "call_first", "no_admission", "payment", "emergency_scope"] },
+        { "url": "https://www.k-vma.com/category/overview/", "source_type": "official_association", "checked_at": "2026-08-24", "supports": ["hours", "phone_consultation", "handoff"] },
+        { "url": "https://www.google.com/maps/search/?api=1&query=35.612053%2C139.611710", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
+      ]
+    },
+    {
+      "hospital_id": "amc",
+      "name": "アニマルメディカルセンター",
+      "roles": ["night_emergency", "secondary_advanced"],
+      "address": "神奈川県川崎市中原区新丸子東2-890-10",
+      "latitude": 35.577827,
+      "longitude": 139.66391,
+      "coordinate_precision": "block_level",
+      "phone": "044-411-9999",
+      "alternate_phone": "044-433-5155",
+      "website_url": "https://amc-japan.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.577827%2C139.663910",
+      "ipet_supported": null,
+      "ipet_note": "今回のiPet宮前区・高津区抽出範囲外。窓口精算は受診前確認。",
+      "distance": { "value": 10.3, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 29, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。夜間交通では変動する。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": 10, "note": "アニコム病院検索。受診前に利用条件確認。" },
+      "opening_hours": { "display": "24時間365日", "structured_status": "verified_current", "note": "公式サイト。夜間は必ず電話で受入確認。" },
+      "holidays": "24時間365日。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": null, "same_day": true, "reservation_note": "夜間・急患は電話確認。" },
+      "emergency": true,
+      "night_service": { "available": true, "display": "24時間365日、入院・24時間看護対応", "admission": true, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "複数科・複数獣医師。現行人数は固定せず。",
+        "specialties": ["救急", "外科", "腫瘍", "リハビリ", "総合診療"],
+        "hospitalization": true,
+        "surgery": true,
+        "xray": true,
+        "ultrasound": true,
+        "ct": null,
+        "mri": null,
+        "orthopedics": null,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": true,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": true, "destinations": [], "note": "一次から二次までの診療を掲げる。MRIは古い口コミで他施設紹介例があるが現況不明。" },
+        "note": "24時間看護、入院、手術、X線、超音波、リハビリを確認。CT/MRIは不明。"
+      },
+      "google_rating": 3.0,
+      "google_review_count": 272,
+      "caloo_rating": 4.19,
+      "caloo_review_count": 13,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 3.0, "review_count": 272, "url": "https://www.google.com/maps/search/?api=1&query=35.577827%2C139.663910", "checked_at": "2026-08-24", "status": "verified", "note": "電話・救急・X線等の言及が多く、肯否が混在。" },
+        { "source": "Calooペット", "rating": 4.19, "review_count": 13, "url": "https://pet.caloo.jp/hospitals/detail/140378/reviews/9501", "checked_at": "2026-08-24", "status": "verified", "note": "Googleと大きく乖離。古いレビューを含む。" },
+        { "source": "Doctors File", "rating": null, "review_count": 3, "url": "https://animal.doctorsfile.jp/ah/15596/dr/", "checked_at": "2026-08-24", "status": "verified", "note": "2025–2026年の公開受診経験を含む。" }
+      ],
+      "reputation_summary": "夜間救命、入院、検査の肯定がある一方、Googleでは電話・待ち時間・費用と医療上の不満も多い。Caloo・Doctors Fileは肯定寄りで大きなソース乖離。",
+      "positive_signals": [
+        { "category": "emergency", "signal": "positive", "sources": ["Google Maps", "Calooペット", "Doctors File"], "replication": "cross_source", "assessment": "夜間・重症の救命、手術、入院への肯定。" },
+        { "category": "examination", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "検査設備・結果説明への肯定もある。" }
+      ],
+      "negative_signals": [
+        { "category": "phone", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "電話対応への不満が複数。緊急時はつながらない場合の代替先を持つ。" },
+        { "category": "high_cost", "signal": "negative", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "費用負担の指摘。受入時に概算を確認。" },
+        { "category": "treatment", "signal": "negative", "sources": ["Google Maps"], "replication": "single_source", "assessment": "医療結果への否定も存在。個別事実は認定せず、緊急補完先として慎重運用。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 45,
+      "emergency_score": 100,
+      "dachshund_score": 65,
+      "medical_capability_score": 90,
+      "accessibility_score": 48,
+      "overall_reference_score": 68,
+      "confidence": 80,
+      "score_note": "24時間・入院を最大評価。距離とソース乖離、専門画像不明を反映。",
+      "uncertainties": ["iPet", "CT/MRI", "整形・神経・IVDD体制", "公式電話番号と外部番号の相違"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://amc-japan.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["24_hours", "hospitalization", "surgery", "rehabilitation", "phone"] },
+        { "url": "https://pet.caloo.jp/hospitals/detail/140378/reviews/9501", "source_type": "review_site", "checked_at": "2026-08-24", "supports": ["reviews", "hours", "phone"] },
+        { "url": "https://animal.doctorsfile.jp/ah/15596/dr/", "source_type": "review_site", "checked_at": "2026-08-24", "supports": ["recent_reviews"] }
+      ]
+    },
+    {
+      "hospital_id": "yokohama-aoba",
+      "name": "横浜青葉どうぶつ病院",
+      "roles": ["holiday_backup", "orthopedics_neurology"],
+      "address": "神奈川県横浜市都筑区中川中央1-8-3",
+      "latitude": 35.552036,
+      "longitude": 139.577271,
+      "coordinate_precision": "block_level",
+      "phone": "045-910-5500",
+      "alternate_phone": null,
+      "website_url": "https://www.yokohama-aoba.jp/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.552036%2C139.577271",
+      "ipet_supported": null,
+      "ipet_note": "今回のiPet宮前区・高津区抽出範囲外。受診前確認。",
+      "distance": { "value": 8.2, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 22, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": null, "note": "公式アクセスで駐車案内あり。" },
+      "opening_hours": { "display": "月火水金土9:00–12:00/15:00–19:00、木9:00–12:00、日祝9:00–17:00", "structured_status": "verified_current", "note": "公式サイト。" },
+      "holidays": "日曜・祝日は9:00–17:00。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": true, "same_day": true, "reservation_note": "オンライン順番受付。救急は電話・来院相談。" },
+      "emergency": true,
+      "night_service": { "available": false, "display": "診療時間外の常設夜間は確認できず。", "admission": true, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "複数獣医師。現行人数は固定せず。",
+        "specialties": ["整形外科", "軟部外科", "循環器"],
+        "hospitalization": true,
+        "surgery": true,
+        "xray": true,
+        "ultrasound": true,
+        "ct": null,
+        "mri": null,
+        "orthopedics": true,
+        "neurology": null,
+        "ivdd": null,
+        "rehabilitation": null,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": true, "destinations": [], "note": "専門施設との連携方針あり。具体先は要確認。" },
+        "note": "整形外科・手術を公式確認。CT/MRI、神経内科、IVDDの具体範囲は不明。"
+      },
+      "google_rating": 4.7,
+      "google_review_count": 121,
+      "caloo_rating": 4.27,
+      "caloo_review_count": 28,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.7, "review_count": 121, "url": "https://www.google.com/maps/search/?api=1&query=35.552036%2C139.577271", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 4.27, "review_count": 28, "url": "https://pet.caloo.jp/hospitals/detail/140987", "checked_at": "2026-08-24", "status": "verified", "note": "整形・手術・説明の投稿が複数。" }
+      ],
+      "reputation_summary": "GoogleとCalooで説明、整形・手術、治療選択肢の肯定が一致。待ち時間・順番受付への不満は主に運用面。",
+      "positive_signals": [
+        { "category": "surgery", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "整形・外科手術への肯定が再現。" },
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "説明と選択肢提示。" }
+      ],
+      "negative_signals": [
+        { "category": "waiting", "signal": "negative", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "混雑・順番待ちの運用面。医療品質と分離。" }
+      ],
+      "local_signals": [],
+      "home_doctor_score": 83,
+      "emergency_score": 65,
+      "dachshund_score": 85,
+      "medical_capability_score": 75,
+      "accessibility_score": 55,
+      "overall_reference_score": 76,
+      "confidence": 88,
+      "score_note": "整形・手術の複数ソース一致を評価。距離と高度画像不明を反映。",
+      "uncertainties": ["iPet", "CT/MRI", "神経・IVDD範囲", "夜間"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://www.yokohama-aoba.jp/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "online_queue", "emergency", "orthopedics", "surgery"] },
+        { "url": "https://pet.caloo.jp/hospitals/detail/140987", "source_type": "review_site", "checked_at": "2026-08-24", "supports": ["reviews", "rating", "review_count"] },
+        { "url": "https://www.google.com/maps/search/?api=1&query=35.552036%2C139.577271", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
+      ]
+    },
+    {
+      "hospital_id": "aoba-amc",
+      "name": "青葉どうぶつ医療センター",
+      "roles": ["home_doctor", "holiday_backup", "night_emergency", "orthopedics_neurology"],
+      "address": "神奈川県横浜市青葉区桂台1-2-10",
+      "latitude": 35.548195,
+      "longitude": 139.507248,
+      "coordinate_precision": "block_level",
+      "phone": "045-500-9033",
+      "alternate_phone": null,
+      "website_url": "https://aoba-amc.com/",
+      "google_maps_url": "https://www.google.com/maps/search/?api=1&query=35.548195%2C139.507248",
+      "ipet_supported": true,
+      "ipet_note": "公式サイトでiPet窓口精算対応を確認。",
+      "distance": { "value": 13.2, "unit": "km", "method": "google_maps_driving_route", "measured_at": "2026-08-24" },
+      "travel_time": { "value": 22, "unit": "minute", "method": "google_maps_driving_route", "traffic_note": "確認時点の表示。", "measured_at": "2026-08-24" },
+      "parking": { "available": true, "spaces": 5, "note": "公式アクセス。" },
+      "opening_hours": { "display": "日中365日9:00–12:00/16:00–20:00。夜間は金土日月22:00–翌6:00", "structured_status": "verified_current", "note": "夜間診療は2026-05-08開始。曜日限定で24時間毎日ではない。" },
+      "holidays": "日中365日診療。",
+      "access": { "saturday": true, "sunday": true, "public_holiday": true, "web_reservation": true, "same_day": true, "reservation_note": "予約制・Web案内あり。救急は電話確認。" },
+      "emergency": true,
+      "night_service": { "available": true, "display": "金・土・日・月22:00–翌6:00。曜日限定。", "admission": true, "call_first": true },
+      "medical": {
+        "veterinarian_count": null,
+        "veterinarian_count_note": "複数獣医師。現行人数は固定せず。",
+        "specialties": ["整形外科", "神経科", "腫瘍科", "救急", "一般内科"],
+        "hospitalization": true,
+        "surgery": true,
+        "xray": true,
+        "ultrasound": true,
+        "ct": null,
+        "mri": null,
+        "orthopedics": true,
+        "neurology": true,
+        "ivdd": true,
+        "rehabilitation": true,
+        "puppy_care": true,
+        "vaccination": true,
+        "neutering": true,
+        "referral": { "officially_stated": true, "destinations": ["大学病院", "専門施設", "外部MRI/CT施設"], "note": "開頭・放射線治療や高度画像が必要な場合の紹介を公式記載。" },
+        "note": "IVDDの内外科、整形、神経、手術、入院、リハビリを公式確認。MRI/CTは必要時に外部検査を勧める場合がある。"
+      },
+      "google_rating": 4.8,
+      "google_review_count": 78,
+      "caloo_rating": 4.49,
+      "caloo_review_count": 53,
+      "review_sources": [
+        { "source": "Google Maps", "rating": 4.8, "review_count": 78, "url": "https://www.google.com/maps/search/?api=1&query=35.548195%2C139.507248", "checked_at": "2026-08-24", "status": "verified", "note": "公開表示値。" },
+        { "source": "Calooペット", "rating": 4.49, "review_count": 53, "url": "https://pet.caloo.jp/hospitals/detail/141184/reviews", "checked_at": "2026-08-24", "status": "verified", "note": "2026年の前十字靭帯、2025年の骨折・関節・入院等を含む。" }
+      ],
+      "reputation_summary": "説明、整形・神経手術、入院、救急、リハビリの肯定がGoogleとCalooで強く再現。施設歴と夜間運用歴は古参病院より短い。",
+      "positive_signals": [
+        { "category": "surgery", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "前十字靭帯、骨折、IVDD等の手術・回復への肯定。" },
+        { "category": "explanation", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "不明点も含めた説明、相談しやすさ。" },
+        { "category": "emergency", "signal": "positive", "sources": ["Google Maps", "Calooペット"], "replication": "cross_source", "assessment": "急変・予約外受入と入院への肯定。" }
+      ],
+      "negative_signals": [],
+      "local_signals": [],
+      "home_doctor_score": 88,
+      "emergency_score": 90,
+      "dachshund_score": 95,
+      "medical_capability_score": 88,
+      "accessibility_score": 70,
+      "overall_reference_score": 88,
+      "confidence": 87,
+      "score_note": "整形・神経・IVDD・入院・曜日限定夜間と複数ソース一致を評価。距離と院内CT/MRI不明を反映。",
+      "uncertainties": ["院内CT/MRI", "夜間の当日受入余力", "夜間曜日の将来変更", "高度画像時の搬送手順"],
+      "last_verified_at": "2026-08-24T22:30:00+09:00",
+      "source_urls": [
+        { "url": "https://aoba-amc.com/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["hours", "365_days", "iPet", "medical_services"] },
+        { "url": "https://aoba-amc.com/medical/shinnkeika/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["neurology", "ivdd", "external_mri_ct_referral", "surgery"] },
+        { "url": "https://aoba-amc.com/clinic/director-introduction/", "source_type": "official_hospital", "checked_at": "2026-08-24", "supports": ["orthopedics", "neurology", "surgery_experience"] },
+        { "url": "https://pet.caloo.jp/hospitals/detail/141184/reviews", "source_type": "review_site", "checked_at": "2026-08-24", "supports": ["reviews", "rating", "review_count"] }
+      ]
+    }
+  ],
+  "screened_out": [
+    {
+      "hospital_id": "ishida-dental-saginuma",
+      "name": "石田ようこ犬と猫の歯科クリニック 鷺沼院",
+      "reason": "iPet対応の専門施設として保持するが、今回のホーム・緊急・整形神経・高度医療の主目的とは異なる歯科専門のため主候補20院から除外。神木本町2丁目代表地点から約15分・5.8km、Google 4.8/38（2026-08-24表示）。",
+      "source_urls": [
+        { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet", "address", "phone"] },
+        { "url": "https://www.google.com/maps/search/?api=1&query=35.573116%2C139.578140", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
+      ]
+    }
+  ]
+}
+</script>
+  <script id="reviewData" type="application/json">{
+  "dataset_id": "popio-vet-review-signals",
+  "generated_at": "2026-08-24T22:30:00+09:00",
+  "policy": {
+    "full_text_stored": false,
+    "reviewer_identifiers_stored": false,
+    "collection_method": "公開画面で閲覧可能な範囲を人手相当で確認し、短い要約と分類のみ保存",
+    "negative_classes": {
+      "A": "接遇・サービス・待ち時間・電話・費用等",
+      "B": "診断・治療・検査・手術・緊急対応等の医療上の懸念"
+    },
+    "warning": "口コミは事実認定ではなく利用者の申告。単独の重大申告は仮説として保持し、複数ソース再現を別フィールドで評価する。"
+  },
+  "hospital_review_analyses": [
+    {
+      "hospital_id": "miyamaedaira",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.6, "review_count": 62, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.584171%2C139.588074" },
+        { "source": "Calooペット", "rating": 4.41, "review_count": 6, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14136/all/all" },
+        { "source": "EPARKペットライフ", "rating": 4.5, "review_count": 3, "checked_at": "2026-08-24", "url": "https://petlife.asia/hospital/6097/" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "2024年9月の承継後として表示された最近の投稿群", "sentiment": "positive", "categories": ["explanation", "animal_handling", "fee_explanation", "holiday_access"], "negative_class": null, "summary": "現院長の説明、動物への優しい対応、料金の納得感、土日祝の通いやすさを評価する投稿が複数。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": null, "date_note": "一覧・詳細に掲載された6件", "sentiment": "positive", "categories": ["puppy_care", "surgery", "explanation"], "negative_class": null, "summary": "子犬からの継続診療や避妊手術、説明への肯定。承継前後の混在可能性に注意。", "capture": "paraphrase_only" },
+        { "source": "EPARKペットライフ", "posted_at": "2023", "date_note": "2021–2023年の3件", "sentiment": "positive", "categories": ["explanation", "animal_handling"], "negative_class": null, "summary": "旧体制への肯定。承継前のため現院長評価には直接使わない。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "説明・動物への接し方", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "現体制の公開情報として比較的強い。ただし第三ソースは承継前。" }
+      ]
+    },
+    {
+      "hospital_id": "suzuki",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 66, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.601082%2C139.585907" },
+        { "source": "Calooペット", "rating": 3.06, "review_count": 8, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/detail/140429" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "最近・関連度順の公開投稿", "sentiment": "positive", "categories": ["explanation", "continuity", "animal_handling"], "negative_class": null, "summary": "長期通院、スタッフが動物を覚えている点、説明と相談のしやすさへの肯定が複数。ダックスの受診経験も見える。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["crowding", "waiting"], "negative_class": "A", "summary": "混雑・待ち時間への不満。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2020-06", "date_note": "詳細ページに表示された比較的新しい掲載例", "sentiment": "positive", "categories": ["preventive_care", "staff"], "negative_class": null, "summary": "予防診療とスタッフ対応への肯定。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": null, "date_note": "古い投稿を含む", "sentiment": "negative", "categories": ["owner_handling"], "negative_class": "A", "summary": "説明・対話の相性への不満がある。医療結果の懸念とは分離。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "長期継続・予防診療", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "継続性は肯定。ただしGoogleとCalooの表示スコアは大きく乖離。" },
+        { "topic": "診断・治療上の懸念", "direction": "negative", "status": "not_replicated", "sources": [], "assessment": "複数ソースで再現する明確な医療Negative Signalは確認できない。" }
+      ]
+    },
+    {
+      "hospital_id": "root",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.1, "review_count": 44, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.590591%2C139.581665" },
+        { "source": "Calooペット", "rating": 3.58, "review_count": 1, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14136/all/all" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "positive", "categories": ["surgery", "continuity", "explanation"], "negative_class": null, "summary": "地域での継続診療、手術、説明への肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["owner_handling", "high_cost"], "negative_class": "A", "summary": "口調の相性と、専門診療の追加費用への不満。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "医療品質", "direction": "mixed", "status": "insufficient", "sources": ["Google Maps", "Calooペット"], "assessment": "Calooが1件のため再現性を判断できない。公式のIVDD・整形対応は口コミと別の能力証拠。" }
+      ]
+    },
+    {
+      "hospital_id": "mullk",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.3, "review_count": 29, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.600735%2C139.553284" },
+        { "source": "Calooペット", "rating": 4.36, "review_count": 8, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14136/all/all" },
+        { "source": "EPARKペットライフ", "rating": 4.6, "review_count": 5, "checked_at": "2026-08-24", "url": "https://petlife.asia/hospital/11254/" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "positive", "categories": ["explanation", "examination", "second_opinion"], "negative_class": null, "summary": "検査結果、治療選択肢、必要時の外部検査を説明したとの肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "比較的新しい公開投稿", "sentiment": "negative", "categories": ["diagnosis", "treatment"], "negative_class": "B", "summary": "誤嚥性肺炎の見落としを訴える重大な単独申告。事実認定せず、初診時確認仮説とする。", "capture": "paraphrase_only" },
+        { "source": "EPARKペットライフ", "posted_at": "2025", "date_note": "2025年を含む5件", "sentiment": "positive", "categories": ["explanation", "animal_handling", "reservation"], "negative_class": null, "summary": "説明、動物への接し方、通いやすさへの肯定。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "説明・選択肢", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "EPARKペットライフ"], "assessment": "三ソースで同方向。" },
+        { "topic": "診断見落とし", "direction": "negative", "status": "single_source_medical_concern", "sources": ["Google Maps"], "assessment": "重大だが他ソースで再現せず。" }
+      ]
+    },
+    {
+      "hospital_id": "mominoki",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.4, "review_count": 40, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.596539%2C139.600769" },
+        { "source": "Calooペット", "rating": 3.81, "review_count": 3, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14134/all/all" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "positive", "categories": ["explanation", "surgery", "animal_handling"], "negative_class": null, "summary": "説明、手術、動物中心の対応への肯定。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2025", "date_note": "脊椎症の受診経験", "sentiment": "positive", "categories": ["examination", "explanation"], "negative_class": null, "summary": "脊椎症の評価と説明を肯定する受診経験。専門医資格の根拠にはしない。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["fee"], "negative_class": "A", "summary": "費用への不満。医療品質とは分離。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "説明・動物中心の対応", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "同方向だがCalooは3件。" }
+      ]
+    },
+    {
+      "hospital_id": "mizonokuchi",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 91, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.604385%2C139.614517" },
+        { "source": "Calooペット", "rating": 3.32, "review_count": 7, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14134/all/all" },
+        { "source": "Yahoo!マップ", "rating": null, "review_count": null, "checked_at": "2026-08-24", "url": "https://map.yahoo.co.jp/v3/place/_NkdY6VDX8k" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "positive", "categories": ["explanation", "reservation"], "negative_class": null, "summary": "説明とWeb予約の利便性への肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "比較的新しい公開投稿", "sentiment": "negative", "categories": ["diagnosis", "examination", "treatment"], "negative_class": "B", "summary": "検査や投薬が不十分だったとする医療上の申告。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2025", "date_note": "眼科治療の受診経験", "sentiment": "negative", "categories": ["diagnosis", "treatment"], "negative_class": "B", "summary": "眼症状の診断・治療結果への不満。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["reception", "owner_handling"], "negative_class": "A", "summary": "受付・バックヤードでの発言に関する不満。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "診断・検査・治療", "direction": "negative", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "個別症例は検証不能だが、医療懸念が複数ソースで同方向。ホーム候補順位を下げる。" },
+        { "topic": "受付・接遇", "direction": "negative", "status": "single_source", "sources": ["Google Maps"], "assessment": "医療Signalと分離。" }
+      ]
+    },
+    {
+      "hospital_id": "jarmec-kawasaki",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.1, "review_count": 404, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.612053%2C139.611710" },
+        { "source": "Calooペット", "rating": 3.6, "review_count": 36, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14134/all/all" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿群", "sentiment": "positive", "categories": ["examination", "surgery", "ivdd", "treatment"], "negative_class": null, "summary": "MRI、IVDD手術、高度治療、救命への肯定が多数。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": null, "date_note": "36件の公開レビュー", "sentiment": "mixed", "categories": ["surgery", "explanation", "fee", "treatment"], "negative_class": "B", "summary": "高度治療への感謝と、説明・費用・治療結果への不満が混在。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "高度検査・手術", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "公式サイト"], "assessment": "能力は公式設備情報でも裏付け。" },
+        { "topic": "説明・費用", "direction": "negative", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "紹介前に検査目的、選択肢、概算費用を一次病院と整理する。" },
+        { "topic": "治療結果", "direction": "mixed", "status": "case_mix_warning", "sources": ["Google Maps", "Calooペット"], "assessment": "重症紹介例が集中するため結果の単純比較は不適切。" }
+      ]
+    },
+    {
+      "hospital_id": "kawasaki-night",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 60, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.612053%2C139.611710" },
+        { "source": "Calooペット", "rating": null, "review_count": 0, "checked_at": "2026-08-24", "url": null }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "最近・関連度順の公開投稿", "sentiment": "positive", "categories": ["phone", "emergency", "explanation", "handoff"], "negative_class": null, "summary": "受診前電話、異物・急変処置、説明、翌日のかかりつけ連携への肯定。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "夜間初期救急", "direction": "positive", "status": "official_plus_single_review_source", "sources": ["Google Maps", "公式サイト"], "assessment": "役割・受付・入院不可は公式情報で確認。口コミはGoogleのみ。" }
+      ]
+    },
+    {
+      "hospital_id": "amc",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 3.0, "review_count": 272, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.577827%2C139.663910" },
+        { "source": "Calooペット", "rating": 4.19, "review_count": 13, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/detail/140378/reviews/9501" },
+        { "source": "Doctors File", "rating": null, "review_count": 3, "checked_at": "2026-08-24", "url": "https://animal.doctorsfile.jp/ah/15596/dr/" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿群", "sentiment": "mixed", "categories": ["emergency", "phone", "waiting", "fee", "treatment"], "negative_class": "A", "summary": "夜間救命への感謝と、電話・待ち時間・費用の不満が混在。医療結果への否定も一部ある。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2015-01", "date_note": "高度医療に関する公開レビュー例。古い。", "sentiment": "positive", "categories": ["examination", "continuity", "fee"], "negative_class": null, "summary": "検査と長期管理を肯定しつつ、MRIは当時他施設紹介だったことと高額費用を具体的に記載。", "capture": "paraphrase_only" },
+        { "source": "Doctors File", "posted_at": "2026", "date_note": "2025–2026年の3件", "sentiment": "positive", "categories": ["surgery", "emergency", "explanation", "fee"], "negative_class": null, "summary": "高度手術・救命・説明を肯定し、費用負担も認識する受診経験。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "夜間・高度治療", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "Doctors File"], "assessment": "救命・手術の肯定は複数ソースにある。" },
+        { "topic": "電話・待ち時間", "direction": "negative", "status": "mostly_single_source", "sources": ["Google Maps"], "assessment": "緊急時の電話不通に備え代替先を保持。" },
+        { "topic": "総合評価", "direction": "mixed", "status": "strong_source_divergence", "sources": ["Google Maps", "Calooペット", "Doctors File"], "assessment": "Google 3.0/272とCaloo 4.19/13の乖離が大きく、星の統合平均は禁止。" }
+      ]
+    },
+    {
+      "hospital_id": "yokohama-aoba",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.7, "review_count": 121, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.552036%2C139.577271" },
+        { "source": "Calooペット", "rating": 4.27, "review_count": 28, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/detail/140987" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "最近・関連度順の公開投稿", "sentiment": "positive", "categories": ["surgery", "orthopedics", "explanation", "animal_handling"], "negative_class": null, "summary": "整形・外科手術、説明、動物への対応への肯定が多数。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": null, "date_note": "28件の公開レビュー", "sentiment": "positive", "categories": ["surgery", "explanation", "second_opinion"], "negative_class": null, "summary": "整形・手術、治療選択肢、説明への肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["waiting", "reservation"], "negative_class": "A", "summary": "混雑と順番受付への不満。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "整形・手術・説明", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "公式サイト"], "assessment": "口コミ件数と公式専門領域の両方で支持。" },
+        { "topic": "待ち時間", "direction": "negative", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "主に運用面。医療品質と分離。" }
+      ]
+    },
+    {
+      "hospital_id": "aoba-amc",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.8, "review_count": 78, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.548195%2C139.507248" },
+        { "source": "Calooペット", "rating": 4.49, "review_count": 53, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/detail/141184/reviews" }
+      ],
+      "observations": [
+        { "source": "Calooペット", "posted_at": "2026-01", "date_note": "前十字靭帯手術の公開アンケート", "sentiment": "positive", "categories": ["orthopedics", "surgery", "hospitalization", "animal_handling"], "negative_class": null, "summary": "両後肢の手術後の回復と、入院中の動物への対応を肯定。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2025-02", "date_note": "心疾患急変の公開アンケート", "sentiment": "positive", "categories": ["emergency", "hospitalization", "explanation"], "negative_class": null, "summary": "夜の急変受入、5日間入院、継続説明を肯定。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2023-03", "date_note": "重度椎間板ヘルニアの公開アンケート", "sentiment": "positive", "categories": ["ivdd", "surgery", "emergency", "explanation"], "negative_class": null, "summary": "重度IVDDの緊急手術、説明、術後回復を肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "最近・関連度順の公開投稿", "sentiment": "positive", "categories": ["surgery", "explanation", "emergency", "rehabilitation"], "negative_class": null, "summary": "手術、説明、救急受入、継続ケアへの肯定が複数。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "整形・神経・IVDD手術", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "公式サイト"], "assessment": "専門領域・症例・説明が強く再現。" },
+        { "topic": "夜間救急", "direction": "positive", "status": "new_service_caution", "sources": ["公式サイト", "Google Maps", "Calooペット"], "assessment": "救急経験は肯定だが、22–6時の夜間枠は2026-05開始で曜日限定。" }
+      ]
+    }
+  ]
+}
+</script>
+  <script>
+    (() => {
+      'use strict';
+      const dataset = JSON.parse(document.getElementById('hospitalData').textContent);
+      const reviewDataset = JSON.parse(document.getElementById('reviewData').textContent);
+      const hospitals = dataset.hospitals;
+      const byId = new Map(hospitals.map((hospital) => [hospital.hospital_id, hospital]));
+
+      const recommendations = [
+        { label: 'ホームドクター試行候補', hospitalId: 'miyamaedaira', type: 'home', note: '日常診療・予防・説明をまず比較する候補' },
+        { label: '最寄りホーム候補', hospitalId: 'suzuki', type: 'home', note: '約2分。普段と急変時の移動負担が小さい' },
+        { label: '近隣の整形・IVDD補完', hospitalId: 'root', type: 'orthopedics', note: '近距離で椎間板・整形の公式記載' },
+        { label: '整形・神経バックアップ', hospitalId: 'aoba-amc', type: 'orthopedics', note: '整形・神経・IVDD・リハビリ' },
+        { label: '夜間初期救急', hospitalId: 'kawasaki-night', type: 'emergency', note: '20:00–23:30。入院はできない' },
+        { label: '24時間・入院補完', hospitalId: 'amc', type: 'emergency', note: '24時間365日。夜間は電話確認' },
+        { label: '高度医療', hospitalId: 'jarmec-kawasaki', type: 'advanced', note: '紹介制の二次診療。救急外来ではない' }
+      ];
+      const topIds = ['miyamaedaira', 'suzuki', 'root', 'aoba-amc', 'kawasaki-night', 'amc', 'jarmec-kawasaki', 'yokohama-aoba'];
+      const roleLabels = {
+        home_doctor: 'ホーム',
+        holiday_backup: '休日バックアップ',
+        night_emergency: '夜間救急',
+        orthopedics_neurology: '整形・神経',
+        secondary_advanced: '高度医療',
+        general_candidate: '一般候補'
+      };
+      const categoryLabels = {
+        diagnosis: '診断', treatment: '治療', examination: '検査', surgery: '手術', emergency: '緊急対応', second_opinion: 'セカンドオピニオン',
+        explanation: '説明', consent: '同意', questions: '質問対応', animal_handling: '動物への接し方', owner_handling: '飼い主対応',
+        waiting: '待ち時間', reservation: '予約', phone: '電話', reception: '受付', crowding: '混雑', fee: '料金', fee_explanation: '料金説明', high_cost: '高額', unnecessary_care: '不要な検査・治療', continuity: '継続性', ivdd: '椎間板疾患', orthopedics: '整形'
+      };
+      const medicalCategories = new Set(['diagnosis', 'treatment', 'examination', 'surgery', 'emergency', 'second_opinion', 'ivdd', 'orthopedics']);
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+      }
+      function booleanLabel(value, yes = 'あり', no = 'なし') {
+        return value === true ? yes : value === false ? no : '不明';
+      }
+      function ipetLabel(hospital) {
+        return hospital.ipet_supported === true ? 'iPet窓口精算' : hospital.ipet_supported === false ? 'iPet非掲載' : 'iPet要確認';
+      }
+      function ratingLabel(rating, count) {
+        return rating == null ? '—' : `${rating.toFixed(1)} (${count ?? '—'}件)`;
+      }
+      function rolesMarkup(hospital) {
+        return hospital.roles.map((role) => `<span class="badge ${role === 'night_emergency' ? 'emergency' : role === 'secondary_advanced' ? 'advanced' : ''}">${escapeHtml(roleLabels[role] || role)}</span>`).join('');
+      }
+      function hospitalKind(hospital) {
+        return hospital.roles.includes('night_emergency') ? 'is-emergency' : hospital.roles.includes('secondary_advanced') ? 'is-advanced' : '';
+      }
+      function mainStrength(hospital) {
+        const signals = hospital.positive_signals || [];
+        return signals.length ? signals.slice(0, 2).map((signal) => signal.assessment).join(' / ') : '公開情報上の主な強みは要確認';
+      }
+      function mainConcern(hospital) {
+        const signals = hospital.negative_signals || [];
+        if (signals.length) return signals.slice(0, 2).map((signal) => signal.assessment).join(' / ');
+        return hospital.uncertainties?.length ? `未確認：${hospital.uncertainties.slice(0, 2).join('、')}` : '公開情報上の大きな懸念は未抽出';
+      }
+      function actionLinks(hospital) {
+        const official = hospital.website_url
+          ? `<a class="action primary" href="${escapeHtml(hospital.website_url)}" target="_blank" rel="noopener noreferrer">公式サイト</a>`
+          : '<span class="action disabled">公式サイト不明</span>';
+        const phone = hospital.phone
+          ? `<a class="action call" href="tel:${escapeHtml(hospital.phone.replace(/[^0-9+]/g, ''))}">電話する</a>`
+          : '<span class="action disabled">電話不明</span>';
+        return `${phone}<a class="action" href="${escapeHtml(hospital.google_maps_url)}" target="_blank" rel="noopener noreferrer">Google Maps</a>${official}`;
+      }
+      function accessibleHours(hospital) {
+        return hospital.opening_hours?.display || '不明';
+      }
+      function operatingDays(hospital) {
+        return `日曜 ${booleanLabel(hospital.access?.sunday, '○', '—')} / 祝日 ${booleanLabel(hospital.access?.public_holiday, '○', '—')}`;
+      }
+      function sourceSummary(hospital) {
+        const sources = hospital.review_sources || [];
+        return sources.map((source) => `${source.source}${source.rating == null ? '' : ` ${source.rating.toFixed(1)}`} ${source.review_count == null ? '' : `(${source.review_count}件)`}`).join(' ・ ');
+      }
+
+      function renderPlan() {
+        document.getElementById('recommendationPlan').innerHTML = recommendations.map((item, index) => {
+          const hospital = byId.get(item.hospitalId);
+          const tone = item.type === 'emergency' ? 'emergency' : item.type === 'advanced' ? 'advanced' : '';
+          return `<article class="plan-item ${tone}"><span class="plan-index">${String(index + 1).padStart(2, '0')} ${escapeHtml(item.label)}</span><h3>${escapeHtml(hospital.name)}</h3><p>${escapeHtml(item.note)}</p></article>`;
+        }).join('');
+      }
+
+      function renderRoleCards() {
+        document.getElementById('roleCards').innerHTML = recommendations.map((item) => {
+          const hospital = byId.get(item.hospitalId);
+          const tone = item.type === 'emergency' ? 'is-emergency' : item.type === 'advanced' ? 'is-advanced' : '';
+          const special = item.type === 'emergency' ? `<span class="badge emergency">電話確認を先に</span>` : item.type === 'advanced' ? `<span class="badge advanced">紹介制</span>` : `<span class="badge ipet">${escapeHtml(ipetLabel(hospital))}</span>`;
+          return `<article class="role-card card ${tone}"><div class="role-meta">${special}<span class="badge">車 ${hospital.travel_time.value}分 / ${hospital.distance.value}km</span></div><p class="eyebrow">${escapeHtml(item.label)}</p><h3>${escapeHtml(hospital.name)}</h3><p>${escapeHtml(item.note)}</p><div class="hospital-role-list">${rolesMarkup(hospital)}</div><div class="actions">${actionLinks(hospital)}</div></article>`;
+        }).join('');
+      }
+
+      function renderTopCard(hospital) {
+        return `<article class="hospital-card card ${hospitalKind(hospital)}">
+          <div class="hospital-main">
+            <div class="hospital-name-row"><div><h3>${escapeHtml(hospital.name)}</h3><div class="hospital-role-list">${rolesMarkup(hospital)}</div></div><div class="score-total">総合<strong>${hospital.overall_reference_score}</strong></div></div>
+            <p class="hospital-overview">${escapeHtml(hospital.reputation_summary)}</p>
+            <div class="metric-grid" aria-label="役割別スコア"><div class="metric"><span>Home</span><strong>${hospital.home_doctor_score}</strong></div><div class="metric"><span>Emergency</span><strong>${hospital.emergency_score}</strong></div><div class="metric"><span>Dachshund</span><strong>${hospital.dachshund_score}</strong></div><div class="metric"><span>信頼度</span><strong>${hospital.confidence}</strong></div></div>
+            <ul class="facts">
+              <li><b>Google / Caloo</b><span>${escapeHtml(ratingLabel(hospital.google_rating, hospital.google_review_count))} / ${escapeHtml(ratingLabel(hospital.caloo_rating, hospital.caloo_review_count))}</span></li>
+              <li><b>保険・距離</b><span>${escapeHtml(ipetLabel(hospital))} ・ 車 ${hospital.travel_time.value}分 / ${hospital.distance.value}km</span></li>
+              <li><b>診療時間</b><span>${escapeHtml(accessibleHours(hospital))}</span></li>
+              <li><b>日祝・夜間</b><span>${escapeHtml(operatingDays(hospital))} ・ ${escapeHtml(hospital.night_service?.display || '不明')}</span></li>
+            </ul>
+            <div class="signal-box"><div class="signal-row positive"><b>主な強み</b>${escapeHtml(mainStrength(hospital))}</div><div class="signal-row negative"><b>主な懸念・未確認</b>${escapeHtml(mainConcern(hospital))}</div></div>
+          </div>
+          <div class="actions">${actionLinks(hospital)}</div>
+        </article>`;
+      }
+
+      function renderTopCards() {
+        document.getElementById('topCards').innerHTML = topIds.map((id) => renderTopCard(byId.get(id))).join('');
+      }
+
+      function renderRoleFilter() {
+        const roleFilter = document.getElementById('roleFilter');
+        roleFilter.insertAdjacentHTML('beforeend', Object.entries(roleLabels).map(([key, label]) => `<option value="${key}">${escapeHtml(label)}</option>`).join(''));
+      }
+
+      function renderComparison() {
+        const query = document.getElementById('searchInput').value.trim().toLocaleLowerCase('ja-JP');
+        const role = document.getElementById('roleFilter').value;
+        const filtered = hospitals.filter((hospital) => {
+          const roleText = hospital.roles.map((item) => roleLabels[item] || item).join(' ');
+          const matchQuery = !query || `${hospital.name} ${roleText} ${hospital.reputation_summary}`.toLocaleLowerCase('ja-JP').includes(query);
+          return matchQuery && (!role || hospital.roles.includes(role));
+        });
+        document.getElementById('comparisonRows').innerHTML = filtered.map((hospital) => `<tr class="${hospitalKind(hospital)}">
+          <td><strong>${escapeHtml(hospital.name)}</strong><br><small>${escapeHtml(hospital.address)}</small></td>
+          <td>${rolesMarkup(hospital)}</td><td><strong>${hospital.overall_reference_score}</strong></td><td>${hospital.home_doctor_score}</td><td>${hospital.emergency_score}</td><td>${hospital.dachshund_score}</td>
+          <td>${escapeHtml(ratingLabel(hospital.google_rating, hospital.google_review_count))}</td><td>${escapeHtml(ratingLabel(hospital.caloo_rating, hospital.caloo_review_count))}</td><td>${escapeHtml(ipetLabel(hospital))}</td>
+          <td>${hospital.travel_time.value}分<br><small>${hospital.distance.value}km</small></td><td>${escapeHtml(operatingDays(hospital))}</td><td>${escapeHtml(hospital.night_service?.display || '不明')}</td>
+          <td><a class="small-link" href="tel:${escapeHtml((hospital.phone || '').replace(/[^0-9+]/g, ''))}">電話</a> / <a class="small-link" href="${escapeHtml(hospital.google_maps_url)}" target="_blank" rel="noopener noreferrer">地図</a></td>
+        </tr>`).join('') || '<tr><td colspan="13">条件に一致する病院がないで。検索語を変えてみて。</td></tr>';
+      }
+
+      function observationItem(item) {
+        const categories = (item.categories || []).map((category) => categoryLabels[category] || category).join('・');
+        const date = item.posted_at ? `（${item.posted_at}）` : item.date_note ? `（${item.date_note}）` : '';
+        return `<li><strong>${escapeHtml(item.source)}${escapeHtml(date)}</strong><br>${escapeHtml(categories)}：${escapeHtml(item.summary)}</li>`;
+      }
+      function reviewPanel(title, tone, items, emptyMessage) {
+        return `<section class="review-panel ${tone}"><h4>${escapeHtml(title)}</h4>${items.length ? `<ul>${items.map(observationItem).join('')}</ul>` : `<p>${escapeHtml(emptyMessage)}</p>`}</section>`;
+      }
+      function renderReviews() {
+        document.getElementById('reviewList').innerHTML = reviewDataset.hospital_review_analyses.map((analysis, index) => {
+          const hospital = byId.get(analysis.hospital_id);
+          if (!hospital) return '';
+          const observations = analysis.observations || [];
+          const positives = observations.filter((item) => item.sentiment === 'positive');
+          const medical = observations.filter((item) => item.sentiment === 'negative' && (item.negative_class === 'B' || (item.categories || []).some((category) => medicalCategories.has(category))));
+          const service = observations.filter((item) => item.sentiment === 'negative' && !medical.includes(item));
+          const cross = (analysis.cross_source || []).map((item) => `<div class="cross-signal ${item.direction === 'negative' ? 'negative' : ''}"><span class="badge ${item.direction === 'negative' ? 'emergency' : item.direction === 'positive' ? 'good' : 'warn'}">${escapeHtml(item.status)}</span><strong>${escapeHtml(item.topic)}</strong>：${escapeHtml(item.assessment)}<br><small>情報源：${escapeHtml((item.sources || []).join(' / ') || '単独ソース')}</small></div>`).join('');
+          return `<details class="review-item card" ${index < 2 ? 'open' : ''}><summary><span>${escapeHtml(hospital.name)} <small>(${escapeHtml(sourceSummary(hospital))})</small></span></summary><div class="review-content"><p class="review-summary">${escapeHtml(hospital.reputation_summary)}</p><div class="review-columns">${reviewPanel('Positive Signal', 'positive', positives, '今回の公開観測では該当なし')}${reviewPanel('Negative：医療品質', 'medical', medical, '今回の公開観測では該当なし')}${reviewPanel('Negative：接遇・運用', 'service', service, '今回の公開観測では該当なし')}</div><div class="cross-signals">${cross || '<p>Cross-source Signalは未整理。</p>'}</div><p class="source-line">レビュー本文は転載せず、公開情報の短い要約のみを表示。詳しいURLはRaw Data JSONを参照。</p></div></details>`;
+        }).join('');
+      }
+
+      renderPlan();
+      renderRoleCards();
+      renderTopCards();
+      renderRoleFilter();
+      renderComparison();
+      renderReviews();
+      document.getElementById('searchInput').addEventListener('input', renderComparison);
+      document.getElementById('roleFilter').addEventListener('change', renderComparison);
+    })();
+  </script>
+</body>
+</html>

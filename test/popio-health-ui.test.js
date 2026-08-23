@@ -154,8 +154,14 @@ assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 2, totalAmoun
 assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 0, totalAmountMl: null }, waterBottle: { latest: null, latestInterval: null } }, 'loaded').water, '--', 'PH-WK05 missing water data must not appear as zero');
 assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 2, totalAmountMl: 300 }, waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 3, normalized24hMl: 2160 } } }, 'loaded').water, '2160mL', 'PH-WK06 bottle interval must take priority over legacy water');
 assert.strictEqual(api.summaryDisplayModel_({ waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 3, normalized24hMl: 2160 } } }, 'loaded').waterHint, '短時間データのため参考', 'PH-WK06 short interval hint missing');
-assert(featureSource.includes('id="popioSummaryWaterHint"') && featureSource.includes("setText_('popioSummaryWaterHint', model.waterHint)"), 'PH-WK01 water KPI hint render boundary missing');
-assert(cssSource.includes('.popio-summary-water strong') && cssSource.includes('.popio-summary-water small') && cssSource.includes('overflow-wrap: anywhere;'), 'PH-WK01 water KPI mobile text contract missing');
+assert(featureSource.includes('<p id="popioSummaryWaterHint" class="popio-summary-note"') && featureSource.includes("setText_('popioSummaryWaterHint', model.waterHint ? '💧 水：' + model.waterHint : '')"), 'PH-WK01 water KPI outside-note render boundary missing');
+assert(featureSource.indexOf('</section>\n      <p id="popioSummaryWaterHint"') > featureSource.indexOf('id="popioSummaryWeight"'), 'PH-WK01 water KPI note must be outside the KPI grid');
+assert(!cssSource.includes('.popio-summary-water strong') && !cssSource.includes('.popio-summary-water small'), 'PH-WK01 water value must use the shared KPI typography');
+const summaryGridMarkup = featureSource.slice(featureSource.indexOf('<section class="popio-summary-card"'), featureSource.indexOf('</section>\n      <p id="popioSummaryWaterHint"'));
+assert.strictEqual((summaryGridMarkup.match(/<div/g) || []).length, 4, 'PH-WK01 summary grid must retain four equal KPI cells');
+assert(!summaryGridMarkup.includes('popioSummaryWaterHint'), 'PH-WK01 water KPI note must not increase the grid cell height');
+assert(cssSource.includes('grid-template-columns: repeat(4, minmax(0, 1fr));') && cssSource.includes('.popio-summary-card div {\n  min-width: 0;'), 'PH-WK01 summary grid must remain narrow-screen safe');
+assert(cssSource.includes('.popio-summary-note') && cssSource.includes('max-width: 100%;') && cssSource.includes('overflow-wrap: break-word;'), 'PH-WK01 water KPI outside-note mobile text contract missing');
 
 // PH-COLL01 - PH-COLL08: collapsing is PWA-only presentation state.
 let collapsed = api.collapsibleSectionState_({ historyExpanded: false, observationExpanded: false }, 'history');
