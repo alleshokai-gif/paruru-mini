@@ -52,6 +52,7 @@ addRow(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-b', memberU
 addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'father-phone', homeId: 'home-a', memberUserId: 'father', status: 'active' });
 addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'mother-phone', homeId: 'home-a', memberUserId: 'mother', status: 'active' });
 addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'son-phone', homeId: 'home-a', memberUserId: 'second_son', status: 'active' });
+addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'son-edge', homeId: 'home-a', memberUserId: 'second_son', status: 'active' });
 addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'old-phone', homeId: 'home-a', memberUserId: 'second_son', status: 'disabled' });
 addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'unknown-phone', homeId: 'home-b', memberUserId: 'other_child', status: 'active' });
 const api = load(spreadsheet, {});
@@ -59,11 +60,13 @@ const api = load(spreadsheet, {});
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_('father-phone', 'pairing'))), { homeId: 'home-a', memberUserId: 'father', role: 'admin', deviceId: 'father-phone' });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }))), { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record'], deviceId: 'father-phone' });
 assert.strictEqual(api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: 'pairing' }).memberUserId, 'second_son');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_('son-edge', 'pairing'))), { homeId: 'home-a', memberUserId: 'second_son', role: 'self_record', deviceId: 'son-edge' });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ deviceId: 'mother-phone', pairingToken: 'pairing' }))), { homeId: 'home-a', memberUserId: 'mother', displayName: '母', role: 'guardian', capabilities: ['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record'], deviceId: 'mother-phone' });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.getMembershipContext_({ deviceId: 'mother-phone', pairingToken: 'pairing' }))), { memberUserId: 'mother', displayName: '母', role: 'guardian', calendarSuffix: '（母）', addressTerms: { paruru: '', nurseOkan: '' }, capabilities: ['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record'], allowedViews: ['home', 'inbox', 'nurse-okan', 'popio-health'] });
 expectCode(() => api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: '' }), 'UNAUTHORIZED_DEVICE');
 assert.strictEqual(api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }).memberUserId, 'father');
 expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'son-phone', pairingToken: 'pairing' }), 'FORBIDDEN');
+expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'son-edge', pairingToken: 'pairing' }), 'FORBIDDEN');
 expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'mother-phone', pairingToken: 'pairing' }), 'FORBIDDEN');
 expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: '' }), 'UNAUTHORIZED_DEVICE');
 const fatherStatusColumn = homeHeaders.indexOf('status');
@@ -83,6 +86,7 @@ spreadsheet.sheets.Home_Members.values[1][fatherRoleColumn] = 'admin';
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'second_son', 'health.weight.record'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'second_son', 'health.weight.correct'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'second_son', 'health.daily.list'), true);
+assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-edge', 'pairing'), 'second_son', 'health.weight.record'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'mother', 'health.weight.record'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'second_son', 'health.daily.list'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'second_son', 'health.weight.record'), true);
@@ -92,6 +96,7 @@ expectCode(() => api.getMembershipApprovalTemplate_('mother_initial'), 'INVALID_
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.weight.record'), 'FORBIDDEN');
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.weight.correct'), 'FORBIDDEN');
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.daily.list'), 'FORBIDDEN');
+expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-edge', 'pairing'), 'father', 'health.weight.record'), 'FORBIDDEN');
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'other_child', 'health.weight.record'), 'FORBIDDEN');
 
 const missingHeaders = new Spreadsheet();

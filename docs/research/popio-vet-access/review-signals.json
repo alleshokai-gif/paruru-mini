@@ -1,0 +1,193 @@
+{
+  "dataset_id": "popio-vet-review-signals",
+  "generated_at": "2026-08-24T22:30:00+09:00",
+  "policy": {
+    "full_text_stored": false,
+    "reviewer_identifiers_stored": false,
+    "collection_method": "公開画面で閲覧可能な範囲を人手相当で確認し、短い要約と分類のみ保存",
+    "negative_classes": {
+      "A": "接遇・サービス・待ち時間・電話・費用等",
+      "B": "診断・治療・検査・手術・緊急対応等の医療上の懸念"
+    },
+    "warning": "口コミは事実認定ではなく利用者の申告。単独の重大申告は仮説として保持し、複数ソース再現を別フィールドで評価する。"
+  },
+  "hospital_review_analyses": [
+    {
+      "hospital_id": "miyamaedaira",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.6, "review_count": 62, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.584171%2C139.588074" },
+        { "source": "Calooペット", "rating": 4.41, "review_count": 6, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14136/all/all" },
+        { "source": "EPARKペットライフ", "rating": 4.5, "review_count": 3, "checked_at": "2026-08-24", "url": "https://petlife.asia/hospital/6097/" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "2024年9月の承継後として表示された最近の投稿群", "sentiment": "positive", "categories": ["explanation", "animal_handling", "fee_explanation", "holiday_access"], "negative_class": null, "summary": "現院長の説明、動物への優しい対応、料金の納得感、土日祝の通いやすさを評価する投稿が複数。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": null, "date_note": "一覧・詳細に掲載された6件", "sentiment": "positive", "categories": ["puppy_care", "surgery", "explanation"], "negative_class": null, "summary": "子犬からの継続診療や避妊手術、説明への肯定。承継前後の混在可能性に注意。", "capture": "paraphrase_only" },
+        { "source": "EPARKペットライフ", "posted_at": "2023", "date_note": "2021–2023年の3件", "sentiment": "positive", "categories": ["explanation", "animal_handling"], "negative_class": null, "summary": "旧体制への肯定。承継前のため現院長評価には直接使わない。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "説明・動物への接し方", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "現体制の公開情報として比較的強い。ただし第三ソースは承継前。" }
+      ]
+    },
+    {
+      "hospital_id": "suzuki",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 66, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.601082%2C139.585907" },
+        { "source": "Calooペット", "rating": 3.06, "review_count": 8, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/detail/140429" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "最近・関連度順の公開投稿", "sentiment": "positive", "categories": ["explanation", "continuity", "animal_handling"], "negative_class": null, "summary": "長期通院、スタッフが動物を覚えている点、説明と相談のしやすさへの肯定が複数。ダックスの受診経験も見える。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["crowding", "waiting"], "negative_class": "A", "summary": "混雑・待ち時間への不満。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2020-06", "date_note": "詳細ページに表示された比較的新しい掲載例", "sentiment": "positive", "categories": ["preventive_care", "staff"], "negative_class": null, "summary": "予防診療とスタッフ対応への肯定。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": null, "date_note": "古い投稿を含む", "sentiment": "negative", "categories": ["owner_handling"], "negative_class": "A", "summary": "説明・対話の相性への不満がある。医療結果の懸念とは分離。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "長期継続・予防診療", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "継続性は肯定。ただしGoogleとCalooの表示スコアは大きく乖離。" },
+        { "topic": "診断・治療上の懸念", "direction": "negative", "status": "not_replicated", "sources": [], "assessment": "複数ソースで再現する明確な医療Negative Signalは確認できない。" }
+      ]
+    },
+    {
+      "hospital_id": "root",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.1, "review_count": 44, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.590591%2C139.581665" },
+        { "source": "Calooペット", "rating": 3.58, "review_count": 1, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14136/all/all" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "positive", "categories": ["surgery", "continuity", "explanation"], "negative_class": null, "summary": "地域での継続診療、手術、説明への肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["owner_handling", "high_cost"], "negative_class": "A", "summary": "口調の相性と、専門診療の追加費用への不満。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "医療品質", "direction": "mixed", "status": "insufficient", "sources": ["Google Maps", "Calooペット"], "assessment": "Calooが1件のため再現性を判断できない。公式のIVDD・整形対応は口コミと別の能力証拠。" }
+      ]
+    },
+    {
+      "hospital_id": "mullk",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.3, "review_count": 29, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.600735%2C139.553284" },
+        { "source": "Calooペット", "rating": 4.36, "review_count": 8, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14136/all/all" },
+        { "source": "EPARKペットライフ", "rating": 4.6, "review_count": 5, "checked_at": "2026-08-24", "url": "https://petlife.asia/hospital/11254/" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "positive", "categories": ["explanation", "examination", "second_opinion"], "negative_class": null, "summary": "検査結果、治療選択肢、必要時の外部検査を説明したとの肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "比較的新しい公開投稿", "sentiment": "negative", "categories": ["diagnosis", "treatment"], "negative_class": "B", "summary": "誤嚥性肺炎の見落としを訴える重大な単独申告。事実認定せず、初診時確認仮説とする。", "capture": "paraphrase_only" },
+        { "source": "EPARKペットライフ", "posted_at": "2025", "date_note": "2025年を含む5件", "sentiment": "positive", "categories": ["explanation", "animal_handling", "reservation"], "negative_class": null, "summary": "説明、動物への接し方、通いやすさへの肯定。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "説明・選択肢", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "EPARKペットライフ"], "assessment": "三ソースで同方向。" },
+        { "topic": "診断見落とし", "direction": "negative", "status": "single_source_medical_concern", "sources": ["Google Maps"], "assessment": "重大だが他ソースで再現せず。" }
+      ]
+    },
+    {
+      "hospital_id": "mominoki",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.4, "review_count": 40, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.596539%2C139.600769" },
+        { "source": "Calooペット", "rating": 3.81, "review_count": 3, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14134/all/all" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "positive", "categories": ["explanation", "surgery", "animal_handling"], "negative_class": null, "summary": "説明、手術、動物中心の対応への肯定。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2025", "date_note": "脊椎症の受診経験", "sentiment": "positive", "categories": ["examination", "explanation"], "negative_class": null, "summary": "脊椎症の評価と説明を肯定する受診経験。専門医資格の根拠にはしない。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["fee"], "negative_class": "A", "summary": "費用への不満。医療品質とは分離。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "説明・動物中心の対応", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "同方向だがCalooは3件。" }
+      ]
+    },
+    {
+      "hospital_id": "mizonokuchi",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 91, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.604385%2C139.614517" },
+        { "source": "Calooペット", "rating": 3.32, "review_count": 7, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14134/all/all" },
+        { "source": "Yahoo!マップ", "rating": null, "review_count": null, "checked_at": "2026-08-24", "url": "https://map.yahoo.co.jp/v3/place/_NkdY6VDX8k" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "positive", "categories": ["explanation", "reservation"], "negative_class": null, "summary": "説明とWeb予約の利便性への肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "比較的新しい公開投稿", "sentiment": "negative", "categories": ["diagnosis", "examination", "treatment"], "negative_class": "B", "summary": "検査や投薬が不十分だったとする医療上の申告。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2025", "date_note": "眼科治療の受診経験", "sentiment": "negative", "categories": ["diagnosis", "treatment"], "negative_class": "B", "summary": "眼症状の診断・治療結果への不満。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["reception", "owner_handling"], "negative_class": "A", "summary": "受付・バックヤードでの発言に関する不満。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "診断・検査・治療", "direction": "negative", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "個別症例は検証不能だが、医療懸念が複数ソースで同方向。ホーム候補順位を下げる。" },
+        { "topic": "受付・接遇", "direction": "negative", "status": "single_source", "sources": ["Google Maps"], "assessment": "医療Signalと分離。" }
+      ]
+    },
+    {
+      "hospital_id": "jarmec-kawasaki",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.1, "review_count": 404, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.612053%2C139.611710" },
+        { "source": "Calooペット", "rating": 3.6, "review_count": 36, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/search/14134/all/all" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿群", "sentiment": "positive", "categories": ["examination", "surgery", "ivdd", "treatment"], "negative_class": null, "summary": "MRI、IVDD手術、高度治療、救命への肯定が多数。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": null, "date_note": "36件の公開レビュー", "sentiment": "mixed", "categories": ["surgery", "explanation", "fee", "treatment"], "negative_class": "B", "summary": "高度治療への感謝と、説明・費用・治療結果への不満が混在。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "高度検査・手術", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "公式サイト"], "assessment": "能力は公式設備情報でも裏付け。" },
+        { "topic": "説明・費用", "direction": "negative", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "紹介前に検査目的、選択肢、概算費用を一次病院と整理する。" },
+        { "topic": "治療結果", "direction": "mixed", "status": "case_mix_warning", "sources": ["Google Maps", "Calooペット"], "assessment": "重症紹介例が集中するため結果の単純比較は不適切。" }
+      ]
+    },
+    {
+      "hospital_id": "kawasaki-night",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.2, "review_count": 60, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.612053%2C139.611710" },
+        { "source": "Calooペット", "rating": null, "review_count": 0, "checked_at": "2026-08-24", "url": null }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "最近・関連度順の公開投稿", "sentiment": "positive", "categories": ["phone", "emergency", "explanation", "handoff"], "negative_class": null, "summary": "受診前電話、異物・急変処置、説明、翌日のかかりつけ連携への肯定。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "夜間初期救急", "direction": "positive", "status": "official_plus_single_review_source", "sources": ["Google Maps", "公式サイト"], "assessment": "役割・受付・入院不可は公式情報で確認。口コミはGoogleのみ。" }
+      ]
+    },
+    {
+      "hospital_id": "amc",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 3.0, "review_count": 272, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.577827%2C139.663910" },
+        { "source": "Calooペット", "rating": 4.19, "review_count": 13, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/detail/140378/reviews/9501" },
+        { "source": "Doctors File", "rating": null, "review_count": 3, "checked_at": "2026-08-24", "url": "https://animal.doctorsfile.jp/ah/15596/dr/" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿群", "sentiment": "mixed", "categories": ["emergency", "phone", "waiting", "fee", "treatment"], "negative_class": "A", "summary": "夜間救命への感謝と、電話・待ち時間・費用の不満が混在。医療結果への否定も一部ある。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2015-01", "date_note": "高度医療に関する公開レビュー例。古い。", "sentiment": "positive", "categories": ["examination", "continuity", "fee"], "negative_class": null, "summary": "検査と長期管理を肯定しつつ、MRIは当時他施設紹介だったことと高額費用を具体的に記載。", "capture": "paraphrase_only" },
+        { "source": "Doctors File", "posted_at": "2026", "date_note": "2025–2026年の3件", "sentiment": "positive", "categories": ["surgery", "emergency", "explanation", "fee"], "negative_class": null, "summary": "高度手術・救命・説明を肯定し、費用負担も認識する受診経験。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "夜間・高度治療", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "Doctors File"], "assessment": "救命・手術の肯定は複数ソースにある。" },
+        { "topic": "電話・待ち時間", "direction": "negative", "status": "mostly_single_source", "sources": ["Google Maps"], "assessment": "緊急時の電話不通に備え代替先を保持。" },
+        { "topic": "総合評価", "direction": "mixed", "status": "strong_source_divergence", "sources": ["Google Maps", "Calooペット", "Doctors File"], "assessment": "Google 3.0/272とCaloo 4.19/13の乖離が大きく、星の統合平均は禁止。" }
+      ]
+    },
+    {
+      "hospital_id": "yokohama-aoba",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.7, "review_count": 121, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.552036%2C139.577271" },
+        { "source": "Calooペット", "rating": 4.27, "review_count": 28, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/detail/140987" }
+      ],
+      "observations": [
+        { "source": "Google Maps", "posted_at": null, "date_note": "最近・関連度順の公開投稿", "sentiment": "positive", "categories": ["surgery", "orthopedics", "explanation", "animal_handling"], "negative_class": null, "summary": "整形・外科手術、説明、動物への対応への肯定が多数。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": null, "date_note": "28件の公開レビュー", "sentiment": "positive", "categories": ["surgery", "explanation", "second_opinion"], "negative_class": null, "summary": "整形・手術、治療選択肢、説明への肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "公開投稿", "sentiment": "negative", "categories": ["waiting", "reservation"], "negative_class": "A", "summary": "混雑と順番受付への不満。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "整形・手術・説明", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "公式サイト"], "assessment": "口コミ件数と公式専門領域の両方で支持。" },
+        { "topic": "待ち時間", "direction": "negative", "status": "replicated", "sources": ["Google Maps", "Calooペット"], "assessment": "主に運用面。医療品質と分離。" }
+      ]
+    },
+    {
+      "hospital_id": "aoba-amc",
+      "source_snapshots": [
+        { "source": "Google Maps", "rating": 4.8, "review_count": 78, "checked_at": "2026-08-24", "url": "https://www.google.com/maps/search/?api=1&query=35.548195%2C139.507248" },
+        { "source": "Calooペット", "rating": 4.49, "review_count": 53, "checked_at": "2026-08-24", "url": "https://pet.caloo.jp/hospitals/detail/141184/reviews" }
+      ],
+      "observations": [
+        { "source": "Calooペット", "posted_at": "2026-01", "date_note": "前十字靭帯手術の公開アンケート", "sentiment": "positive", "categories": ["orthopedics", "surgery", "hospitalization", "animal_handling"], "negative_class": null, "summary": "両後肢の手術後の回復と、入院中の動物への対応を肯定。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2025-02", "date_note": "心疾患急変の公開アンケート", "sentiment": "positive", "categories": ["emergency", "hospitalization", "explanation"], "negative_class": null, "summary": "夜の急変受入、5日間入院、継続説明を肯定。", "capture": "paraphrase_only" },
+        { "source": "Calooペット", "posted_at": "2023-03", "date_note": "重度椎間板ヘルニアの公開アンケート", "sentiment": "positive", "categories": ["ivdd", "surgery", "emergency", "explanation"], "negative_class": null, "summary": "重度IVDDの緊急手術、説明、術後回復を肯定。", "capture": "paraphrase_only" },
+        { "source": "Google Maps", "posted_at": null, "date_note": "最近・関連度順の公開投稿", "sentiment": "positive", "categories": ["surgery", "explanation", "emergency", "rehabilitation"], "negative_class": null, "summary": "手術、説明、救急受入、継続ケアへの肯定が複数。", "capture": "paraphrase_only" }
+      ],
+      "cross_source": [
+        { "topic": "整形・神経・IVDD手術", "direction": "positive", "status": "replicated", "sources": ["Google Maps", "Calooペット", "公式サイト"], "assessment": "専門領域・症例・説明が強く再現。" },
+        { "topic": "夜間救急", "direction": "positive", "status": "new_service_caution", "sources": ["公式サイト", "Google Maps", "Calooペット"], "assessment": "救急経験は肯定だが、22–6時の夜間枠は2026-05開始で曜日限定。" }
+      ]
+    }
+  ]
+}

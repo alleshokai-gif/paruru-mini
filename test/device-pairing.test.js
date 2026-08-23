@@ -14,6 +14,7 @@ let nowMs = Date.parse('2026-07-20T10:00:00+09:00');
 let uuidCounter = 1;
 let randomUuidCounter = 1;
 let locked = false;
+const membershipStatuses = {};
 
 function hash(value) { return crypto.createHash('sha256').update(String(value)).digest('hex'); }
 function uuid() { return `aaaaaaaa-aaaa-4aaa-8aaa-${String(uuidCounter++).padStart(12, '0')}`; }
@@ -25,6 +26,7 @@ function reset() {
   nowMs = Date.parse('2026-07-20T10:00:00+09:00');
   uuidCounter = 1;
   randomUuidCounter = 1;
+  Object.keys(membershipStatuses).forEach((key) => delete membershipStatuses[key]);
 }
 
 const context = {
@@ -44,7 +46,20 @@ const context = {
     }
     return { homeId: 'test-home', memberUserId: 'father', role: 'admin', deviceId };
   },
-  provisionMembershipFromApprovalTemplateWithinRegistryLock_: () => ({ status: 'active' }),
+  provisionMembershipFromApprovalTemplateWithinRegistryLock_: (_actor, targetDeviceId) => {
+    membershipStatuses[targetDeviceId] = 'active';
+    return { status: 'active' };
+  },
+  snapshotActiveDeviceMembershipForRevoke_: (deviceId, homeId) => {
+    if (homeId !== 'test-home' || membershipStatuses[deviceId] !== 'active') throw Object.assign(new Error('MEMBERSHIP_NOT_FOUND'), { code: 'MEMBERSHIP_NOT_FOUND' });
+    return { deviceId, homeId, memberUserId: 'father', status: 'active' };
+  },
+  disableDeviceMembershipForRevoke_: (snapshot) => { membershipStatuses[snapshot.deviceId] = 'disabled'; },
+  restoreDeviceMembershipAfterRevokeFailure_: (snapshot) => { membershipStatuses[snapshot.deviceId] = 'active'; },
+  verifyDisabledDeviceMembershipForRevoke_: (snapshot) => {
+    if (membershipStatuses[snapshot.deviceId] !== 'disabled') throw Object.assign(new Error('DEVICE_REVOKE_VERIFICATION_FAILED'), { code: 'DEVICE_REVOKE_VERIFICATION_FAILED' });
+    return true;
+  },
 };
 vm.createContext(context);
 new vm.Script(policySource + '\n' + source + '\n' + securitySource).runInContext(context);

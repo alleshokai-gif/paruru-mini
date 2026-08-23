@@ -775,7 +775,7 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
-const PALURU_MINI_BUILD_ID = 'mini-20260823-nurse-okan-comment-v1';
+const PALURU_MINI_BUILD_ID = 'mini-20260824-multi-user-1n-devices-v1';
 
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};

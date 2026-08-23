@@ -1984,12 +1984,12 @@ async function approveHomeControlPairing() {
   if (homeControlApproveButton) homeControlApproveButton.disabled = true;
   try {
     const response = await callHomeControlApi({ action: "devicePairingApprove", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(), code, membershipTemplate });
-    logDevicePairingApprovalResult_({ action: "devicePairingApprove", pairingCode: code, membershipTemplate, deviceId: profile.deviceId, success: true, errorCode: "", message: "", response });
+    logDevicePairingApprovalResult_({ action: "devicePairingApprove", membershipTemplate, deviceId: profile.deviceId, success: true, errorCode: "", message: "", response });
     if (homeControlApproveCode) homeControlApproveCode.value = "";
     setHomeControlMessage("新しい端末を承認したで。", "success");
     await renderHomeControlSettings();
   } catch (error) {
-    logDevicePairingApprovalResult_({ action: "devicePairingApprove", pairingCode: code, membershipTemplate, deviceId: profile.deviceId, success: false, errorCode: String(error?.response?.error?.code || error?.code || ""), message: String(error?.response?.message || error?.message || ""), response: error?.response || null });
+    logDevicePairingApprovalResult_({ action: "devicePairingApprove", membershipTemplate, deviceId: profile.deviceId, success: false, errorCode: String(error?.response?.error?.code || error?.code || ""), message: String(error?.response?.message || error?.message || ""), response: error?.response || null });
     setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
   } finally {
     if (homeControlApproveButton) homeControlApproveButton.disabled = false;
@@ -1999,7 +1999,6 @@ async function approveHomeControlPairing() {
 function logDevicePairingApprovalResult_(details) {
   const entry = {
     action: String(details?.action || "devicePairingApprove"),
-    pairingCode: String(details?.pairingCode || ""),
     membershipTemplate: String(details?.membershipTemplate || ""),
     deviceId: String(details?.deviceId || ""),
     success: Boolean(details?.success),
@@ -2073,7 +2072,7 @@ function renderHomeControlDeviceList(devices) {
   homeControlDeviceList.innerHTML = devices.length ? devices.map((device) => {
     const label = escapeHtml(String(device.displayName || "登録済み端末"));
     const state = device.status === "active" ? "登録済み" : device.status === "revoked" ? "失効済み" : "承認待ち";
-    const isCurrent = device.isCurrent === true;
+    const isCurrent = device.isCurrentDevice === true || device.isCurrent === true;
     const current = isCurrent ? '<span>この端末</span>' : "";
     const revoke = device.status === "active" && !isCurrent ? `<button type="button" class="secondary-button" data-home-control-revoke="${escapeHtml(String(device.deviceId || ""))}">失効</button>` : "";
     return `<div class="home-control-device-row"><span>${label}（${state}）</span>${current}${revoke}</div>`;

@@ -288,16 +288,46 @@ function devicePairingRevoke_(body) {
   try {
     const input = validateDevicePairingRevokeInput_(body || {});
     const result = withHomeControlRegistryLock_(function(registry, deps) {
-    const now = deps.now();
-    pruneHomeControlRegistry_(registry, now.getTime());
-    const adminActor = resolveMembershipApprovalAdminWithinRegistryLock_(input.deviceId, input.pairingToken, registry, deps, now);
-    if (String(adminActor.deviceId) === input.targetDeviceId) throw homeControlPairingError_('CANNOT_REVOKE_CURRENT_DEVICE');
-    const target = registry.devices[input.targetDeviceId];
+      const now = deps.now();
+      pruneHomeControlRegistry_(registry, now.getTime());
+      const adminActor = resolveMembershipApprovalAdminWithinRegistryLock_(input.deviceId, input.pairingToken, registry, deps, now);
+      if (String(adminActor.deviceId) === input.targetDeviceId) throw homeControlPairingError_('CANNOT_REVOKE_CURRENT_DEVICE');
+      const target = registry.devices[input.targetDeviceId];
       if (!target || target.status !== 'active') throw homeControlPairingError_('PAIRING_DEVICE_NOT_FOUND');
-      target.status = 'revoked';
-      target.revokedAt = homeControlIso_(now);
-      target.lastUsedAt = null;
-      return { deviceId: target.deviceId, status: 'revoked' };
+      const registryDeviceSnapshot = cloneHomeControlRegistryValue_(target);
+      const membershipSnapshot = snapshotActiveDeviceMembershipForRevoke_(input.targetDeviceId, adminActor.homeId);
+      try {
+        const revokedAt = homeControlIso_(now);
+        disableDeviceMembershipForRevoke_(membershipSnapshot, revokedAt);
+        target.status = 'revoked';
+        target.revokedAt = revokedAt;
+        target.lastUsedAt = null;
+        if (registry.devices[input.targetDeviceId] !== target || target.status !== 'revoked') {
+          throw homeControlPairingError_('DEVICE_REVOKE_VERIFICATION_FAILED');
+        }
+        return createHomeControlRegistryCommitResult_(
+          { deviceId: target.deviceId, status: 'revoked' },
+          function() {
+            registry.devices[input.targetDeviceId] = cloneHomeControlRegistryValue_(registryDeviceSnapshot);
+            restoreDeviceMembershipAfterRevokeFailure_(membershipSnapshot);
+          },
+          'DEVICE_REVOKE_ROLLBACK_PENDING',
+          function() {
+            verifyDevicePairingRevokeCommit_(registry, deps, membershipSnapshot);
+          },
+          function() {
+            verifyDevicePairingRevokeRollback_(registry, deps, membershipSnapshot);
+          }
+        );
+      } catch (error) {
+        registry.devices[input.targetDeviceId] = cloneHomeControlRegistryValue_(registryDeviceSnapshot);
+        try {
+          restoreDeviceMembershipAfterRevokeFailure_(membershipSnapshot);
+        } catch (rollbackError) {
+          throw homeControlPairingError_('DEVICE_REVOKE_ROLLBACK_PENDING');
+        }
+        throw error;
+      }
     });
     return json_({ success: true, data: result, warnings: [] });
   } catch (error) {
@@ -338,18 +368,21 @@ function withHomeControlRegistryLock_(callback, dependencies) {
       commitResult = isHomeControlRegistryCommitResult_(callbackResult) ? callbackResult : null;
       const result = commitResult ? commitResult.result : callbackResult;
       saveHomeControlRegistry_(registry, deps);
+      if (commitResult && typeof commitResult.verifyAfterSave === 'function') commitResult.verifyAfterSave();
       return result;
     } catch (error) {
       if (commitResult && typeof commitResult.rollbackOnSaveFailure === 'function') {
+        const rollbackErrorCode = String(commitResult.rollbackErrorCode || 'DEVICE_TRANSFER_ROLLBACK_PENDING');
         try {
           commitResult.rollbackOnSaveFailure(error);
         } catch (rollbackError) {
-          throw homeControlPairingError_('DEVICE_TRANSFER_ROLLBACK_PENDING');
+          throw homeControlPairingError_(rollbackErrorCode);
         }
         try {
           saveHomeControlRegistry_(registry, deps);
+          if (typeof commitResult.verifyAfterRollback === 'function') commitResult.verifyAfterRollback();
         } catch (rollbackSaveError) {
-          throw homeControlPairingError_('DEVICE_TRANSFER_ROLLBACK_PENDING');
+          throw homeControlPairingError_(rollbackErrorCode);
         }
         throw error;
       }
@@ -362,12 +395,52 @@ function withHomeControlRegistryLock_(callback, dependencies) {
   }
 }
 
-function createHomeControlRegistryCommitResult_(result, rollbackOnSaveFailure) {
-  return { __homeControlRegistryCommitResult: true, result: result, rollbackOnSaveFailure: rollbackOnSaveFailure || null };
+function createHomeControlRegistryCommitResult_(result, rollbackOnSaveFailure, rollbackErrorCode, verifyAfterSave, verifyAfterRollback) {
+  return {
+    __homeControlRegistryCommitResult: true,
+    result: result,
+    rollbackOnSaveFailure: rollbackOnSaveFailure || null,
+    rollbackErrorCode: String(rollbackErrorCode || ''),
+    verifyAfterSave: verifyAfterSave || null,
+    verifyAfterRollback: verifyAfterRollback || null,
+  };
 }
 
 function isHomeControlRegistryCommitResult_(value) {
   return Boolean(value && value.__homeControlRegistryCommitResult === true && Object.prototype.hasOwnProperty.call(value, 'result'));
+}
+
+function verifyDevicePairingRevokeCommit_(registry, deps, membershipSnapshot) {
+  const persisted = readBackExpectedHomeControlRegistry_(registry, deps);
+  if (!persisted) {
+    throw homeControlPairingError_('DEVICE_REVOKE_VERIFICATION_FAILED');
+  }
+  const device = persisted.devices && persisted.devices[membershipSnapshot.deviceId];
+  if (!device || device.status !== 'revoked' || !device.revokedAt || device.lastUsedAt !== null) {
+    throw homeControlPairingError_('DEVICE_REVOKE_VERIFICATION_FAILED');
+  }
+  verifyDisabledDeviceMembershipForRevoke_(membershipSnapshot);
+}
+
+function verifyDevicePairingRevokeRollback_(registry, deps, membershipSnapshot) {
+  if (!readBackExpectedHomeControlRegistry_(registry, deps)) {
+    throw homeControlPairingError_('DEVICE_REVOKE_ROLLBACK_PENDING');
+  }
+  verifyRestoredDeviceMembershipAfterRevokeFailure_(membershipSnapshot);
+}
+
+function readBackExpectedHomeControlRegistry_(registry, deps) {
+  let persisted;
+  try {
+    persisted = JSON.parse(String(deps.getProperty(HOME_CONTROL_DEVICE_REGISTRY_PROPERTY) || ''));
+  } catch (error) {
+    persisted = null;
+  }
+  return persisted && JSON.stringify(persisted) === JSON.stringify(registry) ? persisted : null;
+}
+
+function cloneHomeControlRegistryValue_(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function loadHomeControlRegistry_(deps) {

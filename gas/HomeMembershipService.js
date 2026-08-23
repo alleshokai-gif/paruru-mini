@@ -57,6 +57,86 @@ function getDeviceMembership_(deviceId) {
   return row ? { deviceId: row.deviceId, homeId: row.homeId, memberUserId: row.memberUserId, status: row.status, assignedBy: row.assignedBy } : null;
 }
 
+function snapshotActiveDeviceMembershipForRevoke_(deviceId, expectedHomeId) {
+  const state = getUniqueDeviceMembershipRowStateForRevoke_(deviceId);
+  if (state.status !== 'active') throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+  if (state.homeId !== String(expectedHomeId || '')) throw homeMembershipError_('FORBIDDEN');
+  const member = getHomeMember_(state.homeId, state.memberUserId);
+  if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member)) {
+    throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+  }
+  return state;
+}
+
+function disableDeviceMembershipForRevoke_(snapshot, now) {
+  const current = getUniqueDeviceMembershipRowStateForRevoke_(snapshot && snapshot.deviceId);
+  if (current.rowNumber !== snapshot.rowNumber || !sameDeviceMembershipRowValues_(current.values, snapshot.values) || current.status !== 'active') {
+    throw homeMembershipError_('MEMBERSHIP_CONFLICT');
+  }
+  const row = snapshot.values.slice();
+  row[snapshot.headerMap.status] = 'disabled';
+  row[snapshot.headerMap.updatedAt] = now;
+  snapshot.sheet.getRange(snapshot.rowNumber, 1, 1, snapshot.headers.length).setValues([row]);
+  verifyDisabledDeviceMembershipForRevoke_(snapshot);
+}
+
+function verifyDisabledDeviceMembershipForRevoke_(snapshot) {
+  const current = getUniqueDeviceMembershipRowStateForRevoke_(snapshot && snapshot.deviceId);
+  if (current.rowNumber !== snapshot.rowNumber || current.homeId !== snapshot.homeId || current.memberUserId !== snapshot.memberUserId ||
+      current.assignedBy !== snapshot.assignedBy || current.status !== 'disabled') {
+    throw homeMembershipError_('DEVICE_REVOKE_VERIFICATION_FAILED');
+  }
+  return true;
+}
+
+function restoreDeviceMembershipAfterRevokeFailure_(snapshot) {
+  const current = getUniqueDeviceMembershipRowStateForRevoke_(snapshot && snapshot.deviceId);
+  if (current.rowNumber !== snapshot.rowNumber) throw homeMembershipError_('DEVICE_REVOKE_ROLLBACK_PENDING');
+  if (!sameDeviceMembershipRowValues_(current.values, snapshot.values)) {
+    snapshot.sheet.getRange(snapshot.rowNumber, 1, 1, snapshot.headers.length).setValues([snapshot.values.slice()]);
+  }
+  verifyRestoredDeviceMembershipAfterRevokeFailure_(snapshot);
+}
+
+function verifyRestoredDeviceMembershipAfterRevokeFailure_(snapshot) {
+  const restored = getUniqueDeviceMembershipRowStateForRevoke_(snapshot.deviceId);
+  if (restored.rowNumber !== snapshot.rowNumber || !sameDeviceMembershipRowValues_(restored.values, snapshot.values)) {
+    throw homeMembershipError_('DEVICE_REVOKE_ROLLBACK_PENDING');
+  }
+}
+
+function getUniqueDeviceMembershipRowStateForRevoke_(deviceId) {
+  const normalizedDeviceId = String(deviceId || '');
+  const sheet = getRequiredHomeMembershipSheet_(DEVICE_MEMBERSHIPS_SHEET_NAME, DEVICE_MEMBERSHIPS_HEADERS);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const headerMap = headers.reduce(function(map, header, index) { map[header] = index; return map; }, {});
+  const matches = [];
+  for (let index = 1; index < values.length; index += 1) {
+    if (String(values[index][headerMap.deviceId] || '') === normalizedDeviceId) matches.push(index);
+  }
+  if (matches.length !== 1) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+  const rowIndex = matches[0];
+  const row = values[rowIndex].slice();
+  return {
+    sheet: sheet,
+    headers: headers,
+    headerMap: headerMap,
+    rowNumber: rowIndex + 1,
+    values: row,
+    deviceId: String(row[headerMap.deviceId] || ''),
+    homeId: String(row[headerMap.homeId] || ''),
+    memberUserId: String(row[headerMap.memberUserId] || ''),
+    status: String(row[headerMap.status] || ''),
+    assignedBy: String(row[headerMap.assignedBy] || ''),
+  };
+}
+
+function sameDeviceMembershipRowValues_(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+  return left.every(function(value, index) { return String(value == null ? '' : value) === String(right[index] == null ? '' : right[index]); });
+}
+
 function authorizeTargetOperation_(actor, targetUserId, operation) {
   const target = String(targetUserId || '').trim();
   const policy = HEALTH_OPERATION_CAPABILITIES[operation];
@@ -146,11 +226,17 @@ function resolveMembershipApprovalAdminWithinRegistryLock_(deviceId, pairingToke
 function getMembershipApprovalTemplate_(templateName) {
   const policy = getHomeMemberPolicyByApprovalTemplate_(templateName);
   if (!policy) throw homeMembershipError_('INVALID_MEMBERSHIP_TEMPLATE');
+  const allowsInitialMember = policy.registrationMode === HOME_MEMBER_REGISTRATION_MODES.INITIAL_MEMBER_ONLY ||
+    policy.registrationMode === HOME_MEMBER_REGISTRATION_MODES.INITIAL_OR_EXISTING_MEMBER;
+  const allowsExistingMember = policy.registrationMode === HOME_MEMBER_REGISTRATION_MODES.EXISTING_MEMBER_ONLY ||
+    policy.registrationMode === HOME_MEMBER_REGISTRATION_MODES.INITIAL_OR_EXISTING_MEMBER;
   return {
     memberUserId: policy.memberUserId,
     displayName: policy.displayName,
     role: policy.role,
-    requiresExistingMember: policy.registrationMode === HOME_MEMBER_REGISTRATION_MODES.EXISTING_MEMBER_ONLY,
+    allowsInitialMember: allowsInitialMember,
+    allowsExistingMember: allowsExistingMember,
+    requiresExistingMember: !allowsInitialMember,
   };
 }
 
@@ -193,26 +279,22 @@ function provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, 
     const existingDevice = getDeviceMembership_(deviceId);
     const deviceState = getMembershipApprovalDeviceState_(existingDevice, homeId, template, assignment);
     const existingMember = getHomeMember_(homeId, template.memberUserId);
-    if (template.requiresExistingMember) {
-      if (!existingMember || existingMember.status !== 'active' || !isHomeMemberPolicyMatch_(existingMember) || existingMember.role !== template.role) {
-        throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+    let resumesInitialMemberProvision = false;
+    if (existingMember) {
+      assertExistingMembershipApprovalMember_(existingMember, template);
+      if (existingMember.status === 'active') {
+        if (deviceState === 'missing' && !template.allowsExistingMember) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
+      } else {
+        resumesInitialMemberProvision = template.allowsInitialMember && deviceState === 'disabled';
+        if (!resumesInitialMemberProvision) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
       }
-    } else {
-      if (deviceState === 'missing') {
-        if (existingMember) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
-      } else if (existingMember) {
-        assertExistingMembershipApprovalMember_(existingMember, template);
-      }
+    } else if (!template.allowsInitialMember) {
+      throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
     }
     recordDevicePairingApprovalStage_(diagnostics, 'conflict', 'clear');
 
     if (deviceState === 'active') {
-      if (!template.requiresExistingMember && (!existingMember || existingMember.status !== 'active')) {
-        if (existingMember) assertExistingMembershipApprovalMember_(existingMember, template);
-        provisioningStarted = true;
-        upsertHomeMember_(homeId, template.memberUserId, existingMember ? existingMember.displayName : template.displayName, template.role, 'active', now);
-        recordDevicePairingApprovalStage_(diagnostics, 'homeMembers', 'active');
-      }
+      if (!existingMember || existingMember.status !== 'active') throw homeMembershipError_('MEMBERSHIP_CONFLICT');
       recordDevicePairingApprovalStage_(diagnostics, 'deviceMemberships', 'active');
       return { memberUserId: template.memberUserId, role: template.role, deviceId: deviceId, status: 'active' };
     }
@@ -228,13 +310,15 @@ function provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, 
     }
 
     let confirmedMember = getHomeMember_(homeId, template.memberUserId);
-    if (!template.requiresExistingMember && !confirmedMember) {
+    if (!confirmedMember) {
+      if (!template.allowsInitialMember) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
       provisioningStarted = true;
       upsertHomeMember_(homeId, template.memberUserId, template.displayName, template.role, 'active', now);
       recordDevicePairingApprovalStage_(diagnostics, 'homeMembers', 'created');
       createdHomeMember = true;
       confirmedMember = getHomeMember_(homeId, template.memberUserId);
-    } else if (!template.requiresExistingMember && confirmedMember && confirmedMember.status === 'disabled') {
+    } else if (confirmedMember.status === 'disabled') {
+      if (!resumesInitialMemberProvision) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
       assertExistingMembershipApprovalMember_(confirmedMember, template);
       provisioningStarted = true;
       upsertHomeMember_(homeId, template.memberUserId, confirmedMember.displayName, template.role, 'active', now);

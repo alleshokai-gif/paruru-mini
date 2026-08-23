@@ -1,5 +1,6 @@
-// Trusted, one-time recovery for a replaced second-son device.  This file is
-// intentionally not routed from Code.js and must be run only in the Apps Script editor.
+// Legacy migration / emergency recovery only for a replaced second-son device.
+// This file is intentionally not routed from Code.js and must not be used by the
+// normal multi-device registration path. Run it only from the Apps Script editor.
 const SECOND_SON_DEVICE_TRANSFER_REPAIR_PROPERTIES = Object.freeze({
   oldDeviceId: 'PALURU_SECOND_SON_TRANSFER_OLD_DEVICE_ID',
   pairingCode: 'PALURU_SECOND_SON_TRANSFER_PAIRING_CODE',

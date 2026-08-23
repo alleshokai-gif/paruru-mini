@@ -141,6 +141,22 @@ assert.strictEqual(api.historyViewModel_([], 'failed', timestampNow).state, 'fai
 assert.strictEqual(api.historyViewModel_(historyEvents, 'loaded', timestampNow).state, 'loaded', 'PH-H07 summary failure must not affect history model');
 assert.strictEqual(api.summaryDisplayModel_({ meal: { eventCount: 1, totalAmountG: 20 }, water: { eventCount: 0 }, stool: { count: 0 }, latestWeight: null }, 'loaded').meal, '20g', 'PH-H08 recent failure must not affect summary model');
 
+// PH-WK01 - PH-WK06: Water KPI represents the most recently confirmed bottle interval, not a calendar-day total.
+const waterBottleIntervalSummary = { water: { eventCount: 1, totalAmountMl: 300 }, waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 18, normalized24hMl: 360 } } };
+const waterBottleIntervalModel = api.summaryDisplayModel_(waterBottleIntervalSummary, 'loaded');
+assert.strictEqual(waterBottleIntervalModel.water, '360mL/24h', 'PH-WK01 latest bottle interval must render normalized water');
+assert.strictEqual(waterBottleIntervalModel.waterHint, '直近交換区間から換算', 'PH-WK01 bottle interval hint missing');
+assert.strictEqual(api.summaryDisplayModel_({ waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 0, elapsedHours: 18, normalized24hMl: 0 } } }, 'loaded').water, '0mL/24h', 'PH-WK02 zero bottle interval is a valid value');
+const firstBottleSetModel = api.summaryDisplayModel_({ waterBottle: { latest: { newFillMl: 400 }, latestInterval: null } }, 'loaded');
+assert.strictEqual(firstBottleSetModel.water, '計測中', 'PH-WK03 first bottle set must not pretend to be a measured amount');
+assert.strictEqual(firstBottleSetModel.waterHint, '次回交換で算出', 'PH-WK03 first bottle set hint missing');
+assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 2, totalAmountMl: 300 }, waterBottle: { latest: null, latestInterval: null } }, 'loaded').water, '300mL', 'PH-WK04 legacy water remains available without bottle data');
+assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 0, totalAmountMl: null }, waterBottle: { latest: null, latestInterval: null } }, 'loaded').water, '--', 'PH-WK05 missing water data must not appear as zero');
+assert.strictEqual(api.summaryDisplayModel_({ water: { eventCount: 2, totalAmountMl: 300 }, waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 3, normalized24hMl: 2160 } } }, 'loaded').water, '2160mL/24h', 'PH-WK06 bottle interval must take priority over legacy water');
+assert.strictEqual(api.summaryDisplayModel_({ waterBottle: { latest: { newFillMl: 400 }, latestInterval: { bottleDecreaseMl: 270, elapsedHours: 3, normalized24hMl: 2160 } } }, 'loaded').waterHint, '短時間データのため参考', 'PH-WK06 short interval hint missing');
+assert(featureSource.includes('id="popioSummaryWaterHint"') && featureSource.includes("setText_('popioSummaryWaterHint', model.waterHint)"), 'PH-WK01 water KPI hint render boundary missing');
+assert(cssSource.includes('.popio-summary-water strong') && cssSource.includes('.popio-summary-water small') && cssSource.includes('overflow-wrap: anywhere;'), 'PH-WK01 water KPI mobile text contract missing');
+
 // PH-COLL01 - PH-COLL08: collapsing is PWA-only presentation state.
 let collapsed = api.collapsibleSectionState_({ historyExpanded: false, observationExpanded: false }, 'history');
 assert.deepStrictEqual(plain(collapsed), { historyExpanded: true, observationExpanded: false }, 'PH-COLL01/02 history starts collapsed then opens');
@@ -175,8 +191,17 @@ assert.strictEqual(api.observationMealLabel_({ knownAmountG: 60, amountStatus: '
 assert.deepStrictEqual(plain(trendSeven.stool.find((item) => item.localDate === '2026-08-20')), { localDate: '2026-08-20', count: 3, forms: { pellet: 0, formed: 1, banana: 2, soft: 0, watery: 0 }, formLabel: 'バナナ' }, 'PH-TU08 stool count and dominant form');
 assert.strictEqual(api.observationTrendModel_(trendFixture, 30).localDates.length, 30, 'PH-TU03 thirty-day model range');
 assert.strictEqual(api.observationTrendModel_(null, 7).state, 'unavailable', 'PH-TU09 unavailable trend state');
+const weightAxis = api.weightAxisModel_([{ weightKg: 2.1 }, { weightKg: 2.4 }]);
+assert(weightAxis && weightAxis.maximum - weightAxis.minimum >= 1, 'PH-WA01 weight axis must retain at least a 1kg range');
+assert.deepStrictEqual(weightAxis.ticks.map((tick) => tick.label), ['3.0', '2.5', '2.0'], 'PH-WA02/03 weight axis ticks must be max mid min with one decimal label');
+assert.strictEqual(api.weightAxisModel_([{ weightKg: 2.3 }]).ticks.length, 3, 'PH-WA05 one weight point must still receive three ticks');
+assert.strictEqual(api.weightAxisModel_([{ weightKg: 2.3 }]).maximum - api.weightAxisModel_([{ weightKg: 2.3 }]).minimum >= 1, true, 'PH-WA08 same weight must retain a valid minimum range');
+assert.strictEqual(api.weightAxisModel_([{ weightKg: -1 }, { weightKg: NaN }]), null, 'PH-WA07 invalid or negative weights must not create an axis');
+assert.strictEqual(api.observationTrendModel_({ ...trendFixture, weight: { items: [{ localDate: '2026-08-20', occurredAt: '2026-08-20T08:00:00+09:00', weightKg: -1 }] } }, 7).weight.length, 0, 'PH-WA07 invalid weight must not enter the trend');
 assert(featureSource.includes('id="popioObservationToggle"') && featureSource.includes('data-popio-observation-period="7"') && featureSource.includes('data-popio-observation-period="30"'), 'PH-TU01 observation section and period controls missing');
 assert(featureSource.includes('renderWeightTrend_') && featureSource.includes('renderMealTrend_') && featureSource.includes('renderStoolTrend_'), 'PH-TU04/06/08 observation renderers missing');
+assert(featureSource.includes("if (model.weight.length > 1)") && featureSource.includes("popio-weight-guide") && featureSource.includes("popio-weight-tick"), 'PH-WA04/05 weight chart must render guides and omit a one-point line');
+assert(cssSource.includes('.popio-weight-guide') && cssSource.includes('stroke: #dce7de;') && cssSource.includes('.popio-weight-tick') && cssSource.includes('fill: var(--muted);'), 'PH-WA04 weight guide visual contract missing');
 assert(featureSource.includes('<h3>💩 うんち</h3>') && !featureSource.includes('<h3>💩 便</h3>'), 'PH-TU08 stool trend label must use うんち');
 assert(cssSource.includes('.popio-observation-card') && cssSource.includes('.popio-weight-chart') && cssSource.includes('.popio-trend-row') && cssSource.includes('grid-template-columns: 40px minmax(0, 1fr) auto auto;'), 'PH-TU01/04/06/08 observation mobile styles missing');
 const periodControlsCss = cssSource.slice(cssSource.indexOf('.popio-observation-periods {'), cssSource.indexOf('.popio-observation-periods button[aria-pressed="true"]'));
@@ -428,8 +453,8 @@ async function run() {
   const emptyModel = api.summaryDisplayModel_({
     meal: { eventCount: 0, totalAmountG: null }, water: { eventCount: 0, totalAmountMl: null }, stool: { count: 0 }, latestWeight: null,
   }, 'loaded');
-  assert.deepStrictEqual(plain(emptyModel), { meal: '0g', water: '0mL', stool: '0回', weight: '--' }, 'PH-U15 zero summary');
-  assert.deepStrictEqual(plain(api.summaryDisplayModel_(null, 'failed')), { meal: '--', water: '--', stool: '--', weight: '--' }, 'PH-U16 failed summary');
+  assert.deepStrictEqual(plain(emptyModel), { meal: '0g', water: '--', waterHint: '', stool: '0回', weight: '--' }, 'PH-U15 zero summary');
+  assert.deepStrictEqual(plain(api.summaryDisplayModel_(null, 'failed')), { meal: '--', water: '--', waterHint: '', stool: '--', weight: '--' }, 'PH-U16 failed summary');
 
   // PH-U18/U19: feature receives only facade + public auth context; it cannot read or transport raw credentials itself.
   assert(!featureSource.includes('localStorage'), 'PH-U19 feature reads storage');

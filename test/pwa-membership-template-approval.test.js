@@ -65,8 +65,8 @@ function createHarness(options = {}) {
     assert(!Object.hasOwn(payload, 'userId') && !Object.hasOwn(payload, 'role') && !Object.hasOwn(payload, 'homeId') && !Object.hasOwn(payload, 'capability'));
     const log = h.logs.find((entry) => entry.args[0] === '[Paruru] devicePairingApprove');
     assert(log && log.level === 'info', 'successful approval must be logged');
-    assert.deepStrictEqual(Object.keys(log.args[1]).sort(), ['action', 'deviceId', 'errorCode', 'membershipTemplate', 'message', 'pairingCode', 'response', 'success'].sort());
-    assert.strictEqual(log.args[1].pairingCode, '123456');
+    assert.deepStrictEqual(Object.keys(log.args[1]).sort(), ['action', 'deviceId', 'errorCode', 'membershipTemplate', 'message', 'response', 'success'].sort());
+    assert(!JSON.stringify(log.args).includes('123456'), 'raw pairing code must not be logged');
     assert.strictEqual(log.args[1].membershipTemplate, template);
   }
 
@@ -104,8 +104,8 @@ function createHarness(options = {}) {
   assert.strictEqual(admin.context.homeControlDeviceList.hidden, false, 'admin must see device list');
   assert.strictEqual(admin.requests[0].action, 'devicePairingList', 'admin must request the device list');
   admin.context.renderHomeControlDeviceList([
-    { deviceId: 'test-device', displayName: 'この端末名', status: 'active', isCurrent: true },
-    { deviceId: 'other-device', displayName: 'ほかの端末', status: 'active', isCurrent: false },
+    { deviceId: 'test-device', displayName: 'この端末名', status: 'active', isCurrentDevice: true },
+    { deviceId: 'other-device', displayName: 'ほかの端末', status: 'active', isCurrentDevice: false },
   ]);
   assert(admin.context.homeControlDeviceList.innerHTML.includes('この端末'), 'current device label is missing');
   assert(!admin.context.homeControlDeviceList.innerHTML.includes('data-home-control-revoke="test-device"'), 'current device must not have a revoke button');

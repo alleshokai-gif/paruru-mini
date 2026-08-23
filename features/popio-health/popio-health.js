@@ -64,7 +64,7 @@
       </section>
       <section class="popio-summary-card" aria-label="今日のまとめ">
         <div><span>🍚 ごはん</span><strong id="popioSummaryMeal">--</strong></div>
-        <div><span>💧 水</span><strong id="popioSummaryWater">--</strong></div>
+        <div class="popio-summary-water"><span>💧 水</span><strong id="popioSummaryWater">--</strong><small id="popioSummaryWaterHint"></small></div>
         <div><span>💩 うんち</span><strong id="popioSummaryStool">--</strong></div>
         <div><span>⚖️ 体重</span><strong id="popioSummaryWeight">--</strong></div>
       </section>
@@ -984,12 +984,20 @@
   }
 
   function summaryDisplayModel_(summary, status) {
-    if (status !== 'loaded' || !summary || typeof summary !== 'object') return { meal: '--', water: '--', stool: '--', weight: '--' };
+    if (status !== 'loaded' || !summary || typeof summary !== 'object') return { meal: '--', water: '--', waterHint: '', stool: '--', weight: '--' };
     const meal = summary.meal && Number(summary.meal.eventCount) === 0 ? '0g' : summary.meal && typeof summary.meal.totalAmountG === 'number' ? summary.meal.totalAmountG + 'g' : '--';
-    const water = summary.water && Number(summary.water.eventCount) === 0 ? '0mL' : summary.water && typeof summary.water.totalAmountMl === 'number' ? summary.water.totalAmountMl + 'mL' : '--';
+    const waterBottle = summary.waterBottle && typeof summary.waterBottle === 'object' ? summary.waterBottle : null;
+    const latestInterval = waterBottle && waterBottle.latestInterval && typeof waterBottle.latestInterval === 'object' ? waterBottle.latestInterval : null;
+    const normalized24hMl = latestInterval && Number(latestInterval.normalized24hMl);
+    const elapsedHours = latestInterval && Number(latestInterval.elapsedHours);
+    const hasBottleInterval = Number.isFinite(normalized24hMl) && normalized24hMl >= 0;
+    const hasBottleSet = Boolean(waterBottle && waterBottle.latest && typeof waterBottle.latest === 'object');
+    const hasLegacyWater = summary.water && Number(summary.water.eventCount) > 0 && Number.isFinite(Number(summary.water.totalAmountMl));
+    const water = hasBottleInterval ? normalized24hMl + 'mL/24h' : hasBottleSet ? '計測中' : hasLegacyWater ? Number(summary.water.totalAmountMl) + 'mL' : '--';
+    const waterHint = hasBottleInterval ? (Number.isFinite(elapsedHours) && elapsedHours < 6 ? '短時間データのため参考' : '直近交換区間から換算') : hasBottleSet ? '次回交換で算出' : '';
     const stool = summary.stool && Number.isFinite(Number(summary.stool.count)) ? String(Number(summary.stool.count)) + '回' : '--';
     const weight = summary.latestWeight && typeof summary.latestWeight.weightKg === 'number' ? summary.latestWeight.weightKg + 'kg' : '--';
-    return { meal: meal, water: water, stool: stool, weight: weight };
+    return { meal: meal, water: water, waterHint: waterHint, stool: stool, weight: weight };
   }
   function recordingReminderModel_(summary, status, now) {
     const slots = summary && summary.meal && summary.meal.bySlot;
@@ -1118,7 +1126,7 @@
     const allowed = new Set(localDates), mealByDate = Object.create(null), stoolByDate = Object.create(null);
     trends.meal.daily.forEach(function (item) { if (item && allowed.has(item.localDate)) mealByDate[item.localDate] = item; });
     trends.stool.daily.forEach(function (item) { if (item && allowed.has(item.localDate)) stoolByDate[item.localDate] = item; });
-    const weight = trends.weight.items.filter(function (item) { return item && allowed.has(item.localDate) && typeof item.weightKg === 'number' && Number.isFinite(item.weightKg) && Number.isFinite(new Date(String(item.occurredAt || '')).getTime()); }).slice().sort(function (a, b) { return String(a.localDate).localeCompare(String(b.localDate)) || new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(); });
+    const weight = trends.weight.items.filter(function (item) { return item && allowed.has(item.localDate) && typeof item.weightKg === 'number' && Number.isFinite(item.weightKg) && item.weightKg >= 0.1 && item.weightKg <= 200 && Number.isFinite(new Date(String(item.occurredAt || '')).getTime()); }).slice().sort(function (a, b) { return String(a.localDate).localeCompare(String(b.localDate)) || new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(); });
     const meal = localDates.map(function (localDate) {
       const item = mealByDate[localDate] || {};
       return { localDate: localDate, knownAmountG: typeof item.knownAmountG === 'number' && Number.isFinite(item.knownAmountG) ? item.knownAmountG : 0, amountStatus: ['complete', 'partial', 'unknown', 'no_events'].indexOf(item.amountStatus) >= 0 ? item.amountStatus : 'no_events' };
@@ -1141,17 +1149,39 @@
     text.textContent = message;
     target.append(text);
   }
+  function weightAxisModel_(items) {
+    const values = (Array.isArray(items) ? items : []).map(function (item) { return item && Number(item.weightKg); }).filter(function (value) { return Number.isFinite(value) && value >= 0.1 && value <= 200; });
+    if (!values.length) return null;
+    const minimum = Math.min.apply(null, values), maximum = Math.max.apply(null, values), step = 0.5;
+    const lower = Math.max(0.1, Math.floor((minimum - 0.1) / step) * step);
+    const initialUpper = Math.ceil((maximum + 0.1) / step) * step;
+    const upper = Math.max(initialUpper, lower + 1);
+    const midpoint = lower + (upper - lower) / 2;
+    const ticks = [upper, midpoint, lower].map(function (value) { const rounded = Math.round(value * 10) / 10; return { value: rounded, label: rounded.toFixed(1) }; });
+    return { minimum: ticks[2].value, maximum: ticks[0].value, ticks: ticks };
+  }
   function renderWeightTrend_(target, model) {
     if (!target) return;
     target.textContent = '';
     if (!model.weight.length) { renderTrendEmpty_(target, '体重記録はまだないで'); return; }
-    const values = model.weight.map(function (item) { return item.weightKg; }), minimum = Math.min.apply(null, values), maximum = Math.max.apply(null, values), span = maximum - minimum || 0.1, lower = minimum - span * 0.2, upper = maximum + span * 0.2, width = 320, height = 132, padding = 20;
-    const x = function (item) { const index = Math.max(0, model.localDates.indexOf(item.localDate)); return padding + (width - padding * 2) * (model.localDates.length === 1 ? 0.5 : index / (model.localDates.length - 1)); };
-    const y = function (item) { return height - padding - (height - padding * 2) * ((item.weightKg - lower) / (upper - lower)); };
+    const axisModel = weightAxisModel_(model.weight);
+    if (!axisModel) { renderTrendEmpty_(target, '体重記録はまだないで'); return; }
+    const width = 320, height = 148, plotLeft = 42, plotRight = 12, plotTop = 12, plotBottom = 14;
+    const x = function (item) { const index = Math.max(0, model.localDates.indexOf(item.localDate)); return plotLeft + (width - plotLeft - plotRight) * (model.localDates.length === 1 ? 0.5 : index / (model.localDates.length - 1)); };
+    const yForValue = function (value) { return height - plotBottom - (height - plotTop - plotBottom) * ((value - axisModel.minimum) / (axisModel.maximum - axisModel.minimum)); };
+    const y = function (item) { return yForValue(item.weightKg); };
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'popio-weight-chart'); svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height); svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', '体重推移');
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-    line.setAttribute('points', model.weight.map(function (item) { return x(item) + ',' + y(item); }).join(' ')); line.setAttribute('fill', 'none'); line.setAttribute('class', 'popio-weight-line'); svg.append(line);
+    axisModel.ticks.forEach(function (tick) {
+      const y = yForValue(tick.value), guide = document.createElementNS('http://www.w3.org/2000/svg', 'line'), label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      guide.setAttribute('x1', plotLeft); guide.setAttribute('x2', width - plotRight); guide.setAttribute('y1', y); guide.setAttribute('y2', y); guide.setAttribute('class', 'popio-weight-guide');
+      label.setAttribute('x', plotLeft - 6); label.setAttribute('y', y + 3.5); label.setAttribute('text-anchor', 'end'); label.setAttribute('class', 'popio-weight-tick'); label.textContent = tick.label;
+      svg.append(guide, label);
+    });
+    if (model.weight.length > 1) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      line.setAttribute('points', model.weight.map(function (item) { return x(item) + ',' + y(item); }).join(' ')); line.setAttribute('fill', 'none'); line.setAttribute('class', 'popio-weight-line'); svg.append(line);
+    }
     model.weight.forEach(function (item) { const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle'); point.setAttribute('cx', x(item)); point.setAttribute('cy', y(item)); point.setAttribute('r', '4'); point.setAttribute('class', 'popio-weight-point'); svg.append(point); });
     const summary = document.createElement('p'), axis = document.createElement('div');
     summary.className = 'popio-trend-caption'; summary.textContent = '最新 ' + model.weight[model.weight.length - 1].weightKg + 'kg';
@@ -1191,7 +1221,7 @@
   }
   function renderSummary_() {
     const model = summaryDisplayModel_(state.summary, state.summaryStatus);
-    setText_('popioSummaryMeal', model.meal); setText_('popioSummaryWater', model.water); setText_('popioSummaryStool', model.stool); setText_('popioSummaryWeight', model.weight);
+    setText_('popioSummaryMeal', model.meal); setText_('popioSummaryWater', model.water); setText_('popioSummaryWaterHint', model.waterHint); setText_('popioSummaryStool', model.stool); setText_('popioSummaryWeight', model.weight);
     renderReminder_();
     renderWaterBottle_();
   }
@@ -1237,6 +1267,7 @@
     observationMealLabel_: observationMealLabel_,
     observationForms_: observationForms_,
     observationPeriod_: observationPeriod_,
+    weightAxisModel_: weightAxisModel_,
     dashboardDataValid_: dashboardDataValid_,
     dashboardFailureState_: dashboardFailureState_,
     dashboardSnapshotState_: dashboardSnapshotState_,

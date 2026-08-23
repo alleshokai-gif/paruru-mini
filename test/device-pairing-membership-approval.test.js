@@ -26,6 +26,7 @@ function createHarness() {
   let saveFailures = 0;
   let adminMode = 'admin';
   let provisionFailure = false;
+  let revokeMembershipStatus = 'active';
   const provisionCalls = [];
   const context = {
     Date, JSON, Math, Number, Object, Array, String, RegExp, Error, parseInt,
@@ -57,6 +58,16 @@ function createHarness() {
       return { status: 'active' };
     },
     getDeviceMembership_: () => null,
+    snapshotActiveDeviceMembershipForRevoke_(deviceId, homeId) {
+      if (deviceId !== membershipDeviceId || homeId !== 'home-a' || revokeMembershipStatus !== 'active') throw Object.assign(new Error('MEMBERSHIP_NOT_FOUND'), { code: 'MEMBERSHIP_NOT_FOUND' });
+      return { deviceId, homeId, memberUserId: 'second_son', status: 'active' };
+    },
+    disableDeviceMembershipForRevoke_() { revokeMembershipStatus = 'disabled'; },
+    restoreDeviceMembershipAfterRevokeFailure_() { revokeMembershipStatus = 'active'; },
+    verifyDisabledDeviceMembershipForRevoke_() {
+      if (revokeMembershipStatus !== 'disabled') throw Object.assign(new Error('DEVICE_REVOKE_VERIFICATION_FAILED'), { code: 'DEVICE_REVOKE_VERIFICATION_FAILED' });
+      return true;
+    },
   };
   vm.createContext(context);
   vm.runInContext(policySource, context);
@@ -87,6 +98,7 @@ function createHarness() {
     list: () => context.devicePairingList_({ deviceId: parentId, pairingToken: parentToken }),
     revoke: (targetDeviceId) => context.devicePairingRevoke_({ deviceId: parentId, pairingToken: parentToken, targetDeviceId }),
     context, provisionCalls, registry, seedParent, seedActiveMembershipDevice,
+    revokeMembershipStatus: () => revokeMembershipStatus,
     setParentDeviceStatus: (status) => {
       const saved = registry();
       saved.devices[parentId].status = status;
@@ -184,11 +196,14 @@ test('non-admin and client spoofed identity values cannot alter approval', () =>
 
 test('only an active admin membership can list or revoke devices', () => {
   const h = createHarness(); h.seedParent(); h.seedActiveMembershipDevice();
-  assert(h.list().success, 'active admin could not list devices');
+  const listed = h.list();
+  assert(listed.success, 'active admin could not list devices');
+  assert.strictEqual(listed.data.devices.find((device) => device.deviceId === parentId).isCurrentDevice, true, 'backend current-device contract changed');
   const beforeSelfRevoke = h.registry();
   expectCode(h.revoke(parentId), 'CANNOT_REVOKE_CURRENT_DEVICE');
   assert.deepStrictEqual(h.registry(), beforeSelfRevoke, 'self revoke must not change the registry');
   assert(h.revoke(membershipDeviceId).success, 'active admin could not revoke a device');
+  assert.strictEqual(h.revokeMembershipStatus(), 'disabled', 'revoke did not disable the target membership');
 
   for (const role of ['self_record', 'guardian']) {
     const blocked = createHarness(); blocked.seedParent(); blocked.seedActiveMembershipDevice(); blocked.setAdminMode(role);

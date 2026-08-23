@@ -1,6 +1,7 @@
 const HOME_MEMBER_REGISTRATION_MODES = Object.freeze({
   EXISTING_MEMBER_ONLY: 'existing_member_only',
   INITIAL_MEMBER_ONLY: 'initial_member_only',
+  INITIAL_OR_EXISTING_MEMBER: 'initial_or_existing_member',
   NOT_ALLOWED: 'not_allowed',
 });
 
@@ -11,7 +12,7 @@ const HOME_MEMBER_POLICY = Object.freeze({
   mother: Object.freeze({ memberUserId: 'mother', displayName: '母', role: 'guardian', calendarSuffix: '（母）', registrationMode: HOME_MEMBER_REGISTRATION_MODES.NOT_ALLOWED, approvalTemplateId: '' }),
   eldest_son: Object.freeze({ memberUserId: 'eldest_son', displayName: '長男', role: 'self_record', calendarSuffix: '（理）', registrationMode: HOME_MEMBER_REGISTRATION_MODES.NOT_ALLOWED, approvalTemplateId: '' }),
   eldest_daughter: Object.freeze({ memberUserId: 'eldest_daughter', displayName: '長女', role: 'self_record', calendarSuffix: '（は）', registrationMode: HOME_MEMBER_REGISTRATION_MODES.NOT_ALLOWED, approvalTemplateId: '' }),
-  second_son: Object.freeze({ memberUserId: 'second_son', displayName: '次男', role: 'self_record', calendarSuffix: '（ふ）', registrationMode: HOME_MEMBER_REGISTRATION_MODES.INITIAL_MEMBER_ONLY, approvalTemplateId: 'second_son_initial' }),
+  second_son: Object.freeze({ memberUserId: 'second_son', displayName: '次男', role: 'self_record', calendarSuffix: '（ふ）', registrationMode: HOME_MEMBER_REGISTRATION_MODES.INITIAL_OR_EXISTING_MEMBER, approvalTemplateId: 'second_son_initial' }),
   youngest_daughter: Object.freeze({ memberUserId: 'youngest_daughter', displayName: '次女', role: 'self_record', calendarSuffix: '（り）', registrationMode: HOME_MEMBER_REGISTRATION_MODES.NOT_ALLOWED, approvalTemplateId: '' }),
 });
 

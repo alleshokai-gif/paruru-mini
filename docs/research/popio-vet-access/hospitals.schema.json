@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paluru.local/schemas/popio-vet-hospitals.schema.json",
+  "title": "Popio Veterinary Medical Access Dataset",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "generated_at",
+    "timezone",
+    "routing_origin",
+    "coordinate_source",
+    "hospitals",
+    "screened_out"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "dataset_id": { "type": "string", "const": "popio-vet-access" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "timezone": { "type": "string", "const": "Asia/Tokyo" },
+    "routing_origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "precision", "privacy_note"],
+      "properties": {
+        "label": { "type": "string" },
+        "precision": { "type": "string", "enum": ["neighborhood_representative", "exact"] },
+        "privacy_note": { "type": "string" }
+      }
+    },
+    "coordinate_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "url", "checked_at", "precision_note"],
+      "properties": {
+        "provider": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "checked_at": { "type": "string", "format": "date" },
+        "precision_note": { "type": "string" }
+      }
+    },
+    "hospitals": {
+      "type": "array",
+      "minItems": 15,
+      "items": { "$ref": "#/$defs/hospital" }
+    },
+    "screened_out": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/screenedHospital" }
+    }
+  },
+  "$defs": {
+    "triState": {
+      "description": "true/false/null. null means not verified; it must never be interpreted as false.",
+      "type": ["boolean", "null"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "source_type", "checked_at", "supports"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "source_type": {
+          "type": "string",
+          "enum": ["official_hospital", "official_insurer", "official_association", "official_government", "google_maps", "review_site", "directory"]
+        },
+        "checked_at": { "type": "string", "format": "date" },
+        "supports": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "reviewSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "rating", "review_count", "url", "checked_at", "status"],
+      "properties": {
+        "source": { "type": "string" },
+        "rating": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
+        "review_count": { "type": ["integer", "null"], "minimum": 0 },
+        "url": { "type": ["string", "null"], "format": "uri" },
+        "checked_at": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["verified", "not_found", "not_accessible", "stale", "conflicting"] },
+        "note": { "type": "string" }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "signal", "sources", "replication", "assessment"],
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": ["diagnosis", "treatment", "examination", "surgery", "emergency", "second_opinion", "explanation", "consent", "questions", "animal_handling", "owner_handling", "waiting", "reservation", "phone", "reception", "crowding", "fee", "fee_explanation", "high_cost", "unnecessary_care", "continuity", "other"]
+        },
+        "signal": { "type": "string", "enum": ["positive", "negative", "mixed"] },
+        "sources": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "replication": { "type": "string", "enum": ["cross_source", "single_source", "insufficient"] },
+        "assessment": { "type": "string" }
+      }
+    },
+    "localSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed_at", "source_type", "claim", "status", "medical_quality_effect", "storage_class"],
+      "properties": {
+        "observed_at": { "type": "string", "format": "date" },
+        "source_type": { "type": "string", "enum": ["neighbor", "dog_friend", "parent_friend", "pet_shop", "groomer", "personal_visit", "other"] },
+        "claim": { "type": "string" },
+        "status": { "type": "string", "const": "hypothesis_only" },
+        "medical_quality_effect": { "type": "number", "const": 0 },
+        "storage_class": { "type": "string", "const": "private_user_observation" }
+      }
+    },
+    "medical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["veterinarian_count", "specialties", "hospitalization", "surgery", "xray", "ultrasound", "ct", "mri", "orthopedics", "neurology", "ivdd", "rehabilitation", "puppy_care", "vaccination", "neutering", "referral"],
+      "properties": {
+        "veterinarian_count": { "type": ["integer", "null"], "minimum": 0 },
+        "veterinarian_count_note": { "type": "string" },
+        "specialties": { "type": "array", "items": { "type": "string" } },
+        "hospitalization": { "$ref": "#/$defs/triState" },
+        "surgery": { "$ref": "#/$defs/triState" },
+        "xray": { "$ref": "#/$defs/triState" },
+        "ultrasound": { "$ref": "#/$defs/triState" },
+        "ct": { "$ref": "#/$defs/triState" },
+        "mri": { "$ref": "#/$defs/triState" },
+        "orthopedics": { "$ref": "#/$defs/triState" },
+        "neurology": { "$ref": "#/$defs/triState" },
+        "ivdd": { "$ref": "#/$defs/triState" },
+        "rehabilitation": { "$ref": "#/$defs/triState" },
+        "puppy_care": { "$ref": "#/$defs/triState" },
+        "vaccination": { "$ref": "#/$defs/triState" },
+        "neutering": { "$ref": "#/$defs/triState" },
+        "referral": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["officially_stated", "destinations", "note"],
+          "properties": {
+            "officially_stated": { "$ref": "#/$defs/triState" },
+            "destinations": { "type": "array", "items": { "type": "string" } },
+            "note": { "type": "string" }
+          }
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "hospital": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hospital_id", "name", "roles", "address", "latitude", "longitude", "coordinate_precision",
+        "phone", "website_url", "google_maps_url", "ipet_supported", "distance", "travel_time",
+        "parking", "opening_hours", "holidays", "access", "emergency", "night_service", "medical",
+        "google_rating", "google_review_count", "caloo_rating", "caloo_review_count", "review_sources",
+        "reputation_summary", "positive_signals", "negative_signals", "local_signals",
+        "home_doctor_score", "emergency_score", "dachshund_score", "medical_capability_score",
+        "accessibility_score", "overall_reference_score", "confidence", "last_verified_at", "source_urls"
+      ],
+      "properties": {
+        "hospital_id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "name": { "type": "string", "minLength": 1 },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["home_doctor", "holiday_backup", "night_emergency", "orthopedics_neurology", "secondary_advanced", "general_candidate"] },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "address": { "type": "string" },
+        "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+        "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+        "coordinate_precision": { "type": "string", "enum": ["block_level", "entrance", "unknown"] },
+        "phone": { "type": ["string", "null"] },
+        "alternate_phone": { "type": ["string", "null"] },
+        "website_url": { "type": ["string", "null"], "format": "uri" },
+        "google_maps_url": { "type": "string", "format": "uri" },
+        "ipet_supported": { "$ref": "#/$defs/triState" },
+        "ipet_note": { "type": "string" },
+        "distance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "unit", "method", "measured_at"],
+          "properties": {
+            "value": { "type": "number", "minimum": 0 },
+            "unit": { "type": "string", "const": "km" },
+            "method": { "type": "string", "const": "google_maps_driving_route" },
+            "measured_at": { "type": "string", "format": "date" }
+          }
+        },
+        "travel_time": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "unit", "method", "traffic_note", "measured_at"],
+          "properties": {
+            "value": { "type": "integer", "minimum": 0 },
+            "unit": { "type": "string", "const": "minute" },
+            "method": { "type": "string", "const": "google_maps_driving_route" },
+            "traffic_note": { "type": "string" },
+            "measured_at": { "type": "string", "format": "date" }
+          }
+        },
+        "parking": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["available", "spaces", "note"],
+          "properties": {
+            "available": { "$ref": "#/$defs/triState" },
+            "spaces": { "type": ["integer", "null"], "minimum": 0 },
+            "note": { "type": "string" }
+          }
+        },
+        "opening_hours": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["display", "structured_status", "note"],
+          "properties": {
+            "display": { "type": "string" },
+            "structured_status": { "type": "string", "enum": ["verified_current", "conflicting", "partial", "unknown"] },
+            "note": { "type": "string" }
+          }
+        },
+        "holidays": { "type": "string" },
+        "access": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["saturday", "sunday", "public_holiday", "web_reservation", "same_day", "reservation_note"],
+          "properties": {
+            "saturday": { "$ref": "#/$defs/triState" },
+            "sunday": { "$ref": "#/$defs/triState" },
+            "public_holiday": { "$ref": "#/$defs/triState" },
+            "web_reservation": { "$ref": "#/$defs/triState" },
+            "same_day": { "$ref": "#/$defs/triState" },
+            "reservation_note": { "type": "string" }
+          }
+        },
+        "emergency": { "$ref": "#/$defs/triState" },
+        "night_service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["available", "display", "admission", "call_first"],
+          "properties": {
+            "available": { "$ref": "#/$defs/triState" },
+            "display": { "type": "string" },
+            "admission": { "$ref": "#/$defs/triState" },
+            "call_first": { "$ref": "#/$defs/triState" }
+          }
+        },
+        "medical": { "$ref": "#/$defs/medical" },
+        "google_rating": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
+        "google_review_count": { "type": ["integer", "null"], "minimum": 0 },
+        "caloo_rating": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
+        "caloo_review_count": { "type": ["integer", "null"], "minimum": 0 },
+        "review_sources": { "type": "array", "items": { "$ref": "#/$defs/reviewSource" } },
+        "reputation_summary": { "type": "string" },
+        "positive_signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+        "negative_signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+        "local_signals": { "type": "array", "items": { "$ref": "#/$defs/localSignal" } },
+        "home_doctor_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "emergency_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "dachshund_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "medical_capability_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "accessibility_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "overall_reference_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "score_note": { "type": "string" },
+        "uncertainties": { "type": "array", "items": { "type": "string" } },
+        "last_verified_at": { "type": "string", "format": "date-time" },
+        "source_urls": { "type": "array", "items": { "$ref": "#/$defs/source" }, "minItems": 1 }
+      }
+    },
+    "screenedHospital": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hospital_id", "name", "reason", "source_urls"],
+      "properties": {
+        "hospital_id": { "type": "string" },
+        "name": { "type": "string" },
+        "reason": { "type": "string" },
+        "source_urls": { "type": "array", "items": { "$ref": "#/$defs/source" } }
+      }
+    }
+  }
+}
