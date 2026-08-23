@@ -74,8 +74,23 @@ textarea {
   font-weight: 800;
 }
 
-.splash-loading {
+.splash-brand {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.splash-tagline {
   margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.splash-loading {
+  margin: 4px 0 0;
   color: var(--muted);
   font-weight: 700;
 }

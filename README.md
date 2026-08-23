@@ -81,6 +81,8 @@ PALURU Miniは、雑なメモをAI秘書ぱるるへ記録するスマホ向けP
 
 「はいはい、僕が覚えとく。」
 
+ブランド表記は `PALURU`、起動画面のタグラインは `AI for everyday life.` とする。名称のブランド上のアクロニム（裏設定）は `Personal AI for Life, Utility, Routine & Understanding` であり、起動画面には表示しない。
+
 表示用画像は余白トリミング済みです。
 
 ## 主な機能
