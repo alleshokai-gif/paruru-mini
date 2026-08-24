@@ -162,6 +162,7 @@ assert.strictEqual((summaryGridMarkup.match(/<div/g) || []).length, 4, 'PH-WK01 
 assert(!summaryGridMarkup.includes('popioSummaryWaterHint'), 'PH-WK01 water KPI note must not increase the grid cell height');
 assert(cssSource.includes('grid-template-columns: repeat(4, minmax(0, 1fr));') && cssSource.includes('.popio-summary-card div {\n  min-width: 0;'), 'PH-WK01 summary grid must remain narrow-screen safe');
 assert(cssSource.includes('.popio-summary-note') && cssSource.includes('max-width: 100%;') && cssSource.includes('overflow-wrap: break-word;'), 'PH-WK01 water KPI outside-note mobile text contract missing');
+assert(cssSource.includes('.popio-summary-card {\n  display: grid;\n  grid-template-columns: repeat(4, minmax(0, 1fr));\n  margin-bottom: 0;') && cssSource.includes('.popio-summary-note {\n  min-width: 0;\n  max-width: 100%;\n  margin: 0 0 14px;'), 'PH-WK01 water KPI note margin must follow the note, not precede it');
 
 // PH-COLL01 - PH-COLL08: collapsing is PWA-only presentation state.
 let collapsed = api.collapsibleSectionState_({ historyExpanded: false, observationExpanded: false }, 'history');

@@ -1653,7 +1653,7 @@ body:not(.is-authenticated) .drawer-overlay {
 .popio-summary-card {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 14px;
+  margin-bottom: 0;
   overflow: hidden;
   border: 1px solid #dce5dc;
   border-radius: 18px;
@@ -1690,7 +1690,7 @@ body:not(.is-authenticated) .drawer-overlay {
 .popio-summary-note {
   min-width: 0;
   max-width: 100%;
-  margin: 6px 0 0;
+  margin: 0 0 14px;
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 700;
@@ -1699,7 +1699,7 @@ body:not(.is-authenticated) .drawer-overlay {
 }
 
 .popio-summary-note:empty {
-  display: none;
+  min-height: 0;
 }
 
 .popio-record-list {
