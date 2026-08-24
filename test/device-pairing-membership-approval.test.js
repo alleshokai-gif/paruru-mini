@@ -42,7 +42,7 @@ function createHarness() {
     Utilities: {
       DigestAlgorithm: { SHA_256: 'sha256' }, Charset: { UTF_8: 'utf8' },
       computeDigest: (_algorithm, value) => Array.from(crypto.createHash('sha256').update(String(value)).digest()),
-      getUuid: () => `aaaaaaaa-aaaa-4aaa-8aaa-${String(uuidCounter++).padStart(12, '0')}`,
+      getUuid: () => `${String(uuidCounter++).padStart(8, '0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
       formatDate: (date) => date.toISOString(),
     },
     resolveMembershipApprovalAdminWithinRegistryLock_(deviceId, credential, registry) {
@@ -233,6 +233,33 @@ test('expired and wrong codes keep pairing pending and obey the existing rate bo
   expectCode(h.approve(started.data.code, 'father_add_device'), 'INVALID_PAIRING_CODE');
   assert.strictEqual(h.provisionCalls.length, 0);
   assert.strictEqual(h.registry().devices[childId].status, 'pending');
+});
+
+test('reissued pairing approval retires stale same-device requests without membership conflict', () => {
+  const h = createHarness(); h.seedParent(); const first = h.begin();
+  let saved = h.registry();
+  const staleRequest = JSON.parse(JSON.stringify(saved.requests[first.data.requestId]));
+  staleRequest.codeExpiresAt = '2020-01-01T00:00:00.000Z';
+  saved.requests[first.data.requestId] = staleRequest;
+  h.context.PropertiesService.getScriptProperties().setProperty('PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1', JSON.stringify(saved));
+
+  const second = h.begin();
+  saved = h.registry();
+  assert.strictEqual(saved.requests[first.data.requestId], undefined, 'reissue kept the stale request');
+  assert.strictEqual(Object.values(saved.requests).filter((request) => request.deviceId === childId && request.status === 'pending').length, 1);
+
+  // Simulate a stale sibling persisted by the previously deployed lifecycle.
+  saved.requests[first.data.requestId] = staleRequest;
+  h.context.PropertiesService.getScriptProperties().setProperty('PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1', JSON.stringify(saved));
+  const approved = h.approve(second.data.code, 'second_son_initial');
+  assert(approved.success && approved.data.status === 'approved');
+  saved = h.registry();
+  assert.strictEqual(saved.devices[childId].status, 'active');
+  assert.strictEqual(saved.requests[first.data.requestId], undefined, 'approval kept a legacy stale sibling');
+  assert.strictEqual(Object.values(saved.requests).filter((request) => request.deviceId === childId && request.status === 'pending').length, 0);
+  assert.strictEqual(Object.values(saved.requests).filter((request) => request.deviceId === childId && request.status === 'approved').length, 1);
+  assert.strictEqual(h.provisionCalls.length, 1);
+  assert.strictEqual(h.provisionCalls[0].template, 'second_son_initial');
 });
 
 test('only one concurrent approval consumes a code', () => {

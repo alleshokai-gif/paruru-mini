@@ -53,6 +53,7 @@ function devicePairingBegin_(body) {
         revokedAt: null,
         tokenGeneration: existing && Number.isInteger(existing.tokenGeneration) ? existing.tokenGeneration + 1 : 1,
       };
+      deleteOtherPendingPairingRequestsForDevice_(registry, input.deviceId, requestId);
       return {
         requestId: requestId,
         requestSecret: requestSecret,
@@ -115,6 +116,9 @@ function devicePairingApprove_(body) {
       request.approvedByDeviceId = input.deviceId;
       request.codeHash = '';
       request.codeExpiresAt = null;
+      if (approval.kind === 'pairing') {
+        deleteOtherPendingPairingRequestsForDevice_(registry, targetDevice.deviceId, request.requestId);
+      }
       return { requestId: request.requestId, deviceName: targetDevice.displayName, status: 'approved' };
     });
     return json_({ success: true, data: result, warnings: [], diagnostics: diagnostics });
@@ -474,18 +478,46 @@ function saveHomeControlRegistry_(registry, deps) {
 }
 
 function pruneHomeControlRegistry_(registry, nowMs) {
+  const now = new Date(nowMs);
   Object.keys(registry.requests).forEach(function(requestId) {
     const request = registry.requests[requestId];
-    if (!request || !homeControlFutureIso_(request.expiresAt, new Date(nowMs))) {
-      if (request && request.status === 'pending' && registry.devices[request.deviceId] && registry.devices[request.deviceId].status === 'pending') {
-        delete registry.devices[request.deviceId];
+    if (!request || !homeControlFutureIso_(request.expiresAt, now)) {
+      const deviceId = String(request && request.deviceId || '');
+      const deletePendingDevice = Boolean(request && request.status === 'pending' &&
+        registry.devices[deviceId] && registry.devices[deviceId].status === 'pending');
+      delete registry.requests[requestId];
+      if (deletePendingDevice && !hasFuturePendingRequestForDevice_(registry, deviceId, now)) {
+        delete registry.devices[deviceId];
       }
+    }
+  });
+  Object.keys(registry.requests).forEach(function(requestId) {
+    const request = registry.requests[requestId];
+    const device = request && registry.devices[request.deviceId];
+    if (request && request.status === 'pending' && isPairingStatusRequest_(request) && device && device.status === 'active') {
       delete registry.requests[requestId];
     }
   });
   Object.keys(registry.approveAttempts).forEach(function(deviceId) {
     const item = registry.approveAttempts[deviceId];
     if (!item || !Number.isFinite(item.startedAt) || nowMs - item.startedAt >= HOME_CONTROL_APPROVE_RATE_WINDOW_MILLISECONDS) delete registry.approveAttempts[deviceId];
+  });
+}
+
+function hasFuturePendingRequestForDevice_(registry, deviceId, now) {
+  return Object.keys(registry.requests).some(function(requestId) {
+    const request = registry.requests[requestId];
+    return request && request.deviceId === deviceId && request.status === 'pending' && homeControlFutureIso_(request.expiresAt, now);
+  });
+}
+
+function deleteOtherPendingPairingRequestsForDevice_(registry, deviceId, keepRequestId) {
+  Object.keys(registry.requests).forEach(function(requestId) {
+    if (requestId === keepRequestId) return;
+    const request = registry.requests[requestId];
+    if (request && request.deviceId === deviceId && request.status === 'pending' && isPairingStatusRequest_(request)) {
+      delete registry.requests[requestId];
+    }
   });
 }
 

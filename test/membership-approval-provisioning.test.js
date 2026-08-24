@@ -57,7 +57,7 @@ function setup(options = {}) {
     role: options.secondSonRole || 'self_record', status: options.secondSonStatus || 'active', createdAt: 'existing-created', updatedAt: 'existing-updated',
   });
   if (options.duplicateSecondSon) add(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'second_son', displayName: '次男', role: 'self_record', status: 'active' });
-  if (options.existingSecondSonDevice) add(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'son-device-a', homeId: 'home-a', memberUserId: 'second_son', status: 'active', assignedBy: 'pairing_approval:existing-son' });
+  if (options.existingSecondSonDevice) add(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'son-device-a', homeId: 'home-a', memberUserId: 'second_son', status: options.existingSecondSonDeviceStatus || 'active', assignedBy: 'pairing_approval:existing-son' });
   if (options.targetDeviceMember) add(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'son-phone', homeId: options.targetDeviceHome || 'home-a', memberUserId: options.targetDeviceMember, status: 'active', assignedBy: 'pairing_approval:op-son' });
   const registry = { devices: { 'admin-device': { status: 'active' } } };
   const context = {
@@ -109,6 +109,17 @@ expectCode(() => { const { registry, api } = setup({ adminRole: 'self_record' })
   assert.strictEqual(find(spreadsheet.sheets.Device_Memberships, deviceHeaders, 'deviceId', 'son-phone')[0].status, 'active');
   assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_('son-device-a', 'pairing'))), { homeId: 'home-a', memberUserId: 'second_son', role: 'self_record', deviceId: 'son-device-a' });
   assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_('son-phone', 'pairing'))), { homeId: 'home-a', memberUserId: 'second_son', role: 'self_record', deviceId: 'son-phone' });
+}
+
+{
+  const { spreadsheet, registry, api } = setup({ existingSecondSon: true, existingSecondSonDevice: true, existingSecondSonDeviceStatus: 'disabled' });
+  api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son_initial', 'op-son-clean-baseline', '2026-07-26T12:00:00+09:00');
+  const sonMembers = find(spreadsheet.sheets.Home_Members, homeHeaders, 'memberUserId', 'second_son');
+  const sonDevices = find(spreadsheet.sheets.Device_Memberships, deviceHeaders, 'memberUserId', 'second_son');
+  assert.strictEqual(sonMembers.length, 1, 'second_son Home_Member must remain unique');
+  assert.strictEqual(sonDevices.filter((row) => row.deviceId === 'son-device-a' && row.status === 'disabled').length, 1, 'old second_son device changed');
+  assert.strictEqual(sonDevices.filter((row) => row.deviceId === 'son-phone' && row.status === 'active').length, 1, 'new second_son device was not activated');
+  assert.strictEqual(sonDevices.filter((row) => row.status === 'active').length, 1, 'second_son must have exactly one active device from the clean baseline');
 }
 
 expectCode(() => { const { registry, api } = setup({ existingSecondSon: true, secondSonStatus: 'disabled' }); api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son_initial', 'op-son', '2026-07-26T12:00:00+09:00'); }, 'MEMBERSHIP_CONFLICT');

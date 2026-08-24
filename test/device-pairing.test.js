@@ -122,9 +122,36 @@ test('wrong code expires, rate limits, and cannot be reused', () => {
   const second = begin();
   const secondRegistry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
   assert(secondRegistry.requests[second.data.requestId].codeHash === hash(second.data.code), 'new code hash was not persisted');
+  assert(!secondRegistry.requests[started.data.requestId], 'expired prior request remained after reissue');
+  assert(Object.values(secondRegistry.requests).filter((request) => request.deviceId === childId && request.status === 'pending').length === 1, 'reissue did not leave exactly one pending request');
   const validAfterWindow = approve(second.data.code);
   assert(validAfterWindow.success, `valid code was rejected after rate window: ${validAfterWindow.error && validAfterWindow.error.code}`);
+  const approvedRegistry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  assert(Object.values(approvedRegistry.requests).filter((request) => request.deviceId === childId && request.status === 'pending').length === 0, 'approval left a stale pending request');
+  assert(Object.values(approvedRegistry.requests).filter((request) => request.deviceId === childId && request.status === 'approved').length === 1, 'approval did not leave exactly one approved request');
   assert(!approve(second.data.code).success, 'used code was accepted again');
+});
+
+test('expiring a legacy sibling request preserves the newer pending request and device', () => {
+  reset(); legacyParent();
+  const first = begin();
+  let registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  const staleRequest = JSON.parse(JSON.stringify(registry.requests[first.data.requestId]));
+  registry.requests[first.data.requestId].codeExpiresAt = '2020-01-01T00:00:00.000Z';
+  properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(registry);
+
+  const second = begin();
+  registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  staleRequest.expiresAt = '2020-01-01T00:00:00.000Z';
+  registry.requests[first.data.requestId] = staleRequest;
+  properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(registry);
+
+  const status = post('devicePairingStatus_', { requestId: second.data.requestId, requestSecret: second.data.requestSecret });
+  assert(status.success && status.data.status === 'pending', 'newer request did not remain pending');
+  registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
+  assert(registry.devices[childId] && registry.devices[childId].status === 'pending', 'expired sibling removed the newer pending device');
+  assert(registry.requests[second.data.requestId], 'expired sibling removed the newer pending request');
+  assert(!registry.requests[first.data.requestId], 'expired sibling request was not pruned');
 });
 
 test('unregistered, revoked, or current devices cannot approve or use the registry', () => {

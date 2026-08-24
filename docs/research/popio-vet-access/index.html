@@ -104,6 +104,13 @@
     .action.call { background: #fcefe4; color: #95441f; }
     .action.disabled { background: #f2efeb; color: #aaa39c; pointer-events: none; }
 
+    .ipet-filter-panel { margin: 0 0 12px; padding: 12px; border: 1px solid #dce1fb; border-radius: 16px; background: #f8f9ff; }
+    .ipet-filter-panel p { margin: 0 0 8px; color: var(--muted); font-size: .84rem; }
+    .segmented-control { display: flex; gap: 8px; overflow-x: auto; padding: 2px; -webkit-overflow-scrolling: touch; }
+    .segmented-control button { flex: 0 0 auto; min-height: 42px; padding: 8px 12px; border: 1px solid #cbd4ff; border-radius: 999px; background: #fff; color: #4659bd; font-size: .84rem; font-weight: 800; cursor: pointer; }
+    .segmented-control button[aria-pressed="true"] { border-color: var(--indigo); background: var(--indigo); color: #fff; }
+    .segmented-control button:focus-visible { outline: 3px solid rgba(83,102,200,.42); outline-offset: 2px; }
+    .filter-result { margin: 8px 0 0; color: #4b5170; font-size: .8rem; font-weight: 750; }
     .compare-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 250px); gap: 10px; margin-bottom: 11px; }
     .filter-control { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #d9d0c7; border-radius: 12px; background: #fff; color: var(--ink); }
     .comparison-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
@@ -179,7 +186,7 @@
       <a href="#recommendations">推薦構成</a>
       <a href="#roles">役割別おすすめ</a>
       <a href="#top">TOP候補</a>
-      <a href="#all">全20院比較</a>
+      <a href="#all">iPet別・全25院</a>
       <a href="#reviews">口コミ分析</a>
       <a href="#notes">注意事項</a>
     </nav>
@@ -210,14 +217,25 @@
 
     <section id="all" class="section" aria-labelledby="all-title">
       <div class="section-heading">
-        <div><p class="eyebrow">All candidates</p><h2 id="all-title">全20院比較</h2></div>
-        <p>横にスクロールして比較できる。数値は公開情報の参考値。</p>
+        <div><p class="eyebrow">All candidates</p><h2 id="all-title">iPet別・全25院比較</h2></div>
+        <p>まず7院ずつを比較。横にスクロールして確認できる。</p>
+      </div>
+      <div class="ipet-filter-panel">
+        <p class="eyebrow">iPet window settlement</p>
+        <div id="ipetFilter" class="segmented-control" role="group" aria-label="iPet窓口精算の比較対象">
+          <button type="button" data-ipet-filter="comparison" aria-pressed="true">7院ずつ比較</button>
+          <button type="button" data-ipet-filter="supported" aria-pressed="false">対応</button>
+          <button type="button" data-ipet-filter="not_listed" aria-pressed="false">非掲載・要確認</button>
+          <button type="button" data-ipet-filter="unknown" aria-pressed="false">要確認</button>
+          <button type="button" data-ipet-filter="all" aria-pressed="false">全25院</button>
+        </div>
+        <p id="filterResult" class="filter-result" aria-live="polite"></p>
       </div>
       <div class="compare-tools">
         <label><span class="eyebrow">病院名・役割で絞り込み</span><input id="searchInput" class="filter-control" type="search" placeholder="例：夜間、整形、鈴木"></label>
         <label><span class="eyebrow">役割フィルタ</span><select id="roleFilter" class="filter-control"><option value="">すべて表示</option></select></label>
       </div>
-      <div class="comparison-wrap" role="region" aria-label="全20院比較表" tabindex="0">
+      <div class="comparison-wrap" role="region" aria-label="iPet別・全25院比較表" tabindex="0">
         <table>
           <thead><tr><th>病院</th><th>役割</th><th>総合</th><th>Home</th><th>緊急</th><th>ダックス</th><th>Google</th><th>Caloo</th><th>iPet</th><th>車</th><th>日/祝</th><th>夜間</th><th>リンク</th></tr></thead>
           <tbody id="comparisonRows"></tbody>
@@ -1779,7 +1797,7 @@
     {
       "hospital_id": "ishida-dental-saginuma",
       "name": "石田ようこ犬と猫の歯科クリニック 鷺沼院",
-      "reason": "iPet対応の専門施設として保持するが、今回のホーム・緊急・整形神経・高度医療の主目的とは異なる歯科専門のため主候補20院から除外。神木本町2丁目代表地点から約15分・5.8km、Google 4.8/38（2026-08-24表示）。",
+      "reason": "iPet対応の専門施設として保持するが、今回のホーム・緊急・整形神経・高度医療の主目的とは異なる歯科専門のため主候補25院から除外。神木本町2丁目代表地点から約15分・5.8km、Google 4.8/38（2026-08-24表示）。",
       "source_urls": [
         { "url": "https://www.ipetclub.jp/vh/hospital/?a%5B%5D=02&m%5B%5D=141364&p%5B%5D=14&s=area&v=1", "source_type": "official_insurer", "checked_at": "2026-08-24", "supports": ["iPet", "address", "phone"] },
         { "url": "https://www.google.com/maps/search/?api=1&query=35.573116%2C139.578140", "source_type": "google_maps", "checked_at": "2026-08-24", "supports": ["route", "rating", "review_count"] }
@@ -1788,6 +1806,13 @@
   ]
 }
 </script>
+  <script id="supplementalHospitalData" type="application/json">[
+  {"hospital_id":"trva","name":"TRVA動物医療センター","roles":["night_emergency","orthopedics_neurology","secondary_advanced"],"address":"東京都世田谷区深沢8-19-12 泉美ビル2F","phone":"03-5760-1212","website_url":"https://trva.jp/","google_maps_url":"https://www.google.com/maps/search/?api=1&query=TRVA%E5%8B%95%E7%89%A9%E5%8C%BB%E7%99%82%E3%82%BB%E3%83%B3%E3%82%BF%E3%83%BC","ipet_supported":false,"distance":{"value":7.4},"travel_time":{"value":14},"opening_hours":{"display":"夜間救急20:00–翌6:00（電話受付は翌5:00まで）。二次診療は紹介・予約が必要。"},"access":{"sunday":true,"public_holiday":true},"night_service":{"display":"20:00–翌6:00。電話受付は翌5:00まで。"},"google_rating":null,"google_review_count":null,"caloo_rating":null,"caloo_review_count":null,"review_sources":[],"reputation_summary":"追加枠では口コミの横断収集を未実施。公式の夜間・二次診療体制だけを役割評価に使用。","positive_signals":[],"negative_signals":[],"uncertainties":["iPet窓口精算","専用駐車場","当日の受入余力","CT/MRI"],"home_doctor_score":10,"emergency_score":94,"dachshund_score":45,"medical_capability_score":84,"accessibility_score":70,"overall_reference_score":53,"confidence":62},
+  {"hospital_id":"camic-jonan","name":"動物検診センター キャミック城南","roles":["orthopedics_neurology","secondary_advanced"],"address":"東京都世田谷区深沢8-19-12","phone":"03-5752-5033","website_url":"https://camic.jp/","google_maps_url":"https://www.google.com/maps/search/?api=1&query=%E5%8B%95%E7%89%A9%E6%A4%9C%E8%A8%BA%E3%82%BB%E3%83%B3%E3%82%BF%E3%83%BC%20%E3%82%AD%E3%83%A3%E3%83%9F%E3%83%83%E3%82%AF%E5%9F%8E%E5%8D%97","ipet_supported":false,"distance":{"value":7.4},"travel_time":{"value":14},"opening_hours":{"display":"完全予約制。検査日時は紹介元病院を通じて確定。"},"access":{"sunday":null,"public_holiday":null},"night_service":{"display":"夜間救急・入院施設ではない。"},"google_rating":null,"google_review_count":null,"caloo_rating":null,"caloo_review_count":null,"review_sources":[],"reputation_summary":"追加枠では口コミの横断収集を未実施。MRI/CT紹介検査の役割に限定して表示。","positive_signals":[],"negative_signals":[],"uncertainties":["iPet窓口精算","検査可能日時","専用駐車場","当日の緊急検査可否"],"home_doctor_score":0,"emergency_score":0,"dachshund_score":80,"medical_capability_score":90,"accessibility_score":66,"overall_reference_score":40,"confidence":66},
+  {"hospital_id":"dvms-yokohama","name":"DVMsどうぶつ医療センター横浜","roles":["night_emergency","orthopedics_neurology","secondary_advanced"],"address":"神奈川県横浜市神奈川区沢渡2-2 第二泉ビル2F","phone":"045-320-9099","website_url":"https://yokohama-dvms.com/sp/","google_maps_url":"https://www.google.com/maps/search/?api=1&query=DVMs%E3%81%A9%E3%81%86%E3%81%B6%E3%81%A4%E5%8C%BB%E7%99%82%E3%82%BB%E3%83%B3%E3%82%BF%E3%83%BC%E6%A8%AA%E6%B5%9C","ipet_supported":false,"distance":{"value":21},"travel_time":{"value":35},"opening_hours":{"display":"二次診療9:00–19:00、救急診療20:00–翌3:00。"},"access":{"sunday":true,"public_holiday":true},"night_service":{"display":"20:00–翌3:00。"},"google_rating":null,"google_review_count":null,"caloo_rating":null,"caloo_review_count":null,"review_sources":[],"reputation_summary":"追加枠では口コミの横断収集を未実施。公式の夜間・二次診療体制だけを役割評価に使用。","positive_signals":[],"negative_signals":[],"uncertainties":["iPet窓口精算","入院可否","CT/MRI","神経・IVDD"],"home_doctor_score":10,"emergency_score":70,"dachshund_score":45,"medical_capability_score":85,"accessibility_score":35,"overall_reference_score":45,"confidence":60},
+  {"hospital_id":"nvlu-amc","name":"日本獣医生命科学大学付属動物医療センター","roles":["orthopedics_neurology","secondary_advanced"],"address":"東京都武蔵野市境南町1-7-1","phone":"0422-90-4000","website_url":"https://www.nvlu.ac.jp/amedical/","google_maps_url":"https://www.google.com/maps/search/?api=1&query=%E6%97%A5%E6%9C%AC%E7%8D%A3%E5%8C%BB%E7%94%9F%E5%91%BD%E7%A7%91%E5%AD%A6%E5%A4%A7%E5%AD%A6%E4%BB%98%E5%B1%9E%E5%8B%95%E7%89%A9%E5%8C%BB%E7%99%82%E3%82%BB%E3%83%B3%E3%82%BF%E3%83%BC","ipet_supported":false,"distance":{"value":15.2},"travel_time":{"value":55},"opening_hours":{"display":"平日9:00–16:00。土曜は画像診断のみ9:00–15:00。"},"access":{"sunday":false,"public_holiday":false},"night_service":{"display":"常設夜間救急の公式記載を確認できず。"},"google_rating":null,"google_review_count":null,"caloo_rating":null,"caloo_review_count":null,"review_sources":[],"reputation_summary":"追加枠では口コミの横断収集を未実施。公式の専門診療・画像設備を役割評価に限定して使用。","positive_signals":[],"negative_signals":[],"uncertainties":["iPet窓口精算","入院","IVDDの個別受入","最短予約日"],"home_doctor_score":5,"emergency_score":0,"dachshund_score":100,"medical_capability_score":100,"accessibility_score":15,"overall_reference_score":43,"confidence":64},
+  {"hospital_id":"utokyo-vmc","name":"東京大学附属動物医療センター","roles":["orthopedics_neurology","secondary_advanced"],"address":"東京都文京区弥生1-1-1 東京大学弥生キャンパス","phone":"03-5841-5420","website_url":"https://www.vm.a.u-tokyo.ac.jp/vmc/","google_maps_url":"https://www.google.com/maps/search/?api=1&query=%E6%9D%B1%E4%BA%AC%E5%A4%A7%E5%AD%A6%E9%99%84%E5%B1%9E%E5%8B%95%E7%89%A9%E5%8C%BB%E7%99%82%E3%82%BB%E3%83%B3%E3%82%BF%E3%83%BC","ipet_supported":false,"distance":{"value":25.6},"travel_time":{"value":72},"opening_hours":{"display":"画像診断部の受付9:00–11:30/13:30–15:30、土日祝休。神経内科は平日11:00–16:00の案内。"},"access":{"sunday":false,"public_holiday":false},"night_service":{"display":"常設夜間救急の公式記載を確認できず。"},"google_rating":null,"google_review_count":null,"caloo_rating":null,"caloo_review_count":null,"review_sources":[],"reputation_summary":"追加枠では口コミの横断収集を未実施。公式の神経・画像診断体制のみを役割評価に使用。","positive_signals":[],"negative_signals":[],"uncertainties":["iPet窓口精算","入院","IVDDの個別受入","最短予約日"],"home_doctor_score":0,"emergency_score":0,"dachshund_score":100,"medical_capability_score":100,"accessibility_score":4,"overall_reference_score":40,"confidence":66}
+]</script>
   <script id="reviewData" type="application/json">{
   "dataset_id": "popio-vet-review-signals",
   "generated_at": "2026-08-24T22:30:00+09:00",
@@ -1986,8 +2011,11 @@
     (() => {
       'use strict';
       const dataset = JSON.parse(document.getElementById('hospitalData').textContent);
+      const supplementalHospitals = JSON.parse(document.getElementById('supplementalHospitalData').textContent);
       const reviewDataset = JSON.parse(document.getElementById('reviewData').textContent);
-      const hospitals = dataset.hospitals;
+      const hospitals = dataset.hospitals.map((hospital) => hospital.hospital_id === 'amc'
+        ? { ...hospital, ipet_supported: true, ipet_note: 'iPet公式の施設詳細（ID: 2905）に掲載。受診前に窓口精算を確認。' }
+        : hospital).concat(supplementalHospitals);
       const byId = new Map(hospitals.map((hospital) => [hospital.hospital_id, hospital]));
 
       const recommendations = [
@@ -2000,6 +2028,11 @@
         { label: '高度医療', hospitalId: 'jarmec-kawasaki', type: 'advanced', note: '紹介制の二次診療。救急外来ではない' }
       ];
       const topIds = ['miyamaedaira', 'suzuki', 'root', 'aoba-amc', 'kawasaki-night', 'amc', 'jarmec-kawasaki', 'yokohama-aoba'];
+      const ipetComparisonSet = {
+        supported: new Set(['miyamaedaira', 'suzuki', 'root', 'mullk', 'takada', 'aoba-amc', 'amc']),
+        notListed: new Set(['jarmec-kawasaki', 'kawasaki-night', 'trva', 'camic-jonan', 'dvms-yokohama', 'nvlu-amc', 'utokyo-vmc'])
+      };
+      let ipetFilter = 'comparison';
       const roleLabels = {
         home_doctor: 'ホーム',
         holiday_backup: '休日バックアップ',
@@ -2022,7 +2055,7 @@
         return value === true ? yes : value === false ? no : '不明';
       }
       function ipetLabel(hospital) {
-        return hospital.ipet_supported === true ? 'iPet窓口精算' : hospital.ipet_supported === false ? 'iPet非掲載' : 'iPet要確認';
+        return hospital.ipet_supported === true ? 'iPet窓口精算' : hospital.ipet_supported === false ? 'iPet非掲載・要確認' : 'iPet要確認';
       }
       function ratingLabel(rating, count) {
         return rating == null ? '—' : `${rating.toFixed(1)} (${count ?? '—'}件)`;
@@ -2112,7 +2145,14 @@
         const filtered = hospitals.filter((hospital) => {
           const roleText = hospital.roles.map((item) => roleLabels[item] || item).join(' ');
           const matchQuery = !query || `${hospital.name} ${roleText} ${hospital.reputation_summary}`.toLocaleLowerCase('ja-JP').includes(query);
-          return matchQuery && (!role || hospital.roles.includes(role));
+          const matchRole = !role || hospital.roles.includes(role);
+          const matchIpet = ipetFilter === 'comparison'
+            ? ipetComparisonSet.supported.has(hospital.hospital_id) || ipetComparisonSet.notListed.has(hospital.hospital_id)
+            : ipetFilter === 'supported' ? hospital.ipet_supported === true
+              : ipetFilter === 'not_listed' ? hospital.ipet_supported === false
+                : ipetFilter === 'unknown' ? hospital.ipet_supported == null
+                  : true;
+          return matchQuery && matchRole && matchIpet;
         });
         document.getElementById('comparisonRows').innerHTML = filtered.map((hospital) => `<tr class="${hospitalKind(hospital)}">
           <td><strong>${escapeHtml(hospital.name)}</strong><br><small>${escapeHtml(hospital.address)}</small></td>
@@ -2121,6 +2161,10 @@
           <td>${hospital.travel_time.value}分<br><small>${hospital.distance.value}km</small></td><td>${escapeHtml(operatingDays(hospital))}</td><td>${escapeHtml(hospital.night_service?.display || '不明')}</td>
           <td><a class="small-link" href="tel:${escapeHtml((hospital.phone || '').replace(/[^0-9+]/g, ''))}">電話</a> / <a class="small-link" href="${escapeHtml(hospital.google_maps_url)}" target="_blank" rel="noopener noreferrer">地図</a></td>
         </tr>`).join('') || '<tr><td colspan="13">条件に一致する病院がないで。検索語を変えてみて。</td></tr>';
+        const labels = {
+          comparison: '7院ずつ比較', supported: 'iPet窓口精算対応', not_listed: 'iPet非掲載・要確認', unknown: 'iPet要確認', all: '全候補'
+        };
+        document.getElementById('filterResult').textContent = `${labels[ipetFilter]}：${filtered.length}院を表示中。${ipetFilter === 'not_listed' ? '「非掲載」は窓口精算不可の断定ではないため、受診前に電話で確認。' : ''}`;
       }
 
       function observationItem(item) {
@@ -2152,6 +2196,13 @@
       renderReviews();
       document.getElementById('searchInput').addEventListener('input', renderComparison);
       document.getElementById('roleFilter').addEventListener('change', renderComparison);
+      document.getElementById('ipetFilter').addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-ipet-filter]');
+        if (!button) return;
+        ipetFilter = button.dataset.ipetFilter;
+        document.querySelectorAll('#ipetFilter button').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+        renderComparison();
+      });
     })();
   </script>
 </body>
