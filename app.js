@@ -12,7 +12,13 @@ const HOME_CONTROL_PENDING_STORAGE_KEY = "paruru-mini-home-control-pending-v1";
 const MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY = "paruru-mini-membership-registration-pending-v1";
 const PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY = "paruru-mini-pet-health-dashboard-popio-v1";
 const PET_HEALTH_DASHBOARD_CACHE_SCHEMA_VERSION = "pet-health-1.0";
-const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 12000;
+const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 30000;
+const PET_HEALTH_DASHBOARD_SAFE_ERROR_CODES = new Set([
+  "PET_HEALTH_TIMEOUT",
+  "PET_HEALTH_UNAVAILABLE",
+  "INVALID_INPUT",
+  "DATA_INTEGRITY_ERROR",
+]);
 const HOME_CONTROL_POLL_MILLISECONDS = 5000;
 const NOTIFICATION_CACHE_MS = 5000;
 const NOTIFICATION_DISPLAY_LIMIT = 5;
@@ -607,6 +613,14 @@ function buildAuthenticatedPetHealthPayload_(action, body = {}) {
       days: input.days,
     };
   }
+  if (action === "pet.health.getDashboard") {
+    return {
+      action,
+      petId: input.petId,
+      localDate: input.localDate,
+      requestId: input.requestId,
+    };
+  }
   return {
     action,
     petId: input.petId,
@@ -625,18 +639,55 @@ async function callAuthenticatedPetHealth_(action, body = {}) {
   if (!token || !userProfile?.deviceId) {
     throw createHomeControlError("AUTHENTICATION_REQUIRED");
   }
+  const authenticatedPayload = buildAuthenticatedPetHealthPayload_(action, body);
+  const dashboardDiagnostic = action === "pet.health.getDashboard"
+    ? { requestId: String(authenticatedPayload.requestId || ""), startedAtMs: Date.now() }
+    : null;
+  if (dashboardDiagnostic) logPetHealthDashboardDiagnostic_(dashboardDiagnostic, "REQUEST_SENT");
   try {
     const request = callHomeControlApi({
-      ...buildAuthenticatedPetHealthPayload_(action, body),
+      ...authenticatedPayload,
       deviceId: userProfile.deviceId,
       pairingToken: token,
     });
-    return action === "pet.health.getDashboard"
+    const result = action === "pet.health.getDashboard"
       ? await withPetHealthDashboardTimeout_(request)
       : await request;
+    if (dashboardDiagnostic) logPetHealthDashboardDiagnostic_(dashboardDiagnostic, "RESPONSE_RECEIVED");
+    return result;
   } catch (error) {
     if (error && typeof error === "object" && !error.code) error.code = "PET_HEALTH_UNAVAILABLE";
+    if (dashboardDiagnostic) {
+      const safeCode = petHealthDashboardSafeErrorCode_(error && error.code);
+      if (error && typeof error === "object") {
+        error.petHealthDiagnosticCode = safeCode;
+        error.petHealthRequestIdSuffix = dashboardDiagnostic.requestId.slice(-8);
+      }
+      logPetHealthDashboardDiagnostic_(dashboardDiagnostic, "REQUEST_FAILED", safeCode);
+    }
     throw error;
+  }
+}
+
+function petHealthDashboardSafeErrorCode_(code) {
+  const value = String(code || "");
+  if (PET_HEALTH_DASHBOARD_SAFE_ERROR_CODES.has(value)) return value;
+  if (value === "HOME_CONTROL_UNAVAILABLE" || value === "HOME_CONTROL_FAILED") return "PET_HEALTH_UNAVAILABLE";
+  return "UNKNOWN";
+}
+
+function logPetHealthDashboardDiagnostic_(diagnostic, stage, errorCode = "") {
+  try {
+    if (typeof console === "undefined" || typeof console.info !== "function") return;
+    console.info("[PALURU Pet Dashboard]", {
+      requestIdSuffix: String(diagnostic?.requestId || "").slice(-8),
+      stage: String(stage || "UNKNOWN").replace(/[^A-Z0-9_]/g, "").slice(0, 80) || "UNKNOWN",
+      elapsedMs: Math.max(0, Date.now() - Number(diagnostic?.startedAtMs || Date.now())),
+      errorCode: errorCode ? petHealthDashboardSafeErrorCode_(errorCode) : null,
+      buildId: typeof globalThis.BUILD_ID === "string" ? globalThis.BUILD_ID : "",
+    });
+  } catch (_) {
+    // Diagnostics must never change the Dashboard result.
   }
 }
 

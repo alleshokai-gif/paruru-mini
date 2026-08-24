@@ -24,6 +24,8 @@
     dashboard: null,
     dashboardStatus: 'idle',
     dashboardFresh: false,
+    dashboardErrorCode: '',
+    dashboardRequestIdSuffix: '',
     dashboardCache: null,
     observationPeriod: 7,
     historyExpanded: false,
@@ -842,9 +844,17 @@
   function createPetHealthDashboardLoader_(deps) {
     return {
       load: function () {
-        return deps.call('pet.health.getDashboard', { petId: PET_ID, localDate: deps.localDate() });
+        const body = { petId: PET_ID, localDate: deps.localDate() };
+        if (deps.requestId) body.requestId = deps.requestId;
+        return deps.call('pet.health.getDashboard', body);
       },
     };
+  }
+  function dashboardSafeErrorCode_(error) {
+    const code = String(error && (error.petHealthDiagnosticCode || error.code) || '');
+    if (code === 'PET_HEALTH_TIMEOUT' || code === 'PET_HEALTH_UNAVAILABLE' || code === 'INVALID_INPUT' || code === 'DATA_INTEGRITY_ERROR') return code;
+    if (code === 'HOME_CONTROL_UNAVAILABLE' || code === 'HOME_CONTROL_FAILED') return 'PET_HEALTH_UNAVAILABLE';
+    return 'UNKNOWN';
   }
   function dashboardDataValid_(value) {
     return Boolean(value) && typeof value === 'object' && value.petId === PET_ID && /^\d{4}-\d{2}-\d{2}$/.test(String(value.localDate || '')) && value.timezone === TOKYO_TIME_ZONE && value.summary && typeof value.summary === 'object' && Array.isArray(value.recentEvents);
@@ -894,17 +904,21 @@
     if (dashboardLoad_) return dashboardLoad_;
     const quiet = Boolean(options && options.quiet);
     const hadSnapshot = dashboardSnapshotAvailable_();
+    const requestId = createUuid_();
     state.dashboardStatus = 'loading';
     state.dashboardFresh = false;
+    state.dashboardErrorCode = '';
+    state.dashboardRequestIdSuffix = String(requestId || '').slice(-8);
     if (!quiet) setRootStatus_(hadSnapshot ? '更新中…' : '読み込み中…');
     setDashboardReloadVisible_(false);
     renderSummary_();
     renderObservation_();
-    const work = createPetHealthDashboardLoader_({ call: call_, localDate: tokyoDate_ }).load()
+    const work = createPetHealthDashboardLoader_({ call: call_, localDate: tokyoDate_, requestId: requestId }).load()
       .then(function (dashboard) {
         if (!dashboardDataValid_(dashboard)) { const error = new Error('PET_HEALTH_UNAVAILABLE'); error.code = 'PET_HEALTH_UNAVAILABLE'; throw error; }
         applyDashboard_(dashboard, true);
         state.dashboardStatus = 'loaded';
+        state.dashboardErrorCode = '';
         saveDashboardCache_(dashboard);
         setRootStatus_('');
         setDashboardReloadVisible_(false);
@@ -913,6 +927,7 @@
       .catch(function (error) {
         state.dashboardStatus = 'failed';
         state.dashboardFresh = false;
+        state.dashboardErrorCode = dashboardSafeErrorCode_(error);
         Object.assign(state, dashboardFailureState_(hadSnapshot ? state.dashboard : null));
         renderSummary_();
         renderRecentEvents_();
@@ -1271,6 +1286,7 @@
     weightAxisModel_: weightAxisModel_,
     dashboardDataValid_: dashboardDataValid_,
     dashboardFailureState_: dashboardFailureState_,
+    dashboardSafeErrorCode_: dashboardSafeErrorCode_,
     dashboardSnapshotState_: dashboardSnapshotState_,
     recentEventLabel_: recentEventLabel_,
     reminderIcon_: reminderIcon_,

@@ -420,9 +420,9 @@ async function run() {
     trends: trendFixture,
   };
   const dashboardCalls = [];
-  const dashboardLoader = api.createPetHealthDashboardLoader_({ localDate: () => '2026-08-21', call: async (action, body) => { dashboardCalls.push({ action, body: plain(body) }); return dashboardFixture; } });
+  const dashboardLoader = api.createPetHealthDashboardLoader_({ localDate: () => '2026-08-21', requestId: uuid(401), call: async (action, body) => { dashboardCalls.push({ action, body: plain(body) }); return dashboardFixture; } });
   assert.deepStrictEqual(plain(await dashboardLoader.load()), dashboardFixture, 'PH-DU01 dashboard loader result');
-  assert.deepStrictEqual(dashboardCalls, [{ action: 'pet.health.getDashboard', body: { petId: 'popio', localDate: '2026-08-21' } }], 'PH-DU01 view open makes one Dashboard API call');
+  assert.deepStrictEqual(dashboardCalls, [{ action: 'pet.health.getDashboard', body: { petId: 'popio', localDate: '2026-08-21', requestId: uuid(401) } }], 'PH-DU01 view open makes one correlated Dashboard API call');
   const openSlice = featureSource.slice(featureSource.indexOf('async function open_'), featureSource.indexOf('function createPetHealthSummaryLoader_'));
   assert(openSlice.includes('loadDashboard_()') && !openSlice.includes('refreshPetHealthReads_()'), 'PH-DU02 view open still uses individual Reads');
   assert.strictEqual(api.dashboardDataValid_(dashboardFixture), true, 'PH-DU03 cache accepts a valid Dashboard');
@@ -436,6 +436,9 @@ async function run() {
   assert.strictEqual(api.savedStatusMessage_({ writeSaved: true, dashboardRefreshed: false }), '保存しました。最新表示を更新できませんでした。', 'PH-DU09 failed Dashboard refresh must preserve Write success');
   assert.strictEqual(api.waterBottleUiModel_(dashboardFixture.summary, 'loaded', false).ready, false, 'PH-DU10 cached Dashboard must keep water bottle Write disabled');
   assert.strictEqual(api.waterBottleUiModel_(dashboardFixture.summary, 'loaded', true).ready, true, 'PH-DU11 fresh Dashboard enables water bottle Write');
+  assert.strictEqual(api.dashboardSafeErrorCode_({ code: 'PET_HEALTH_TIMEOUT' }), 'PET_HEALTH_TIMEOUT', 'PH-OBS01 timeout code must survive in safe state');
+  assert.strictEqual(api.dashboardSafeErrorCode_({ code: 'DATA_INTEGRITY_ERROR' }), 'DATA_INTEGRITY_ERROR', 'PH-OBS01 integrity code must survive in safe state');
+  assert.strictEqual(api.dashboardSafeErrorCode_({ code: 'PRIVATE_BACKEND_DETAIL' }), 'UNKNOWN', 'PH-OBS01 unknown details must be sanitized');
   assert.strictEqual(api.reminderIcon_({ known: true, items: [{ slot: 'breakfast' }] }), '⚠️', 'PH-DU12 reminder icon');
   assert.strictEqual(api.reminderIcon_({ known: true, items: [] }), '✅', 'PH-DU13 clear reminder icon');
   assert.strictEqual(api.reminderIcon_({ known: false, items: [] }), '◻️', 'PH-DU14 unknown reminder icon');
@@ -498,15 +501,16 @@ async function run() {
   }));
   assert.deepStrictEqual(recentPayload, { action: 'pet.health.listRecentEvents', petId: 'popio', days: 7 }, 'PH-RG03 recent PWA payload leaked server identity');
   const dashboardPayload = plain(authContext.buildAuthenticatedPetHealthPayload_('pet.health.getDashboard', {
-    petId: 'popio', localDate: '2026-08-21', homeId: 'spoof', actorUserId: 'spoof', serviceToken: 'spoof',
+    petId: 'popio', localDate: '2026-08-21', requestId: uuid(401), homeId: 'spoof', actorUserId: 'spoof', serviceToken: 'spoof',
   }));
-  assert.deepStrictEqual(dashboardPayload, { action: 'pet.health.getDashboard', petId: 'popio', localDate: '2026-08-21' }, 'PH-DU01 Dashboard PWA payload leaked server identity');
+  assert.deepStrictEqual(dashboardPayload, { action: 'pet.health.getDashboard', petId: 'popio', localDate: '2026-08-21', requestId: uuid(401) }, 'PH-DU01 Dashboard PWA payload leaked server identity');
   assert(appSource.includes('petHealthApi: callAuthenticatedPetHealth_'), 'authenticated event does not pass Pet facade');
   assert(appSource.includes('petHealthDashboardCache: petHealthDashboardCacheFacade_()'), 'Dashboard cache facade is not passed separately from credentials');
   const cacheSlice = appSource.slice(appSource.indexOf('function loadPetHealthDashboardCache_'), appSource.indexOf('function showAuthenticationState'));
   assert(cacheSlice.includes('PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY') && cacheSlice.includes('dashboard,') && cacheSlice.includes('fetchedAt') && cacheSlice.includes('schemaVersion'), 'PH-DU03 Dashboard cache shape is incomplete');
   assert(!cacheSlice.includes('pairingToken') && !cacheSlice.includes('deviceId'), 'PH-DU03 Dashboard cache stores credentials');
-  assert(appSource.includes('const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 12000;') && appSource.includes('withPetHealthDashboardTimeout_'), 'PH-DU07 Dashboard Read timeout is missing');
+  assert(appSource.includes('const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 30000;') && appSource.includes('withPetHealthDashboardTimeout_'), 'PH-TIME01/03 Dashboard Read timeout must be 30 seconds');
+  assert(appSource.includes('logPetHealthDashboardDiagnostic_') && appSource.includes('petHealthRequestIdSuffix'), 'PH-OBS02 Dashboard correlation is not retained safely');
   assert(appSource.indexOf('document.dispatchEvent(new CustomEvent("paruru:authenticated"') < appSource.indexOf('void switchView(activeView);'), 'PH-DU01 authenticated Pet facade is installed after view opening');
 
   assert(htmlSource.includes('id="popioHealthView"') && htmlSource.includes('id="popioHealthMount"'), 'Pet Health view/mount missing');
@@ -536,6 +540,12 @@ async function run() {
   assert(cssSource.includes('.popio-occurred-at-panel') && cssSource.includes('grid-template-columns: repeat(2, minmax(0, 1fr));'), 'timestamp panel lacks the mobile grid contract');
   assert(cssSource.includes('.popio-water-bottle-previous') && cssSource.includes('.popio-water-bottle-preview'), 'water-bottle mobile styles missing');
   assert(cssSource.includes('.popio-reminder-item') && cssSource.includes('.popio-history-item'), 'Reminder/History mobile styles missing');
+  const dashboardStatusRowCss = (cssSource.match(/\.popio-health-status-row\s*\{[^}]*\}/) || [''])[0];
+  const dashboardStatusCss = (cssSource.match(/\.popio-health-status-row \.popio-health-status\s*\{[^}]*\}/) || [''])[0];
+  const dashboardRetryCss = (cssSource.match(/#popioDashboardReload\s*\{[^}]*\}/) || [''])[0];
+  assert(dashboardStatusRowCss.includes('flex-wrap: wrap'), 'PH-CSS01/02 status row does not wrap the retry button');
+  assert(dashboardStatusCss.includes('flex: 1 0 100%') && dashboardStatusCss.includes('min-width: 100%') && dashboardStatusCss.includes('word-break: normal'), 'PH-CSS01/03 status is not a full-width Japanese text row');
+  assert(dashboardRetryCss.includes('margin-left: auto') && dashboardRetryCss.includes('flex: 0 0 auto'), 'PH-CSS02 retry button is not on its own right-aligned row');
 
   console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, PH-WU01-PH-WU10, PH-M01-PH-M08, PH-H01-PH-H10, PH-TU01-PH-TU10, and PH-COLL01-PH-COLL10 Pet Health UI contracts');
 }

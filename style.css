@@ -1527,16 +1527,21 @@ body:not(.is-authenticated) .drawer-overlay {
 
 .popio-health-status-row {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px;
 }
 
 .popio-health-status-row .popio-health-status {
-  flex: 1;
-  min-width: 0;
+  flex: 1 0 100%;
+  min-width: 100%;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 #popioDashboardReload {
+  flex: 0 0 auto;
+  margin-left: auto;
   min-height: 48px;
   padding: 8px 14px;
   border: 1px solid #b9cdb9;
@@ -2602,4 +2607,68 @@ body:not(.is-authenticated) .drawer-overlay {
   .nurse-weight-correction {
     grid-template-columns: 1fr;
   }
+}
+
+.nurse-progress-help {
+  margin: 4px 0 0;
+  color: #6f625b;
+  font-size: .84rem;
+}
+
+.nurse-progress-card li,
+.nurse-progress-card li.is-recorded {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.nurse-progress-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px !important;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.nurse-progress-open:focus-visible,
+.nurse-progress-shortcuts button:focus-visible {
+  outline: 3px solid rgba(92, 107, 192, .35);
+  outline-offset: -3px;
+}
+
+.nurse-progress-chevron {
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.nurse-progress-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.nurse-progress-shortcuts button {
+  min-height: 48px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .72);
+  color: inherit;
+  font-size: .88rem;
+  font-weight: 700;
+}
+
+.nurse-progress-summary {
+  margin: 0;
+  padding: 0 12px 10px;
 }

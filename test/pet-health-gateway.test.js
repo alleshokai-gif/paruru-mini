@@ -107,9 +107,13 @@ function setup(options) {
     forwarded: [],
     authorizedCapabilities: [],
     resolvedCredentials: [],
+    logs: [],
   }, options || {});
   const context = {
     console,
+    PALURU_MINI_BUILD_ID: 'mini-20260825-pet-health-dashboard-timing-v1',
+    Utilities: { getUuid: () => '99999999-9999-4999-8999-999999999999' },
+    Logger: { log: (value) => state.logs.push(String(value)) },
     PropertiesService: {
       getScriptProperties: () => ({ getProperty: (key) => state.properties[key] || '' }),
     },
@@ -203,6 +207,7 @@ function dashboardInput(extra) {
     pairingToken: 'browser-pairing',
     petId: 'popio',
     localDate: '2026-08-19',
+    requestId: '12345678-1234-4234-8234-123456789abc',
   }, extra || {});
 }
 
@@ -463,8 +468,40 @@ test('PH-DG03', 'Dashboard makes one trusted Health request', () => {
   assert.strictEqual(result.success, true);
   assert.strictEqual(state.forwarded.length, 1);
   assert.deepStrictEqual(state.forwarded[0], { operation: 'pet.health.getDashboard', serviceToken: SERVER_TOKEN, homeId: 'home-server', actorUserId: 'member-server', petId: 'popio', localDate: '2026-08-19' });
+  assert.strictEqual(Object.hasOwn(state.forwarded[0], 'requestId'), false, 'Dashboard correlation ID must not cross the Health boundary');
   assert.strictEqual(Object.hasOwn(result.data.recentEvents[0], 'homeId'), false);
   assert.strictEqual(result.data.trends.rangeDays, 30, 'PH-TD01 Dashboard trends pass through the unchanged Mini read boundary');
+});
+
+test('PH-OBS-M01', 'Dashboard timing has one correlated safe five-stage trace', () => {
+  const { api, state } = setup({ responseText: JSON.stringify(backendDashboard()) });
+  assert.strictEqual(api.petHealthGateway_(dashboardInput()).success, true);
+  const prefix = '[PALURU_PET_DASHBOARD] ';
+  const entries = state.logs.filter((line) => line.startsWith(prefix)).map((line) => JSON.parse(line.slice(prefix.length)));
+  assert.deepStrictEqual(entries.map((entry) => entry.stage), ['REQUEST_RECEIVED', 'ACTOR_RESOLVED', 'HEALTH_REQUEST_START', 'HEALTH_RESPONSE_RECEIVED', 'RESPONSE_SENT']);
+  entries.forEach((entry) => {
+    assert.deepStrictEqual(Object.keys(entry), ['requestIdSuffix', 'stage', 'elapsedMs', 'errorCode', 'buildId']);
+    assert.strictEqual(entry.requestIdSuffix, '56789abc');
+    assert(Number.isFinite(entry.elapsedMs) && entry.elapsedMs >= 0);
+    assert.strictEqual(entry.errorCode, null);
+    assert.strictEqual(entry.buildId, 'mini-20260825-pet-health-dashboard-timing-v1');
+  });
+  const serialized = JSON.stringify(entries);
+  [SERVER_TOKEN, HEALTH_URL, 'home-server', 'member-server', 'browser-device', 'browser-pairing'].forEach((secret) => assert(!serialized.includes(secret), 'PH-OBS03 diagnostic leaked protected data'));
+});
+
+test('PH-OBS-M02', 'Dashboard timing preserves a safe backend error code', () => {
+  const { api, state } = setup({ responseText: JSON.stringify({ success: false, error: { code: 'DATA_INTEGRITY_ERROR' } }) });
+  assert.strictEqual(api.petHealthGateway_(dashboardInput()).error.code, 'DATA_INTEGRITY_ERROR');
+  const last = JSON.parse(state.logs[state.logs.length - 1].replace(/^\[PALURU_PET_DASHBOARD\]\s*/, ''));
+  assert.strictEqual(last.stage, 'RESPONSE_SENT');
+  assert.strictEqual(last.errorCode, 'DATA_INTEGRITY_ERROR');
+});
+
+test('PH-OBS-M03', 'Dashboard rejects an invalid supplied correlation ID', () => {
+  const { api, state } = setup({ responseText: JSON.stringify(backendDashboard()) });
+  assert.strictEqual(api.petHealthGateway_(dashboardInput({ requestId: 'not-a-uuid' })).error.code, 'INVALID_INPUT');
+  assert.strictEqual(state.forwarded.length, 0);
 });
 
 test('PH-DG04', 'Dashboard rejects spoofed identity fields', () => {

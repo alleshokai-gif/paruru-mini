@@ -9,7 +9,7 @@ const PET_HEALTH_GATEWAY_OPERATION_CAPABILITIES = Object.freeze({
 const PET_HEALTH_GATEWAY_ALLOWED_INPUTS = Object.freeze({
   'pet.health.getDailySummary': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true }),
   'pet.health.listRecentEvents': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, days: true }),
-  'pet.health.getDashboard': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true }),
+  'pet.health.getDashboard': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true, requestId: true }),
   'pet.health.record': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, event: true }),
   'pet.health.correct': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, correctionOfEventId: true, event: true }),
   'pet.health.void': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, correctionOfEventId: true }),
@@ -30,13 +30,19 @@ const PET_HEALTH_GATEWAY_SAFE_ERRORS = Object.freeze({
 });
 
 function petHealthGateway_(body) {
+  const input = body || {};
+  const dashboardTiming = petHealthGatewayDashboardTiming_(input);
+  petHealthGatewayLogDashboardTiming_(dashboardTiming, 'REQUEST_RECEIVED');
   try {
-    const input = body || {};
     if (!PET_HEALTH_GATEWAY_OPERATION_CAPABILITIES[String(input.action || '').trim()]) throw petHealthGatewayError_('FORBIDDEN');
     const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
-    return petHealthGatewayForTrustedActor_(input, actor, 'manual');
+    petHealthGatewayLogDashboardTiming_(dashboardTiming, 'ACTOR_RESOLVED');
+    const result = petHealthGatewayForTrustedActor_(input, actor, 'manual', dashboardTiming);
+    petHealthGatewayLogDashboardTiming_(dashboardTiming, 'RESPONSE_SENT');
+    return result;
   } catch (error) {
     const code = error && PET_HEALTH_GATEWAY_SAFE_ERRORS[error.code] ? error.code : 'PET_HEALTH_UNAVAILABLE';
+    petHealthGatewayLogDashboardTiming_(dashboardTiming, 'RESPONSE_SENT', code);
     return json_({ success: false, data: {}, error: { code: code }, message: 'pet health request failed' });
   }
 }
@@ -44,7 +50,7 @@ function petHealthGateway_(body) {
 // This lower boundary is for server-resolved actors only.  The public route
 // always passes manual; a future confirmed Agent route may pass agent without
 // accepting source, actor, home, role, or capabilities from its request body.
-function petHealthGatewayForTrustedActor_(input, actor, trustedSource) {
+function petHealthGatewayForTrustedActor_(input, actor, trustedSource, dashboardTiming) {
   const operation = String(input && input.action || '').trim();
   const capability = PET_HEALTH_GATEWAY_OPERATION_CAPABILITIES[operation];
   if (!capability) throw petHealthGatewayError_('FORBIDDEN');
@@ -85,9 +91,11 @@ function petHealthGatewayForTrustedActor_(input, actor, trustedSource) {
 
   let response;
   try {
+    petHealthGatewayLogDashboardTiming_(dashboardTiming, 'HEALTH_REQUEST_START');
     response = UrlFetchApp.fetch(url, {
       method: 'post', contentType: 'application/json', payload: JSON.stringify(forwarded), muteHttpExceptions: true,
     });
+    petHealthGatewayLogDashboardTiming_(dashboardTiming, 'HEALTH_RESPONSE_RECEIVED');
   } catch (_) {
     throw petHealthGatewayError_('PET_HEALTH_UNAVAILABLE');
   }
@@ -100,12 +108,47 @@ function petHealthGatewayForTrustedActor_(input, actor, trustedSource) {
   return json_({ success: true, status: result.status, operation: result.operation, data: result.data, warnings: result.warnings, error: null, schemaVersion: result.schemaVersion, message: 'ok' });
 }
 
+function petHealthGatewayDashboardTiming_(input) {
+  if (String(input && input.action || '').trim() !== 'pet.health.getDashboard') return null;
+  const supplied = String(input && input.requestId || '').trim();
+  let requestId = petHealthGatewayUuid_(supplied) ? supplied : '';
+  if (!requestId) {
+    try { requestId = Utilities.getUuid(); } catch (_) { return null; }
+  }
+  return {
+    requestId: requestId,
+    startedAtMs: Date.now(),
+  };
+}
+
+function petHealthGatewayLogDashboardTiming_(timing, stage, errorCode) {
+  if (!timing || typeof Logger === 'undefined' || typeof Logger.log !== 'function') return;
+  const code = String(errorCode || '');
+  const safeErrorCode = code && PET_HEALTH_GATEWAY_SAFE_ERRORS[code] ? code : (code ? 'UNKNOWN' : null);
+  try {
+    Logger.log('[PALURU_PET_DASHBOARD] ' + JSON.stringify({
+      requestIdSuffix: String(timing.requestId || '').slice(-8),
+      stage: String(stage || 'UNKNOWN').replace(/[^A-Z0-9_]/g, '').slice(0, 80) || 'UNKNOWN',
+      elapsedMs: Math.max(0, Date.now() - Number(timing.startedAtMs || Date.now())),
+      errorCode: safeErrorCode,
+      buildId: typeof PALURU_MINI_BUILD_ID === 'string' ? PALURU_MINI_BUILD_ID : '',
+    }));
+  } catch (_) {
+    // Timing diagnostics must never change the Gateway result.
+  }
+}
+
+function petHealthGatewayUuid_(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
 function petHealthGatewayValidateInput_(input, operation) {
   if (!petHealthGatewayObject_(input)) throw petHealthGatewayError_('INVALID_INPUT');
   const allowed = PET_HEALTH_GATEWAY_ALLOWED_INPUTS[operation];
   if (!allowed || Object.keys(input).some(function(key) { return !allowed[key]; })) throw petHealthGatewayError_('INVALID_INPUT');
   if (input.petId !== 'popio') throw petHealthGatewayError_('INVALID_INPUT');
   if (operation === 'pet.health.listRecentEvents' && input.days !== 7) throw petHealthGatewayError_('INVALID_INPUT');
+  if (operation === 'pet.health.getDashboard' && Object.prototype.hasOwnProperty.call(input, 'requestId') && !petHealthGatewayUuid_(input.requestId)) throw petHealthGatewayError_('INVALID_INPUT');
 }
 
 function petHealthGatewayBackendErrorCode_(result) {

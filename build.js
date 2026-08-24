@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260824-multi-user-water-kpi-outside-note-position-v1";
+globalThis.BUILD_ID = "v20260825-popio-dashboard-timeout-observability-v1";

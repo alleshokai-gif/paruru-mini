@@ -8,16 +8,23 @@
     "schema_version",
     "dataset_id",
     "generated_at",
+    "snapshot_date",
     "timezone",
     "routing_origin",
+    "origin_coordinates",
     "coordinate_source",
+    "population_methodology",
+    "scoring_model",
+    "population_summary",
+    "map",
     "hospitals",
     "screened_out"
   ],
   "properties": {
-    "schema_version": { "type": "string", "const": "1.0.0" },
+    "schema_version": { "type": "string", "const": "2.0.0" },
     "dataset_id": { "type": "string", "const": "popio-vet-access" },
     "generated_at": { "type": "string", "format": "date-time" },
+    "snapshot_date": { "type": "string", "format": "date" },
     "timezone": { "type": "string", "const": "Asia/Tokyo" },
     "routing_origin": {
       "type": "object",
@@ -40,6 +47,32 @@
         "precision_note": { "type": "string" }
       }
     },
+    "origin_coordinates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 }
+      }
+    },
+    "population_methodology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_gate", "ipet_used_for_candidate_extraction", "main_areas", "source_file", "general_scope", "special_provider_scope", "unknown_policy"],
+      "properties": {
+        "candidate_gate": { "type": "string", "const": "geography_first" },
+        "ipet_used_for_candidate_extraction": { "type": "boolean", "const": false },
+        "main_areas": { "type": "array", "items": { "type": "string" }, "minItems": 5 },
+        "source_file": { "type": "string" },
+        "general_scope": { "type": "string" },
+        "special_provider_scope": { "type": "string" },
+        "unknown_policy": { "type": "string" }
+      }
+    },
+    "scoring_model": { "type": "object" },
+    "population_summary": { "type": "object" },
+    "map": { "type": "object" },
     "hospitals": {
       "type": "array",
       "minItems": 15,
@@ -154,32 +187,54 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "hospital_id", "name", "roles", "address", "latitude", "longitude", "coordinate_precision",
-        "phone", "website_url", "google_maps_url", "ipet_supported", "distance", "travel_time",
+        "hospital_id", "name", "roles", "area", "area_label", "classification", "operational_status",
+        "aliases", "address", "latitude", "longitude", "coordinate_precision",
+        "phone", "website_url", "google_maps_url", "ipet_supported", "ipet_status", "insurance",
+        "distance", "geodesic_distance_km", "distance_band", "travel_time", "access_estimate_quality",
         "parking", "opening_hours", "holidays", "access", "emergency", "night_service", "medical",
         "google_rating", "google_review_count", "caloo_rating", "caloo_review_count", "review_sources",
-        "reputation_summary", "positive_signals", "negative_signals", "local_signals",
+        "reputation_summary", "positive_signals", "negative_signals", "negative_medical_signals",
+        "negative_service_signals", "cross_source_signals", "local_signals", "experience",
+        "population_scope", "discovery_sources",
         "home_doctor_score", "emergency_score", "dachshund_score", "medical_capability_score",
-        "accessibility_score", "overall_reference_score", "confidence", "last_verified_at", "source_urls"
+        "reputation_score", "reputation_confidence", "accessibility_score", "overall_reference_score",
+        "confidence", "last_verified_at", "source_urls"
       ],
       "properties": {
         "hospital_id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
         "name": { "type": "string", "minLength": 1 },
         "roles": {
           "type": "array",
-          "items": { "type": "string", "enum": ["home_doctor", "holiday_backup", "night_emergency", "orthopedics_neurology", "secondary_advanced", "general_candidate"] },
+          "items": { "type": "string", "enum": ["home_doctor", "holiday_backup", "night_emergency", "orthopedics_neurology", "secondary_advanced", "general_candidate", "specialty_candidate"] },
           "minItems": 1,
           "uniqueItems": true
         },
+        "area": { "type": "string", "enum": ["miyamae", "takatsu", "tama", "aoba", "tsuzuki", "kawasaki_other", "yokohama_other", "tokyo", "other"] },
+        "area_label": { "type": "string" },
+        "classification": { "type": "string", "enum": ["general", "special_provider", "specialty_only"] },
+        "operational_status": { "type": "string", "enum": ["active_verified", "active_with_planned_rename", "listed_by_official_source", "listed_on_google_maps"] },
+        "aliases": { "type": "array", "items": { "type": "string" } },
         "address": { "type": "string" },
         "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
         "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
-        "coordinate_precision": { "type": "string", "enum": ["block_level", "entrance", "unknown"] },
+        "coordinate_precision": { "type": "string", "enum": ["block_level", "address_block_level", "google_maps_pin", "entrance", "unknown"] },
         "phone": { "type": ["string", "null"] },
         "alternate_phone": { "type": ["string", "null"] },
         "website_url": { "type": ["string", "null"], "format": "uri" },
         "google_maps_url": { "type": "string", "format": "uri" },
         "ipet_supported": { "$ref": "#/$defs/triState" },
+        "ipet_status": { "type": "string", "enum": ["window_settlement", "non_window_settlement", "needs_confirmation"] },
+        "insurance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ipet_status", "ipet_checked_at", "other_insurance", "note"],
+          "properties": {
+            "ipet_status": { "type": "string", "enum": ["window_settlement", "non_window_settlement", "needs_confirmation"] },
+            "ipet_checked_at": { "type": "string", "format": "date" },
+            "other_insurance": { "type": "array", "items": { "type": "string" } },
+            "note": { "type": "string" }
+          }
+        },
         "ipet_note": { "type": "string" },
         "distance": {
           "type": "object",
@@ -188,10 +243,12 @@
           "properties": {
             "value": { "type": "number", "minimum": 0 },
             "unit": { "type": "string", "const": "km" },
-            "method": { "type": "string", "const": "google_maps_driving_route" },
+            "method": { "type": "string", "enum": ["google_maps_driving_route", "haversine_straight_line"] },
             "measured_at": { "type": "string", "format": "date" }
           }
         },
+        "geodesic_distance_km": { "type": ["number", "null"], "minimum": 0 },
+        "distance_band": { "type": "string", "enum": ["0-1km", "1-3km", "3-5km", "5-7km", "7km+", "unknown"] },
         "travel_time": {
           "type": "object",
           "additionalProperties": false,
@@ -199,11 +256,12 @@
           "properties": {
             "value": { "type": "integer", "minimum": 0 },
             "unit": { "type": "string", "const": "minute" },
-            "method": { "type": "string", "const": "google_maps_driving_route" },
+            "method": { "type": "string", "enum": ["google_maps_driving_route", "planning_estimate_from_straight_line"] },
             "traffic_note": { "type": "string" },
             "measured_at": { "type": "string", "format": "date" }
           }
         },
+        "access_estimate_quality": { "type": "string", "enum": ["route_snapshot", "planning_only"] },
         "parking": {
           "type": "object",
           "additionalProperties": false,
@@ -259,11 +317,28 @@
         "reputation_summary": { "type": "string" },
         "positive_signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
         "negative_signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+        "negative_medical_signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+        "negative_service_signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+        "cross_source_signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
         "local_signals": { "type": "array", "items": { "$ref": "#/$defs/localSignal" } },
+        "experience": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["visits", "summary", "last_updated_at"],
+          "properties": {
+            "visits": { "type": "array", "items": { "type": "object" } },
+            "summary": { "type": ["string", "null"] },
+            "last_updated_at": { "type": ["string", "null"], "format": "date-time" }
+          }
+        },
+        "population_scope": { "type": "string", "enum": ["general_20_min", "geographic_reference_over_20_min", "special_provider_30_45_min", "retained_existing_special_over_45_min"] },
+        "discovery_sources": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
         "home_doctor_score": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "emergency_score": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "dachshund_score": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "medical_capability_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "emergency_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "dachshund_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "medical_capability_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "reputation_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "reputation_confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
         "accessibility_score": { "type": "integer", "minimum": 0, "maximum": 100 },
         "overall_reference_score": { "type": "integer", "minimum": 0, "maximum": 100 },
         "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
