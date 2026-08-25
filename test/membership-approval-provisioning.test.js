@@ -58,7 +58,15 @@ function setup(options = {}) {
   });
   if (options.duplicateSecondSon) add(spreadsheet.sheets.Home_Members, homeHeaders, { homeId: 'home-a', memberUserId: 'second_son', displayName: '次男', role: 'self_record', status: 'active' });
   if (options.existingSecondSonDevice) add(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'son-device-a', homeId: 'home-a', memberUserId: 'second_son', status: options.existingSecondSonDeviceStatus || 'active', assignedBy: 'pairing_approval:existing-son' });
-  if (options.targetDeviceMember) add(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'son-phone', homeId: options.targetDeviceHome || 'home-a', memberUserId: options.targetDeviceMember, status: 'active', assignedBy: 'pairing_approval:op-son' });
+  if (options.targetDeviceMember) add(spreadsheet.sheets.Device_Memberships, deviceHeaders, {
+    deviceId: 'son-phone',
+    homeId: options.targetDeviceHome || 'home-a',
+    memberUserId: options.targetDeviceMember,
+    status: options.targetDeviceStatus || 'active',
+    assignedBy: options.targetDeviceAssignedBy || 'pairing_approval:op-son',
+    assignedAt: options.targetDeviceAssignedAt || 'old-assigned-at',
+    updatedAt: options.targetDeviceUpdatedAt || 'old-updated-at',
+  });
   const registry = { devices: { 'admin-device': { status: 'active' } } };
   const context = {
     SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet },
@@ -79,6 +87,9 @@ function setup(options = {}) {
 }
 
 function adminActor(api, registry) { return api.resolveMembershipApprovalAdminWithinRegistryLock_('admin-device', 'credential', registry, {}, '2026-07-26T12:00:00+09:00'); }
+function pairingApprovalContext(deviceId, requestId) {
+  return { requestKind: 'pairing', registryDeviceStatus: 'pending', requestDeviceId: deviceId, requestId };
+}
 
 {
   const { spreadsheet, registry, api } = setup();
@@ -120,6 +131,128 @@ expectCode(() => { const { registry, api } = setup({ adminRole: 'self_record' })
   assert.strictEqual(sonDevices.filter((row) => row.deviceId === 'son-device-a' && row.status === 'disabled').length, 1, 'old second_son device changed');
   assert.strictEqual(sonDevices.filter((row) => row.deviceId === 'son-phone' && row.status === 'active').length, 1, 'new second_son device was not activated');
   assert.strictEqual(sonDevices.filter((row) => row.status === 'active').length, 1, 'second_son must have exactly one active device from the clean baseline');
+}
+
+{
+  const now = '2026-08-25T12:34:56+09:00';
+  const { spreadsheet, registry, api } = setup({
+    existingSecondSon: true,
+    targetDeviceMember: 'second_son',
+    targetDeviceStatus: 'disabled',
+    targetDeviceAssignedBy: 'pairing_approval:old-operation',
+  });
+  const beforeRows = spreadsheet.sheets.Device_Memberships.getLastRow();
+  const approvalContext = pairingApprovalContext('son-phone', 'new-operation');
+  const result = api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+    adminActor(api, registry), 'son-phone', 'second_son_initial', 'new-operation', now, null, approvalContext
+  );
+  const device = find(spreadsheet.sheets.Device_Memberships, deviceHeaders, 'deviceId', 'son-phone')[0];
+  assert.strictEqual(result.status, 'active');
+  assert.strictEqual(spreadsheet.sheets.Device_Memberships.getLastRow(), beforeRows, 're-registration appended a membership row');
+  assert.deepStrictEqual(
+    { homeId: device.homeId, memberUserId: device.memberUserId, status: device.status, assignedBy: device.assignedBy, assignedAt: device.assignedAt, updatedAt: device.updatedAt },
+    { homeId: 'home-a', memberUserId: 'second_son', status: 'active', assignedBy: 'pairing_approval:new-operation', assignedAt: now, updatedAt: now }
+  );
+  assert(approvalContext.reRegistrationSnapshot, 're-registration snapshot was not exposed to the Registry commit lifecycle');
+}
+
+for (const options of [
+  { targetDeviceMember: 'father', targetDeviceStatus: 'disabled', targetDeviceAssignedBy: 'pairing_approval:old-operation' },
+  { targetDeviceMember: 'second_son', targetDeviceHome: 'other-home', targetDeviceStatus: 'disabled', targetDeviceAssignedBy: 'pairing_approval:old-operation' },
+  { targetDeviceMember: 'second_son', targetDeviceStatus: 'active', targetDeviceAssignedBy: 'pairing_approval:old-operation' },
+]) {
+  expectCode(() => {
+    const { registry, api } = setup(Object.assign({ existingSecondSon: true }, options));
+    api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+      adminActor(api, registry), 'son-phone', 'second_son_initial', 'new-operation', '2026-08-25T12:34:56+09:00', null,
+      pairingApprovalContext('son-phone', 'new-operation')
+    );
+  }, 'MEMBERSHIP_CONFLICT');
+}
+
+for (const invalidContext of [
+  { requestKind: 'membership', registryDeviceStatus: 'active', requestDeviceId: 'son-phone', requestId: 'new-operation' },
+  { requestKind: 'pairing', registryDeviceStatus: 'active', requestDeviceId: 'son-phone', requestId: 'new-operation' },
+  { requestKind: 'pairing', registryDeviceStatus: 'pending', requestDeviceId: 'other-phone', requestId: 'new-operation' },
+  { requestKind: 'pairing', registryDeviceStatus: 'pending', requestDeviceId: 'son-phone', requestId: 'other-operation' },
+]) {
+  expectCode(() => {
+    const { registry, api } = setup({
+      existingSecondSon: true,
+      targetDeviceMember: 'second_son',
+      targetDeviceStatus: 'disabled',
+      targetDeviceAssignedBy: 'pairing_approval:old-operation',
+    });
+    api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+      adminActor(api, registry), 'son-phone', 'second_son_initial', 'new-operation', '2026-08-25T12:34:56+09:00', null, invalidContext
+    );
+  }, 'MEMBERSHIP_CONFLICT');
+}
+
+expectCode(() => {
+  const { spreadsheet, registry, api } = setup({
+    existingSecondSon: true,
+    targetDeviceMember: 'second_son',
+    targetDeviceStatus: 'disabled',
+    targetDeviceAssignedBy: 'pairing_approval:old-operation',
+  });
+  add(spreadsheet.sheets.Device_Memberships, deviceHeaders, {
+    deviceId: 'son-phone', homeId: 'home-a', memberUserId: 'second_son', status: 'disabled', assignedBy: 'pairing_approval:old-operation',
+  });
+  api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+    adminActor(api, registry), 'son-phone', 'second_son_initial', 'new-operation', '2026-08-25T12:34:56+09:00', null,
+    pairingApprovalContext('son-phone', 'new-operation')
+  );
+}, 'MEMBERSHIP_NOT_FOUND');
+
+expectCode(() => {
+  const { registry, api } = setup({
+    existingSecondSon: true,
+    secondSonStatus: 'disabled',
+    targetDeviceMember: 'second_son',
+    targetDeviceStatus: 'disabled',
+    targetDeviceAssignedBy: 'pairing_approval:old-operation',
+  });
+  api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+    adminActor(api, registry), 'son-phone', 'second_son_initial', 'new-operation', '2026-08-25T12:34:56+09:00', null,
+    pairingApprovalContext('son-phone', 'new-operation')
+  );
+}, 'MEMBERSHIP_CONFLICT');
+
+{
+  const { spreadsheet, registry, api } = setup({
+    existingSecondSon: true,
+    targetDeviceMember: 'second_son',
+    targetDeviceStatus: 'disabled',
+    targetDeviceAssignedBy: 'pairing_approval:old-operation',
+    targetDeviceAssignedAt: 'old-assigned-at',
+    targetDeviceUpdatedAt: 'old-updated-at',
+  });
+  const before = find(spreadsheet.sheets.Device_Memberships, deviceHeaders, 'deviceId', 'son-phone')[0];
+  const verify = api.verifyActivatedDeviceMembershipForReRegistration_;
+  api.verifyActivatedDeviceMembershipForReRegistration_ = () => { throw Object.assign(new Error('simulated read-back failure'), { code: 'MEMBERSHIP_CONFLICT' }); };
+  expectCode(() => api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+    adminActor(api, registry), 'son-phone', 'second_son_initial', 'new-operation', '2026-08-25T12:34:56+09:00', null,
+    pairingApprovalContext('son-phone', 'new-operation')
+  ), 'MEMBERSHIP_CONFLICT');
+  api.verifyActivatedDeviceMembershipForReRegistration_ = verify;
+  const after = find(spreadsheet.sheets.Device_Memberships, deviceHeaders, 'deviceId', 'son-phone')[0];
+  assert.deepStrictEqual(after, before, 'read-back failure did not restore the complete disabled membership row');
+}
+
+{
+  const { spreadsheet, registry, api } = setup({
+    existingSecondSon: true,
+    targetDeviceMember: 'second_son',
+    targetDeviceStatus: 'disabled',
+    targetDeviceAssignedBy: 'pairing_approval:old-operation',
+  });
+  api.verifyActivatedDeviceMembershipForReRegistration_ = () => { throw Object.assign(new Error('simulated read-back failure'), { code: 'MEMBERSHIP_CONFLICT' }); };
+  spreadsheet.failOnWrite = 2;
+  expectCode(() => api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+    adminActor(api, registry), 'son-phone', 'second_son_initial', 'new-operation', '2026-08-25T12:34:56+09:00', null,
+    pairingApprovalContext('son-phone', 'new-operation')
+  ), 'MEMBERSHIP_ROLLBACK_PENDING');
 }
 
 expectCode(() => { const { registry, api } = setup({ existingSecondSon: true, secondSonStatus: 'disabled' }); api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son_initial', 'op-son', '2026-07-26T12:00:00+09:00'); }, 'MEMBERSHIP_CONFLICT');

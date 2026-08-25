@@ -106,9 +106,13 @@ function createHarness() {
   }
   function registry() { return JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1); }
   function revoke(deviceId) { return context.devicePairingRevoke_({ deviceId: adminDevice, pairingToken: adminToken, targetDeviceId: deviceId }); }
+  function begin(deviceId, displayName, tokenHash) { return context.devicePairingBegin_({ deviceId, displayName, tokenHash }); }
+  function approve(code, membershipTemplate, extra) {
+    return context.devicePairingApprove_(Object.assign({ deviceId: adminDevice, pairingToken: adminToken, code, membershipTemplate }, extra || {}));
+  }
   function resetFailureCounters() { propertySetCount = 0; failPropertySetAt = 0; dropPropertySetAt = 0; spreadsheet.writeCount = 0; spreadsheet.failOnWrites = []; spreadsheet.corruptOnWrites = []; }
   return {
-    context, spreadsheet, membership, registry, revoke, resetFailureCounters,
+    context, spreadsheet, membership, registry, revoke, begin, approve, resetFailureCounters,
     failNextRegistryWrite: () => { failPropertySetAt = propertySetCount + 1; },
     dropNextRegistryWrite: () => { dropPropertySetAt = propertySetCount + 1; },
     dropRegistryWriteAfter: (offset) => { dropPropertySetAt = propertySetCount + offset; },
@@ -129,6 +133,68 @@ function createHarness() {
       rows.find((row) => row[deviceIndex] === sonDeviceB)[rows[0].indexOf('homeId')] = homeId;
     },
   };
+}
+
+{
+  const h = createHarness();
+  const replacementToken = 'second-son-token-b-replacement-0000000000001';
+  const homeBefore = JSON.stringify(h.spreadsheet.sheets.Home_Members.values);
+  assert(h.revoke(sonDeviceB).success, 'initial revoke failed');
+  const disabledBefore = JSON.parse(JSON.stringify(h.membership(sonDeviceB)));
+  const started = h.begin(sonDeviceB, 'son b re-registration', sha256(replacementToken));
+  assert(started.success, 'revoked device could not begin re-registration');
+  assert.strictEqual(h.registry().devices[sonDeviceB].status, 'pending');
+  const approved = h.approve(started.data.code, 'second_son_initial', { userId: 'father', role: 'admin', homeId: 'other-home', actorUserId: 'father' });
+  assert(approved.success, 'same-device re-registration approval failed');
+  const active = h.membership(sonDeviceB);
+  assert.strictEqual(h.registry().devices[sonDeviceB].status, 'active');
+  assert.strictEqual(active.status, 'active');
+  assert.strictEqual(active.homeId, disabledBefore.homeId);
+  assert.strictEqual(active.memberUserId, disabledBefore.memberUserId);
+  assert.strictEqual(active.assignedBy, `pairing_approval:${started.data.requestId}`);
+  assert.notStrictEqual(active.assignedBy, disabledBefore.assignedBy);
+  assert.strictEqual(active.assignedAt, active.updatedAt);
+  assert.strictEqual(h.membership(sonDeviceA).status, 'active', 're-registration changed the sibling second_son device');
+  assert.strictEqual(h.registry().devices[sonDeviceA].status, 'active', 're-registration changed the sibling Registry device');
+  assert.strictEqual(JSON.stringify(h.spreadsheet.sheets.Home_Members.values), homeBefore, 're-registration changed Home_Members');
+  assert.strictEqual(h.context.resolveAuthenticatedActor_(sonDeviceB, replacementToken).memberUserId, 'second_son');
+  assert(h.revoke(sonDeviceB).success, 're-registered device could not be revoked again');
+  assert.strictEqual(h.registry().devices[sonDeviceB].status, 'revoked');
+  assert.strictEqual(h.membership(sonDeviceB).status, 'disabled');
+  assert.strictEqual(h.registry().devices[sonDeviceA].status, 'active');
+  assert.strictEqual(h.membership(sonDeviceA).status, 'active');
+}
+
+for (const setupRegistryFailure of [
+  (h) => h.failNextRegistryWrite(),
+  (h) => h.dropNextRegistryWrite(),
+]) {
+  const h = createHarness();
+  const replacementToken = 'second-son-token-b-replacement-0000000000002';
+  assert(h.revoke(sonDeviceB).success);
+  const disabledBefore = JSON.parse(JSON.stringify(h.membership(sonDeviceB)));
+  const started = h.begin(sonDeviceB, 'son b rollback', sha256(replacementToken));
+  h.resetFailureCounters();
+  setupRegistryFailure(h);
+  const failed = h.approve(started.data.code, 'second_son_initial');
+  assert.strictEqual(failed.success, false, 'Registry failure reported re-registration success');
+  assert.deepStrictEqual(h.membership(sonDeviceB), disabledBefore, 'Registry failure did not restore the complete disabled row');
+  assert.strictEqual(h.registry().devices[sonDeviceB].status, 'pending', 'Registry rollback did not restore pending device state');
+  assert.strictEqual(h.registry().requests[started.data.requestId].status, 'pending', 'Registry rollback did not restore pending request state');
+  h.resetFailureCounters();
+  assert(h.approve(started.data.code, 'second_son_initial').success, 'same operation could not retry after a verified rollback');
+}
+
+{
+  const h = createHarness();
+  const replacementToken = 'second-son-token-b-replacement-0000000000003';
+  assert(h.revoke(sonDeviceB).success);
+  const started = h.begin(sonDeviceB, 'son b rollback failure', sha256(replacementToken));
+  h.resetFailureCounters();
+  h.failNextRegistryWrite();
+  h.spreadsheet.failOnWrites = [2];
+  const failed = h.approve(started.data.code, 'second_son_initial');
+  assert.strictEqual(failed.error.code, 'MEMBERSHIP_ROLLBACK_PENDING', 'rollback failure did not return the safe error');
 }
 
 {

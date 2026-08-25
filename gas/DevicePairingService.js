@@ -103,7 +103,22 @@ function devicePairingApprove_(body) {
         throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
       }
       setDevicePairingApprovalStage_(diagnostics, 'registryDevice', 'verified', { requestKind: approval.kind });
-      provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, targetDevice.deviceId, input.membershipTemplate, request.requestId, homeControlIso_(now), diagnostics);
+      const registryBeforeApprovalCommit = cloneHomeControlRegistryValue_(registry);
+      const membershipApprovalContext = {
+        requestKind: approval.kind,
+        registryDeviceStatus: String(targetDevice.status || ''),
+        requestDeviceId: String(request.deviceId || ''),
+        requestId: String(request.requestId || ''),
+      };
+      provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+        adminActor,
+        targetDevice.deviceId,
+        input.membershipTemplate,
+        request.requestId,
+        homeControlIso_(now),
+        diagnostics,
+        membershipApprovalContext
+      );
       if (approval.kind === 'pairing') {
         targetDevice.status = 'active';
         targetDevice.registeredAt = homeControlIso_(now);
@@ -119,7 +134,22 @@ function devicePairingApprove_(body) {
       if (approval.kind === 'pairing') {
         deleteOtherPendingPairingRequestsForDevice_(registry, targetDevice.deviceId, request.requestId);
       }
-      return { requestId: request.requestId, deviceName: targetDevice.displayName, status: 'approved' };
+      const approvalResult = { requestId: request.requestId, deviceName: targetDevice.displayName, status: 'approved' };
+      if (!membershipApprovalContext.reRegistrationSnapshot) return approvalResult;
+      return createHomeControlRegistryCommitResult_(
+        approvalResult,
+        function() {
+          restoreHomeControlRegistrySnapshot_(registry, registryBeforeApprovalCommit);
+          restoreDeviceMembershipAfterReRegistrationFailure_(membershipApprovalContext.reRegistrationSnapshot);
+        },
+        'MEMBERSHIP_ROLLBACK_PENDING',
+        function() {
+          verifyDevicePairingReRegistrationCommit_(registry, deps, membershipApprovalContext, request.requestId);
+        },
+        function() {
+          verifyDevicePairingReRegistrationRollback_(registry, deps, membershipApprovalContext.reRegistrationSnapshot);
+        }
+      );
     });
     return json_({ success: true, data: result, warnings: [], diagnostics: diagnostics });
   } catch (error) {
@@ -431,6 +461,33 @@ function verifyDevicePairingRevokeRollback_(registry, deps, membershipSnapshot) 
     throw homeControlPairingError_('DEVICE_REVOKE_ROLLBACK_PENDING');
   }
   verifyRestoredDeviceMembershipAfterRevokeFailure_(membershipSnapshot);
+}
+
+function verifyDevicePairingReRegistrationCommit_(registry, deps, membershipApprovalContext, requestId) {
+  const persisted = readBackExpectedHomeControlRegistry_(registry, deps);
+  const deviceId = String(membershipApprovalContext && membershipApprovalContext.requestDeviceId || '');
+  const device = persisted && persisted.devices && persisted.devices[deviceId];
+  const request = persisted && persisted.requests && persisted.requests[String(requestId || '')];
+  if (!device || device.status !== 'active' || !request || request.status !== 'approved' || request.deviceId !== deviceId) {
+    throw homeControlPairingError_('MEMBERSHIP_CONFLICT');
+  }
+  verifyActivatedDeviceMembershipForReRegistration_(
+    membershipApprovalContext.reRegistrationSnapshot,
+    membershipApprovalContext.assignment,
+    membershipApprovalContext.activatedAt
+  );
+}
+
+function verifyDevicePairingReRegistrationRollback_(registry, deps, membershipSnapshot) {
+  if (!readBackExpectedHomeControlRegistry_(registry, deps)) {
+    throw homeControlPairingError_('MEMBERSHIP_ROLLBACK_PENDING');
+  }
+  verifyRestoredDeviceMembershipAfterReRegistrationFailure_(membershipSnapshot);
+}
+
+function restoreHomeControlRegistrySnapshot_(registry, snapshot) {
+  Object.keys(registry).forEach(function(key) { delete registry[key]; });
+  Object.keys(snapshot || {}).forEach(function(key) { registry[key] = cloneHomeControlRegistryValue_(snapshot[key]); });
 }
 
 function readBackExpectedHomeControlRegistry_(registry, deps) {

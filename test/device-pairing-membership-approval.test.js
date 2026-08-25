@@ -52,8 +52,14 @@ function createHarness() {
       if (adminMode !== 'admin') throw Object.assign(new Error('FORBIDDEN'), { code: 'FORBIDDEN' });
       return { homeId: 'home-a', memberUserId: 'father', role: 'admin', deviceId };
     },
-    provisionMembershipFromApprovalTemplateWithinRegistryLock_(actor, targetDeviceId, template, operationId) {
-      provisionCalls.push({ actor: Object.assign({}, actor), targetDeviceId, template, operationId });
+    provisionMembershipFromApprovalTemplateWithinRegistryLock_(actor, targetDeviceId, template, operationId, _now, _diagnostics, approvalContext) {
+      provisionCalls.push({
+        actor: Object.assign({}, actor),
+        targetDeviceId,
+        template,
+        operationId,
+        approvalContext: Object.assign({}, approvalContext),
+      });
       if (provisionFailure) throw Object.assign(new Error('MEMBERSHIP_CONFLICT'), { code: 'MEMBERSHIP_CONFLICT' });
       return { status: 'active' };
     },
@@ -123,6 +129,12 @@ test('new pairing requests persist kind pairing and both fixed templates provisi
     assert.strictEqual(saved.requests[started.data.requestId].codeHash, '');
     assert.deepStrictEqual(h.provisionCalls[0].template, template);
     assert.strictEqual(h.provisionCalls[0].operationId, started.data.requestId);
+    assert.deepStrictEqual(h.provisionCalls[0].approvalContext, {
+      requestKind: 'pairing',
+      registryDeviceStatus: 'pending',
+      requestDeviceId: childId,
+      requestId: started.data.requestId,
+    });
   }
 });
 
