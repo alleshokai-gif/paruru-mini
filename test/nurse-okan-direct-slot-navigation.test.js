@@ -45,12 +45,24 @@ assert.strictEqual(api.directSlotStatusLabel_('due_missing'), '未記録');
 
 const source = fs.readFileSync('features/nurse-okan/nurse-okan.js', 'utf8');
 const css = fs.readFileSync('style.css', 'utf8');
-assert(source.includes('id="nurseProgressTitle">📝 今日の記録'), 'today record navigation heading missing');
+assert(source.includes('id="nurseActionTitle">🕐 いまのチェック'), 'current-time check heading missing');
+assert(source.includes('id="nurseMissingTitle">⚠️ 今日の未記録'), 'due-missing recovery heading missing');
+assert(source.includes('id="nurseProgressTitle">📋 今日の記録'), 'today record navigation heading missing');
 assert(source.includes('data-nurse-open-slot') && source.includes('dataset.nurseFocusField'), 'direct slot navigation controls missing');
 assert(source.includes("state.selectedSlot=selection.slot;state.selectedField=selection.field"), 'direct selection does not drive the existing slot form');
-assert(source.includes("return renderActionCard_(safeDaily)"), 'existing next-task recommendation was removed');
+assert(source.includes('resolveCurrentHealthCheck_') && source.includes('buildMissingReminderState_'), 'current and missing selectors are not separated');
+assert(source.includes("expanded=state.selectedSlot===progress.slot") && source.includes("if(expanded){const panel=renderRecordAccordionPanel_"), 'today record list is not a one-slot accordion');
+assert(source.includes("if(!state.pendingOpen){clearDailySelection_();}"), 'ordinary Nurse Okan open must start with every record slot closed');
 assert(source.includes("clearDailySelection_();document.dispatchEvent") && source.includes('render_();focusRecordList_();'), 'save must return to the freely selectable record list');
-assert(css.includes('.nurse-progress-open') && css.includes('.nurse-progress-shortcuts'), 'direct navigation styles missing');
+assert(css.includes('.nurse-progress-open') && css.includes('.nurse-record-panel') && css.includes('.nurse-missing-card'), 'direct navigation or missing alert styles missing');
+
+const missingAtNoon = api.buildMissingReminderState_(unrecorded, new Date('2026-08-24T12:00:00+09:00'));
+assert.deepStrictEqual(plain(missingAtNoon.items.map((item) => item.slot)), ['morning']);
+assert.strictEqual(missingAtNoon.count, 1);
+assert.strictEqual(missingAtNoon.severity, 'reminder');
+const missingAtNight = api.buildMissingReminderState_(unrecorded, new Date('2026-08-24T23:00:00+09:00'));
+assert.deepStrictEqual(plain(missingAtNight.items.map((item) => item.slot)), ['morning', 'lunch', 'dinner', 'condition']);
+assert.strictEqual(missingAtNight.severity, 'strong');
 
 const payload = api.buildHealthRequest_('health.daily.recordSlot', 'second_son', {
   localDate: '2026-08-24', slot: 'lunch', payload: { lunchAmount: 'all' }, clientRequestId: 'request-1',

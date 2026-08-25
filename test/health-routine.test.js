@@ -5,6 +5,8 @@ const {
   MISSING_AFTER_HOURS,
   resolveRoutineStatus,
   resolveNextHealthTask,
+  resolveCurrentHealthCheck,
+  listDueMissingRoutines,
   isRoutineComplete,
 } = require('../features/nurse-okan/health-routine.js');
 
@@ -42,6 +44,23 @@ assert.strictEqual(resolveRoutineStatus('condition', {}, at(23)), 'due_missing')
 assert.deepStrictEqual(resolveNextHealthTask({ slots: {} }, at(12)), {
   slot: 'morning', title: '朝の健康記録', status: 'due_missing', overdue: true, priority: 'high', action: 'daily',
 });
+
+// 現在入力は期限超過の優先順位と分離し、時刻に対応するslotだけを返す。
+assert.deepStrictEqual(resolveCurrentHealthCheck({ slots: {} }, at(22)), {
+  slot: 'condition', title: '体調の健康記録', status: 'not_due', overdue: false, action: 'daily',
+});
+assert.deepStrictEqual(resolveCurrentHealthCheck({ slots: {} }, at(21)), {
+  slot: 'dinner', title: '夜の健康記録', status: 'not_due', overdue: false, action: 'daily',
+});
+assert.deepStrictEqual(resolveCurrentHealthCheck({ slots: { condition: recorded() } }, at(22)), {
+  slot: 'condition', title: '体調の健康記録', status: 'recorded', overdue: false, action: 'daily',
+});
+assert.strictEqual(resolveCurrentHealthCheck({ slots: {} }, at(6)), null);
+
+// due_missingだけが「今日の未記録」。futureとpost_training未確認は含めない。
+assert.deepStrictEqual(listDueMissingRoutines({ slots: {} }, at(12)).map((item) => item.slot), ['morning']);
+assert.deepStrictEqual(listDueMissingRoutines({ slots: {} }, at(22)).map((item) => item.slot), ['morning', 'lunch', 'dinner']);
+assert.deepStrictEqual(listDueMissingRoutines({ slots: { morning: recorded(), dinner: recorded() } }, at(22)).map((item) => item.slot), ['lunch']);
 
 assert.deepStrictEqual(resolveNextHealthTask({ slots: { morning: recorded() } }, at(12)), {
   slot: 'lunch', title: '昼の健康記録', status: 'not_due', overdue: false, priority: 'normal', action: 'daily',

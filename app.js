@@ -474,6 +474,22 @@ function prependVirtualHealthTask_(items, task) {
   }, ...(Array.isArray(items) ? items : [])];
 }
 
+function resolveHealthTaskNavigation_(slot) {
+  const requestedSlot = String(slot || "");
+  if (
+    !healthTaskCache
+    || healthTaskCache.action !== "daily"
+    || healthTaskCache.slot !== requestedSlot
+  ) {
+    return null;
+  }
+  return {
+    action: "daily",
+    slot: healthTaskCache.slot,
+    targetUserId: healthTaskCache.targetUserId,
+  };
+}
+
 setParuruState("loading");
 
 if ("serviceWorker" in navigator) {
@@ -1352,11 +1368,8 @@ todayParuruList.addEventListener("click", (event) => {
     return;
   }
   if (item.dataset.healthAction === "daily" && item.dataset.healthSlot) {
-    switchView("nurse-okan", {
-      action: "daily",
-      slot: item.dataset.healthSlot,
-      targetUserId: item.dataset.healthTargetUserId,
-    });
+    const navigation = resolveHealthTaskNavigation_(item.dataset.healthSlot);
+    if (navigation) switchView("nurse-okan", navigation);
     return;
   }
   openNotificationDetail(item.dataset.notificationId);
@@ -2949,7 +2962,7 @@ function renderNotificationItem(item) {
   const level = normalizeNotificationLevel(item.notificationLevel);
   const labels = (item.reasons || []).slice(0, 2).map(renderNotificationReasonLabel).join("");
   const healthAttributes = item.virtual && item.healthAction === "daily"
-    ? ` data-health-action="daily" data-health-slot="${escapeHtml(item.healthSlot || "")}" data-health-target-user-id="${escapeHtml(item.targetUserId || "")}"`
+    ? ` data-health-action="daily" data-health-slot="${escapeHtml(item.healthSlot || "")}"`
     : "";
   return `
     <button class="today-paruru-item today-paruru-${escapeHtml(level)}" type="button" data-notification-id="${escapeHtml(item.id)}"${healthAttributes}>

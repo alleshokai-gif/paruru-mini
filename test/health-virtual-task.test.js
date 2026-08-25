@@ -51,6 +51,15 @@ async function nextFor(role, slots) {
   assert.strictEqual(pending.targetUserId, 'member-1', 'health task did not retain its target member');
   assert.strictEqual(requests.length, 1, 'self_record pending slot did not call health.daily.get once');
   assert.strictEqual(requests[0].targetMemberUserId, 'member-1', 'health task used a different target member');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(context.resolveHealthTaskNavigation_('morning'))), {
+    action: 'daily', slot: 'morning', targetUserId: 'member-1',
+  }, 'TOP health task does not preserve its server-resolved slot and target');
+  assert.strictEqual(context.resolveHealthTaskNavigation_('lunch'), null, 'client slot spoof escaped the cached health task');
+  vm.runInContext("healthTaskCache={action:'daily',slot:'lunch',targetUserId:'member-1'}", context);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(context.resolveHealthTaskNavigation_('lunch'))), {
+    action: 'daily', slot: 'lunch', targetUserId: 'member-1',
+  }, 'TOP lunch reminder does not open the matching lunch slot');
+  assert.strictEqual(context.resolveHealthTaskNavigation_('morning'), null, 'TOP lunch reminder was redirected to a different slot');
 
   const complete = {
     morning: { recordedAt: '2026-07-29T08:00:00+09:00', morningStaple:'normal',morningWater:true,morningMedication:true,morningCondition:true },
@@ -63,8 +72,9 @@ async function nextFor(role, slots) {
 
   const handler = appSource.slice(appSource.indexOf('todayParuruList.addEventListener'), appSource.indexOf('todayParuruAllButton.addEventListener'));
   assert(handler.indexOf('item.dataset.healthAction === "daily"') < handler.indexOf('openNotificationDetail'), 'virtual health click can reach Inbox detail/update flow');
-  assert(handler.includes('targetUserId: item.dataset.healthTargetUserId'), 'virtual health task target is not forwarded to Nurse Okan');
-  assert(appSource.includes('data-health-target-user-id='), 'virtual health task target is not rendered into the click payload');
+  assert(handler.includes('resolveHealthTaskNavigation_(item.dataset.healthSlot)'), 'virtual health task does not resolve through the cached server task');
+  assert(!handler.includes('item.dataset.healthTargetUserId'), 'DOM target value is trusted by virtual health navigation');
+  assert(!appSource.includes('data-health-target-user-id='), 'server-resolved target leaked into mutable DOM routing metadata');
   console.log('PASS health virtual task role gate and virtual click routing');
 })().catch((error) => {
   console.error(error);

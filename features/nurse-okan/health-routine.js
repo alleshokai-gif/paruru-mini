@@ -82,6 +82,32 @@
     };
   }
 
+  function resolveCurrentHealthCheck(dailyRecord, now) {
+    const routine = resolveCurrentRoutine(now);
+    if (!routine) return null;
+    const slots = dailyRecord && dailyRecord.slots && typeof dailyRecord.slots === "object"
+      ? dailyRecord.slots : {};
+    const status = resolveRoutineStatus(routine.slot, slots[routine.slot], now);
+    return {
+      slot: routine.slot,
+      title: routine.title,
+      status,
+      overdue: status === ROUTINE_STATUS.DUE_MISSING,
+      action: "daily",
+    };
+  }
+
+  function listDueMissingRoutines(dailyRecord, now) {
+    const slots = dailyRecord && dailyRecord.slots && typeof dailyRecord.slots === "object"
+      ? dailyRecord.slots : {};
+    return ROUTINES.map((routine) => ({
+      slot: routine.slot,
+      title: routine.title,
+      status: resolveRoutineStatus(routine.slot, slots[routine.slot], now),
+      action: "daily",
+    })).filter((routine) => routine.status === ROUTINE_STATUS.DUE_MISSING);
+  }
+
   return Object.freeze({
     ROUTINES,
     ROUTINE_STATUS,
@@ -89,6 +115,8 @@
     resolveCurrentRoutine,
     resolveRoutineStatus,
     resolveNextHealthTask,
+    resolveCurrentHealthCheck,
+    listDueMissingRoutines,
     isRoutineRecorded,
     isRoutineComplete,
   });
