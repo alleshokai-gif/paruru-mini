@@ -47,8 +47,8 @@ const source = fs.readFileSync('features/nurse-okan/nurse-okan.js', 'utf8');
 const css = fs.readFileSync('style.css', 'utf8');
 const shell = source.slice(source.indexOf('root.innerHTML ='), source.indexOf('mount.append(root);'));
 const shellOrder = [
-  'class="nurse-okan-talk paruru-hero"',
   'class="nurse-dashboard-card nurse-kpi-card"',
+  'class="nurse-okan-talk paruru-hero"',
   'class="nurse-dashboard-card nurse-action-card"',
   'id="nurseMissingCard"',
   'class="nurse-dashboard-card nurse-progress-card"',
@@ -56,7 +56,7 @@ const shellOrder = [
 ].map((marker) => shell.indexOf(marker));
 assert(shellOrder.every((index) => index >= 0), 'Nurse Okan dashboard section is missing');
 assert(shellOrder.every((index, position) => position === 0 || shellOrder[position - 1] < index), 'Nurse Okan dashboard information hierarchy is out of order');
-assert(source.includes("const actionCard=root.querySelector('.nurse-action-card');if(actionCard&&actionCard.parentNode)actionCard.parentNode.insertBefore(trendCard,actionCard);"), 'weight trend must sit after KPI and before current-time input');
+assert(source.includes("const talk=root.querySelector('.nurse-okan-talk');if(talk&&talk.parentNode)talk.parentNode.insertBefore(trendCard,talk);"), 'weight trend must sit after KPI and before Nurse Okan comment');
 assert(source.includes('id="nurseActionTitle">🕐 いまのチェック'), 'current-time check heading missing');
 assert(source.includes('id="nurseMissingTitle">⚠️ 今日の未記録'), 'due-missing recovery heading missing');
 assert(source.includes('id="nurseProgressTitle">📋 今日の記録'), 'today record navigation heading missing');
