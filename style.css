@@ -923,6 +923,57 @@ button:disabled {
   gap: 12px;
 }
 
+.family-inbox-form {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.family-inbox-heading h2,
+.family-inbox-heading p,
+.family-inbox-status {
+  margin: 0;
+}
+
+.family-inbox-heading h2 {
+  font-size: 1.08rem;
+}
+
+.family-inbox-heading p,
+.family-inbox-status {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.family-inbox-form input,
+.family-inbox-form select,
+.family-inbox-form textarea,
+.family-inbox-form button {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.family-inbox-form input[type="file"] {
+  padding: 10px;
+}
+
+.family-inbox-form textarea {
+  min-height: 92px;
+}
+
+.family-inbox-status.is-error {
+  color: var(--danger);
+}
+
+.family-inbox-status.is-success {
+  color: #216b32;
+}
+
 .inbox-card {
   display: grid;
   gap: 10px;

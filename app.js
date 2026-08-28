@@ -13,6 +13,9 @@ const MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY = "paruru-mini-membership-regi
 const PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY = "paruru-mini-pet-health-dashboard-popio-v1";
 const PET_HEALTH_DASHBOARD_CACHE_SCHEMA_VERSION = "pet-health-1.0";
 const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 30000;
+const FAMILY_INBOX_MAX_FILE_BYTES = 5 * 1024 * 1024;
+const FAMILY_INBOX_ALLOWED_MEDIA_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
+let familyInboxPendingClientRequestId = "";
 const PET_HEALTH_DASHBOARD_SAFE_ERROR_CODES = new Set([
   "PET_HEALTH_TIMEOUT",
   "PET_HEALTH_UNAVAILABLE",
@@ -337,6 +340,12 @@ const navItems = document.querySelectorAll(".nav-item");
 const viewNavigationItems = document.querySelectorAll("[data-target-view]");
 const inboxList = document.querySelector("#inboxList");
 const refreshInboxButton = document.querySelector("#refreshInboxButton");
+const familyInboxForm = document.querySelector("#familyInboxForm");
+const familyInboxFile = document.querySelector("#familyInboxFile");
+const familyInboxSubjectMember = document.querySelector("#familyInboxSubjectMember");
+const familyInboxNote = document.querySelector("#familyInboxNote");
+const familyInboxSubmit = document.querySelector("#familyInboxSubmit");
+const familyInboxStatus = document.querySelector("#familyInboxStatus");
 const detailDialog = document.querySelector("#detailDialog");
 const deleteDialog = document.querySelector("#deleteDialog");
 const editForm = document.querySelector("#editForm");
@@ -908,6 +917,9 @@ const activateMembershipContext_ = function(membershipContext) {
     capabilities: Array.isArray(membershipContext.capabilities) ? membershipContext.capabilities.slice() : [],
     allowedViews: Array.isArray(membershipContext.allowedViews) ? membershipContext.allowedViews.slice() : [],
   };
+  if (typeof familyInboxSubjectMember !== "undefined" && familyInboxSubjectMember && Array.from(familyInboxSubjectMember.options).some((option) => option.value === membershipContext.memberUserId)) {
+    familyInboxSubjectMember.value = membershipContext.memberUserId;
+  }
   clearMembershipRegistrationPending();
   appAuthenticationState = "active_member";
   initializeNormalPwaOnce();
@@ -1244,6 +1256,93 @@ if (typeof document.addEventListener === "function") {
 }
 
 refreshInboxButton.addEventListener("click", loadInbox);
+
+[familyInboxFile, familyInboxSubjectMember, familyInboxNote].forEach((input) => {
+  input.addEventListener(input === familyInboxNote ? "input" : "change", () => {
+    familyInboxPendingClientRequestId = "";
+  });
+});
+
+familyInboxForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setFamilyInboxStatus_("", "");
+  const file = familyInboxFile.files?.[0];
+  if (!file) {
+    setFamilyInboxStatus_("写真またはPDFを1件選んでな。", "error");
+    return;
+  }
+  if (!FAMILY_INBOX_ALLOWED_MEDIA_TYPES.has(file.type)) {
+    setFamilyInboxStatus_("JPEG・PNG・PDFだけ預かれるで。", "error");
+    return;
+  }
+  if (file.size > FAMILY_INBOX_MAX_FILE_BYTES) {
+    setFamilyInboxStatus_("ファイルは5MB以下にしてな。", "error");
+    return;
+  }
+  if (!activeMembershipContext?.memberUserId || !familyInboxSubjectMember.value) {
+    setFamilyInboxStatus_("家族情報を確認できませんでした。再読み込みしてな。", "error");
+    return;
+  }
+
+  familyInboxSubmit.disabled = true;
+  familyInboxSubmit.textContent = "アップロード中…";
+  try {
+    const base64 = await readFamilyInboxFileAsBase64_(file);
+    if (!familyInboxPendingClientRequestId) familyInboxPendingClientRequestId = createUuid();
+    const data = await callHomeControlApi({
+      ...buildMemoCredentialPayload("familyInbox.submit"),
+      clientRequestId: familyInboxPendingClientRequestId,
+      subjectMemberId: familyInboxSubjectMember.value,
+      userNote: familyInboxNote.value.trim(),
+      file: { name: file.name, mediaType: file.type, base64 },
+    });
+    const duplicateText = data.status === "duplicate" ? "（同じ内容を検知）" : "";
+    setFamilyInboxStatus_(`預かったで。${data.inboxId} / ${data.status}${duplicateText}`, "success");
+    familyInboxPendingClientRequestId = "";
+    familyInboxFile.value = "";
+    familyInboxNote.value = "";
+  } catch (error) {
+    setFamilyInboxStatus_(familyInboxErrorMessage_(error?.code), "error");
+  } finally {
+    familyInboxSubmit.disabled = false;
+    familyInboxSubmit.textContent = "預ける";
+  }
+});
+
+function readFamilyInboxFileAsBase64_(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(createHomeControlError("INVALID_INPUT"));
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      if (comma < 0) {
+        reject(createHomeControlError("INVALID_INPUT"));
+        return;
+      }
+      resolve(result.slice(comma + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function setFamilyInboxStatus_(text, state) {
+  familyInboxStatus.textContent = String(text || "");
+  familyInboxStatus.classList.toggle("is-error", state === "error");
+  familyInboxStatus.classList.toggle("is-success", state === "success");
+}
+
+function familyInboxErrorMessage_(code) {
+  const normalized = String(code || "");
+  if (["INVALID_INPUT", "UNSUPPORTED_MEDIA_TYPE", "FILE_TOO_LARGE", "INVALID_FILE_SIGNATURE", "INVALID_MEMBER"].includes(normalized)) return "ファイルか対象の家族を確認して、もう一度送ってな。";
+  if (normalized === "FORBIDDEN") return "この端末では送信できません。端末登録を確認してな。";
+  if (normalized === "CONFIGURATION_ERROR") return "保存先の準備がまだできていません。管理者に確認してな。";
+  return "いま保存できませんでした。時間をおいて、同じファイルをもう一度送ってな。";
+}
+
+async function getFamilyInboxStatus_(inboxId) {
+  return callHomeControlApi({ ...buildMemoCredentialPayload("familyInbox.getStatus"), inboxId: String(inboxId || "") });
+}
 
 inboxList.addEventListener("click", (event) => {
   if (event.target.closest("[data-inbox-retry]")) {

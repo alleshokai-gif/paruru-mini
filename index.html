@@ -162,6 +162,33 @@
           <h1>Inbox</h1>
           <button id="refreshInboxButton" class="icon-button" type="button" aria-label="Inbox&#12434;&#26356;&#26032;">&#8635;</button>
         </div>
+        <form id="familyInboxForm" class="family-inbox-form">
+          <div class="family-inbox-heading">
+            <h2>家族の書類を預ける</h2>
+            <p>写真またはPDFを1件ずつ送れます。</p>
+          </div>
+          <label class="field">
+            <span>ファイル</span>
+            <input id="familyInboxFile" type="file" accept="image/jpeg,image/png,application/pdf" required>
+          </label>
+          <label class="field">
+            <span>だれの書類？</span>
+            <select id="familyInboxSubjectMember" required>
+              <option value="father">父</option>
+              <option value="mother">母</option>
+              <option value="eldest_son">長男</option>
+              <option value="eldest_daughter">長女</option>
+              <option value="second_son">次男</option>
+              <option value="youngest_daughter">次女</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>メモ（任意）</span>
+            <textarea id="familyInboxNote" maxlength="500" rows="3" placeholder="例：次女の学校プリント"></textarea>
+          </label>
+          <button id="familyInboxSubmit" type="submit">預ける</button>
+          <p id="familyInboxStatus" class="family-inbox-status" role="status" aria-live="polite"></p>
+        </form>
         <div id="inboxList" class="inbox-list" aria-live="polite"></div>
       </section>
 
