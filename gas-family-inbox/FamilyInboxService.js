@@ -32,6 +32,17 @@ const FAMILY_INBOX_SAFE_ERRORS = Object.freeze({
   STORAGE_ERROR: true,
   LEDGER_ERROR: true,
   CONFIGURATION_ERROR: true,
+  CLAIM_NOT_FOUND: true,
+  CLAIM_CONFLICT: true,
+  CLAIM_EXPIRED: true,
+  SOURCE_READ_ERROR: true,
+  INVALID_CANDIDATE: true,
+  IDEMPOTENCY_CONFLICT: true,
+  UNSUPPORTED_DOCUMENT: true,
+  AI_PROVIDER_ERROR: true,
+  AI_TIMEOUT: true,
+  INVALID_AI_OUTPUT: true,
+  PROMPT_INJECTION_REJECTED: true,
   INTERNAL_ERROR: true,
 });
 
@@ -318,7 +329,7 @@ function familyInboxTraceFromBody_(body, operation) {
 function familyInboxLog_(metadata) {
   if (typeof Logger === 'undefined' || typeof Logger.log !== 'function') return;
   const safe = {};
-  ['traceId', 'inboxId', 'operation', 'stage', 'status', 'mediaType', 'sizeBytes', 'sha256Prefix', 'durationMs', 'errorCode'].forEach(function(key) {
+  ['traceId', 'inboxId', 'operation', 'stage', 'status', 'mediaType', 'sizeBytes', 'sha256Prefix', 'durationMs', 'errorCode', 'claimVersion', 'candidateCount', 'profile', 'model', 'result'].forEach(function(key) {
     if (Object.prototype.hasOwnProperty.call(metadata || {}, key) && metadata[key] !== '') safe[key] = metadata[key];
   });
   try { Logger.log('[FAMILY_INBOX] ' + JSON.stringify(safe)); } catch (_) {}

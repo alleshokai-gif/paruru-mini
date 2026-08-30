@@ -8,6 +8,21 @@ function doPost(e) {
     if (operation === 'familyInbox.getStatus') {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxGetStatus_(body) });
     }
+    if (operation === 'familyInbox.claimNext') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxClaimNext_(body) });
+    }
+    if (operation === 'familyInbox.heartbeat') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxHeartbeat_(body) });
+    }
+    if (operation === 'familyInbox.getClaimedSource') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxGetClaimedSource_(body) });
+    }
+    if (operation === 'familyInbox.publishCandidates') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxPublishCandidates_(body) });
+    }
+    if (operation === 'familyInbox.failClaim') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxFailClaim_(body) });
+    }
     throw familyInboxError_('INVALID_INPUT');
   } catch (error) {
     return familyInboxJson_(familyInboxErrorEnvelope_(error));
