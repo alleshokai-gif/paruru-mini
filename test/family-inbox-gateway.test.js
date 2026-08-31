@@ -7,6 +7,17 @@ const vm = require('vm');
 
 const uuid = '00000000-0000-4000-8000-000000000101';
 const pdfBase64 = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 1]).toString('base64');
+const inboxId = 'inb_00000000000040008000000000000101';
+const candidateId = 'cand_00000000000040008000000000000101';
+
+function reviewCandidate(overrides = {}) {
+  return Object.assign({
+    candidateId, candidateType: 'schedule.event', revision: 1, confidence: 0.98,
+    payload: { title: '始業式', date: '2026-09-03', startTime: '08:15', endTime: null, location: null, notes: null },
+    evidenceSummary: [{ page: 1, quote: '9月3日 始業式', fieldPaths: ['date', 'title'] }],
+    warnings: [], questions: [], reviewStatus: 'pending', reviewedAt: '', reviewAction: '', reviewReason: '',
+  }, overrides);
+}
 
 function fixture(options = {}) {
   const state = { calls: [], logs: [], authorized: [] };
@@ -29,9 +40,12 @@ function fixture(options = {}) {
       state.calls.push({ url, fetchOptions });
       if (options.fetchError) throw new Error('raw URL failure');
       const request = JSON.parse(fetchOptions.payload);
-      const data = request.operation === 'familyInbox.submit'
-        ? { inboxId: 'inb_00000000000040008000000000000101', status: 'pending', idempotency: { replayed: false }, duplicateOfInboxId: '' }
-        : { inboxId: request.inboxId, status: 'pending', receivedAt: '2026-08-28T00:00:00+09:00', updatedAt: '2026-08-28T00:00:00+09:00', errorCode: '', duplicateOfInboxId: '' };
+      let data;
+      if (request.operation === 'familyInbox.submit') data = { inboxId, status: 'pending', idempotency: { replayed: false }, duplicateOfInboxId: '' };
+      else if (request.operation === 'familyInbox.listReviews') data = { items: [{ inboxId, receivedAt: '2026-08-31T00:00:00+09:00', subjectMemberId: 'youngest_daughter', originalName: 'school.pdf', candidateCount: 5, candidateTypes: ['school.document', 'schedule.event', 'school.belongings'], reviewStatus: 'pending' }] };
+      else if (request.operation === 'familyInbox.getReview') data = { inboxId, subjectMemberId: 'youngest_daughter', reviewStatus: 'pending', document: { originalName: 'school.pdf', receivedAt: '2026-08-31T00:00:00+09:00' }, candidates: [reviewCandidate()] };
+      else if (['familyInbox.updateCandidate', 'familyInbox.approveCandidate', 'familyInbox.rejectCandidate'].includes(request.operation)) data = { candidate: reviewCandidate({ revision: 2, reviewStatus: request.operation === 'familyInbox.approveCandidate' ? 'approved' : request.operation === 'familyInbox.rejectCandidate' ? 'rejected' : 'pending' }), reviewStatus: 'pending', idempotency: { replayed: false } };
+      else data = { inboxId: request.inboxId, status: 'pending', receivedAt: '2026-08-28T00:00:00+09:00', updatedAt: '2026-08-28T00:00:00+09:00', errorCode: '', duplicateOfInboxId: '' };
       const envelope = options.backendError
         ? { success: false, error: { code: options.backendError } }
         : { success: true, schemaVersion: 'family-inbox-1.0', data };
@@ -127,11 +141,72 @@ function submit(overrides = {}) {
 
 {
   const f = fixture();
-  const inboxId = 'inb_00000000000040008000000000000101';
   const result = f.api.familyInboxGateway_({ action: 'familyInbox.getStatus', deviceId: 'father-device', pairingToken: 'pairing-token', inboxId });
   assert.strictEqual(result.success, true);
   assert.strictEqual(result.data.inboxId, inboxId);
   assert.deepStrictEqual(f.state.authorized, ['family.inbox.read']);
+}
+
+{
+  const f = fixture();
+  const list = f.api.familyInboxGateway_({ action: 'familyInbox.listReviews', deviceId: 'father-device', pairingToken: 'pairing-token' });
+  assert.strictEqual(list.success, true);
+  assert.strictEqual(list.data.items[0].candidateCount, 5);
+  assert.deepStrictEqual(f.state.authorized, ['family.inbox.review']);
+  const forwarded = JSON.parse(f.state.calls[0].fetchOptions.payload);
+  assert.strictEqual(forwarded.homeId, 'home-a');
+  assert(!Object.hasOwn(forwarded, 'reviewedByMemberId'));
+}
+
+{
+  const f = fixture();
+  const detail = f.api.familyInboxGateway_({ action: 'familyInbox.getReview', deviceId: 'father-device', pairingToken: 'pairing-token', inboxId });
+  assert.strictEqual(detail.success, true);
+  assert.strictEqual(detail.data.candidates.length, 1);
+  assert(!Object.hasOwn(detail.data.candidates[0], 'reviewedByMemberId'));
+}
+
+{
+  const f = fixture();
+  const result = f.api.familyInboxGateway_({
+    action: 'familyInbox.updateCandidate', deviceId: 'father-device', pairingToken: 'pairing-token',
+    inboxId, candidateId, revision: 1, reviewRequestId: uuid, reviewNote: '',
+    payload: { title: '始業式（修正）', date: '2026-09-03', startTime: '08:20', endTime: null, location: null },
+  });
+  assert.strictEqual(result.success, true);
+  const forwarded = JSON.parse(f.state.calls[0].fetchOptions.payload);
+  assert.strictEqual(forwarded.reviewedByMemberId, 'father');
+  assert.strictEqual(forwarded.homeId, 'home-a');
+  assert.strictEqual(forwarded.revision, 1);
+  assert(!Object.hasOwn(forwarded, 'subjectMemberId'));
+}
+
+{
+  const f = fixture();
+  const result = f.api.familyInboxGateway_({
+    action: 'familyInbox.rejectCandidate', deviceId: 'father-device', pairingToken: 'pairing-token',
+    inboxId, candidateId, revision: 1, reviewRequestId: uuid, reviewNote: '', reviewReason: 'not_relevant',
+  });
+  assert.strictEqual(result.success, true);
+  const forwarded = JSON.parse(f.state.calls[0].fetchOptions.payload);
+  assert.strictEqual(forwarded.reviewReason, 'not_relevant');
+}
+
+{
+  const f = fixture();
+  const invalid = f.api.familyInboxGateway_({
+    action: 'familyInbox.approveCandidate', deviceId: 'father-device', pairingToken: 'pairing-token',
+    inboxId, candidateId, revision: 1, reviewRequestId: uuid, reviewNote: '', reviewedByMemberId: 'spoofed',
+  });
+  assert.strictEqual(invalid.success, false);
+  assert.strictEqual(invalid.error.code, 'INVALID_INPUT');
+  assert.strictEqual(f.state.calls.length, 0);
+}
+
+{
+  const f = fixture({ fetchError: true });
+  const result = f.api.familyInboxGateway_({ action: 'familyInbox.listReviews', deviceId: 'father-device', pairingToken: 'pairing-token' });
+  assert.strictEqual(result.error.code, 'SERVICE_UNAVAILABLE');
 }
 
 {

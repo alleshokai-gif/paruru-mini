@@ -189,6 +189,16 @@
           <button id="familyInboxSubmit" type="submit">預ける</button>
           <p id="familyInboxStatus" class="family-inbox-status" role="status" aria-live="polite"></p>
         </form>
+        <section id="familyInboxReviewSection" class="family-inbox-review-section" aria-labelledby="familyInboxReviewHeading">
+          <div class="family-inbox-review-heading">
+            <div>
+              <h2 id="familyInboxReviewHeading">確認待ち</h2>
+              <p>AIが見つけた内容を、登録前に確認できます。</p>
+            </div>
+            <span id="familyInboxReviewCount" class="family-inbox-review-count">0件</span>
+          </div>
+          <div id="familyInboxReviewList" class="family-inbox-review-list" aria-live="polite"></div>
+        </section>
         <div id="inboxList" class="inbox-list" aria-live="polite"></div>
       </section>
 
@@ -482,6 +492,18 @@
         <button class="secondary-button" type="button" data-close-dialog="deleteDialog">&#12420;&#12417;&#12427;</button>
         <button id="confirmDeleteButton" class="danger-button" type="button">&#21066;&#38500;</button>
       </div>
+    </dialog>
+
+    <dialog id="familyInboxReviewDialog" class="app-dialog family-inbox-review-dialog">
+      <div class="dialog-header">
+        <div>
+          <h2>プリントの確認</h2>
+          <p id="familyInboxReviewDocumentMeta" class="family-inbox-review-document-meta"></p>
+        </div>
+        <button class="ghost-button" type="button" data-close-dialog="familyInboxReviewDialog">閉じる</button>
+      </div>
+      <p id="familyInboxReviewDialogStatus" class="family-inbox-review-dialog-status" role="status" aria-live="polite"></p>
+      <div id="familyInboxReviewCandidates" class="family-inbox-review-candidates"></div>
     </dialog>
 
     <script src="./build.js" defer></script>

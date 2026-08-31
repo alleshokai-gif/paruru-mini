@@ -974,6 +974,249 @@ button:disabled {
   color: #216b32;
 }
 
+.family-inbox-review-section {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid rgba(92, 107, 192, 0.18);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.family-inbox-review-section[hidden] {
+  display: none;
+}
+
+.family-inbox-review-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.family-inbox-review-heading h2,
+.family-inbox-review-heading p,
+.family-inbox-review-card h3,
+.family-inbox-review-card p,
+.family-inbox-review-document-meta,
+.family-inbox-review-dialog-status,
+.family-inbox-candidate-summary p,
+.family-inbox-candidate-summary strong,
+.family-inbox-candidate-state {
+  margin: 0;
+}
+
+.family-inbox-review-heading h2 {
+  font-size: 1.08rem;
+}
+
+.family-inbox-review-heading p,
+.family-inbox-review-document-meta,
+.family-inbox-review-card-meta,
+.family-inbox-review-dialog-status {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.family-inbox-review-count,
+.family-inbox-review-status,
+.family-inbox-confidence,
+.family-inbox-candidate-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.family-inbox-review-list,
+.family-inbox-review-candidates {
+  display: grid;
+  gap: 12px;
+}
+
+.family-inbox-review-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fbfbff;
+}
+
+.family-inbox-review-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.family-inbox-review-card h3 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+}
+
+.family-inbox-review-card button,
+.family-inbox-review-dialog button,
+.family-inbox-review-dialog input,
+.family-inbox-review-dialog select,
+.family-inbox-review-dialog textarea {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.family-inbox-review-dialog {
+  width: min(560px, calc(100% - 24px));
+  max-height: min(90dvh, 820px);
+  overflow-y: auto;
+}
+
+.family-inbox-review-dialog .dialog-header {
+  align-items: flex-start;
+  position: sticky;
+  top: -18px;
+  z-index: 2;
+  margin: -18px -18px 14px;
+  padding: 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.family-inbox-review-dialog-status.is-error {
+  color: var(--danger);
+}
+
+.family-inbox-review-dialog-status.is-success {
+  color: #216b32;
+}
+
+.family-inbox-candidate-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: clip;
+}
+
+.family-inbox-candidate-card[open] {
+  box-shadow: 0 10px 24px rgba(32, 34, 54, 0.08);
+}
+
+.family-inbox-candidate-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  min-height: 58px;
+  padding: 13px 14px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.family-inbox-candidate-summary > div {
+  min-width: 0;
+}
+
+.family-inbox-candidate-summary strong,
+.family-inbox-candidate-summary p {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.family-inbox-candidate-summary p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.family-inbox-candidate-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 14px 14px;
+}
+
+.family-inbox-candidate-fields,
+.family-inbox-reject-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.family-inbox-candidate-fields textarea,
+.family-inbox-reject-fields textarea {
+  min-height: 88px;
+}
+
+.family-inbox-candidate-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.family-inbox-candidate-actions .family-inbox-save-correction {
+  grid-column: 1 / -1;
+}
+
+.family-inbox-evidence {
+  border: 1px solid rgba(92, 107, 192, 0.16);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fbfbff;
+}
+
+.family-inbox-evidence summary {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  cursor: pointer;
+  color: var(--accent-dark);
+  font-weight: 800;
+}
+
+.family-inbox-evidence blockquote {
+  margin: 8px 0 0;
+  padding-left: 12px;
+  border-left: 3px solid rgba(92, 107, 192, 0.35);
+  color: var(--muted);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.family-inbox-review-notice {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+
+@media (max-width: 420px) {
+  .family-inbox-review-dialog {
+    width: calc(100% - 16px);
+    padding: 14px;
+  }
+
+  .family-inbox-review-dialog .dialog-header {
+    top: -14px;
+    margin: -14px -14px 12px;
+    padding: 14px;
+  }
+
+  .family-inbox-candidate-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .family-inbox-candidate-actions .family-inbox-save-correction {
+    grid-column: auto;
+  }
+}
+
 .inbox-card {
   display: grid;
   gap: 10px;

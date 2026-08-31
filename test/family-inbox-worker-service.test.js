@@ -19,6 +19,8 @@ const candidateHeaders = [
   'profile', 'model', 'extractorVersion', 'promptVersion', 'payloadDigest', 'payloadJson',
   'evidenceJson', 'warningsJson', 'questionsJson', 'publishRequestId', 'claimVersion',
   'inputTokens', 'outputTokens', 'durationMs', 'reviewStatus', 'domainWriteResult',
+  'reviewPayloadJson', 'reviewedAt', 'reviewedByMemberId', 'reviewAction',
+  'reviewReason', 'reviewNote', 'reviewRequestId', 'reviewHistoryJson',
 ];
 
 class Range {
@@ -103,7 +105,7 @@ function fixture(options = {}) {
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math, isFinite,
   };
   vm.createContext(context);
-  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js']) {
+  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', file), 'utf8'), context);
   }
   return { api: context, state, inbox, candidates };
@@ -134,10 +136,46 @@ function candidatesFixture() {
     },
   ];
 }
+function fiveCandidatesFixture() {
+  const document = candidatesFixture()[0];
+  const event = (title, date, startTime, location = null) => ({
+    candidateType: 'schedule.event', schemaVersion: 'schedule.event/1.0', confidence: 0.97,
+    evidence: [{ page: 1, quote: `${date} ${title}`, fieldPaths: ['date', 'title'] }], warnings: [], questions: [],
+    payload: { title, date, startTime, endTime: null, location, notes: null },
+  });
+  return [
+    document,
+    event('始業式', '2026-09-03', '08:15'),
+    event('身体測定', '2026-09-10', null),
+    event('遠足', '2026-09-12', '08:00', 'テスト公園'),
+    {
+      candidateType: 'school.belongings', schemaVersion: 'school.belongings/1.0', confidence: 0.98,
+      evidence: [{ page: 1, quote: '持ち物 上履き 防災頭巾 夏休みの宿題', fieldPaths: ['items'] }], warnings: [], questions: [],
+      payload: { date: '2026-09-03', items: ['上履き', '防災頭巾', '夏休みの宿題'] },
+    },
+  ];
+}
 function digest(f, candidateList) {
   return crypto.createHash('sha256').update(f.api.familyInboxWorkerStableStringify_(candidateList), 'utf8').digest('hex');
 }
 function claimOne(f) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext')); }
+function publishCandidates(f, created, candidates, requestNumber = 950) {
+  const claim = claimOne(f);
+  return f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
+    inboxId: created.inboxId,
+    claimVersion: claim.claimVersion,
+    publishRequestId: uuid(requestNumber),
+    payloadDigest: digest(f, candidates),
+    candidates,
+    usage: { inputTokens: 100, outputTokens: 50 },
+    durationMs: 500,
+  }));
+}
+function reviewBody(operation, fields = {}) {
+  const body = { operation, internalToken: 'mini-service-secret', homeId: 'home-01', traceId: 'trace_review01', ...fields };
+  if (/\.(updateCandidate|approveCandidate|rejectCandidate)$/.test(operation)) body.reviewedByMemberId = 'parent-01';
+  return body;
+}
 
 {
   const f = fixture();
@@ -292,3 +330,93 @@ function claimOne(f) { return f.api.familyInboxClaimNext_(workerBody('familyInbo
 }
 
 console.log('PASS Family Inbox worker GAS claim, lease, bounded source, strict candidates, publish idempotency, failure policy, and safe logs');
+
+{
+  const f = fixture();
+  const created = submit(f, 'image/jpeg', 100);
+  publishCandidates(f, created, fiveCandidatesFixture(), 951);
+  submit(f, 'image/jpeg', 101);
+  const list = f.api.familyInboxListReviews_(reviewBody('familyInbox.listReviews'));
+  assert.strictEqual(list.items.length, 1, 'needs_review only');
+  assert.strictEqual(list.items[0].candidateCount, 5);
+  assert.deepStrictEqual(Array.from(list.items[0].candidateTypes), ['school.document', 'schedule.event', 'school.belongings']);
+  assert.strictEqual(list.items[0].reviewStatus, 'pending');
+  assert(!Object.hasOwn(list.items[0], 'originalRef'));
+
+  const detail = f.api.familyInboxGetReview_(reviewBody('familyInbox.getReview', { inboxId: created.inboxId }));
+  assert.strictEqual(detail.candidates.length, 5, 'all inboxId candidate rows must be returned');
+  assert.strictEqual(detail.candidates.filter((candidate) => candidate.candidateType === 'school.document').length, 1);
+  assert(!JSON.stringify(detail).includes('drive-secret-'));
+  assert(detail.candidates.every((candidate) => candidate.evidenceSummary.length <= 2));
+
+  const eventCandidate = detail.candidates.find((candidate) => candidate.candidateType === 'schedule.event');
+  const updateRequest = reviewBody('familyInbox.updateCandidate', {
+    inboxId: created.inboxId,
+    candidateId: eventCandidate.candidateId,
+    revision: eventCandidate.revision,
+    reviewRequestId: uuid(960),
+    payload: { title: '始業式（修正）', date: '2026-09-03', startTime: '08:20', endTime: null, location: null },
+    reviewNote: '時刻を確認',
+  });
+  const updated = f.api.familyInboxUpdateCandidate_(updateRequest);
+  assert.strictEqual(updated.candidate.revision, 2);
+  assert.strictEqual(updated.candidate.payload.title, '始業式（修正）');
+  const storedEvent = f.candidates.values.slice(1).map((row) => rowObject(candidateHeaders, row)).find((row) => row.candidateId === eventCandidate.candidateId);
+  assert.strictEqual(JSON.parse(storedEvent.payloadJson).title, '始業式', 'AI payload must stay unchanged');
+  assert.strictEqual(JSON.parse(storedEvent.reviewPayloadJson).title, '始業式（修正）');
+  assert.strictEqual(storedEvent.reviewedByMemberId, 'parent-01');
+  assert.strictEqual(JSON.parse(storedEvent.reviewHistoryJson).length, 1);
+  expectCode(() => f.api.familyInboxUpdateCandidate_({ ...updateRequest, reviewRequestId: uuid(961) }), 'REVISION_CONFLICT');
+  expectCode(() => f.api.familyInboxUpdateCandidate_({ ...updateRequest, revision: 2, reviewRequestId: uuid(962), payload: { ...updateRequest.payload, subjectMemberId: 'other' } }), 'INVALID_INPUT');
+
+  const approveRequest = reviewBody('familyInbox.approveCandidate', {
+    inboxId: created.inboxId, candidateId: eventCandidate.candidateId, revision: 2,
+    reviewRequestId: uuid(963), reviewNote: '',
+  });
+  const approved = f.api.familyInboxApproveCandidate_(approveRequest);
+  assert.strictEqual(approved.candidate.reviewStatus, 'approved');
+  assert.strictEqual(approved.candidate.revision, 3);
+  const replay = f.api.familyInboxApproveCandidate_(approveRequest);
+  assert.strictEqual(replay.idempotency.replayed, true);
+  assert.strictEqual(replay.candidate.revision, 3);
+  expectCode(() => f.api.familyInboxApproveCandidate_({ ...approveRequest, reviewNote: 'changed' }), 'IDEMPOTENCY_CONFLICT');
+
+  let remaining = f.api.familyInboxGetReview_(reviewBody('familyInbox.getReview', { inboxId: created.inboxId })).candidates.filter((candidate) => candidate.reviewStatus === 'pending');
+  remaining.forEach((candidate, index) => {
+    const common = { inboxId: created.inboxId, candidateId: candidate.candidateId, revision: candidate.revision, reviewRequestId: uuid(970 + index), reviewNote: '' };
+    if (index === remaining.length - 1) {
+      f.api.familyInboxRejectCandidate_(reviewBody('familyInbox.rejectCandidate', { ...common, reviewReason: 'not_relevant' }));
+    } else {
+      f.api.familyInboxApproveCandidate_(reviewBody('familyInbox.approveCandidate', common));
+    }
+  });
+  const reviewed = f.api.familyInboxGetReview_(reviewBody('familyInbox.getReview', { inboxId: created.inboxId }));
+  assert.strictEqual(reviewed.reviewStatus, 'reviewed');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'needs_review', 'Phase 3 must not complete the Inbox');
+  assert(reviewed.candidates.every((candidate) => ['approved', 'rejected'].includes(candidate.reviewStatus)));
+  assert(reviewed.candidates.every((candidate) => !Object.hasOwn(candidate, 'reviewedByMemberId')), 'actor must not be returned to PWA');
+  const logs = f.state.logs.join('\n');
+  ['mini-service-secret', 'private note', 'drive-secret-', '時刻を確認'].forEach((secret) => assert(!logs.includes(secret), `unsafe review log content: ${secret}`));
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'image/jpeg', 110);
+  publishCandidates(f, created, fiveCandidatesFixture(), 980);
+  const firstCandidateRow = f.candidates.values[1];
+  firstCandidateRow[candidateHeaders.indexOf('publishRequestId')] = uuid(999);
+  expectCode(() => f.api.familyInboxGetReview_(reviewBody('familyInbox.getReview', { inboxId: created.inboxId })), 'DATA_INTEGRITY_ERROR');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'image/jpeg', 120);
+  publishCandidates(f, created, fiveCandidatesFixture(), 981);
+  const opensBefore = f.state.sheetOpenCount;
+  expectCode(() => f.api.familyInboxListReviews_({ operation: 'familyInbox.listReviews', internalToken: 'wrong', homeId: 'home-01', traceId: 'trace_review02' }), 'FORBIDDEN');
+  assert.strictEqual(f.state.sheetOpenCount, opensBefore, 'invalid Mini token must fail before Sheet work');
+  const foreign = f.api.familyInboxListReviews_({ operation: 'familyInbox.listReviews', internalToken: 'mini-service-secret', homeId: 'home-02', traceId: 'trace_review03' });
+  assert.strictEqual(foreign.items.length, 0, 'foreign home must not see reviews');
+}
+
+console.log('PASS Family Inbox Review list/detail, five-candidate integrity, correction provenance, optimistic concurrency, approve/reject idempotency, same-home security, and no Domain completion');

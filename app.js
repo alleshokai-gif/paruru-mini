@@ -16,6 +16,8 @@ const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 30000;
 const FAMILY_INBOX_MAX_FILE_BYTES = 5 * 1024 * 1024;
 const FAMILY_INBOX_ALLOWED_MEDIA_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 let familyInboxPendingClientRequestId = "";
+let familyInboxReviews = [];
+let activeFamilyInboxReview = null;
 const PET_HEALTH_DASHBOARD_SAFE_ERROR_CODES = new Set([
   "PET_HEALTH_TIMEOUT",
   "PET_HEALTH_UNAVAILABLE",
@@ -346,6 +348,13 @@ const familyInboxSubjectMember = document.querySelector("#familyInboxSubjectMemb
 const familyInboxNote = document.querySelector("#familyInboxNote");
 const familyInboxSubmit = document.querySelector("#familyInboxSubmit");
 const familyInboxStatus = document.querySelector("#familyInboxStatus");
+const familyInboxReviewSection = document.querySelector("#familyInboxReviewSection");
+const familyInboxReviewCount = document.querySelector("#familyInboxReviewCount");
+const familyInboxReviewList = document.querySelector("#familyInboxReviewList");
+const familyInboxReviewDialog = document.querySelector("#familyInboxReviewDialog");
+const familyInboxReviewDocumentMeta = document.querySelector("#familyInboxReviewDocumentMeta");
+const familyInboxReviewDialogStatus = document.querySelector("#familyInboxReviewDialogStatus");
+const familyInboxReviewCandidates = document.querySelector("#familyInboxReviewCandidates");
 const detailDialog = document.querySelector("#detailDialog");
 const deleteDialog = document.querySelector("#deleteDialog");
 const editForm = document.querySelector("#editForm");
@@ -1257,7 +1266,7 @@ if (typeof document.addEventListener === "function") {
   });
 }
 
-refreshInboxButton.addEventListener("click", loadInbox);
+refreshInboxButton.addEventListener("click", loadInboxView_);
 
 [familyInboxFile, familyInboxSubjectMember, familyInboxNote].forEach((input) => {
   input.addEventListener(input === familyInboxNote ? "input" : "change", () => {
@@ -1311,6 +1320,25 @@ familyInboxForm.addEventListener("submit", async (event) => {
   }
 });
 
+familyInboxReviewList.addEventListener("click", (event) => {
+  if (event.target.closest("[data-family-review-retry]")) {
+    loadFamilyInboxReviews_();
+    return;
+  }
+  const button = event.target.closest("[data-family-review-open]");
+  if (button) openFamilyInboxReview_(button.dataset.familyReviewOpen || "");
+});
+
+familyInboxReviewCandidates.addEventListener("click", (event) => {
+  const actionButton = event.target.closest("[data-family-review-action]");
+  if (!actionButton) return;
+  const card = actionButton.closest("[data-family-review-candidate]");
+  const candidateId = card?.dataset.familyReviewCandidate || "";
+  const candidate = activeFamilyInboxReview?.candidates?.find((item) => item.candidateId === candidateId);
+  if (!candidate || !card) return;
+  performFamilyInboxReviewAction_(actionButton.dataset.familyReviewAction || "", candidate, card);
+});
+
 function readFamilyInboxFileAsBase64_(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1344,6 +1372,49 @@ function familyInboxErrorMessage_(code) {
 
 async function getFamilyInboxStatus_(inboxId) {
   return callHomeControlApi({ ...buildMemoCredentialPayload("familyInbox.getStatus"), inboxId: String(inboxId || "") });
+}
+
+async function listFamilyInboxReviews_() {
+  return callHomeControlApi({ ...buildMemoCredentialPayload("familyInbox.listReviews") });
+}
+
+async function getFamilyInboxReview_(inboxId) {
+  return callHomeControlApi({ ...buildMemoCredentialPayload("familyInbox.getReview"), inboxId: String(inboxId || "") });
+}
+
+async function updateFamilyInboxCandidate_(candidate, payload, reviewNote) {
+  return callHomeControlApi({
+    ...buildMemoCredentialPayload("familyInbox.updateCandidate"),
+    inboxId: activeFamilyInboxReview?.inboxId || "",
+    candidateId: candidate.candidateId,
+    revision: candidate.revision,
+    reviewRequestId: createUuid(),
+    payload,
+    reviewNote: String(reviewNote || "").trim(),
+  });
+}
+
+async function approveFamilyInboxCandidate_(candidate, reviewNote) {
+  return callHomeControlApi({
+    ...buildMemoCredentialPayload("familyInbox.approveCandidate"),
+    inboxId: activeFamilyInboxReview?.inboxId || "",
+    candidateId: candidate.candidateId,
+    revision: candidate.revision,
+    reviewRequestId: createUuid(),
+    reviewNote: String(reviewNote || "").trim(),
+  });
+}
+
+async function rejectFamilyInboxCandidate_(candidate, reviewReason, reviewNote) {
+  return callHomeControlApi({
+    ...buildMemoCredentialPayload("familyInbox.rejectCandidate"),
+    inboxId: activeFamilyInboxReview?.inboxId || "",
+    candidateId: candidate.candidateId,
+    revision: candidate.revision,
+    reviewRequestId: createUuid(),
+    reviewReason: String(reviewReason || "").trim(),
+    reviewNote: String(reviewNote || "").trim(),
+  });
 }
 
 inboxList.addEventListener("click", (event) => {
@@ -1556,7 +1627,7 @@ async function switchView(viewName) {
   showMessage("", "");
 
   if (resolvedView === "inbox") {
-    await loadInbox();
+    await loadInboxView_();
     return;
   }
 
@@ -1601,6 +1672,283 @@ async function loadInbox(options = {}) {
   }
 
   return true;
+}
+
+async function loadInboxView_(options = {}) {
+  const inboxLoaded = await loadInbox(options);
+  await loadFamilyInboxReviews_();
+  return inboxLoaded;
+}
+
+async function loadFamilyInboxReviews_() {
+  if (!canReviewFamilyInbox_()) {
+    familyInboxReviews = [];
+    familyInboxReviewSection.hidden = true;
+    return true;
+  }
+  familyInboxReviewSection.hidden = false;
+  familyInboxReviewCount.textContent = "…";
+  familyInboxReviewList.innerHTML = `<div class="empty-state">確認待ちを読み込み中...</div>`;
+  try {
+    const data = await listFamilyInboxReviews_();
+    familyInboxReviews = Array.isArray(data?.items) ? data.items : [];
+    renderFamilyInboxReviewList_();
+    return true;
+  } catch (error) {
+    familyInboxReviews = [];
+    familyInboxReviewCount.textContent = "取得失敗";
+    familyInboxReviewList.innerHTML = `
+      <div class="empty-state inbox-error-state">
+        <p>${escapeHtml(familyInboxReviewErrorMessage_(error?.code))}</p>
+        <button type="button" class="secondary-button" data-family-review-retry>再読み込み</button>
+      </div>
+    `;
+    return false;
+  }
+}
+
+function canReviewFamilyInbox_() {
+  return Array.isArray(activeMembershipContext?.capabilities) && activeMembershipContext.capabilities.includes("family.inbox.review");
+}
+
+function renderFamilyInboxReviewList_() {
+  const pendingCount = familyInboxReviews.filter((item) => item.reviewStatus !== "reviewed").length;
+  familyInboxReviewCount.textContent = `${pendingCount}件`;
+  if (!familyInboxReviews.length) {
+    familyInboxReviewList.innerHTML = `<div class="empty-state">いま確認待ちはないで。</div>`;
+    return;
+  }
+  familyInboxReviewList.innerHTML = familyInboxReviews.map((item) => {
+    const reviewed = item.reviewStatus === "reviewed";
+    const memberLabel = familyInboxReviewMemberLabel_(item.subjectMemberId);
+    return `
+      <article class="family-inbox-review-card">
+        <div class="family-inbox-review-card-header">
+          <div>
+            <h3>${escapeHtml(familyInboxReviewDocumentLabel_(item.candidateTypes))}</h3>
+            <p class="family-inbox-review-card-meta">${escapeHtml(memberLabel)}・候補 ${Number(item.candidateCount) || 0}件・${escapeHtml(formatFamilyInboxReviewDate_(item.receivedAt))}受付</p>
+          </div>
+          <span class="family-inbox-review-status">${reviewed ? "確認済み" : "確認待ち"}</span>
+        </div>
+        <button type="button" class="${reviewed ? "secondary-button" : ""}" data-family-review-open="${escapeHtml(item.inboxId)}">${reviewed ? "内容を見る" : "確認する"}</button>
+      </article>
+    `;
+  }).join("");
+}
+
+async function openFamilyInboxReview_(inboxId) {
+  if (!/^inb_[0-9a-f]{32}$/i.test(String(inboxId || ""))) return;
+  activeFamilyInboxReview = null;
+  setFamilyInboxReviewDialogStatus_("読み込み中…", "");
+  familyInboxReviewDocumentMeta.textContent = "";
+  familyInboxReviewCandidates.innerHTML = `<div class="empty-state">候補を読み込み中...</div>`;
+  familyInboxReviewDialog.showModal();
+  try {
+    activeFamilyInboxReview = await getFamilyInboxReview_(inboxId);
+    renderFamilyInboxReviewDetail_();
+    setFamilyInboxReviewDialogStatus_(activeFamilyInboxReview.reviewStatus === "reviewed" ? "このプリントは確認済みやで。" : `このプリントから${activeFamilyInboxReview.candidates.length}件見つけたで。`, "success");
+  } catch (error) {
+    familyInboxReviewCandidates.innerHTML = `<div class="empty-state inbox-error-state">候補を表示できませんでした。</div>`;
+    setFamilyInboxReviewDialogStatus_(familyInboxReviewErrorMessage_(error?.code), "error");
+  }
+}
+
+function renderFamilyInboxReviewDetail_() {
+  const review = activeFamilyInboxReview;
+  if (!review) return;
+  familyInboxReviewDocumentMeta.textContent = `${familyInboxReviewMemberLabel_(review.subjectMemberId)}・${review.document?.originalName || "学校プリント"}・${formatFamilyInboxReviewDate_(review.document?.receivedAt)}`;
+  familyInboxReviewCandidates.innerHTML = review.candidates.map((candidate, index) => familyInboxReviewCandidateHtml_(candidate, index)).join("");
+}
+
+function familyInboxReviewCandidateHtml_(candidate, index) {
+  const summary = familyInboxReviewCandidateSummary_(candidate);
+  const pending = candidate.reviewStatus === "pending";
+  const stateLabel = candidate.reviewStatus === "approved" ? "承認済み" : candidate.reviewStatus === "rejected" ? "却下済み" : "確認待ち";
+  const notice = familyInboxReviewNoticeHtml_(candidate);
+  const evidence = familyInboxReviewEvidenceHtml_(candidate.evidenceSummary);
+  const actions = pending ? `
+    <label class="field">
+      <span>確認メモ（任意）</span>
+      <textarea data-family-review-note maxlength="500" rows="2" placeholder="修正理由など"></textarea>
+    </label>
+    <div class="family-inbox-candidate-actions">
+      <button type="button" class="secondary-button family-inbox-save-correction" data-family-review-action="update">修正を保存</button>
+      <button type="button" data-family-review-action="approve">承認する</button>
+      <button type="button" class="danger-button" data-family-review-action="reject">却下する</button>
+    </div>
+    <div class="family-inbox-reject-fields">
+      <label class="field">
+        <span>却下理由</span>
+        <select data-family-review-reason>
+          <option value="">選んでな</option>
+          <option value="incorrect">内容が違う</option>
+          <option value="duplicate">重複</option>
+          <option value="not_relevant">不要な候補</option>
+          <option value="unreadable">読み取れない</option>
+          <option value="other">その他</option>
+        </select>
+      </label>
+    </div>
+  ` : `<p class="family-inbox-review-notice">${escapeHtml(stateLabel)}。Canonical Domainへはまだ登録してへんで。</p>`;
+  return `
+    <details class="family-inbox-candidate-card" data-family-review-candidate="${escapeHtml(candidate.candidateId)}" ${index === 0 ? "open" : ""}>
+      <summary class="family-inbox-candidate-summary">
+        <div>
+          <strong>${escapeHtml(summary.label)}：${escapeHtml(summary.title)}</strong>
+          <p>${escapeHtml(summary.detail)}</p>
+        </div>
+        <span class="family-inbox-candidate-state">${escapeHtml(stateLabel)}</span>
+      </summary>
+      <div class="family-inbox-candidate-body">
+        <span class="family-inbox-confidence">${escapeHtml(familyInboxConfidenceLabel_(candidate.confidence))}</span>
+        ${notice}
+        <div class="family-inbox-candidate-fields">${familyInboxReviewFieldsHtml_(candidate)}</div>
+        ${evidence}
+        ${actions}
+      </div>
+    </details>
+  `;
+}
+
+function familyInboxReviewCandidateSummary_(candidate) {
+  const payload = candidate.payload || {};
+  if (candidate.candidateType === "school.document") {
+    return { label: "書類", title: payload.title || "学校プリント", detail: payload.documentDate ? `発行日 ${payload.documentDate}` : "発行日未記載" };
+  }
+  if (candidate.candidateType === "schedule.event") {
+    const time = payload.startTime ? ` ${payload.startTime}` : " 時刻なし";
+    return { label: "予定", title: payload.title || "予定", detail: `${payload.date || "日付未確認"}${time}` };
+  }
+  if (candidate.candidateType === "school.belongings") {
+    return { label: "持ち物", title: Array.isArray(payload.items) ? payload.items.join("、") : "持ち物", detail: payload.date || "日付未確認" };
+  }
+  if (candidate.candidateType === "school.deadline") {
+    const time = payload.dueTime ? ` ${payload.dueTime}` : "";
+    return { label: "締切", title: payload.title || "提出物", detail: `${payload.dueDate || "日付未確認"}${time}` };
+  }
+  return { label: "候補", title: "確認してください", detail: "" };
+}
+
+function familyInboxReviewFieldsHtml_(candidate) {
+  const payload = candidate.payload || {};
+  const text = (name, label, value, max = 200) => `<label class="field"><span>${escapeHtml(label)}</span><input data-family-review-field="${escapeHtml(name)}" type="text" maxlength="${max}" value="${escapeHtml(value || "")}"></label>`;
+  const date = (name, label, value) => `<label class="field"><span>${escapeHtml(label)}</span><input data-family-review-field="${escapeHtml(name)}" type="date" value="${escapeHtml(value || "")}"></label>`;
+  const time = (name, label, value) => `<label class="field"><span>${escapeHtml(label)}</span><input data-family-review-field="${escapeHtml(name)}" type="time" value="${escapeHtml(value || "")}"></label>`;
+  if (candidate.candidateType === "schedule.event") {
+    return [text("title", "予定名", payload.title), date("date", "日付", payload.date), time("startTime", "開始時刻", payload.startTime), time("endTime", "終了時刻", payload.endTime), text("location", "場所", payload.location)].join("");
+  }
+  if (candidate.candidateType === "school.document") {
+    const types = [["notice", "お知らせ"], ["schedule", "予定表"], ["deadline", "提出物"], ["belongings", "持ち物"], ["other", "その他"]];
+    const options = types.map(([value, label]) => `<option value="${value}" ${payload.documentType === value ? "selected" : ""}>${label}</option>`).join("");
+    return `${text("title", "書類名", payload.title)}${date("documentDate", "発行日", payload.documentDate)}<label class="field"><span>書類の種類</span><select data-family-review-field="documentType">${options}</select></label>`;
+  }
+  if (candidate.candidateType === "school.belongings") {
+    return `${date("date", "日付", payload.date)}<label class="field"><span>持ち物（1行に1つ）</span><textarea data-family-review-field="items" rows="4">${escapeHtml(Array.isArray(payload.items) ? payload.items.join("\n") : "")}</textarea></label>`;
+  }
+  if (candidate.candidateType === "school.deadline") {
+    return [text("title", "締切名", payload.title), date("dueDate", "締切日", payload.dueDate), time("dueTime", "締切時刻", payload.dueTime), text("actionRequired", "必要な対応", payload.actionRequired, 500)].join("");
+  }
+  return `<p class="family-inbox-review-notice">この種類は修正できません。</p>`;
+}
+
+function familyInboxReviewNoticeHtml_(candidate) {
+  const notices = [];
+  if (Array.isArray(candidate.warnings)) notices.push(...candidate.warnings);
+  if (Array.isArray(candidate.questions)) notices.push(...candidate.questions);
+  return notices.length ? `<div class="family-inbox-review-notice">${notices.slice(0, 4).map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>` : "";
+}
+
+function familyInboxReviewEvidenceHtml_(evidenceSummary) {
+  if (!Array.isArray(evidenceSummary) || !evidenceSummary.length) return "";
+  return `
+    <details class="family-inbox-evidence">
+      <summary>元の記載を見る</summary>
+      ${evidenceSummary.slice(0, 2).map((item) => `<blockquote>${escapeHtml(item.quote || "")}</blockquote>`).join("")}
+    </details>
+  `;
+}
+
+async function performFamilyInboxReviewAction_(action, candidate, card) {
+  if (!activeFamilyInboxReview || candidate.reviewStatus !== "pending") return;
+  const reviewNote = card.querySelector("[data-family-review-note]")?.value || "";
+  familyInboxReviewDialog.setAttribute("aria-busy", "true");
+  card.querySelectorAll("button, input, select, textarea").forEach((element) => { element.disabled = true; });
+  setFamilyInboxReviewDialogStatus_("保存中…", "");
+  try {
+    let result;
+    if (action === "update") {
+      result = await updateFamilyInboxCandidate_(candidate, familyInboxReviewPayloadFromCard_(candidate, card), reviewNote);
+    } else if (action === "approve") {
+      result = await approveFamilyInboxCandidate_(candidate, reviewNote);
+    } else if (action === "reject") {
+      const reason = card.querySelector("[data-family-review-reason]")?.value || "";
+      if (!reason) throw createHomeControlError("INVALID_INPUT");
+      result = await rejectFamilyInboxCandidate_(candidate, reason, reviewNote);
+    } else {
+      throw createHomeControlError("INVALID_INPUT");
+    }
+    const index = activeFamilyInboxReview.candidates.findIndex((item) => item.candidateId === candidate.candidateId);
+    if (index >= 0) activeFamilyInboxReview.candidates[index] = result.candidate;
+    activeFamilyInboxReview.reviewStatus = result.reviewStatus;
+    renderFamilyInboxReviewDetail_();
+    setFamilyInboxReviewDialogStatus_(action === "update" ? "修正を保存したで。まだDomainには登録してへん。" : action === "approve" ? "承認したで。まだDomainには登録してへん。" : "却下したで。", "success");
+    await loadFamilyInboxReviews_();
+  } catch (error) {
+    setFamilyInboxReviewDialogStatus_(familyInboxReviewErrorMessage_(error?.code), "error");
+    card.querySelectorAll("button, input, select, textarea").forEach((element) => { element.disabled = false; });
+  } finally {
+    familyInboxReviewDialog.removeAttribute("aria-busy");
+  }
+}
+
+function familyInboxReviewPayloadFromCard_(candidate, card) {
+  const value = (name) => String(card.querySelector(`[data-family-review-field="${name}"]`)?.value || "").trim();
+  const nullable = (name) => value(name) || null;
+  if (candidate.candidateType === "schedule.event") return { title: value("title"), date: value("date"), startTime: nullable("startTime"), endTime: nullable("endTime"), location: nullable("location") };
+  if (candidate.candidateType === "school.document") return { title: value("title"), documentDate: nullable("documentDate"), documentType: value("documentType") };
+  if (candidate.candidateType === "school.belongings") return { date: value("date"), items: value("items").split(/\r?\n|、|,/).map((item) => item.trim()).filter(Boolean) };
+  if (candidate.candidateType === "school.deadline") return { title: value("title"), dueDate: value("dueDate"), dueTime: nullable("dueTime"), actionRequired: value("actionRequired") };
+  throw createHomeControlError("INVALID_INPUT");
+}
+
+function familyInboxConfidenceLabel_(confidence) {
+  const value = Number(confidence);
+  if (value >= 0.95) return "読み取り済み";
+  if (value >= 0.8) return "要確認";
+  return "読み取りに自信なし";
+}
+
+function familyInboxReviewErrorMessage_(code) {
+  const normalized = String(code || "");
+  if (normalized === "REVISION_CONFLICT") return "内容が更新されました。閉じて、もう一度開いて確認してな。";
+  if (normalized === "NOT_FOUND") return "この確認項目は見つかりませんでした。";
+  if (normalized === "FORBIDDEN") return "この端末では確認できません。";
+  if (normalized === "INVALID_INPUT" || normalized === "INVALID_STATE") return "入力内容を確認してな。";
+  if (normalized === "CONFIGURATION_ERROR") return "確認機能の準備がまだできていません。";
+  if (normalized === "SERVICE_UNAVAILABLE") return "確認サービスへ接続できませんでした。時間をおいて再読み込みしてな。";
+  if (normalized === "DATA_INTEGRITY_ERROR") return "候補のまとまりを確認できませんでした。管理者に確認してな。";
+  return "確認内容を保存できませんでした。";
+}
+
+function setFamilyInboxReviewDialogStatus_(text, state) {
+  familyInboxReviewDialogStatus.textContent = String(text || "");
+  familyInboxReviewDialogStatus.classList.toggle("is-error", state === "error");
+  familyInboxReviewDialogStatus.classList.toggle("is-success", state === "success");
+}
+
+function familyInboxReviewMemberLabel_(memberId) {
+  const option = Array.from(familyInboxSubjectMember.options).find((item) => item.value === memberId);
+  return option?.textContent?.trim() || "家族";
+}
+
+function familyInboxReviewDocumentLabel_(candidateTypes) {
+  return Array.isArray(candidateTypes) && candidateTypes.includes("school.document") ? "学校プリント" : "家族の書類";
+}
+
+function formatFamilyInboxReviewDate_(value) {
+  const date = new Date(String(value || ""));
+  if (!Number.isFinite(date.getTime())) return "日時不明";
+  return new Intl.DateTimeFormat("ja-JP", { timeZone: TOKYO_TIME_ZONE, month: "numeric", day: "numeric" }).format(date);
 }
 
 async function saveMemo(payload) {

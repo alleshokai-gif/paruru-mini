@@ -8,6 +8,21 @@ function doPost(e) {
     if (operation === 'familyInbox.getStatus') {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxGetStatus_(body) });
     }
+    if (operation === 'familyInbox.listReviews') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxListReviews_(body) });
+    }
+    if (operation === 'familyInbox.getReview') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxGetReview_(body) });
+    }
+    if (operation === 'familyInbox.updateCandidate') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxUpdateCandidate_(body) });
+    }
+    if (operation === 'familyInbox.approveCandidate') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxApproveCandidate_(body) });
+    }
+    if (operation === 'familyInbox.rejectCandidate') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxRejectCandidate_(body) });
+    }
     if (operation === 'familyInbox.claimNext') {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxClaimNext_(body) });
     }
