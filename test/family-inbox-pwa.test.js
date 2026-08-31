@@ -26,5 +26,5 @@ assert(!app.includes('FAMILY_INBOX_SERVICE_TOKEN'));
 assert(!app.includes('FAMILY_INBOX_WEBAPP_URL'));
 assert(!html.includes('FAMILY_INBOX_SERVICE_TOKEN'));
 assert(css.includes('.family-inbox-form input') && css.includes('min-height: 48px') && css.includes('font-size: 16px'));
-assert(build.includes('v20260828-family-inbox-phase1-v1'));
+assert(build.includes('v20260831-nurse-okan-health-profile-v1'));
 console.log('PASS Family Inbox one-file PWA input, member selector, Mini-only submit, mobile sizing, and build marker');

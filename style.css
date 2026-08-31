@@ -2492,6 +2492,76 @@ body:not(.is-authenticated) .drawer-overlay {
   font-weight: 700;
 }
 
+.nurse-kpi-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.nurse-target-weight-editor {
+  min-width: 0;
+  padding: 12px 16px;
+  border-top: 1px solid #f0e3d5;
+  background: #fffaf4;
+}
+
+.nurse-target-weight-form,
+.nurse-target-weight-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.nurse-target-weight-form label {
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 1.4fr);
+  align-items: center;
+  font-weight: 700;
+}
+
+.nurse-target-weight-input {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.nurse-target-weight-input input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.nurse-target-weight-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.nurse-target-weight-actions button {
+  width: 100%;
+  border: 1px solid #d8d0c8;
+  border-radius: 12px;
+  background: #fff;
+  color: #57607a;
+  font-weight: 800;
+}
+
+.nurse-target-weight-actions button[type="submit"] {
+  border-color: #5262d1;
+  background: linear-gradient(135deg, #5c6bc0, #5262d1);
+  color: #fff;
+}
+
+@media (max-width: 390px) {
+  .nurse-target-weight-editor {
+    padding: 10px 12px;
+  }
+
+  .nurse-target-weight-form label {
+    grid-template-columns: 1fr;
+  }
+}
+
 .nurse-progress-card li.is-recorded {
   grid-template-columns: minmax(0, 1fr) auto auto;
   column-gap: 8px;

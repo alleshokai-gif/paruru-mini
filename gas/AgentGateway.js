@@ -775,7 +775,7 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
-const PALURU_MINI_BUILD_ID = 'mini-20260825-device-reregistration-v1';
+const PALURU_MINI_BUILD_ID = 'mini-20260831-nurse-okan-health-profile-v1';
 
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};

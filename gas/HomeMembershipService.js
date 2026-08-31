@@ -19,9 +19,11 @@ const HEALTH_OPERATION_CAPABILITIES = Object.freeze({
   'health.daily.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
   'health.daily.list': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
   'health.weight.list': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
+  'health.profile.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
   'health.daily.recordSlot': Object.freeze({ self: 'health.self.record', supervision: 'health.supervision.record' }),
   'health.weight.record': Object.freeze({ self: 'health.self.record', supervision: 'health.supervision.record' }),
   'health.weight.correct': Object.freeze({ self: 'health.self.record', supervision: 'health.supervision.record' }),
+  'health.profile.update': Object.freeze({ self: 'health.self.record', supervision: 'health.supervision.record' }),
 });
 
 function ensureMembershipSheets_() {

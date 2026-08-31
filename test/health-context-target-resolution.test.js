@@ -18,7 +18,7 @@ let result=ctx.healthGateway_({action:'health.context.get',deviceId:'admin-devic
 assert.strictEqual(result.success,true,'admin context must succeed without selecting the first target');
 assert.strictEqual(forwarded.length,0,'admin context without a target must not fall back to an upstream actor target');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(result.data.targets)),[{userId:'son-a',displayName:'長男'},{userId:'son-b',displayName:'次男'}]);
-['health.daily.get','health.daily.list','health.weight.list'].forEach(action=>{
+['health.daily.get','health.daily.list','health.weight.list','health.profile.get','health.profile.update'].forEach(action=>{
   result=ctx.healthGateway_({action:action,deviceId:'admin-device',pairingToken:'pair',targetMemberUserId:'outside',fromLocalDate:'2026-08-17',toLocalDate:'2026-08-23'});
   assert.strictEqual(result.success,false,'unauthorized target must not be accepted');
   assert.strictEqual(result.error.code,'FORBIDDEN');

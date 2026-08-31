@@ -1,6 +1,7 @@
 const HEALTH_OPS = Object.freeze({
   'health.context.get': true, 'health.daily.get': true, 'health.daily.list': true, 'health.daily.recordSlot': true,
   'health.weight.list': true, 'health.weight.record': true, 'health.weight.correct': true,
+  'health.profile.get': true, 'health.profile.update': true,
 });
 
 function healthGateway_(body) {
@@ -59,7 +60,7 @@ function fetchHealthGatewayData_(input, actor, targetUserId) {
     fromLocalDate: input.fromLocalDate, toLocalDate: input.toLocalDate,
     payload: input.payload, clientRequestId: input.clientRequestId, isCorrection: input.isCorrection,
     measuredDate: input.measuredDate, weightKg: input.weightKg, recordId: input.recordId,
-    correctionReason: input.correctionReason, limit: input.limit,
+    targetWeightKg: input.targetWeightKg, correctionReason: input.correctionReason, limit: input.limit,
   };
   const response = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json', payload: JSON.stringify(forwarded), muteHttpExceptions: true,

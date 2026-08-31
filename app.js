@@ -553,6 +553,8 @@ const NURSE_OKAN_HEALTH_ACTIONS = new Set([
   "health.weight.list",
   "health.weight.record",
   "health.weight.correct",
+  "health.profile.get",
+  "health.profile.update",
 ]);
 const PET_HEALTH_ACTIONS = new Set([
   "pet.health.record",

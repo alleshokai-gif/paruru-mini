@@ -13,7 +13,9 @@ function executeIdempotentWrite_(body) {
       ? executeDailyRecordWrite_(body, hash)
       : body.operation === 'health.weight.correct'
         ? executeWeightCorrectionWrite_(body, hash)
-        : executeWeightRecordWrite_(body, hash);
+        : body.operation === 'health.profile.update'
+          ? executeHealthProfileUpdateWrite_(body)
+          : executeWeightRecordWrite_(body, hash);
     appendRequestLog_(body, hash, response);
     return response;
   } finally { lock.releaseLock(); }
@@ -62,7 +64,12 @@ function executeWeightCorrectionWrite_(body, hash) {
   return { success:true, data:weightCorrect_(body) };
 }
 
+function executeHealthProfileUpdateWrite_(body) {
+  return { success:true, data:healthProfileUpdate_(body) };
+}
+
 function healthBusinessPayload_(body) {
+  if (body.operation === 'health.profile.update') return { targetWeightKg:Number(body.targetWeightKg) };
   if (body.operation === 'health.weight.record') return { measuredDate:body.measuredDate, weightKg:Number(body.weightKg) };
   if (body.operation === 'health.weight.correct') { const corrected={ recordId:body.recordId, measuredDate:body.measuredDate, weightKg:Number(body.weightKg) },reason=normalizeCorrectionReason_(body.correctionReason);if(reason)corrected.correctionReason=reason;return corrected; }
   const daily={ localDate:body.localDate, slot:body.slot, payload:body.payload },reason=normalizeCorrectionReason_(body.correctionReason);if(body.isCorrection===true)daily.isCorrection=true;if(reason)daily.correctionReason=reason;return daily;
