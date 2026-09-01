@@ -21,6 +21,16 @@ const candidateHeaders = [
   'inputTokens', 'outputTokens', 'durationMs', 'reviewStatus', 'domainWriteResult',
   'reviewPayloadJson', 'reviewedAt', 'reviewedByMemberId', 'reviewAction',
   'reviewReason', 'reviewNote', 'reviewRequestId', 'reviewHistoryJson',
+  'reviewedByServiceId', 'reviewChannel', 'sourceReviewItemId',
+];
+const reviewItemHeaders = [
+  'schemaVersion', 'reviewItemId', 'inboxId', 'homeId', 'reviewType', 'candidateType',
+  'revision', 'status', 'createdAt', 'updatedAt', 'subjectMemberId', 'confidence',
+  'sourceSha256', 'profile', 'model', 'extractorVersion', 'promptVersion', 'payloadDigest',
+  'payloadJson', 'reviewPayloadJson', 'evidenceJson', 'warningsJson', 'questionsJson',
+  'publishRequestId', 'claimVersion', 'fragmentCount', 'inputTokens', 'outputTokens',
+  'durationMs', 'reviewedAt', 'reviewedByServiceId', 'reviewChannel', 'reviewAction',
+  'reviewReason', 'reviewNote', 'reviewRequestId', 'reviewHistoryJson', 'promotedCandidateId',
 ];
 
 class Range {
@@ -28,6 +38,7 @@ class Range {
   getValues() { return Array.from({ length: this.rows }, (_, r) => Array.from({ length: this.columns }, (_, c) => this.sheet.values[this.row - 1 + r]?.[this.column - 1 + c] ?? '')); }
   setValues(values) {
     if (this.sheet.state.candidateWriteError && this.sheet.name === 'Family_Candidates') throw new Error('candidate ledger failed');
+    if (this.sheet.state.reviewItemWriteError && this.sheet.name === 'Family_Review_Items') throw new Error('review item ledger failed');
     if (this.sheet.state.inboxWriteError && this.sheet.name === 'Family_Inbox') throw new Error('inbox ledger failed');
     for (let r = 0; r < this.rows; r += 1) {
       if (!this.sheet.values[this.row - 1 + r]) this.sheet.values[this.row - 1 + r] = Array(this.sheet.getLastColumn()).fill('');
@@ -54,13 +65,18 @@ function rowObject(headers, row) { return Object.fromEntries(headers.map((header
 function inboxRow(sheet, inboxId) { return sheet.values.slice(1).map((row) => rowObject(inboxHeaders, row)).find((row) => row.inboxId === inboxId); }
 
 function fixture(options = {}) {
-  const state = { logs: [], files: new Map(), lockCount: 0, sheetOpenCount: 0, driveReadCount: 0, uuidCounter: 1, candidateWriteError: false, inboxWriteError: false };
+  const state = { logs: [], files: new Map(), lockCount: 0, sheetOpenCount: 0, driveReadCount: 0, uuidCounter: 1, candidateWriteError: false, reviewItemWriteError: false, inboxWriteError: false };
   const inbox = new Sheet('Family_Inbox', inboxHeaders, state);
   const candidates = new Sheet('Family_Candidates', candidateHeaders, state);
+  const reviewItems = new Sheet('Family_Review_Items', reviewItemHeaders, state);
   const properties = Object.assign({
     FAMILY_INBOX_SERVICE_TOKEN: 'mini-service-secret',
     FAMILY_INBOX_WORKER_TOKEN: 'worker-service-secret',
     FAMILY_INBOX_WORKER_ID: 'worker-home-01',
+    FAMILY_INBOX_WORKER_PROFILE: 'school-v1',
+    FAMILY_INBOX_PC_REVIEW_TOKEN: 'pc-review-service-secret',
+    FAMILY_INBOX_PC_REVIEW_ID: 'pc-review-01',
+    FAMILY_INBOX_PC_REVIEW_HOME_ID: 'home-01',
     FAMILY_INBOX_RAW_FOLDER_ID: 'raw-folder-id',
     FAMILY_INBOX_LEDGER_SPREADSHEET_ID: 'ledger-id',
   }, options.properties || {});
@@ -70,7 +86,7 @@ function fixture(options = {}) {
     SpreadsheetApp: { openById: (id) => {
       assert.strictEqual(id, 'ledger-id');
       state.sheetOpenCount += 1;
-      return { getSheetByName: (name) => name === 'Family_Inbox' ? inbox : name === 'Family_Candidates' ? candidates : null };
+      return { getSheetByName: (name) => name === 'Family_Inbox' ? inbox : name === 'Family_Candidates' ? candidates : name === 'Family_Review_Items' ? reviewItems : null };
     } },
     DriveApp: {
       getFolderById: () => ({ createFile: (blob) => {
@@ -105,10 +121,10 @@ function fixture(options = {}) {
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math, isFinite,
   };
   vm.createContext(context);
-  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js']) {
+  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js', 'FamilyInboxPcReviewService.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', file), 'utf8'), context);
   }
-  return { api: context, state, inbox, candidates };
+  return { api: context, state, inbox, candidates, reviewItems };
 }
 
 function submit(f, mediaType = 'image/jpeg', requestNumber = 10) {
@@ -158,6 +174,9 @@ function fiveCandidatesFixture() {
 function digest(f, candidateList) {
   return crypto.createHash('sha256').update(f.api.familyInboxWorkerStableStringify_(candidateList), 'utf8').digest('hex');
 }
+function longDigest(f, candidateList, reviewItems) {
+  return crypto.createHash('sha256').update(f.api.familyInboxWorkerStableStringify_({ candidates: candidateList, reviewItems }), 'utf8').digest('hex');
+}
 function claimOne(f) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext')); }
 function publishCandidates(f, created, candidates, requestNumber = 950) {
   const claim = claimOne(f);
@@ -175,6 +194,38 @@ function reviewBody(operation, fields = {}) {
   const body = { operation, internalToken: 'mini-service-secret', homeId: 'home-01', traceId: 'trace_review01', ...fields };
   if (/\.(updateCandidate|approveCandidate|rejectCandidate)$/.test(operation)) body.reviewedByMemberId = 'parent-01';
   return body;
+}
+function pcReviewBody(operation, fields = {}) {
+  return { operation, pcReviewToken: 'pc-review-service-secret', traceId: 'trace_pc_review01', ...fields };
+}
+function longCandidatesFixture() {
+  return [
+    candidatesFixture()[0],
+    candidatesFixture()[1],
+    {
+      candidateType: 'school.belongings', schemaVersion: 'school.belongings/1.0', confidence: 0.95,
+      evidence: [{ page: 2, quote: '上履き', fieldPaths: ['items'] }], warnings: [], questions: [],
+      payload: { date: '2026-08-28', items: ['上履き'] },
+    },
+  ];
+}
+function longReviewItemsFixture() {
+  return Array.from({ length: 9 }, (_, index) => index < 6 ? {
+    reviewType: 'page_fragment', status: 'needs_review', candidateType: 'schedule.event', confidence: 0.82, fragmentCount: 1,
+    evidence: [{ page: index + 2, quote: `架空予定${index + 1}`, fieldPaths: ['title'] }],
+    warnings: ['unresolved_required_field:date'], questions: ['confirm_event_date'],
+    payload: { title: `架空予定${index + 1}`, date: null, startTime: null, endTime: null, location: null, notes: null },
+  } : index < 8 ? {
+    reviewType: 'page_fragment', status: 'needs_review', candidateType: 'school.deadline', confidence: 0.79, fragmentCount: 1,
+    evidence: [{ page: index + 2, quote: `架空締切${index + 1}`, fieldPaths: ['title'] }],
+    warnings: ['unresolved_required_field:dueDate'], questions: ['confirm_deadline_date'],
+    payload: { title: `架空締切${index + 1}`, dueDate: null, actionRequired: '提出する' },
+  } : {
+    reviewType: 'page_fragment', status: 'needs_review', candidateType: 'school.belongings', confidence: 0.81, fragmentCount: 1,
+    evidence: [{ page: 9, quote: '架空の持ち物', fieldPaths: ['items'] }],
+    warnings: ['unresolved_required_field:date'], questions: ['confirm_belongings_date'],
+    payload: { date: null, items: ['架空の持ち物'], relatedEventTitle: null },
+  });
 }
 
 {
@@ -420,3 +471,163 @@ console.log('PASS Family Inbox worker GAS claim, lease, bounded source, strict c
 }
 
 console.log('PASS Family Inbox Review list/detail, five-candidate integrity, correction provenance, optimistic concurrency, approve/reject idempotency, same-home security, and no Domain completion');
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
+  const created = submit(f, 'application/pdf', 200);
+  const claim = claimOne(f);
+  assert.strictEqual(claim.processingProfile, 'school-v1-long');
+  const candidates = longCandidatesFixture();
+  const reviewItems = longReviewItemsFixture();
+  const publishRequestId = uuid(1200);
+  const published = f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, publishRequestId,
+    payloadDigest: longDigest(f, candidates, reviewItems), candidates, reviewItems,
+    usage: { inputTokens: 5000, outputTokens: 700 }, durationMs: 25000,
+  }));
+  assert.strictEqual(published.candidateIds.length, 3);
+  assert.strictEqual(published.reviewItemIds.length, 9);
+  assert.strictEqual(f.reviewItems.values.length, 10);
+
+  const list = f.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list'));
+  assert.strictEqual(list.batches.length, 1);
+  assert.strictEqual(list.batches[0].profile, 'school-v1-long');
+  assert.strictEqual(list.batches[0].candidateCount, 3);
+  assert.strictEqual(list.batches[0].reviewItemCount, 9);
+  const detail = f.api.familyInboxPcReviewGet_(pcReviewBody('familyInbox.pcReview.get', { inboxId: created.inboxId }));
+  assert.strictEqual(detail.items.length, 12);
+  assert.strictEqual(detail.items[0].origin, 'review_item', 'unresolved items must be exception-first');
+  assert(!JSON.stringify(detail).includes('drive-secret-'));
+
+  const fragment = detail.items.find((item) => item.origin === 'review_item' && item.candidateType === 'schedule.event');
+  const correctedPayload = { ...fragment.payload, date: '2026-09-10' };
+  const updated = f.api.familyInboxPcReviewUpdate_(pcReviewBody('familyInbox.pcReview.update', {
+    inboxId: created.inboxId, itemId: fragment.itemId, revision: fragment.revision,
+    reviewRequestId: uuid(1201), payload: correctedPayload, reviewNote: 'synthetic correction',
+  }));
+  assert.strictEqual(updated.item.revision, 2);
+  assert.strictEqual(updated.item.reviewStatus, 'pending');
+  const promoted = f.api.familyInboxPcReviewApprove_(pcReviewBody('familyInbox.pcReview.approve', {
+    inboxId: created.inboxId, itemId: fragment.itemId, revision: 2,
+    reviewRequestId: uuid(1202), payload: correctedPayload, reviewNote: '',
+  }));
+  assert.strictEqual(promoted.item.reviewStatus, 'promoted');
+  assert.strictEqual(promoted.promotedCandidate.reviewStatus, 'pending');
+  assert.strictEqual(f.candidates.values.length, 5, 'promotion appends one canonical candidate');
+  const promotionReplay = f.api.familyInboxPcReviewApprove_(pcReviewBody('familyInbox.pcReview.approve', {
+    inboxId: created.inboxId, itemId: fragment.itemId, revision: 2,
+    reviewRequestId: uuid(1202), payload: correctedPayload, reviewNote: '',
+  }));
+  assert.strictEqual(promotionReplay.idempotency.replayed, true);
+  assert.strictEqual(f.candidates.values.length, 5, 'promotion replay must not duplicate candidate');
+
+  let current = f.api.familyInboxPcReviewGet_(pcReviewBody('familyInbox.pcReview.get', { inboxId: created.inboxId }));
+  const promotedCandidate = current.items.find((item) => item.origin === 'canonical' && item.itemId === promoted.promotedCandidate.candidateId);
+  f.api.familyInboxPcReviewApprove_(pcReviewBody('familyInbox.pcReview.approve', {
+    inboxId: created.inboxId, itemId: promotedCandidate.itemId, revision: promotedCandidate.revision,
+    reviewRequestId: uuid(1203), payload: promotedCandidate.payload, reviewNote: '',
+  }));
+  current = f.api.familyInboxPcReviewGet_(pcReviewBody('familyInbox.pcReview.get', { inboxId: created.inboxId }));
+  const canonicalPending = current.items.filter((item) => item.origin === 'canonical' && item.reviewStatus === 'pending');
+  f.api.familyInboxPcReviewBulkApprove_(pcReviewBody('familyInbox.pcReview.bulkApproveCanonical', {
+    inboxId: created.inboxId, reviewRequestId: uuid(1204), reviewNote: '',
+    items: canonicalPending.map((item) => ({ candidateId: item.itemId, revision: item.revision })),
+  }));
+  current = f.api.familyInboxPcReviewGet_(pcReviewBody('familyInbox.pcReview.get', { inboxId: created.inboxId }));
+  const pendingFragments = current.items.filter((item) => item.origin === 'review_item' && item.reviewStatus === 'pending');
+  pendingFragments.forEach((item, index) => {
+    f.api.familyInboxPcReviewReject_(pcReviewBody('familyInbox.pcReview.reject', {
+      inboxId: created.inboxId, itemId: item.itemId, revision: item.revision,
+      reviewRequestId: uuid(1210 + index), reviewReason: 'not_relevant', reviewNote: '',
+    }));
+  });
+  const reviewed = f.api.familyInboxPcReviewGet_(pcReviewBody('familyInbox.pcReview.get', { inboxId: created.inboxId }));
+  assert.strictEqual(reviewed.status, 'reviewed');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'needs_review', 'PC review must not perform Domain completion');
+  assert(reviewed.items.every((item) => ['approved', 'rejected', 'promoted'].includes(item.reviewStatus)));
+  const logs = f.state.logs.join('\n');
+  ['pc-review-service-secret', 'worker-service-secret', 'synthetic correction', 'drive-secret-'].forEach((secret) => assert(!logs.includes(secret), `unsafe PC review log content: ${secret}`));
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
+  const created = submit(f, 'application/pdf', 210);
+  const claim = claimOne(f);
+  const candidates = longCandidatesFixture();
+  const reviewItems = longReviewItemsFixture();
+  f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, publishRequestId: uuid(1300),
+    payloadDigest: longDigest(f, candidates, reviewItems), candidates, reviewItems,
+    usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
+  }));
+  const detail = f.api.familyInboxPcReviewGet_(pcReviewBody('familyInbox.pcReview.get', { inboxId: created.inboxId }));
+  const fragment = detail.items.find((item) => item.origin === 'review_item' && item.candidateType === 'schedule.event');
+  const payload = { ...fragment.payload, date: '2026-09-11' };
+  f.state.reviewItemWriteError = true;
+  expectCode(() => f.api.familyInboxPcReviewApprove_(pcReviewBody('familyInbox.pcReview.approve', {
+    inboxId: created.inboxId, itemId: fragment.itemId, revision: 1, reviewRequestId: uuid(1301), payload, reviewNote: '',
+  })), 'LEDGER_ERROR');
+  assert.strictEqual(f.candidates.values.length, 5, 'promoted candidate remains for recovery');
+  f.state.reviewItemWriteError = false;
+  const recovered = f.api.familyInboxPcReviewApprove_(pcReviewBody('familyInbox.pcReview.approve', {
+    inboxId: created.inboxId, itemId: fragment.itemId, revision: 1, reviewRequestId: uuid(1301), payload, reviewNote: '',
+  }));
+  assert.strictEqual(recovered.item.reviewStatus, 'promoted');
+  assert.strictEqual(f.candidates.values.length, 5, 'recovery must reuse sourceReviewItemId candidate');
+}
+
+{
+  const short = fixture();
+  const created = submit(short, 'image/jpeg', 220);
+  const claim = claimOne(short);
+  const nine = [candidatesFixture()[0]].concat(Array.from({ length: 8 }, (_, index) => ({
+    ...candidatesFixture()[1], payload: { ...candidatesFixture()[1].payload, title: `event-${index}` },
+  })));
+  expectCode(() => short.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, publishRequestId: uuid(1400), payloadDigest: digest(short, nine),
+    candidates: nine, usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
+  })), 'INVALID_CANDIDATE');
+  expectCode(() => short.api.familyInboxPublishCandidates_({ ...workerBody('familyInbox.publishCandidates'), profile: 'school-v1-long' }), 'INVALID_INPUT');
+
+  const long = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
+  const longCreated = submit(long, 'application/pdf', 221);
+  const longClaim = claimOne(long);
+  const forty = [candidatesFixture()[0]].concat(Array.from({ length: 39 }, (_, index) => ({
+    ...candidatesFixture()[1], payload: { ...candidatesFixture()[1].payload, title: `long-event-${index}` },
+  })));
+  const accepted = long.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
+    inboxId: longCreated.inboxId, claimVersion: longClaim.claimVersion, publishRequestId: uuid(1401),
+    payloadDigest: longDigest(long, forty, []), candidates: forty, reviewItems: [],
+    usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
+  }));
+  assert.strictEqual(accepted.candidateIds.length, 40);
+
+  const oversized = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
+  const oversizedCreated = submit(oversized, 'application/pdf', 222);
+  const oversizedClaim = claimOne(oversized);
+  const hugeReviewItems = Array.from({ length: 39 }, (_, index) => ({
+    reviewType: 'page_fragment', status: 'needs_review', candidateType: 'schedule.event', confidence: 0.8, fragmentCount: 1,
+    evidence: Array.from({ length: 20 }, (__, evidenceIndex) => ({ page: index + 1, quote: 'x'.repeat(240), fieldPaths: [`field${evidenceIndex}`] })),
+    warnings: [], questions: [],
+    payload: { title: `oversized-event-${index}`, date: null, startTime: null, endTime: null, location: null, notes: null },
+  }));
+  const oneDocument = [candidatesFixture()[0]];
+  expectCode(() => oversized.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
+    inboxId: oversizedCreated.inboxId, claimVersion: oversizedClaim.claimVersion, publishRequestId: uuid(1402),
+    payloadDigest: longDigest(oversized, oneDocument, hugeReviewItems), candidates: oneDocument, reviewItems: hugeReviewItems,
+    usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
+  })), 'INVALID_CANDIDATE');
+}
+
+{
+  const f = fixture();
+  const opensBefore = f.state.sheetOpenCount;
+  expectCode(() => f.api.familyInboxPcReviewList_({ operation: 'familyInbox.pcReview.list', pcReviewToken: 'wrong', traceId: 'trace_bad_pc' }), 'FORBIDDEN');
+  assert.strictEqual(f.state.sheetOpenCount, opensBefore, 'PC token must fail before Sheet work');
+  const foreign = fixture({ properties: { FAMILY_INBOX_PC_REVIEW_HOME_ID: 'home-02' } });
+  const created = submit(foreign, 'image/jpeg', 230);
+  publishCandidates(foreign, created, candidatesFixture(), 1500);
+  assert.strictEqual(foreign.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list')).batches.length, 0);
+}
+
+console.log('PASS Family Inbox PC Review dedicated auth, long batch persistence, fragment promotion/recovery, canonical bulk approval, profile limits, same-home scope, safe logs, and zero Domain writes');

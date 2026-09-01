@@ -1,20 +1,24 @@
 const FAMILY_INBOX_WORKER_PROPERTIES = Object.freeze({
   token: 'FAMILY_INBOX_WORKER_TOKEN',
   workerId: 'FAMILY_INBOX_WORKER_ID',
+  profile: 'FAMILY_INBOX_WORKER_PROFILE',
 });
 const FAMILY_INBOX_CANDIDATE_SHEET_NAME = 'Family_Candidates';
 const FAMILY_INBOX_WORKER_LEASE_MILLIS = 10 * 60 * 1000;
 const FAMILY_INBOX_WORKER_HEARTBEAT_GRACE_MILLIS = 60 * 1000;
 const FAMILY_INBOX_WORKER_RETRY_DELAY_MILLIS = 5 * 60 * 1000;
 const FAMILY_INBOX_WORKER_MAX_ATTEMPTS = 3;
-const FAMILY_INBOX_MAX_CANDIDATES = 8;
 const FAMILY_INBOX_MAX_PUBLISH_BYTES = 128 * 1024;
 const FAMILY_INBOX_MAX_EVIDENCE_QUOTE_CHARACTERS = 240;
-const FAMILY_INBOX_WORKER_PROFILE = Object.freeze({
-  profile: 'school-v1',
-  model: 'gpt-5.6-luna',
-  extractorVersion: 'family-inbox-worker/1.0.0',
-  promptVersion: 'school-v1/1.0.0',
+const FAMILY_INBOX_WORKER_PROFILES = Object.freeze({
+  'school-v1': Object.freeze({
+    profile: 'school-v1', model: 'gpt-5.6-luna', extractorVersion: 'family-inbox-worker/1.0.0',
+    promptVersion: 'school-v1/1.0.1', maxItems: 8, allowReviewItems: false,
+  }),
+  'school-v1-long': Object.freeze({
+    profile: 'school-v1-long', model: 'gpt-5.6-luna', extractorVersion: 'family-inbox-worker/1.1.0',
+    promptVersion: 'school-v1-long/1.0.2', maxItems: 40, allowReviewItems: true,
+  }),
 });
 const FAMILY_INBOX_CANDIDATE_HEADERS = Object.freeze([
   'schemaVersion', 'candidateId', 'inboxId', 'homeId', 'candidateType', 'revision',
@@ -81,6 +85,7 @@ function familyInboxClaimNext_(body) {
         subjectMemberId: String(entry.record.subjectMemberHint || ''),
         userNote: String(entry.record.userNote || ''),
         leaseExpiresAt: leaseExpiresAt,
+        processingProfile: context.profile.profile,
       };
     } finally {
       if (lock) {
@@ -147,7 +152,7 @@ function familyInboxGetClaimedSource_(body) {
 
 function familyInboxPublishCandidates_(body) {
   return familyInboxWorkerRun_('familyInbox.publishCandidates', body, function(context) {
-    const input = familyInboxWorkerValidatePublish_(body);
+    const input = familyInboxWorkerValidatePublish_(body, context.profile);
     let lock;
     try {
       lock = LockService.getScriptLock();
@@ -156,81 +161,71 @@ function familyInboxPublishCandidates_(body) {
       const inboxEntry = familyInboxWorkerFindInboxEntry_(inboxLedger, input.inboxId);
       if (!inboxEntry) throw familyInboxError_('CLAIM_NOT_FOUND');
       const candidateLedger = familyInboxOpenCandidateLedger_(context.config.spreadsheetId);
-      const existing = familyInboxWorkerFindCandidateRows_(candidateLedger, input.publishRequestId);
-      if (existing.length) {
-        const replayValid = existing.every(function(entry) {
+      const reviewItemLedger = input.profile.allowReviewItems ? familyInboxPcReviewOpenItemLedger_(context.config.spreadsheetId) : null;
+      const existingCandidates = familyInboxWorkerFindCandidateRows_(candidateLedger, input.publishRequestId);
+      const existingReviewItems = reviewItemLedger ? familyInboxPcReviewFindItemRows_(reviewItemLedger, input.publishRequestId) : [];
+      const hasExisting = Boolean(existingCandidates.length || existingReviewItems.length);
+      if (hasExisting) {
+        const replayValid = existingCandidates.concat(existingReviewItems).every(function(entry) {
           return String(entry.record.inboxId || '') === input.inboxId &&
             String(entry.record.payloadDigest || '') === input.payloadDigest &&
-            familyInboxWorkerInteger_(entry.record.claimVersion, -1) === input.claimVersion;
+            familyInboxWorkerInteger_(entry.record.claimVersion, -1) === input.claimVersion &&
+            String(entry.record.profile || '') === input.profile.profile;
         });
-        if (!replayValid) throw familyInboxError_('IDEMPOTENCY_CONFLICT');
+        if (!replayValid || existingCandidates.length > input.candidates.length || existingReviewItems.length > input.reviewItems.length) throw familyInboxError_('IDEMPOTENCY_CONFLICT');
         const status = String(inboxEntry.record.status || '');
         if (status === 'processing') {
           familyInboxWorkerRequireClaim_(inboxLedger, input, context.workerId, new Date(), false);
-          familyInboxWorkerCompleteInbox_(inboxLedger, inboxEntry, 'needs_review');
         } else if (status !== 'needs_review' && status !== 'candidate_ready') {
           throw familyInboxError_('IDEMPOTENCY_CONFLICT');
         }
+        if (status !== 'processing' && (existingCandidates.length !== input.candidates.length || existingReviewItems.length !== input.reviewItems.length)) throw familyInboxError_('IDEMPOTENCY_CONFLICT');
+        if (status !== 'processing') {
+          context.trace.inboxId = input.inboxId;
+          context.trace.claimVersion = input.claimVersion;
+          context.trace.candidateCount = existingCandidates.length;
+          context.trace.reviewItemCount = existingReviewItems.length;
+          context.trace.status = 'needs_review';
+          return {
+            inboxId: input.inboxId,
+            status: 'needs_review',
+            candidateIds: existingCandidates.map(function(entry) { return String(entry.record.candidateId || ''); }),
+            reviewItemIds: existingReviewItems.map(function(entry) { return String(entry.record.reviewItemId || ''); }),
+            idempotency: { replayed: true },
+          };
+        }
+      }
+
+      if (!hasExisting || String(inboxEntry.record.status || '') === 'processing') {
+        familyInboxWorkerRequireClaim_(inboxLedger, input, context.workerId, new Date(), false);
+        const now = familyInboxNow_();
+        let candidateRows = existingCandidates.map(function(entry) { return entry.record; });
+        if (!candidateRows.length) {
+          candidateRows = familyInboxWorkerCandidateRows_(input, inboxEntry, now);
+          familyInboxWorkerAppendCandidates_(candidateLedger, candidateRows);
+        }
+        let reviewItemRows = existingReviewItems.map(function(entry) { return entry.record; });
+        if (input.reviewItems.length && !reviewItemRows.length) {
+          reviewItemRows = familyInboxPcReviewRowsFromPublish_(input, inboxEntry, now);
+          familyInboxPcReviewAppendItems_(reviewItemLedger, reviewItemRows);
+        }
+        familyInboxWorkerCompleteInbox_(inboxLedger, inboxEntry, 'needs_review');
         context.trace.inboxId = input.inboxId;
         context.trace.claimVersion = input.claimVersion;
-        context.trace.candidateCount = existing.length;
+        context.trace.candidateCount = candidateRows.length;
+        context.trace.reviewItemCount = reviewItemRows.length;
         context.trace.status = 'needs_review';
+        context.trace.profile = input.profile.profile;
+        context.trace.model = input.profile.model;
         return {
           inboxId: input.inboxId,
           status: 'needs_review',
-          candidateIds: existing.map(function(entry) { return String(entry.record.candidateId || ''); }),
-          idempotency: { replayed: true },
+          candidateIds: candidateRows.map(function(row) { return String(row.candidateId || ''); }),
+          reviewItemIds: reviewItemRows.map(function(row) { return String(row.reviewItemId || ''); }),
+          idempotency: { replayed: hasExisting },
         };
       }
-
-      familyInboxWorkerRequireClaim_(inboxLedger, input, context.workerId, new Date(), false);
-      const now = familyInboxNow_();
-      const candidateRows = input.candidates.map(function(candidate) {
-        return {
-          schemaVersion: candidate.schemaVersion,
-          candidateId: familyInboxWorkerNewCandidateId_(),
-          inboxId: input.inboxId,
-          homeId: String(inboxEntry.record.homeId || ''),
-          candidateType: candidate.candidateType,
-          revision: 1,
-          status: 'proposed',
-          createdAt: now,
-          updatedAt: now,
-          subjectMemberId: String(inboxEntry.record.subjectMemberHint || ''),
-          confidence: candidate.confidence,
-          sourceSha256: String(inboxEntry.record.sha256 || ''),
-          profile: FAMILY_INBOX_WORKER_PROFILE.profile,
-          model: FAMILY_INBOX_WORKER_PROFILE.model,
-          extractorVersion: FAMILY_INBOX_WORKER_PROFILE.extractorVersion,
-          promptVersion: FAMILY_INBOX_WORKER_PROFILE.promptVersion,
-          payloadDigest: input.payloadDigest,
-          payloadJson: JSON.stringify(candidate.payload),
-          evidenceJson: JSON.stringify(candidate.evidence),
-          warningsJson: JSON.stringify(candidate.warnings),
-          questionsJson: JSON.stringify(candidate.questions),
-          publishRequestId: input.publishRequestId,
-          claimVersion: input.claimVersion,
-          inputTokens: input.usage.inputTokens,
-          outputTokens: input.usage.outputTokens,
-          durationMs: input.durationMs,
-          reviewStatus: 'pending',
-          domainWriteResult: '',
-        };
-      });
-      familyInboxWorkerAppendCandidates_(candidateLedger, candidateRows);
-      familyInboxWorkerCompleteInbox_(inboxLedger, inboxEntry, 'needs_review');
-      context.trace.inboxId = input.inboxId;
-      context.trace.claimVersion = input.claimVersion;
-      context.trace.candidateCount = candidateRows.length;
-      context.trace.status = 'needs_review';
-      context.trace.profile = FAMILY_INBOX_WORKER_PROFILE.profile;
-      context.trace.model = FAMILY_INBOX_WORKER_PROFILE.model;
-      return {
-        inboxId: input.inboxId,
-        status: 'needs_review',
-        candidateIds: candidateRows.map(function(row) { return row.candidateId; }),
-        idempotency: { replayed: false },
-      };
+      throw familyInboxError_('IDEMPOTENCY_CONFLICT');
     } finally {
       if (lock) {
         try { lock.releaseLock(); } catch (_) {}
@@ -287,7 +282,7 @@ function familyInboxWorkerRun_(operation, body, action) {
   try {
     const worker = familyInboxWorkerAuthenticate_(body);
     const config = familyInboxLoadConfig_();
-    const context = { workerId: worker.workerId, config: config, trace: trace };
+    const context = { workerId: worker.workerId, profile: worker.profile, config: config, trace: trace };
     const result = action(context);
     familyInboxLog_(Object.assign(trace, { stage: 'completed', durationMs: Date.now() - startedAt }));
     return result;
@@ -301,10 +296,12 @@ function familyInboxWorkerAuthenticate_(body) {
   const properties = PropertiesService.getScriptProperties();
   const expected = String(properties.getProperty(FAMILY_INBOX_WORKER_PROPERTIES.token) || '');
   const workerId = String(properties.getProperty(FAMILY_INBOX_WORKER_PROPERTIES.workerId) || '').trim();
-  if (!expected || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,63}$/.test(workerId)) throw familyInboxError_('CONFIGURATION_ERROR');
+  const profileName = String(properties.getProperty(FAMILY_INBOX_WORKER_PROPERTIES.profile) || 'school-v1').trim();
+  const profile = FAMILY_INBOX_WORKER_PROFILES[profileName];
+  if (!expected || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,63}$/.test(workerId) || !profile) throw familyInboxError_('CONFIGURATION_ERROR');
   const actual = String(body && body.workerToken || '');
   if (!actual || !familyInboxConstantTimeEquals_(expected, actual)) throw familyInboxError_('FORBIDDEN');
-  return { workerId: workerId };
+  return { workerId: workerId, profile: profile };
 }
 
 function familyInboxWorkerValidateKeys_(value, allowed) {
@@ -383,23 +380,28 @@ function familyInboxWorkerCompleteInbox_(sheetState, entry, status) {
   });
 }
 
-function familyInboxWorkerValidatePublish_(body) {
+function familyInboxWorkerValidatePublish_(body, profile) {
   familyInboxWorkerValidateKeys_(body, {
     operation: true, workerToken: true, inboxId: true, claimVersion: true,
     publishRequestId: true, payloadDigest: true, candidates: true, usage: true,
-    durationMs: true, traceId: true,
+    durationMs: true, reviewItems: true, traceId: true,
   });
+  if (!profile || !FAMILY_INBOX_WORKER_PROFILES[profile.profile]) throw familyInboxError_('CONFIGURATION_ERROR');
   const claim = familyInboxWorkerClaimInput_(body);
   const publishRequestId = String(body.publishRequestId || '').trim();
   if (!familyInboxUuid_(publishRequestId)) throw familyInboxError_('INVALID_INPUT');
   const payloadDigest = String(body.payloadDigest || '').trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(payloadDigest)) throw familyInboxError_('INVALID_INPUT');
-  if (!Array.isArray(body.candidates) || !body.candidates.length || body.candidates.length > FAMILY_INBOX_MAX_CANDIDATES) throw familyInboxError_('INVALID_CANDIDATE');
-  const candidateBytes = Utilities.newBlob(JSON.stringify(body.candidates)).getBytes().length;
-  if (candidateBytes > FAMILY_INBOX_MAX_PUBLISH_BYTES) throw familyInboxError_('INVALID_CANDIDATE');
+  if (!Array.isArray(body.candidates) || !body.candidates.length) throw familyInboxError_('INVALID_CANDIDATE');
+  const suppliedReviewItems = Object.prototype.hasOwnProperty.call(body, 'reviewItems') ? body.reviewItems : [];
+  if (!Array.isArray(suppliedReviewItems) || (!profile.allowReviewItems && suppliedReviewItems.length)) throw familyInboxError_('INVALID_CANDIDATE');
+  if (body.candidates.length + suppliedReviewItems.length > profile.maxItems) throw familyInboxError_('INVALID_CANDIDATE');
   const candidates = body.candidates.map(familyInboxWorkerValidateCandidate_);
+  const reviewItems = suppliedReviewItems.map(familyInboxPcReviewValidatePublishedItem_);
   if (candidates.filter(function(candidate) { return candidate.candidateType === 'school.document'; }).length !== 1) throw familyInboxError_('INVALID_CANDIDATE');
-  const calculatedDigest = familyInboxSha256_(Utilities.newBlob(familyInboxWorkerStableStringify_(candidates)).getBytes());
+  const digestValue = profile.allowReviewItems ? { candidates: candidates, reviewItems: reviewItems } : candidates;
+  if (Utilities.newBlob(JSON.stringify(digestValue)).getBytes().length > FAMILY_INBOX_MAX_PUBLISH_BYTES) throw familyInboxError_('INVALID_CANDIDATE');
+  const calculatedDigest = familyInboxSha256_(Utilities.newBlob(familyInboxWorkerStableStringify_(digestValue)).getBytes());
   if (calculatedDigest !== payloadDigest) throw familyInboxError_('INVALID_CANDIDATE');
   const usage = familyInboxPlainObject_(body.usage) ? body.usage : {};
   familyInboxWorkerValidateKeys_(usage, { inputTokens: true, outputTokens: true });
@@ -410,8 +412,45 @@ function familyInboxWorkerValidatePublish_(body) {
     publishRequestId: publishRequestId,
     payloadDigest: payloadDigest,
     candidates: candidates,
+    reviewItems: reviewItems,
+    profile: profile,
     usage: { inputTokens: inputTokens, outputTokens: outputTokens },
     durationMs: durationMs,
+  });
+}
+
+function familyInboxWorkerCandidateRows_(input, inboxEntry, now) {
+  return input.candidates.map(function(candidate) {
+    return {
+      schemaVersion: candidate.schemaVersion,
+      candidateId: familyInboxWorkerNewCandidateId_(),
+      inboxId: input.inboxId,
+      homeId: String(inboxEntry.record.homeId || ''),
+      candidateType: candidate.candidateType,
+      revision: 1,
+      status: 'proposed',
+      createdAt: now,
+      updatedAt: now,
+      subjectMemberId: String(inboxEntry.record.subjectMemberHint || ''),
+      confidence: candidate.confidence,
+      sourceSha256: String(inboxEntry.record.sha256 || ''),
+      profile: input.profile.profile,
+      model: input.profile.model,
+      extractorVersion: input.profile.extractorVersion,
+      promptVersion: input.profile.promptVersion,
+      payloadDigest: input.payloadDigest,
+      payloadJson: JSON.stringify(candidate.payload),
+      evidenceJson: JSON.stringify(candidate.evidence),
+      warningsJson: JSON.stringify(candidate.warnings),
+      questionsJson: JSON.stringify(candidate.questions),
+      publishRequestId: input.publishRequestId,
+      claimVersion: input.claimVersion,
+      inputTokens: input.usage.inputTokens,
+      outputTokens: input.usage.outputTokens,
+      durationMs: input.durationMs,
+      reviewStatus: 'pending',
+      domainWriteResult: '',
+    };
   });
 }
 

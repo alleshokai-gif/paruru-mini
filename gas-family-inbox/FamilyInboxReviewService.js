@@ -2,6 +2,9 @@ const FAMILY_INBOX_REVIEW_EXTRA_HEADERS = Object.freeze([
   'reviewPayloadJson', 'reviewedAt', 'reviewedByMemberId', 'reviewAction',
   'reviewReason', 'reviewNote', 'reviewRequestId', 'reviewHistoryJson',
 ]);
+const FAMILY_INBOX_PC_REVIEW_CANDIDATE_HEADERS = Object.freeze([
+  'reviewedByServiceId', 'reviewChannel', 'sourceReviewItemId',
+]);
 const FAMILY_INBOX_REVIEW_REASONS = Object.freeze({
   incorrect: true,
   duplicate: true,
@@ -17,39 +20,7 @@ function familyInboxListReviews_(body) {
   return familyInboxReviewRun_('familyInbox.listReviews', body, function(context) {
     familyInboxWorkerValidateKeys_(body, { operation: true, internalToken: true, homeId: true, traceId: true });
     const homeId = familyInboxRequiredIdentifier_(body.homeId);
-    const inboxLedger = familyInboxOpenLedger_(context.config.spreadsheetId);
-    const candidateLedger = familyInboxReviewOpenCandidateLedger_(context.config.spreadsheetId);
-    const candidateEntries = familyInboxReviewCandidateEntries_(candidateLedger);
-    const items = familyInboxWorkerInboxEntries_(inboxLedger)
-      .filter(function(entry) {
-        return String(entry.record.homeId || '') === homeId && String(entry.record.status || '') === 'needs_review';
-      })
-      .map(function(entry) {
-        const matches = candidateEntries.filter(function(candidate) {
-          return String(candidate.record.inboxId || '') === String(entry.record.inboxId || '') &&
-            String(candidate.record.homeId || '') === homeId;
-        });
-        if (matches.length) familyInboxReviewAssertPublishGroup_(matches);
-        const typeSeen = {};
-        const candidateTypes = [];
-        matches.forEach(function(candidate) {
-          const type = String(candidate.record.candidateType || '');
-          if (!typeSeen[type]) {
-            typeSeen[type] = true;
-            candidateTypes.push(type);
-          }
-        });
-        return {
-          inboxId: String(entry.record.inboxId || ''),
-          receivedAt: String(entry.record.receivedAt || ''),
-          subjectMemberId: String(entry.record.subjectMemberHint || ''),
-          originalName: String(entry.record.originalName || ''),
-          candidateCount: matches.length,
-          candidateTypes: candidateTypes,
-          reviewStatus: familyInboxReviewAggregateStatus_(matches),
-        };
-      })
-      .sort(function(left, right) { return String(right.receivedAt || '').localeCompare(String(left.receivedAt || '')); });
+    const items = familyInboxReviewListCore_(context, homeId);
     context.trace.candidateCount = items.reduce(function(total, item) { return total + item.candidateCount; }, 0);
     context.trace.status = 'completed';
     return { items: items };
@@ -61,18 +32,11 @@ function familyInboxGetReview_(body) {
     familyInboxWorkerValidateKeys_(body, { operation: true, internalToken: true, homeId: true, inboxId: true, traceId: true });
     const homeId = familyInboxRequiredIdentifier_(body.homeId);
     const inboxId = familyInboxReviewInboxId_(body.inboxId);
-    const inboxLedger = familyInboxOpenLedger_(context.config.spreadsheetId);
-    const inboxEntry = familyInboxReviewRequireInbox_(inboxLedger, homeId, inboxId);
-    const candidateLedger = familyInboxReviewOpenCandidateLedger_(context.config.spreadsheetId);
-    const candidates = familyInboxReviewCandidateEntries_(candidateLedger).filter(function(entry) {
-      return String(entry.record.inboxId || '') === inboxId && String(entry.record.homeId || '') === homeId;
-    });
-    if (!candidates.length) throw familyInboxError_('NOT_FOUND');
-    familyInboxReviewAssertPublishGroup_(candidates);
+    const detail = familyInboxReviewGetCore_(context, homeId, inboxId);
     context.trace.inboxId = inboxId;
-    context.trace.candidateCount = candidates.length;
-    context.trace.status = familyInboxReviewAggregateStatus_(candidates);
-    return familyInboxReviewDetailDto_(inboxEntry, candidates);
+    context.trace.candidateCount = detail.candidates.length;
+    context.trace.status = detail.reviewStatus;
+    return detail;
   });
 }
 
@@ -91,90 +55,107 @@ function familyInboxRejectCandidate_(body) {
 function familyInboxReviewMutateCandidate_(operation, action, body) {
   return familyInboxReviewRun_(operation, body, function(context) {
     const input = familyInboxReviewMutationInput_(body, action);
-    let lock;
-    try {
-      lock = LockService.getScriptLock();
-      lock.waitLock(30000);
-      const inboxLedger = familyInboxOpenLedger_(context.config.spreadsheetId);
-      familyInboxReviewRequireInbox_(inboxLedger, input.homeId, input.inboxId);
-      const candidateLedger = familyInboxReviewOpenCandidateLedger_(context.config.spreadsheetId);
-      const inboxCandidates = familyInboxReviewCandidateEntries_(candidateLedger).filter(function(entry) {
-        return String(entry.record.inboxId || '') === input.inboxId && String(entry.record.homeId || '') === input.homeId;
-      });
-      if (!inboxCandidates.length) throw familyInboxError_('NOT_FOUND');
-      familyInboxReviewAssertPublishGroup_(inboxCandidates);
-      const entry = inboxCandidates.find(function(candidate) { return String(candidate.record.candidateId || '') === input.candidateId; });
-      if (!entry) throw familyInboxError_('NOT_FOUND');
-
-      const requestDigest = familyInboxReviewRequestDigest_(input);
-      const history = familyInboxReviewHistory_(entry.record.reviewHistoryJson);
-      const replay = history.find(function(event) { return String(event.reviewRequestId || '') === input.reviewRequestId; });
-      if (replay) {
-        if (String(replay.requestDigest || '') !== requestDigest || String(replay.action || '') !== action) throw familyInboxError_('IDEMPOTENCY_CONFLICT');
-        context.trace.inboxId = input.inboxId;
-        context.trace.status = familyInboxReviewAggregateStatus_(inboxCandidates);
-        return {
-          candidate: familyInboxReviewCandidateDto_(entry.record),
-          reviewStatus: familyInboxReviewAggregateStatus_(inboxCandidates),
-          idempotency: { replayed: true },
-        };
-      }
-
-      const currentRevision = familyInboxWorkerInteger_(entry.record.revision, -1);
-      if (currentRevision !== input.revision) throw familyInboxError_('REVISION_CONFLICT');
-      if (String(entry.record.reviewStatus || 'pending') !== 'pending') throw familyInboxError_('INVALID_STATE');
-      if (history.length >= FAMILY_INBOX_REVIEW_MAX_HISTORY) throw familyInboxError_('INVALID_STATE');
-
-      const previousPayload = familyInboxReviewEffectivePayload_(entry.record);
-      const nextPayload = action === 'updated'
-        ? familyInboxReviewValidateCorrection_(String(entry.record.candidateType || ''), previousPayload, input.payload)
-        : previousPayload;
-      const now = familyInboxNow_();
-      const nextRevision = currentRevision + 1;
-      const nextReviewStatus = action === 'approved' ? 'approved' : action === 'rejected' ? 'rejected' : 'pending';
-      const event = {
-        revision: nextRevision,
-        action: action,
-        reviewRequestId: input.reviewRequestId,
-        requestDigest: requestDigest,
-        reviewedAt: now,
-        reviewedByMemberId: input.reviewedByMemberId,
-        reviewReason: input.reviewReason,
-        reviewNote: input.reviewNote,
-        previousReviewStatus: String(entry.record.reviewStatus || 'pending'),
-        reviewStatus: nextReviewStatus,
-        previousPayload: previousPayload,
-        payload: nextPayload,
-      };
-      const nextHistory = history.concat([event]);
-      const historyJson = JSON.stringify(nextHistory);
-      if (Utilities.newBlob(historyJson).getBytes().length > FAMILY_INBOX_REVIEW_MAX_HISTORY_BYTES) throw familyInboxError_('INVALID_STATE');
-      familyInboxReviewUpdateCandidateRow_(candidateLedger, entry, {
-        revision: nextRevision,
-        updatedAt: now,
-        reviewStatus: nextReviewStatus,
-        reviewPayloadJson: JSON.stringify(nextPayload),
-        reviewedAt: now,
-        reviewedByMemberId: input.reviewedByMemberId,
-        reviewAction: action,
-        reviewReason: input.reviewReason,
-        reviewNote: input.reviewNote,
-        reviewRequestId: input.reviewRequestId,
-        reviewHistoryJson: historyJson,
-      });
-      context.trace.inboxId = input.inboxId;
-      context.trace.status = familyInboxReviewAggregateStatus_(inboxCandidates);
-      return {
-        candidate: familyInboxReviewCandidateDto_(entry.record),
-        reviewStatus: familyInboxReviewAggregateStatus_(inboxCandidates),
-        idempotency: { replayed: false },
-      };
-    } finally {
-      if (lock) {
-        try { lock.releaseLock(); } catch (_) {}
-      }
-    }
+    return familyInboxReviewMutateCandidateCore_(context, input);
   });
+}
+
+function familyInboxReviewListCore_(context, homeId) {
+  const inboxLedger = familyInboxOpenLedger_(context.config.spreadsheetId);
+  const candidateLedger = familyInboxReviewOpenCandidateLedger_(context.config.spreadsheetId);
+  const candidateEntries = familyInboxReviewCandidateEntries_(candidateLedger);
+  return familyInboxWorkerInboxEntries_(inboxLedger)
+    .filter(function(entry) { return String(entry.record.homeId || '') === homeId && String(entry.record.status || '') === 'needs_review'; })
+    .map(function(entry) {
+      const matches = candidateEntries.filter(function(candidate) {
+        return String(candidate.record.inboxId || '') === String(entry.record.inboxId || '') && String(candidate.record.homeId || '') === homeId;
+      });
+      if (matches.length) familyInboxReviewAssertPublishGroup_(matches);
+      const typeSeen = {};
+      const candidateTypes = [];
+      matches.forEach(function(candidate) {
+        const type = String(candidate.record.candidateType || '');
+        if (!typeSeen[type]) { typeSeen[type] = true; candidateTypes.push(type); }
+      });
+      return {
+        inboxId: String(entry.record.inboxId || ''), receivedAt: String(entry.record.receivedAt || ''),
+        subjectMemberId: String(entry.record.subjectMemberHint || ''), originalName: String(entry.record.originalName || ''),
+        candidateCount: matches.length, candidateTypes: candidateTypes, reviewStatus: familyInboxReviewAggregateStatus_(matches),
+      };
+    })
+    .sort(function(left, right) { return String(right.receivedAt || '').localeCompare(String(left.receivedAt || '')); });
+}
+
+function familyInboxReviewGetCore_(context, homeId, inboxId) {
+  const inboxLedger = familyInboxOpenLedger_(context.config.spreadsheetId);
+  const inboxEntry = familyInboxReviewRequireInbox_(inboxLedger, homeId, inboxId);
+  const candidateLedger = familyInboxReviewOpenCandidateLedger_(context.config.spreadsheetId);
+  const candidates = familyInboxReviewCandidateEntries_(candidateLedger).filter(function(entry) {
+    return String(entry.record.inboxId || '') === inboxId && String(entry.record.homeId || '') === homeId;
+  });
+  if (!candidates.length) throw familyInboxError_('NOT_FOUND');
+  familyInboxReviewAssertPublishGroup_(candidates);
+  return familyInboxReviewDetailDto_(inboxEntry, candidates);
+}
+
+function familyInboxReviewMutateCandidateCore_(context, input) {
+  let lock;
+  try {
+    lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    const inboxLedger = familyInboxOpenLedger_(context.config.spreadsheetId);
+    familyInboxReviewRequireInbox_(inboxLedger, input.homeId, input.inboxId);
+    const candidateLedger = familyInboxReviewOpenCandidateLedger_(context.config.spreadsheetId, input.reviewChannel === 'pc_backoffice');
+    const inboxCandidates = familyInboxReviewCandidateEntries_(candidateLedger).filter(function(entry) {
+      return String(entry.record.inboxId || '') === input.inboxId && String(entry.record.homeId || '') === input.homeId;
+    });
+    if (!inboxCandidates.length) throw familyInboxError_('NOT_FOUND');
+    familyInboxReviewAssertPublishGroup_(inboxCandidates);
+    const entry = inboxCandidates.find(function(candidate) { return String(candidate.record.candidateId || '') === input.candidateId; });
+    if (!entry) throw familyInboxError_('NOT_FOUND');
+    const requestDigest = familyInboxReviewRequestDigest_(input);
+    const history = familyInboxReviewHistory_(entry.record.reviewHistoryJson);
+    const replay = history.find(function(event) { return String(event.reviewRequestId || '') === input.reviewRequestId; });
+    if (replay) {
+      if (String(replay.requestDigest || '') !== requestDigest || String(replay.action || '') !== input.action) throw familyInboxError_('IDEMPOTENCY_CONFLICT');
+      return { candidate: familyInboxReviewCandidateDto_(entry.record), reviewStatus: familyInboxReviewAggregateStatus_(inboxCandidates), idempotency: { replayed: true } };
+    }
+    const currentRevision = familyInboxWorkerInteger_(entry.record.revision, -1);
+    if (currentRevision !== input.revision) throw familyInboxError_('REVISION_CONFLICT');
+    if (String(entry.record.reviewStatus || 'pending') !== 'pending') throw familyInboxError_('INVALID_STATE');
+    if (history.length >= FAMILY_INBOX_REVIEW_MAX_HISTORY) throw familyInboxError_('INVALID_STATE');
+    const previousPayload = familyInboxReviewEffectivePayload_(entry.record);
+    const correctionValidator = input.reviewChannel === 'pc_backoffice'
+      ? familyInboxPcReviewValidateCanonicalCorrection_
+      : familyInboxReviewValidateCorrection_;
+    const nextPayload = input.action === 'updated' || (input.action === 'approved' && input.payload)
+      ? correctionValidator(String(entry.record.candidateType || ''), previousPayload, input.payload)
+      : previousPayload;
+    const now = familyInboxNow_();
+    const nextRevision = currentRevision + 1;
+    const nextReviewStatus = input.action === 'approved' ? 'approved' : input.action === 'rejected' ? 'rejected' : 'pending';
+    const event = {
+      revision: nextRevision, action: input.action, reviewRequestId: input.reviewRequestId, requestDigest: requestDigest,
+      reviewedAt: now, reviewedByMemberId: input.reviewedByMemberId || '', reviewedByServiceId: input.reviewedByServiceId || '',
+      reviewChannel: input.reviewChannel || 'paluru', reviewReason: input.reviewReason, reviewNote: input.reviewNote,
+      previousReviewStatus: String(entry.record.reviewStatus || 'pending'), reviewStatus: nextReviewStatus,
+      previousPayload: previousPayload, payload: nextPayload,
+    };
+    const historyJson = JSON.stringify(history.concat([event]));
+    if (Utilities.newBlob(historyJson).getBytes().length > FAMILY_INBOX_REVIEW_MAX_HISTORY_BYTES) throw familyInboxError_('INVALID_STATE');
+    const updates = {
+      revision: nextRevision, updatedAt: now, reviewStatus: nextReviewStatus, reviewPayloadJson: JSON.stringify(nextPayload),
+      reviewedAt: input.action === 'updated' ? '' : now, reviewedByMemberId: input.reviewedByMemberId || '', reviewAction: input.action,
+      reviewReason: input.reviewReason, reviewNote: input.reviewNote, reviewRequestId: input.reviewRequestId, reviewHistoryJson: historyJson,
+    };
+    if (candidateLedger.headers.indexOf('reviewedByServiceId') >= 0) updates.reviewedByServiceId = input.reviewedByServiceId || '';
+    if (candidateLedger.headers.indexOf('reviewChannel') >= 0) updates.reviewChannel = input.reviewChannel || 'paluru';
+    familyInboxReviewUpdateCandidateRow_(candidateLedger, entry, updates);
+    context.trace.inboxId = input.inboxId;
+    context.trace.status = familyInboxReviewAggregateStatus_(inboxCandidates);
+    return { candidate: familyInboxReviewCandidateDto_(entry.record), reviewStatus: familyInboxReviewAggregateStatus_(inboxCandidates), idempotency: { replayed: false } };
+  } finally {
+    if (lock) { try { lock.releaseLock(); } catch (_) {} }
+  }
 }
 
 function familyInboxReviewRun_(operation, body, action) {
@@ -219,6 +200,8 @@ function familyInboxReviewMutationInput_(body, action) {
     action: action,
     homeId: homeId,
     reviewedByMemberId: reviewedByMemberId,
+    reviewedByServiceId: '',
+    reviewChannel: 'paluru',
     inboxId: inboxId,
     candidateId: candidateId,
     revision: revision,
@@ -229,9 +212,10 @@ function familyInboxReviewMutationInput_(body, action) {
   };
 }
 
-function familyInboxReviewOpenCandidateLedger_(spreadsheetId) {
+function familyInboxReviewOpenCandidateLedger_(spreadsheetId, requirePcHeaders) {
   const state = familyInboxOpenCandidateLedger_(spreadsheetId);
   if (FAMILY_INBOX_REVIEW_EXTRA_HEADERS.some(function(header) { return state.headers.indexOf(header) < 0; })) throw familyInboxError_('CONFIGURATION_ERROR');
+  if (requirePcHeaders && FAMILY_INBOX_PC_REVIEW_CANDIDATE_HEADERS.some(function(header) { return state.headers.indexOf(header) < 0; })) throw familyInboxError_('CONFIGURATION_ERROR');
   return state;
 }
 
@@ -410,6 +394,8 @@ function familyInboxReviewRequestDigest_(input) {
     payload: input.payload,
     reviewReason: input.reviewReason,
     reviewNote: input.reviewNote,
+    reviewedByServiceId: input.reviewedByServiceId || '',
+    reviewChannel: input.reviewChannel || 'paluru',
   };
   return familyInboxSha256_(Utilities.newBlob(familyInboxWorkerStableStringify_(digestible)).getBytes());
 }

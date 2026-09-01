@@ -23,6 +23,24 @@ function doPost(e) {
     if (operation === 'familyInbox.rejectCandidate') {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxRejectCandidate_(body) });
     }
+    if (operation === 'familyInbox.pcReview.list') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxPcReviewList_(body) });
+    }
+    if (operation === 'familyInbox.pcReview.get') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxPcReviewGet_(body) });
+    }
+    if (operation === 'familyInbox.pcReview.update') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxPcReviewUpdate_(body) });
+    }
+    if (operation === 'familyInbox.pcReview.approve') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxPcReviewApprove_(body) });
+    }
+    if (operation === 'familyInbox.pcReview.reject') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxPcReviewReject_(body) });
+    }
+    if (operation === 'familyInbox.pcReview.bulkApproveCanonical') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxPcReviewBulkApprove_(body) });
+    }
     if (operation === 'familyInbox.claimNext') {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxClaimNext_(body) });
     }

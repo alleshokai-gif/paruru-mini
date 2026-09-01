@@ -1,4 +1,4 @@
-# Family Inbox GAS (Phase 1 + Phase 2 worker boundary + Phase 3 Review)
+# Family Inbox GAS (Phase 1-4A)
 
 Family Inbox Phase 1専用の原本保存サービス。PALURU Miniからの内部APIだけを受け付ける。
 
@@ -7,8 +7,15 @@ Family Inbox Phase 1専用の原本保存サービス。PALURU Miniからの内�
 - `FAMILY_INBOX_SERVICE_TOKEN`
 - `FAMILY_INBOX_WORKER_TOKEN`（Mini tokenとは分離したworker専用credential）
 - `FAMILY_INBOX_WORKER_ID`（例: `worker-home-01`。Family名・人物名を含めない）
+- `FAMILY_INBOX_WORKER_PROFILE`（`school-v1`または`school-v1-long`。未設定時は後方互換の`school-v1`）
 - `FAMILY_INBOX_RAW_FOLDER_ID`
 - `FAMILY_INBOX_LEDGER_SPREADSHEET_ID`
+
+PC Batch Reviewを使う場合のみ追加（worker credentialとは分離する）:
+
+- `FAMILY_INBOX_PC_REVIEW_TOKEN`（十分なentropyを持つ専用token。source・Sheet・ログへ保存しない）
+- `FAMILY_INBOX_PC_REVIEW_ID`（例: `home-review-01`。Family名・人物名を含めない）
+- `FAMILY_INBOX_PC_REVIEW_HOME_ID`（このPC Review identityが閲覧できるhomeのserver-owned scope）
 
 Drive Drop手動PoCを使う場合のみ追加:
 
@@ -38,6 +45,15 @@ Worker専用operation:
 - `familyInbox.getClaimedSource`
 - `familyInbox.publishCandidates`
 - `familyInbox.failClaim`
+
+PC Review専用operation（worker/source/Drive/Domain operationは許可しない）:
+
+- `familyInbox.pcReview.list`
+- `familyInbox.pcReview.get`
+- `familyInbox.pcReview.update`
+- `familyInbox.pcReview.approve`
+- `familyInbox.pcReview.reject`
+- `familyInbox.pcReview.bulkApproveCanonical`
 
 ## Drive Drop manual PoC
 
@@ -94,3 +110,64 @@ reviewHistoryJson
 ```
 
 `payloadJson`はAI抽出時の原本として更新しない。人による修正後の有効payloadは`reviewPayloadJson`へ保存し、revisionごとの履歴を`reviewHistoryJson`へ保持する。Approve/Rejectは`reviewStatus`だけを確定し、Calendar、School正本、Signageへは書き込まない。全Candidateが確認済みでもInboxはPhase 3では`needs_review`のままとし、Domain write完了前に`completed`へ進めない。
+
+Phase 4Aでは`Family_Candidates`の末尾へ次の3列も追加する。既存列は並べ替えない。
+
+```text
+reviewedByServiceId
+reviewChannel
+sourceReviewItemId
+```
+
+`reviewedByServiceId`はPC service identity、`reviewChannel`は`pc_backoffice`、`sourceReviewItemId`は人が補完したFragmentから昇格したCandidateの出典を保持する。Family member actorの`reviewedByMemberId`とは混同しない。
+
+未解決Page FragmentはCanonical Candidateと混在させず、同じSpreadsheet内の`Family_Review_Items` Sheetへ保存する。Sheetは自動作成しない。必須header（順序は任意、重複不可）は次の38個。
+
+```text
+schemaVersion
+reviewItemId
+inboxId
+homeId
+reviewType
+candidateType
+revision
+status
+createdAt
+updatedAt
+subjectMemberId
+confidence
+sourceSha256
+profile
+model
+extractorVersion
+promptVersion
+payloadDigest
+payloadJson
+reviewPayloadJson
+evidenceJson
+warningsJson
+questionsJson
+publishRequestId
+claimVersion
+fragmentCount
+inputTokens
+outputTokens
+durationMs
+reviewedAt
+reviewedByServiceId
+reviewChannel
+reviewAction
+reviewReason
+reviewNote
+reviewRequestId
+reviewHistoryJson
+promotedCandidateId
+```
+
+`school-v1`は最大8件でReview Itemなし、`school-v1-long`はCanonical CandidateとReview Itemの合計最大40件。profileは`FAMILY_INBOX_WORKER_PROFILE`からGASが決め、worker requestの値だけで上限を拡張しない。publish payload全体の128 KiB上限は両profileで維持する。
+
+Review Itemの補完・昇格はGAS内でCanonical schemaを再検証し、新しい`candidateId`をserver-side生成する。同じ`reviewRequestId`の再送や同じ`sourceReviewItemId`の復旧でCandidateを増殖させない。元Fragmentは`promoted`となり、昇格Candidateは別途承認する。全件をreviewedにしてもInboxは`needs_review`のままで、Domain writeは行わない。
+
+## Web App deploy recommendation
+
+manifestの推奨値は`executeAs=USER_DEPLOYING`、`access=ANYONE_ANONYMOUS`。Browserやworkerから到達可能にしつつ、用途別tokenを各operationのDrive/Sheet accessより前に検証してfail-closedする。公開URLそのものを認証境界にしない。deploy前にSheet/headerとScript Propertiesを用意し、source反映後は新しいversionをdeployする。既存deploymentの更新・Property設定・Sheet作成は手動運用であり、このrepositoryのlocal testでは実行しない。
