@@ -24,7 +24,21 @@ Drive Drop手動PoCを使う場合のみ追加:
 - `FAMILY_INBOX_DRIVE_DROP_DEFAULT_SUBJECT_MEMBER_ID`（PoC限定のserver-owned固定member）
 - `FAMILY_INBOX_DRIVE_DROP_SUBMITTED_BY_MEMBER_ID`（import actor。Family名・人物名を値へ含めない）
 
-`Family_Inbox` Sheetのheaderは`FamilyInboxService.js`の`FAMILY_INBOX_HEADERS`を正本とする。コードはFolder、Spreadsheet、Sheet、headerを自動作成せず、未設定・不整合時は`CONFIGURATION_ERROR`でfail-closedする。
+`Family_Inbox` Sheetのheaderは`FamilyInboxService.js`の`FAMILY_INBOX_HEADERS`を正本とする。通常operationはFolder、Spreadsheet、Sheet、headerを自動作成せず、未設定・不整合時は`CONFIGURATION_ERROR`でfail-closedする。
+
+初回schema準備ではApps Script editorから`setupFamilyInboxSchema()`を手動実行できる。設定済み`FAMILY_INBOX_LEDGER_SPREADSHEET_ID`の中だけを対象に、`Family_Inbox` / `Family_Candidates` / `Family_Review_Items`を全件preflightしてから、未作成Sheetまたは既知のappend-only schema stageだけを作成・補完する。必要なら不足列と不足headerを右端へ追加する。
+
+`Family_Candidates`の既知stageは28列（Candidate base）、36列（Phase 3 Review追加済み）、39列（Phase 4A PC Review追加済み）。既存データ行があっても、現在のheader集合がこのいずれかと一致し、すべて既知・一意・非空なら、36→39等の不足headerだけを右端へ追加できる。既存headerのrename・delete・reorder、既存row、AI payload、Review履歴は更新しない。未知header、重複、空header、既知stage以外の欠落、意味変更が必要な状態では、どのSheetも変更せず`CONFIGURATION_ERROR`を返す。
+
+返却値は次のいずれかだけ。
+
+```text
+CREATED
+VERIFIED
+CONFIGURATION_ERROR
+```
+
+setup関数はWeb App operationとして公開しない。Drive folder、Script Properties、tokenも作成・変更しない。
 
 Web Appは匿名到達可能でも、正しい用途別tokenがなければDrive/Sheetへ触る前に拒否する。
 
@@ -96,7 +110,7 @@ domainWriteResult
 
 Phase 2は10分lease、1回1件、最大3 attempt。School Candidateは全件`proposed` / `reviewStatus=pending`で保存し、Inboxは`needs_review`にする。Calendar、School正本、Signageには書き込まない。
 
-Phase 3 Reviewでは既存28列を並べ替えず、次の8列を末尾へ追加する。コードは列を自動追加せず、不足時はReview APIだけが`CONFIGURATION_ERROR`でfail-closedする。Phase 2 workerのpublishは従来28列のまま継続可能。
+Phase 3 Reviewでは既存28列を並べ替えず、次の8列を末尾へ追加する。通常Review APIは列を自動追加せず、不足時は`CONFIGURATION_ERROR`でfail-closedする。`setupFamilyInboxSchema()`だけが上記の既知append-only stageを補完できる。Phase 2 workerのpublishは従来28列のまま継続可能。
 
 ```text
 reviewPayloadJson
