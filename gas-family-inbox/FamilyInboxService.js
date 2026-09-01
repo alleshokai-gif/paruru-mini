@@ -54,13 +54,23 @@ const FAMILY_INBOX_SAFE_ERRORS = Object.freeze({
 function familyInboxSubmit_(body) {
   const startedAt = Date.now();
   let trace = familyInboxTraceFromBody_(body, 'familyInbox.submit');
-  let lock;
   try {
     familyInboxAuthenticate_(body);
     const input = familyInboxValidateSubmit_(body);
     trace = Object.assign(trace, { mediaType: input.mediaType, sizeBytes: input.bytes.length, sha256Prefix: input.sha256.slice(0, 12) });
-    const config = familyInboxLoadConfig_();
+    return familyInboxPersistInput_(input, 'paluru', trace, startedAt);
+  } catch (error) {
+    familyInboxLog_(Object.assign(trace, { stage: 'failed', status: 'failed', errorCode: familyInboxSafeErrorCode_(error), durationMs: Date.now() - startedAt }));
+    throw error;
+  }
+}
 
+function familyInboxPersistInput_(input, source, trace, startedAt) {
+  const normalizedSource = String(source || '').trim();
+  if (normalizedSource !== 'paluru' && normalizedSource !== 'drive_drop') throw familyInboxError_('INVALID_INPUT');
+  const config = familyInboxLoadConfig_();
+  let lock;
+  try {
     lock = LockService.getScriptLock();
     lock.waitLock(30000);
     const sheetState = familyInboxOpenLedger_(config.spreadsheetId);
@@ -69,7 +79,8 @@ function familyInboxSubmit_(body) {
       return row.homeId === input.homeId && row.clientRequestId === input.clientRequestId;
     });
     if (existing) {
-      if (existing.sha256 !== input.sha256 || existing.submittedByMemberId !== input.submittedByMemberId || existing.subjectMemberHint !== input.subjectMemberId || existing.userNote !== input.userNote || existing.originalName !== input.originalName || existing.mediaType !== input.mediaType) {
+      const originalNameMatches = normalizedSource === 'drive_drop' || existing.originalName === input.originalName;
+      if (existing.sha256 !== input.sha256 || existing.source !== normalizedSource || existing.submittedByMemberId !== input.submittedByMemberId || existing.subjectMemberHint !== input.subjectMemberId || existing.userNote !== input.userNote || !originalNameMatches || existing.mediaType !== input.mediaType) {
         throw familyInboxError_('DUPLICATE_REQUEST');
       }
       const replay = familyInboxPublicSubmitResult_(existing, true);
@@ -99,7 +110,7 @@ function familyInboxSubmit_(body) {
       clientRequestId: input.clientRequestId,
       receivedAt: now,
       updatedAt: now,
-      source: 'paluru',
+      source: normalizedSource,
       submittedByMemberId: input.submittedByMemberId,
       subjectMemberHint: input.subjectMemberId,
       userNote: input.userNote,
@@ -133,9 +144,6 @@ function familyInboxSubmit_(body) {
     const result = familyInboxPublicSubmitResult_(record, false);
     familyInboxLog_(Object.assign(trace, { inboxId: inboxId, stage: 'completed', status: status, durationMs: Date.now() - startedAt }));
     return result;
-  } catch (error) {
-    familyInboxLog_(Object.assign(trace, { stage: 'failed', status: 'failed', errorCode: familyInboxSafeErrorCode_(error), durationMs: Date.now() - startedAt }));
-    throw error;
   } finally {
     if (lock) {
       try { lock.releaseLock(); } catch (_) {}

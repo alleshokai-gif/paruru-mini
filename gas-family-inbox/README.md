@@ -10,6 +10,13 @@ Family Inbox Phase 1専用の原本保存サービス。PALURU Miniからの内�
 - `FAMILY_INBOX_RAW_FOLDER_ID`
 - `FAMILY_INBOX_LEDGER_SPREADSHEET_ID`
 
+Drive Drop手動PoCを使う場合のみ追加:
+
+- `FAMILY_INBOX_DRIVE_DROP_FOLDER_ID`（専用Drop Folder。raw folderと同一は禁止）
+- `FAMILY_INBOX_DRIVE_DROP_HOME_ID`
+- `FAMILY_INBOX_DRIVE_DROP_DEFAULT_SUBJECT_MEMBER_ID`（PoC限定のserver-owned固定member）
+- `FAMILY_INBOX_DRIVE_DROP_SUBMITTED_BY_MEMBER_ID`（import actor。Family名・人物名を値へ含めない）
+
 `Family_Inbox` Sheetのheaderは`FamilyInboxService.js`の`FAMILY_INBOX_HEADERS`を正本とする。コードはFolder、Spreadsheet、Sheet、headerを自動作成せず、未設定・不整合時は`CONFIGURATION_ERROR`でfail-closedする。
 
 Web Appは匿名到達可能でも、正しい用途別tokenがなければDrive/Sheetへ触る前に拒否する。
@@ -31,6 +38,12 @@ Worker専用operation:
 - `familyInbox.getClaimedSource`
 - `familyInbox.publishCandidates`
 - `familyInbox.failClaim`
+
+## Drive Drop manual PoC
+
+`DriveDropImporter.js`の`runFamilyInboxDriveDropImportOnce()`をGASエディタから手動実行する。Web App operationやtriggerは追加しない。設定済みDrop Folderだけを読み、PDF以外は無視し、新規PDFを最大1件だけraw folderへコピーして`source=drive_drop`でledgerへ登録する。元PDFは移動・改名・削除しない。
+
+Drive file IDから決定的な`clientRequestId`を生成するため、同じfileを再scanしてもraw copyとledger rowは増えない。同じbytesを別Drive fileとして置いた場合はPhase 1既存方針どおりraw copyを保持し、`status=duplicate`と`duplicateOfInboxId`を記録する。Drive file ID自体はledger・ログ・Hermesへ渡さない。ImporterはFamily Inbox既存上限に合わせてPDFを5 MiB以下に制限し、magic bytesも検証する。
 
 `Family_Candidates` Sheetは自動作成しない。必須header（順序は任意、重複不可）は次の28個。
 
