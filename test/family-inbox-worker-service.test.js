@@ -76,7 +76,6 @@ function fixture(options = {}) {
     FAMILY_INBOX_WORKER_PROFILE: 'school-v1',
     FAMILY_INBOX_PC_REVIEW_TOKEN: 'pc-review-service-secret',
     FAMILY_INBOX_PC_REVIEW_ID: 'pc-review-01',
-    FAMILY_INBOX_PC_REVIEW_HOME_ID: 'home-01',
     FAMILY_INBOX_RAW_FOLDER_ID: 'raw-folder-id',
     FAMILY_INBOX_LEDGER_SPREADSHEET_ID: 'ledger-id',
   }, options.properties || {});
@@ -624,10 +623,30 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   const opensBefore = f.state.sheetOpenCount;
   expectCode(() => f.api.familyInboxPcReviewList_({ operation: 'familyInbox.pcReview.list', pcReviewToken: 'wrong', traceId: 'trace_bad_pc' }), 'FORBIDDEN');
   assert.strictEqual(f.state.sheetOpenCount, opensBefore, 'PC token must fail before Sheet work');
-  const foreign = fixture({ properties: { FAMILY_INBOX_PC_REVIEW_HOME_ID: 'home-02' } });
-  const created = submit(foreign, 'image/jpeg', 230);
-  publishCandidates(foreign, created, candidatesFixture(), 1500);
-  assert.strictEqual(foreign.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list')).batches.length, 0);
+
+  const empty = fixture();
+  expectCode(() => empty.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list')), 'CONFIGURATION_ERROR');
+
+  const automatic = fixture({ properties: { FAMILY_INBOX_PC_REVIEW_HOME_ID: 'stale-home-must-be-ignored' } });
+  const created = submit(automatic, 'image/jpeg', 230);
+  publishCandidates(automatic, created, candidatesFixture(), 1500);
+  assert.strictEqual(automatic.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list')).batches.length, 1, 'server-owned ledger home must replace the legacy Property');
+  const foreignCandidate = automatic.candidates.values[1].slice();
+  foreignCandidate[candidateHeaders.indexOf('candidateId')] = 'cand_' + 'e'.repeat(32);
+  foreignCandidate[candidateHeaders.indexOf('homeId')] = 'home-02';
+  automatic.candidates.appendRow(foreignCandidate);
+  assert.strictEqual(automatic.api.familyInboxPcReviewGet_(pcReviewBody('familyInbox.pcReview.get', { inboxId: created.inboxId })).items.length, 2, 'foreign-home Candidate must remain invisible');
+  expectCode(() => automatic.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list', { homeId: 'home-02' })), 'INVALID_INPUT');
+
+  const mixed = fixture();
+  const mixedCreated = submit(mixed, 'image/jpeg', 231);
+  publishCandidates(mixed, mixedCreated, candidatesFixture(), 1501);
+  const foreignRow = mixed.inbox.values[1].slice();
+  foreignRow[inboxHeaders.indexOf('inboxId')] = 'inb_' + 'f'.repeat(32);
+  foreignRow[inboxHeaders.indexOf('clientRequestId')] = uuid(1502);
+  foreignRow[inboxHeaders.indexOf('homeId')] = 'home-02';
+  mixed.inbox.appendRow(foreignRow);
+  expectCode(() => mixed.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list')), 'CONFIGURATION_ERROR');
 }
 
-console.log('PASS Family Inbox PC Review dedicated auth, long batch persistence, fragment promotion/recovery, canonical bulk approval, profile limits, same-home scope, safe logs, and zero Domain writes');
+console.log('PASS Family Inbox PC Review dedicated auth, automatic single-home scope, long batch persistence, fragment promotion/recovery, canonical bulk approval, profile limits, safe logs, and zero Domain writes');

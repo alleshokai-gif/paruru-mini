@@ -15,7 +15,8 @@ PC Batch Reviewを使う場合のみ追加（worker credentialとは分離する
 
 - `FAMILY_INBOX_PC_REVIEW_TOKEN`（十分なentropyを持つ専用token。source・Sheet・ログへ保存しない）
 - `FAMILY_INBOX_PC_REVIEW_ID`（例: `home-review-01`。Family名・人物名を含めない）
-- `FAMILY_INBOX_PC_REVIEW_HOME_ID`（このPC Review identityが閲覧できるhomeのserver-owned scope）
+
+PC Reviewのhome scopeは手動設定しない。PALURU Miniがdevice pairing / membershipをserver-sideで解決し、Family Inbox submit時に記録した`Family_Inbox.homeId`を正本として、PC Review service identityの対象homeを自動解決する。PC requestから`homeId`は受け取らない。台帳が空、不正な`homeId`を含む、または複数homeを含む場合は`CONFIGURATION_ERROR`でfail-closedする。旧`FAMILY_INBOX_PC_REVIEW_HOME_ID`が残っていても参照しない。
 
 Drive Drop手動PoCを使う場合のみ追加:
 

@@ -1,7 +1,6 @@
 const FAMILY_INBOX_PC_REVIEW_PROPERTIES = Object.freeze({
   token: 'FAMILY_INBOX_PC_REVIEW_TOKEN',
   reviewId: 'FAMILY_INBOX_PC_REVIEW_ID',
-  homeId: 'FAMILY_INBOX_PC_REVIEW_HOME_ID',
 });
 const FAMILY_INBOX_PC_REVIEW_SHEET_NAME = 'Family_Review_Items';
 const FAMILY_INBOX_PC_REVIEW_HEADERS = Object.freeze([
@@ -156,8 +155,12 @@ function familyInboxPcReviewRun_(operation, body, action) {
   const startedAt = Date.now();
   const trace = familyInboxTraceFromBody_(body, operation);
   try {
-    const identity = familyInboxPcReviewAuthenticate_(body);
+    const authenticated = familyInboxPcReviewAuthenticate_(body);
     const config = familyInboxLoadConfig_();
+    const identity = {
+      reviewId: authenticated.reviewId,
+      homeId: familyInboxPcReviewResolveHomeId_(config.spreadsheetId),
+    };
     const result = action({ identity: identity, config: config, trace: trace });
     familyInboxLog_(Object.assign(trace, { stage: 'completed', durationMs: Date.now() - startedAt }));
     return result;
@@ -171,11 +174,23 @@ function familyInboxPcReviewAuthenticate_(body) {
   const properties = PropertiesService.getScriptProperties();
   const expected = String(properties.getProperty(FAMILY_INBOX_PC_REVIEW_PROPERTIES.token) || '');
   const reviewId = String(properties.getProperty(FAMILY_INBOX_PC_REVIEW_PROPERTIES.reviewId) || '').trim();
-  const homeId = String(properties.getProperty(FAMILY_INBOX_PC_REVIEW_PROPERTIES.homeId) || '').trim();
-  if (!expected || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,63}$/.test(reviewId) || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/.test(homeId)) throw familyInboxError_('CONFIGURATION_ERROR');
+  if (!expected || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,63}$/.test(reviewId)) throw familyInboxError_('CONFIGURATION_ERROR');
   const actual = String(body && body.pcReviewToken || '');
   if (!actual || !familyInboxConstantTimeEquals_(expected, actual)) throw familyInboxError_('FORBIDDEN');
-  return { reviewId: reviewId, homeId: homeId };
+  return { reviewId: reviewId };
+}
+
+function familyInboxPcReviewResolveHomeId_(spreadsheetId) {
+  const ledger = familyInboxOpenLedger_(spreadsheetId);
+  const entries = familyInboxWorkerInboxEntries_(ledger);
+  const homeIds = [];
+  entries.forEach(function(entry) {
+    let homeId;
+    try { homeId = familyInboxRequiredIdentifier_(entry.record.homeId); } catch (_) { throw familyInboxError_('CONFIGURATION_ERROR'); }
+    if (homeIds.indexOf(homeId) < 0) homeIds.push(homeId);
+  });
+  if (homeIds.length !== 1) throw familyInboxError_('CONFIGURATION_ERROR');
+  return homeIds[0];
 }
 
 function familyInboxPcReviewOpenItemLedger_(spreadsheetId) {
