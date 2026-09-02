@@ -619,6 +619,78 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
 }
 
 {
+  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
+  const created = submit(f, 'application/pdf', 223);
+  const claim = claimOne(f);
+  const candidates = longCandidatesFixture();
+  const reviewItems = longReviewItemsFixture();
+  const request = workerBody('familyInbox.publishCandidates', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, publishRequestId: uuid(1410),
+    payloadDigest: longDigest(f, candidates, reviewItems), candidates, reviewItems,
+    usage: { inputTokens: 10, outputTokens: 5 }, durationMs: 50,
+  });
+  f.state.reviewItemWriteError = true;
+  expectCode(() => f.api.familyInboxPublishCandidates_(request), 'LEDGER_ERROR');
+  assert.strictEqual(f.candidates.values.length, 4, 'complete Candidate boundary must remain for replay');
+  assert.strictEqual(f.reviewItems.values.length, 1, 'failed Review Item boundary must remain empty');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'processing');
+
+  f.state.reviewItemWriteError = false;
+  const recovered = f.api.familyInboxPublishCandidates_(request);
+  assert.strictEqual(recovered.idempotency.replayed, true);
+  assert.strictEqual(f.candidates.values.length, 4, 'replay must not duplicate Candidates');
+  assert.strictEqual(f.reviewItems.values.length, 10, 'replay must append the missing Review Item boundary once');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'needs_review');
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
+  const created = submit(f, 'application/pdf', 224);
+  const claim = claimOne(f);
+  const candidates = longCandidatesFixture();
+  const reviewItems = longReviewItemsFixture();
+  const request = workerBody('familyInbox.publishCandidates', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, publishRequestId: uuid(1420),
+    payloadDigest: longDigest(f, candidates, reviewItems), candidates, reviewItems,
+    usage: { inputTokens: 10, outputTokens: 5 }, durationMs: 50,
+  });
+  f.state.inboxWriteError = true;
+  expectCode(() => f.api.familyInboxPublishCandidates_(request), 'LEDGER_ERROR');
+  assert.strictEqual(f.candidates.values.length, 4, 'Candidates remain after final Inbox update failure');
+  assert.strictEqual(f.reviewItems.values.length, 10, 'Review Items remain after final Inbox update failure');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'processing');
+
+  f.state.inboxWriteError = false;
+  const recovered = f.api.familyInboxPublishCandidates_(request);
+  assert.strictEqual(recovered.idempotency.replayed, true);
+  assert.strictEqual(f.candidates.values.length, 4, 'Inbox recovery must not duplicate Candidates');
+  assert.strictEqual(f.reviewItems.values.length, 10, 'Inbox recovery must not duplicate Review Items');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'needs_review');
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
+  const created = submit(f, 'application/pdf', 225);
+  const claim = claimOne(f);
+  const candidates = longCandidatesFixture();
+  const reviewItems = longReviewItemsFixture();
+  const request = workerBody('familyInbox.publishCandidates', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, publishRequestId: uuid(1430),
+    payloadDigest: longDigest(f, candidates, reviewItems), candidates, reviewItems,
+    usage: { inputTokens: 10, outputTokens: 5 }, durationMs: 50,
+  });
+  f.state.reviewItemWriteError = true;
+  expectCode(() => f.api.familyInboxPublishCandidates_(request), 'LEDGER_ERROR');
+  f.state.reviewItemWriteError = false;
+  f.candidates.values.pop();
+  f.candidates.values.pop();
+  expectCode(() => f.api.familyInboxPublishCandidates_(request), 'DATA_INTEGRITY_ERROR');
+  assert.strictEqual(f.candidates.values.length, 2, 'partial non-zero Candidate group must not be repaired implicitly');
+  assert.strictEqual(f.reviewItems.values.length, 1, 'fail-closed replay must not append Review Items');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'processing');
+}
+
+{
   const f = fixture();
   const opensBefore = f.state.sheetOpenCount;
   expectCode(() => f.api.familyInboxPcReviewList_({ operation: 'familyInbox.pcReview.list', pcReviewToken: 'wrong', traceId: 'trace_bad_pc' }), 'FORBIDDEN');

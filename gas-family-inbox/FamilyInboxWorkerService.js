@@ -173,6 +173,9 @@ function familyInboxPublishCandidates_(body) {
             String(entry.record.profile || '') === input.profile.profile;
         });
         if (!replayValid || existingCandidates.length > input.candidates.length || existingReviewItems.length > input.reviewItems.length) throw familyInboxError_('IDEMPOTENCY_CONFLICT');
+        const candidateBoundaryComplete = existingCandidates.length === 0 || existingCandidates.length === input.candidates.length;
+        const reviewItemBoundaryComplete = existingReviewItems.length === 0 || existingReviewItems.length === input.reviewItems.length;
+        if (!candidateBoundaryComplete || !reviewItemBoundaryComplete) throw familyInboxError_('DATA_INTEGRITY_ERROR');
         const status = String(inboxEntry.record.status || '');
         if (status === 'processing') {
           familyInboxWorkerRequireClaim_(inboxLedger, input, context.workerId, new Date(), false);
