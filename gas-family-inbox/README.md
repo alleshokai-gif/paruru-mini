@@ -22,7 +22,7 @@ Drive Drop手動PoCを使う場合のみ追加:
 
 - `FAMILY_INBOX_DRIVE_DROP_FOLDER_ID`（専用Drop Folder。raw folderと同一は禁止）
 - `FAMILY_INBOX_DRIVE_DROP_HOME_ID`
-- `FAMILY_INBOX_DRIVE_DROP_DEFAULT_SUBJECT_MEMBER_ID`（PoC限定のserver-owned固定member）
+- `FAMILY_INBOX_DRIVE_DROP_DEFAULT_SUBJECT_MEMBER_ID`（任意。設定時はserver-owned固定member、未設定時は`subjectMemberHint`を空で保存）
 - `FAMILY_INBOX_DRIVE_DROP_SUBMITTED_BY_MEMBER_ID`（import actor。Family名・人物名を値へ含めない）
 
 `Family_Inbox` Sheetのheaderは`FamilyInboxService.js`の`FAMILY_INBOX_HEADERS`を正本とする。現在は従来26列の右端へserver-owned `processingProfile`を追加した27列。PALURU intakeは`school-v1`、Drive DropのPDF intakeは`school-v1-long`をserver-sideで決定して保存する。client requestからのprofile指定は受け付けない。通常operationはFolder、Spreadsheet、Sheet、headerを自動作成せず、未設定・不整合時は`CONFIGURATION_ERROR`でfail-closedする。

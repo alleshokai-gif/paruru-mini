@@ -160,6 +160,27 @@ function expectCode(action, code) { assert.throws(action, (error) => error && er
 
 {
   const f = fixture({ properties: { FAMILY_INBOX_DRIVE_DROP_DEFAULT_SUBJECT_MEMBER_ID: '' } });
+  const result = f.api.runFamilyInboxDriveDropImportOnce();
+  assert.strictEqual(result.imported, true);
+  assert.strictEqual(result.status, 'pending');
+  assert.strictEqual(rowAt(f, 1).subjectMemberHint, '');
+  assert.strictEqual(f.state.rawFiles.length, 1);
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_DRIVE_DROP_DEFAULT_SUBJECT_MEMBER_ID: 'invalid member id' } });
+  expectCode(() => f.api.runFamilyInboxDriveDropImportOnce(), 'CONFIGURATION_ERROR');
+  assert.strictEqual(f.state.rawFiles.length, 0);
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_DRIVE_DROP_HOME_ID: '' } });
+  expectCode(() => f.api.runFamilyInboxDriveDropImportOnce(), 'CONFIGURATION_ERROR');
+  assert.strictEqual(f.state.rawFiles.length, 0);
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_DRIVE_DROP_SUBMITTED_BY_MEMBER_ID: '' } });
   expectCode(() => f.api.runFamilyInboxDriveDropImportOnce(), 'CONFIGURATION_ERROR');
   assert.strictEqual(f.state.rawFiles.length, 0);
 }

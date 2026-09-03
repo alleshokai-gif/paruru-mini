@@ -77,7 +77,7 @@ function familyInboxLoadDriveDropConfig_() {
   if (!config.folderId || config.folderId === baseConfig.rawFolderId) throw familyInboxError_('CONFIGURATION_ERROR');
   try {
     config.homeId = familyInboxRequiredIdentifier_(config.homeId);
-    config.subjectMemberId = familyInboxRequiredIdentifier_(config.subjectMemberId);
+    config.subjectMemberId = config.subjectMemberId ? familyInboxRequiredIdentifier_(config.subjectMemberId) : '';
     config.submittedByMemberId = familyInboxRequiredIdentifier_(config.submittedByMemberId);
   } catch (_) {
     throw familyInboxError_('CONFIGURATION_ERROR');
