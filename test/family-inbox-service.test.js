@@ -12,6 +12,7 @@ const headers = [
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
+  'processingProfile',
 ];
 
 class Range {
@@ -102,10 +103,19 @@ for (const [index, mediaType] of ['image/jpeg', 'image/png', 'application/pdf'].
   assert.strictEqual(row.submittedByMemberId, 'father');
   assert.strictEqual(row.originalName, namesFor(mediaType));
   assert.strictEqual(row.status, 'pending');
+  assert.strictEqual(row.processingProfile, 'school-v1');
   assert.strictEqual(f.state.files[0].blob.name, `${result.inboxId}.${mediaType === 'image/jpeg' ? 'jpg' : mediaType === 'image/png' ? 'png' : 'pdf'}`);
 }
 
 function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png': 'notice.png', 'application/pdf': 'notice.pdf' }[mediaType]; }
+
+{
+  const f = fixture();
+  const body = submitBody('application/pdf', uuid(19));
+  body.processingProfile = 'school-v1-long';
+  expectCode(() => f.api.familyInboxSubmit_(body), 'INVALID_INPUT');
+  assert.strictEqual(f.state.files.length, 0, 'client must not select processing profile');
+}
 
 {
   const f = fixture();

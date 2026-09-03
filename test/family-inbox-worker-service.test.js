@@ -12,6 +12,7 @@ const inboxHeaders = [
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
+  'processingProfile',
 ];
 const candidateHeaders = [
   'schemaVersion', 'candidateId', 'inboxId', 'homeId', 'candidateType', 'revision',
@@ -135,6 +136,15 @@ function submit(f, mediaType = 'image/jpeg', requestNumber = 10) {
     homeId: 'home-01', submittedByMemberId: 'parent-01', source: 'paluru', traceId: 'trace_submit01',
   });
 }
+function submitLong(f, requestNumber = 100) {
+  const mediaType = 'application/pdf';
+  const bytes = bytesFor(mediaType);
+  return f.api.familyInboxPersistInput_({
+    clientRequestId: uuid(requestNumber), homeId: 'home-01', submittedByMemberId: 'parent-01',
+    subjectMemberId: 'child-01', userNote: 'private note', originalName: 'school.pdf',
+    mediaType, bytes, sha256: crypto.createHash('sha256').update(Buffer.from(bytes)).digest('hex'),
+  }, 'drive_drop', { traceId: 'trace_import01', operation: 'familyInbox.driveDropImport' }, Date.now());
+}
 function workerBody(operation, fields = {}) { return { operation, workerToken: 'worker-service-secret', traceId: 'trace_worker01', ...fields }; }
 function expectCode(action, code) { assert.throws(action, (error) => error?.code === code, `expected ${code}`); }
 function candidatesFixture() {
@@ -177,6 +187,7 @@ function longDigest(f, candidateList, reviewItems) {
   return crypto.createHash('sha256').update(f.api.familyInboxWorkerStableStringify_({ candidates: candidateList, reviewItems }), 'utf8').digest('hex');
 }
 function claimOne(f) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext')); }
+function claimTarget(f, inboxId) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext', { inboxId })); }
 function publishCandidates(f, created, candidates, requestNumber = 950) {
   const claim = claimOne(f);
   return f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
@@ -234,11 +245,59 @@ function longReviewItemsFixture() {
 
 {
   const f = fixture();
+  const first = submit(f, 'image/jpeg', 101);
+  const target = submitLong(f, 102);
+  const claim = claimTarget(f, target.inboxId);
+  assert.strictEqual(claim.claimed, true);
+  assert.strictEqual(claim.inboxId, target.inboxId, 'targeted claim must not claim the earlier pending row');
+  assert.strictEqual(claim.processingProfile, 'school-v1-long');
+  assert.strictEqual(inboxRow(f.inbox, first.inboxId).status, 'pending');
+  assert.strictEqual(inboxRow(f.inbox, target.inboxId).status, 'processing');
+}
+
+{
+  const f = fixture();
+  const created = submitLong(f, 103);
+  expectCode(() => claimTarget(f, 'inb_ffffffffffffffffffffffffffffffff'), 'CLAIM_NOT_FOUND');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'pending');
+  claimTarget(f, created.inboxId);
+  expectCode(() => claimTarget(f, created.inboxId), 'INVALID_STATE');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'processing');
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
+  const created = submit(f, 'application/pdf', 104);
+  expectCode(() => claimTarget(f, created.inboxId), 'INVALID_STATE');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'pending');
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
+  const created = submit(f, 'application/pdf', 105);
+  const rowIndex = f.inbox.values.findIndex((row) => row[inboxHeaders.indexOf('inboxId')] === created.inboxId);
+  f.inbox.values[rowIndex][inboxHeaders.indexOf('processingProfile')] = '';
+  const claim = claimOne(f);
+  assert.strictEqual(claim.processingProfile, 'school-v1-long', 'legacy rows without a stored profile use the configured fallback');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'application/pdf', 106);
+  const rowIndex = f.inbox.values.findIndex((row) => row[inboxHeaders.indexOf('inboxId')] === created.inboxId);
+  f.inbox.values[rowIndex][inboxHeaders.indexOf('processingProfile')] = 'unknown-profile';
+  expectCode(() => claimOne(f), 'CONFIGURATION_ERROR');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'pending');
+}
+
+{
+  const f = fixture();
   const created = submit(f);
   const claim = claimOne(f);
   assert.strictEqual(claim.claimed, true);
   assert.strictEqual(claim.inboxId, created.inboxId);
   assert.strictEqual(claim.claimVersion, 1);
+  assert.strictEqual(claim.processingProfile, 'school-v1');
   assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'processing');
   assert.strictEqual(inboxRow(f.inbox, created.inboxId).attemptCount, 1);
   assert.strictEqual(inboxRow(f.inbox, created.inboxId).claimedBy, 'worker-home-01');
@@ -472,8 +531,8 @@ console.log('PASS Family Inbox worker GAS claim, lease, bounded source, strict c
 console.log('PASS Family Inbox Review list/detail, five-candidate integrity, correction provenance, optimistic concurrency, approve/reject idempotency, same-home security, and no Domain completion');
 
 {
-  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
-  const created = submit(f, 'application/pdf', 200);
+  const f = fixture();
+  const created = submitLong(f, 200);
   const claim = claimOne(f);
   assert.strictEqual(claim.processingProfile, 'school-v1-long');
   const candidates = longCandidatesFixture();
@@ -549,8 +608,8 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
 }
 
 {
-  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
-  const created = submit(f, 'application/pdf', 210);
+  const f = fixture();
+  const created = submitLong(f, 210);
   const claim = claimOne(f);
   const candidates = longCandidatesFixture();
   const reviewItems = longReviewItemsFixture();
@@ -588,8 +647,8 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   })), 'INVALID_CANDIDATE');
   expectCode(() => short.api.familyInboxPublishCandidates_({ ...workerBody('familyInbox.publishCandidates'), profile: 'school-v1-long' }), 'INVALID_INPUT');
 
-  const long = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
-  const longCreated = submit(long, 'application/pdf', 221);
+  const long = fixture();
+  const longCreated = submitLong(long, 221);
   const longClaim = claimOne(long);
   const forty = [candidatesFixture()[0]].concat(Array.from({ length: 39 }, (_, index) => ({
     ...candidatesFixture()[1], payload: { ...candidatesFixture()[1].payload, title: `long-event-${index}` },
@@ -601,8 +660,8 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   }));
   assert.strictEqual(accepted.candidateIds.length, 40);
 
-  const oversized = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
-  const oversizedCreated = submit(oversized, 'application/pdf', 222);
+  const oversized = fixture();
+  const oversizedCreated = submitLong(oversized, 222);
   const oversizedClaim = claimOne(oversized);
   const hugeReviewItems = Array.from({ length: 39 }, (_, index) => ({
     reviewType: 'page_fragment', status: 'needs_review', candidateType: 'schedule.event', confidence: 0.8, fragmentCount: 1,
@@ -619,8 +678,8 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
 }
 
 {
-  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
-  const created = submit(f, 'application/pdf', 223);
+  const f = fixture();
+  const created = submitLong(f, 223);
   const claim = claimOne(f);
   const candidates = longCandidatesFixture();
   const reviewItems = longReviewItemsFixture();
@@ -644,8 +703,8 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
 }
 
 {
-  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
-  const created = submit(f, 'application/pdf', 224);
+  const f = fixture();
+  const created = submitLong(f, 224);
   const claim = claimOne(f);
   const candidates = longCandidatesFixture();
   const reviewItems = longReviewItemsFixture();
@@ -669,8 +728,8 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
 }
 
 {
-  const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
-  const created = submit(f, 'application/pdf', 225);
+  const f = fixture();
+  const created = submitLong(f, 225);
   const claim = claimOne(f);
   const candidates = longCandidatesFixture();
   const reviewItems = longReviewItemsFixture();

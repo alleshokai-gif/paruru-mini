@@ -12,6 +12,7 @@ const headers = [
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
+  'processingProfile',
 ];
 
 class Range {
@@ -104,6 +105,7 @@ function expectCode(action, code) { assert.throws(action, (error) => error && er
   assert.strictEqual(row.submittedByMemberId, 'guardian-a');
   assert.strictEqual(row.originalName, 'private-grade-newsletter.pdf');
   assert.strictEqual(row.status, 'pending');
+  assert.strictEqual(row.processingProfile, 'school-v1-long');
   assert.match(row.clientRequestId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.strictEqual(f.state.sourceFiles[0].trashed, false);
   assert.strictEqual(f.state.rawFiles[0].blob.name, `${result.inboxId}.pdf`);

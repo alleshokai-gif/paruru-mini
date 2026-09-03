@@ -7,7 +7,7 @@ Family Inbox Phase 1専用の原本保存サービス。PALURU Miniからの内�
 - `FAMILY_INBOX_SERVICE_TOKEN`
 - `FAMILY_INBOX_WORKER_TOKEN`（Mini tokenとは分離したworker専用credential）
 - `FAMILY_INBOX_WORKER_ID`（例: `worker-home-01`。Family名・人物名を含めない）
-- `FAMILY_INBOX_WORKER_PROFILE`（`school-v1`または`school-v1-long`。未設定時は後方互換の`school-v1`）
+- `FAMILY_INBOX_WORKER_PROFILE`（旧行に`processingProfile`がない場合だけ使う後方互換fallback。`school-v1`または`school-v1-long`、未設定時は`school-v1`）
 - `FAMILY_INBOX_RAW_FOLDER_ID`
 - `FAMILY_INBOX_LEDGER_SPREADSHEET_ID`
 
@@ -25,11 +25,11 @@ Drive Drop手動PoCを使う場合のみ追加:
 - `FAMILY_INBOX_DRIVE_DROP_DEFAULT_SUBJECT_MEMBER_ID`（PoC限定のserver-owned固定member）
 - `FAMILY_INBOX_DRIVE_DROP_SUBMITTED_BY_MEMBER_ID`（import actor。Family名・人物名を値へ含めない）
 
-`Family_Inbox` Sheetのheaderは`FamilyInboxService.js`の`FAMILY_INBOX_HEADERS`を正本とする。通常operationはFolder、Spreadsheet、Sheet、headerを自動作成せず、未設定・不整合時は`CONFIGURATION_ERROR`でfail-closedする。
+`Family_Inbox` Sheetのheaderは`FamilyInboxService.js`の`FAMILY_INBOX_HEADERS`を正本とする。現在は従来26列の右端へserver-owned `processingProfile`を追加した27列。PALURU intakeは`school-v1`、Drive DropのPDF intakeは`school-v1-long`をserver-sideで決定して保存する。client requestからのprofile指定は受け付けない。通常operationはFolder、Spreadsheet、Sheet、headerを自動作成せず、未設定・不整合時は`CONFIGURATION_ERROR`でfail-closedする。
 
 初回schema準備ではApps Script editorから`setupFamilyInboxSchema()`を手動実行できる。設定済み`FAMILY_INBOX_LEDGER_SPREADSHEET_ID`の中だけを対象に、`Family_Inbox` / `Family_Candidates` / `Family_Review_Items`を全件preflightしてから、未作成Sheetまたは既知のappend-only schema stageだけを作成・補完する。必要なら不足列と不足headerを右端へ追加する。
 
-`Family_Candidates`の既知stageは28列（Candidate base）、36列（Phase 3 Review追加済み）、39列（Phase 4A PC Review追加済み）。既存データ行があっても、現在のheader集合がこのいずれかと一致し、すべて既知・一意・非空なら、36→39等の不足headerだけを右端へ追加できる。既存headerのrename・delete・reorder、既存row、AI payload、Review履歴は更新しない。未知header、重複、空header、既知stage以外の欠落、意味変更が必要な状態では、どのSheetも変更せず`CONFIGURATION_ERROR`を返す。
+`Family_Inbox`の既知stageは26列と27列、`Family_Candidates`の既知stageは28列（Candidate base）、36列（Phase 3 Review追加済み）、39列（Phase 4A PC Review追加済み）。既存データ行があっても、現在のheader集合が既知stageと一致し、すべて既知・一意・非空なら、26→27や36→39等の不足headerだけを右端へ追加できる。既存headerのrename・delete・reorder、既存row、AI payload、Review履歴は更新しない。旧Inbox行の`processingProfile`は空のまま保持され、claim時だけ`FAMILY_INBOX_WORKER_PROFILE`へfallbackする。未知header、重複、空header、既知stage以外の欠落、意味変更が必要な状態では、どのSheetも変更せず`CONFIGURATION_ERROR`を返す。
 
 返却値は次のいずれかだけ。
 
@@ -179,7 +179,7 @@ reviewHistoryJson
 promotedCandidateId
 ```
 
-`school-v1`は最大8件でReview Itemなし、`school-v1-long`はCanonical CandidateとReview Itemの合計最大40件。profileは`FAMILY_INBOX_WORKER_PROFILE`からGASが決め、worker requestの値だけで上限を拡張しない。publish payload全体の128 KiB上限は両profileで維持する。
+`school-v1`は最大8件でReview Itemなし、`school-v1-long`はCanonical CandidateとReview Itemの合計最大40件。profileは`Family_Inbox.processingProfile`をGASが正本として使い、旧行で空の場合だけ`FAMILY_INBOX_WORKER_PROFILE`へfallbackする。worker/client requestの値だけで上限を拡張しない。publish payload全体の128 KiB上限は両profileで維持する。
 
 Review Itemの補完・昇格はGAS内でCanonical schemaを再検証し、新しい`candidateId`をserver-side生成する。同じ`reviewRequestId`の再送や同じ`sourceReviewItemId`の復旧でCandidateを増殖させない。元Fragmentは`promoted`となり、昇格Candidateは別途承認する。全件をreviewedにしてもInboxは`needs_review`のままで、Domain writeは行わない。
 

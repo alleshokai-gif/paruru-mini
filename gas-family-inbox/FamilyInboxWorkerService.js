@@ -45,7 +45,10 @@ const FAMILY_INBOX_FAIL_CODES = Object.freeze({
 
 function familyInboxClaimNext_(body) {
   return familyInboxWorkerRun_('familyInbox.claimNext', body, function(context) {
-    familyInboxWorkerValidateKeys_(body, { operation: true, workerToken: true, traceId: true });
+    familyInboxWorkerValidateKeys_(body, { operation: true, workerToken: true, traceId: true, inboxId: true });
+    const targeted = Object.prototype.hasOwnProperty.call(body, 'inboxId');
+    const targetInboxId = targeted ? String(body.inboxId || '').trim() : '';
+    if (targeted && !/^inb_[0-9a-f]{32}$/i.test(targetInboxId)) throw familyInboxError_('INVALID_INPUT');
     let lock;
     try {
       lock = LockService.getScriptLock();
@@ -53,8 +56,14 @@ function familyInboxClaimNext_(body) {
       const ledger = familyInboxOpenLedger_(context.config.spreadsheetId);
       const entries = familyInboxWorkerInboxEntries_(ledger);
       const now = new Date();
-      const entry = entries.find(function(candidate) { return familyInboxWorkerClaimEligible_(candidate.record, now); });
+      const entry = targeted
+        ? entries.find(function(candidate) { return String(candidate.record.inboxId || '') === targetInboxId; })
+        : entries.find(function(candidate) { return familyInboxWorkerClaimEligible_(candidate.record, now); });
+      if (targeted && !entry) throw familyInboxError_('CLAIM_NOT_FOUND');
+      if (targeted && String(entry.record.status || '') !== 'pending') throw familyInboxError_('INVALID_STATE');
       if (!entry) return { claimed: false };
+      const processingProfile = familyInboxWorkerProcessingProfile_(entry.record, context.profile);
+      if (targeted && processingProfile.profile !== 'school-v1-long') throw familyInboxError_('INVALID_STATE');
 
       const claimVersion = familyInboxWorkerInteger_(entry.record.claimVersion, 0) + 1;
       const attemptCount = familyInboxWorkerInteger_(entry.record.attemptCount, 0) + 1;
@@ -85,7 +94,7 @@ function familyInboxClaimNext_(body) {
         subjectMemberId: String(entry.record.subjectMemberHint || ''),
         userNote: String(entry.record.userNote || ''),
         leaseExpiresAt: leaseExpiresAt,
-        processingProfile: context.profile.profile,
+        processingProfile: processingProfile.profile,
       };
     } finally {
       if (lock) {
@@ -152,14 +161,17 @@ function familyInboxGetClaimedSource_(body) {
 
 function familyInboxPublishCandidates_(body) {
   return familyInboxWorkerRun_('familyInbox.publishCandidates', body, function(context) {
-    const input = familyInboxWorkerValidatePublish_(body, context.profile);
+    familyInboxWorkerValidatePublishKeys_(body);
+    const requestedInboxId = String(body.inboxId || '').trim();
+    if (!/^inb_[0-9a-f]{32}$/i.test(requestedInboxId)) throw familyInboxError_('INVALID_INPUT');
     let lock;
     try {
       lock = LockService.getScriptLock();
       lock.waitLock(30000);
       const inboxLedger = familyInboxOpenLedger_(context.config.spreadsheetId);
-      const inboxEntry = familyInboxWorkerFindInboxEntry_(inboxLedger, input.inboxId);
+      const inboxEntry = familyInboxWorkerFindInboxEntry_(inboxLedger, requestedInboxId);
       if (!inboxEntry) throw familyInboxError_('CLAIM_NOT_FOUND');
+      const input = familyInboxWorkerValidatePublish_(body, familyInboxWorkerProcessingProfile_(inboxEntry.record, context.profile));
       const candidateLedger = familyInboxOpenCandidateLedger_(context.config.spreadsheetId);
       const reviewItemLedger = input.profile.allowReviewItems ? familyInboxPcReviewOpenItemLedger_(context.config.spreadsheetId) : null;
       const existingCandidates = familyInboxWorkerFindCandidateRows_(candidateLedger, input.publishRequestId);
@@ -346,6 +358,14 @@ function familyInboxWorkerClaimEligible_(record, now) {
   return false;
 }
 
+function familyInboxWorkerProcessingProfile_(record, fallbackProfile) {
+  const stored = String(record && record.processingProfile || '').trim();
+  if (!stored) return fallbackProfile;
+  const profile = FAMILY_INBOX_WORKER_PROFILES[stored];
+  if (!profile) throw familyInboxError_('CONFIGURATION_ERROR');
+  return profile;
+}
+
 function familyInboxWorkerRequireClaim_(sheetState, claim, workerId, now, allowGrace) {
   const entry = familyInboxWorkerFindInboxEntry_(sheetState, claim.inboxId);
   if (!entry) throw familyInboxError_('CLAIM_NOT_FOUND');
@@ -384,11 +404,7 @@ function familyInboxWorkerCompleteInbox_(sheetState, entry, status) {
 }
 
 function familyInboxWorkerValidatePublish_(body, profile) {
-  familyInboxWorkerValidateKeys_(body, {
-    operation: true, workerToken: true, inboxId: true, claimVersion: true,
-    publishRequestId: true, payloadDigest: true, candidates: true, usage: true,
-    durationMs: true, reviewItems: true, traceId: true,
-  });
+  familyInboxWorkerValidatePublishKeys_(body);
   if (!profile || !FAMILY_INBOX_WORKER_PROFILES[profile.profile]) throw familyInboxError_('CONFIGURATION_ERROR');
   const claim = familyInboxWorkerClaimInput_(body);
   const publishRequestId = String(body.publishRequestId || '').trim();
@@ -419,6 +435,14 @@ function familyInboxWorkerValidatePublish_(body, profile) {
     profile: profile,
     usage: { inputTokens: inputTokens, outputTokens: outputTokens },
     durationMs: durationMs,
+  });
+}
+
+function familyInboxWorkerValidatePublishKeys_(body) {
+  familyInboxWorkerValidateKeys_(body, {
+    operation: true, workerToken: true, inboxId: true, claimVersion: true,
+    publishRequestId: true, payloadDigest: true, candidates: true, usage: true,
+    durationMs: true, reviewItems: true, traceId: true,
   });
 }
 

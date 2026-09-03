@@ -9,13 +9,14 @@ const FAMILY_INBOX_PROPERTIES = Object.freeze({
   spreadsheetId: 'FAMILY_INBOX_LEDGER_SPREADSHEET_ID',
   serviceToken: 'FAMILY_INBOX_SERVICE_TOKEN',
 });
-const FAMILY_INBOX_HEADERS = Object.freeze([
+const FAMILY_INBOX_LEGACY_HEADERS = Object.freeze([
   'schemaVersion', 'inboxId', 'homeId', 'clientRequestId', 'receivedAt', 'updatedAt',
   'source', 'submittedByMemberId', 'subjectMemberHint', 'userNote', 'originalName',
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
 ]);
+const FAMILY_INBOX_HEADERS = Object.freeze(FAMILY_INBOX_LEGACY_HEADERS.concat(['processingProfile']));
 const FAMILY_INBOX_MEDIA = Object.freeze({
   'image/jpeg': Object.freeze({ extension: 'jpg', signature: Object.freeze([0xff, 0xd8, 0xff]) }),
   'image/png': Object.freeze({ extension: 'png', signature: Object.freeze([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) }),
@@ -68,6 +69,7 @@ function familyInboxSubmit_(body) {
 function familyInboxPersistInput_(input, source, trace, startedAt) {
   const normalizedSource = String(source || '').trim();
   if (normalizedSource !== 'paluru' && normalizedSource !== 'drive_drop') throw familyInboxError_('INVALID_INPUT');
+  const processingProfile = familyInboxResolveProcessingProfile_(normalizedSource, input);
   const config = familyInboxLoadConfig_();
   let lock;
   try {
@@ -130,6 +132,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
       nextAttemptAt: '',
       errorCode: '',
       duplicateOfInboxId: duplicate ? duplicate.inboxId : '',
+      processingProfile: processingProfile,
     };
 
     try {
@@ -149,6 +152,12 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
       try { lock.releaseLock(); } catch (_) {}
     }
   }
+}
+
+function familyInboxResolveProcessingProfile_(source, input) {
+  if (source === 'drive_drop' && input && input.mediaType === 'application/pdf') return 'school-v1-long';
+  if (source === 'paluru') return 'school-v1';
+  throw familyInboxError_('CONFIGURATION_ERROR');
 }
 
 function familyInboxGetStatus_(body) {

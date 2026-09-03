@@ -189,13 +189,19 @@ function valuesSnapshot(spreadsheet) {
 
 {
   const { context, spreadsheet, headers } = loadHarness();
-  const incompleteInbox = headers.inbox.slice(0, -1);
-  spreadsheet.addSheet('Family_Inbox', [incompleteInbox, incompleteInbox.map((header) => `existing-${header}`)], incompleteInbox.length);
-  const before = valuesSnapshot(spreadsheet);
-  assert.strictEqual(context.setupFamilyInboxSchema(), 'CONFIGURATION_ERROR', 'FI-SET18');
-  assert.deepStrictEqual(valuesSnapshot(spreadsheet), before, 'FI-SET19');
-  assert.deepStrictEqual(Object.keys(spreadsheet.sheets), ['Family_Inbox'], 'FI-SET20 preflight prevents partial creation');
-  assert(!spreadsheet.sheets.Family_Inbox.calls.some((call) => ['setValues', 'insertColumnsAfter'].includes(call.method)), 'FI-SET21');
+  const legacyInboxHeaders = headers.inbox.slice(0, -1);
+  const legacyInboxRow = legacyInboxHeaders.map((header) => `existing-${header}`);
+  const inboxSheet = spreadsheet.addSheet('Family_Inbox', [legacyInboxHeaders, legacyInboxRow], legacyInboxHeaders.length);
+  spreadsheet.addSheet('Family_Candidates', [headers.candidates], headers.candidates.length);
+  spreadsheet.addSheet('Family_Review_Items', [headers.reviewItems], headers.reviewItems.length);
+  const existingRowBefore = clone(inboxSheet.values[1]);
+  assert.strictEqual(context.setupFamilyInboxSchema(), 'CREATED', 'FI-SET18 inbox 26 to 27');
+  assert.deepStrictEqual(inboxSheet.values[0], headers.inbox, 'FI-SET19 processingProfile appended');
+  assert.deepStrictEqual(inboxSheet.values[1], existingRowBefore, 'FI-SET20 existing inbox row unchanged');
+  const headerWrite = inboxSheet.calls.find((call) => call.method === 'setValues');
+  assert.deepStrictEqual(headerWrite, {
+    method: 'setValues', row: 1, column: 27, values: [['processingProfile']],
+  }, 'FI-SET21 only right edge inbox header write');
 }
 
 {
