@@ -266,6 +266,40 @@ function longReviewItemsFixture() {
 }
 
 {
+  const f = fixture();
+  const created = submitLong(f, 106);
+  const firstClaim = claimTarget(f, created.inboxId);
+  const rowIndex = f.inbox.values.findIndex((row) => row[inboxHeaders.indexOf('inboxId')] === created.inboxId);
+  f.inbox.values[rowIndex][inboxHeaders.indexOf('leaseExpiresAt')] = '2000-01-01T00:00:00+09:00';
+
+  const reclaimed = claimTarget(f, created.inboxId);
+  const record = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(reclaimed.inboxId, created.inboxId);
+  assert.strictEqual(reclaimed.claimVersion, firstClaim.claimVersion + 1);
+  assert.strictEqual(record.status, 'processing');
+  assert.strictEqual(record.attemptCount, 2);
+  assert.strictEqual(record.claimVersion, 2);
+  assert(Date.parse(record.leaseExpiresAt) > Date.now(), 'reclaim must set a fresh lease');
+}
+
+{
+  ['needs_review', 'completed', 'duplicate', 'rejected', 'failed'].forEach((status, index) => {
+    const f = fixture();
+    const created = submitLong(f, 107 + index);
+    const rowIndex = f.inbox.values.findIndex((row) => row[inboxHeaders.indexOf('inboxId')] === created.inboxId);
+    f.inbox.values[rowIndex][inboxHeaders.indexOf('status')] = status;
+    if (status === 'failed') {
+      f.inbox.values[rowIndex][inboxHeaders.indexOf('retryable')] = true;
+      f.inbox.values[rowIndex][inboxHeaders.indexOf('nextAttemptAt')] = '2000-01-01T00:00:00+09:00';
+      f.inbox.values[rowIndex][inboxHeaders.indexOf('attemptCount')] = 1;
+    }
+
+    expectCode(() => claimTarget(f, created.inboxId), 'INVALID_STATE');
+    assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, status);
+  });
+}
+
+{
   const f = fixture({ properties: { FAMILY_INBOX_WORKER_PROFILE: 'school-v1-long' } });
   const created = submit(f, 'application/pdf', 104);
   expectCode(() => claimTarget(f, created.inboxId), 'INVALID_STATE');

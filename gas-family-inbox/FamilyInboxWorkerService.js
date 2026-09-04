@@ -61,7 +61,13 @@ function familyInboxClaimNext_(body) {
         ? entries.find(function(candidate) { return String(candidate.record.inboxId || '') === targetInboxId; })
         : entries.find(function(candidate) { return familyInboxWorkerClaimEligible_(candidate.record, now); });
       if (targeted && !entry) throw familyInboxError_('CLAIM_NOT_FOUND');
-      if (targeted && String(entry.record.status || '') !== 'pending') throw familyInboxError_('INVALID_STATE');
+      if (targeted) {
+        const targetStatus = String(entry.record.status || '');
+        const targetStatusAllowed = targetStatus === 'pending' || targetStatus === 'processing';
+        if (!targetStatusAllowed || !familyInboxWorkerClaimEligible_(entry.record, now)) {
+          throw familyInboxError_('INVALID_STATE');
+        }
+      }
       if (!entry) return { claimed: false };
       const processingProfile = familyInboxWorkerProcessingProfile_(entry.record, context.profile);
       if (targeted && processingProfile.profile !== 'school-v1-long') throw familyInboxError_('INVALID_STATE');
