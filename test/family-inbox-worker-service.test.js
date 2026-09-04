@@ -388,6 +388,21 @@ function longReviewItemsFixture() {
 
 {
   const f = fixture();
+  const created = submitLong(f, 51);
+  const claim = claimOne(f);
+  const failed = f.api.familyInboxFailClaim_(workerBody('familyInbox.failClaim', {
+    inboxId: claim.inboxId,
+    claimVersion: claim.claimVersion,
+    errorCode: 'CONFIGURATION_ERROR',
+    retryable: false,
+  }));
+  assert.strictEqual(failed.status, 'needs_review');
+  assert.strictEqual(failed.retryable, false);
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).errorCode, 'CONFIGURATION_ERROR');
+}
+
+{
+  const f = fixture();
   submit(f, 'image/jpeg', 60);
   const lockCountBefore = f.state.lockCount;
   const sheetOpenCountBefore = f.state.sheetOpenCount;
