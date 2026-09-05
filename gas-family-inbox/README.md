@@ -179,7 +179,7 @@ reviewHistoryJson
 promotedCandidateId
 ```
 
-`school-v1`は最大8件でReview Itemなし、`school-v1-long`はCanonical CandidateとReview Itemの合計最大40件。profileは`Family_Inbox.processingProfile`をGASが正本として使い、旧行で空の場合だけ`FAMILY_INBOX_WORKER_PROFILE`へfallbackする。worker/client requestの値だけで上限を拡張しない。publish payload全体の128 KiB上限は両profileで維持する。
+`school-v1`は最大8件でReview Itemなし、`school-v1-long`はCanonical CandidateとReview Itemの合計最大64件。profileは`Family_Inbox.processingProfile`をGASが正本として使い、旧行で空の場合だけ`FAMILY_INBOX_WORKER_PROFILE`へfallbackする。worker/client requestの値だけで上限を拡張しない。publish payload全体の128 KiB上限は両profileで維持する。
 
 Review Itemの補完・昇格はGAS内でCanonical schemaを再検証し、新しい`candidateId`をserver-side生成する。同じ`reviewRequestId`の再送や同じ`sourceReviewItemId`の復旧でCandidateを増殖させない。元Fragmentは`promoted`となり、昇格Candidateは別途承認する。全件をreviewedにしてもInboxは`needs_review`のままで、Domain writeは行わない。
 

@@ -10,6 +10,7 @@ const FAMILY_INBOX_WORKER_RETRY_DELAY_MILLIS = 5 * 60 * 1000;
 const FAMILY_INBOX_WORKER_MAX_ATTEMPTS = 3;
 const FAMILY_INBOX_MAX_PUBLISH_BYTES = 128 * 1024;
 const FAMILY_INBOX_MAX_EVIDENCE_QUOTE_CHARACTERS = 240;
+const FAMILY_INBOX_LONG_MAX_ITEMS = 64;
 const FAMILY_INBOX_WORKER_PROFILES = Object.freeze({
   'school-v1': Object.freeze({
     profile: 'school-v1', model: 'gpt-5.6-luna', extractorVersion: 'family-inbox-worker/1.0.0',
@@ -17,7 +18,7 @@ const FAMILY_INBOX_WORKER_PROFILES = Object.freeze({
   }),
   'school-v1-long': Object.freeze({
     profile: 'school-v1-long', model: 'gpt-5.6-luna', extractorVersion: 'family-inbox-worker/1.1.0',
-    promptVersion: 'school-v1-long/1.0.2', maxItems: 40, allowReviewItems: true,
+    promptVersion: 'school-v1-long/1.0.2', maxItems: FAMILY_INBOX_LONG_MAX_ITEMS, allowReviewItems: true,
   }),
 });
 const FAMILY_INBOX_CANDIDATE_HEADERS = Object.freeze([

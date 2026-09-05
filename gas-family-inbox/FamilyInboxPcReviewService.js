@@ -272,7 +272,7 @@ function familyInboxPcReviewValidatePublishedItem_(value) {
   const candidateType = String(value.candidateType || '');
   const confidence = Number(value.confidence);
   if (!isFinite(confidence) || confidence < 0 || confidence > 1) throw familyInboxError_('INVALID_CANDIDATE');
-  const fragmentCount = familyInboxWorkerBoundedInteger_(value.fragmentCount, 1, 40);
+  const fragmentCount = familyInboxWorkerBoundedInteger_(value.fragmentCount, 1, FAMILY_INBOX_LONG_MAX_ITEMS);
   return {
     reviewType: 'page_fragment', status: 'needs_review', candidateType: candidateType, confidence: confidence, fragmentCount: fragmentCount,
     evidence: familyInboxWorkerValidateEvidence_(value.evidence),

@@ -699,15 +699,39 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   const long = fixture();
   const longCreated = submitLong(long, 221);
   const longClaim = claimOne(long);
-  const forty = [candidatesFixture()[0]].concat(Array.from({ length: 39 }, (_, index) => ({
+  const sixtyFour = [candidatesFixture()[0]].concat(Array.from({ length: 63 }, (_, index) => ({
     ...candidatesFixture()[1], payload: { ...candidatesFixture()[1].payload, title: `long-event-${index}` },
   })));
   const accepted = long.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
     inboxId: longCreated.inboxId, claimVersion: longClaim.claimVersion, publishRequestId: uuid(1401),
-    payloadDigest: longDigest(long, forty, []), candidates: forty, reviewItems: [],
+    payloadDigest: longDigest(long, sixtyFour, []), candidates: sixtyFour, reviewItems: [],
     usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
   }));
-  assert.strictEqual(accepted.candidateIds.length, 40);
+  assert.strictEqual(accepted.candidateIds.length, 64);
+
+  const overLimit = fixture();
+  const overLimitCreated = submitLong(overLimit, 225);
+  const overLimitClaim = claimOne(overLimit);
+  const sixtyFive = sixtyFour.concat({
+    ...candidatesFixture()[1], payload: { ...candidatesFixture()[1].payload, title: 'long-event-64' },
+  });
+  expectCode(() => overLimit.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
+    inboxId: overLimitCreated.inboxId, claimVersion: overLimitClaim.claimVersion, publishRequestId: uuid(1403),
+    payloadDigest: longDigest(overLimit, sixtyFive, []), candidates: sixtyFive, reviewItems: [],
+    usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
+  })), 'INVALID_CANDIDATE');
+
+  const fragmentBoundary = fixture();
+  const fragmentBoundaryCreated = submitLong(fragmentBoundary, 226);
+  const fragmentBoundaryClaim = claimOne(fragmentBoundary);
+  const oneDocumentForFragmentBoundary = [candidatesFixture()[0]];
+  const oneReviewItem = [{ ...longReviewItemsFixture()[0], fragmentCount: 64 }];
+  const fragmentAccepted = fragmentBoundary.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
+    inboxId: fragmentBoundaryCreated.inboxId, claimVersion: fragmentBoundaryClaim.claimVersion, publishRequestId: uuid(1404),
+    payloadDigest: longDigest(fragmentBoundary, oneDocumentForFragmentBoundary, oneReviewItem), candidates: oneDocumentForFragmentBoundary, reviewItems: oneReviewItem,
+    usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
+  }));
+  assert.strictEqual(fragmentAccepted.reviewItemIds.length, 1);
 
   const oversized = fixture();
   const oversizedCreated = submitLong(oversized, 222);
