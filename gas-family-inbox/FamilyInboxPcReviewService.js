@@ -308,6 +308,16 @@ function familyInboxPcReviewValidateFragmentPayload_(candidateType, payload) {
       relatedEventTitle: familyInboxWorkerNullableText_(payload.relatedEventTitle, 200),
     };
   }
+  if (candidateType === 'school.dismissal_time') {
+    familyInboxWorkerValidateKeys_(payload, { date: true, dismissalTime: true, targetGrade: true });
+    const targetGrade = Number(payload.targetGrade);
+    if (!isFinite(targetGrade) || Math.floor(targetGrade) !== targetGrade || targetGrade < 1 || targetGrade > 6) throw familyInboxError_('INVALID_CANDIDATE');
+    const dismissalTime = familyInboxWorkerNullableTime_(payload.dismissalTime);
+    if (dismissalTime === null) throw familyInboxError_('INVALID_CANDIDATE');
+    return {
+      date: familyInboxWorkerDate_(payload.date), dismissalTime: dismissalTime, targetGrade: targetGrade,
+    };
+  }
   throw familyInboxError_('INVALID_CANDIDATE');
 }
 

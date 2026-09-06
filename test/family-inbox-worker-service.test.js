@@ -245,6 +245,38 @@ function longReviewItemsFixture() {
 
 {
   const f = fixture();
+  const dismissalItem = {
+    reviewType: 'page_fragment', status: 'needs_review', candidateType: 'school.dismissal_time', confidence: 0.96, fragmentCount: 1,
+    evidence: [{ page: 2, quote: 'synthetic dismissal cell', fieldPaths: ['payload.dismissalTime'] }],
+    warnings: ['source_kind:dismissal_time', 'review_storage_only'], questions: ['review_dismissal_time'],
+    payload: { date: '2026-09-01', dismissalTime: '15:10', targetGrade: 3 },
+  };
+  const normalized = f.api.familyInboxPcReviewValidatePublishedItem_(dismissalItem);
+  assert.strictEqual(normalized.candidateType, 'school.dismissal_time');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(normalized.payload)), { date: '2026-09-01', dismissalTime: '15:10', targetGrade: 3 });
+  expectCode(() => f.api.familyInboxPcReviewValidatePublishedItem_({
+    ...normalized, payload: { ...normalized.payload, dismissalTime: null },
+  }), 'INVALID_CANDIDATE');
+
+  const created = submitLong(f, 99);
+  const claim = claimOne(f);
+  const candidates = [candidatesFixture()[0]];
+  f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, publishRequestId: uuid(990),
+    payloadDigest: longDigest(f, candidates, [dismissalItem]), candidates, reviewItems: [dismissalItem],
+    usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
+  }));
+  const detail = f.api.familyInboxPcReviewGet_(pcReviewBody('familyInbox.pcReview.get', { inboxId: created.inboxId }));
+  const saved = detail.items.find((item) => item.candidateType === 'school.dismissal_time');
+  assert.strictEqual(saved.payload.dismissalTime, '15:10');
+  expectCode(() => f.api.familyInboxPcReviewApprove_(pcReviewBody('familyInbox.pcReview.approve', {
+    inboxId: created.inboxId, itemId: saved.itemId, revision: saved.revision,
+    reviewRequestId: uuid(991), payload: saved.payload, reviewNote: '',
+  })), 'INVALID_CANDIDATE');
+}
+
+{
+  const f = fixture();
   const first = submit(f, 'image/jpeg', 101);
   const target = submitLong(f, 102);
   const claim = claimTarget(f, target.inboxId);

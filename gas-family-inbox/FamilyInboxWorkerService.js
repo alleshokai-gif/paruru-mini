@@ -17,8 +17,8 @@ const FAMILY_INBOX_WORKER_PROFILES = Object.freeze({
     promptVersion: 'school-v1/1.0.1', maxItems: 8, allowReviewItems: false,
   }),
   'school-v1-long': Object.freeze({
-    profile: 'school-v1-long', model: 'gpt-5.6-luna', extractorVersion: 'family-inbox-worker/1.1.0',
-    promptVersion: 'school-v1-long/1.0.2', maxItems: FAMILY_INBOX_LONG_MAX_ITEMS, allowReviewItems: true,
+    profile: 'school-v1-long', model: 'gpt-5.6-luna', extractorVersion: 'family-inbox-worker/1.4.0',
+    promptVersion: 'school-v1-long/1.2.1', maxItems: FAMILY_INBOX_LONG_MAX_ITEMS, allowReviewItems: true,
   }),
 });
 const FAMILY_INBOX_CANDIDATE_HEADERS = Object.freeze([
