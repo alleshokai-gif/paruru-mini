@@ -2,6 +2,9 @@ function doPost(e) {
   try {
     const body = familyInboxParseBody_(e);
     const operation = String(body.operation || '').trim();
+    if (operation.indexOf('familyInbox.acceptance.') === 0) {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxAcceptance_(body) });
+    }
     if (operation === 'familyInbox.submit') {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxSubmit_(body) });
     }

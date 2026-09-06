@@ -1,5 +1,13 @@
 # Family Inbox GAS (Phase 1-4A)
 
+## Optional School Long E2E runner
+
+`FamilyInboxAcceptanceService.js` は実験専用の限定入口。初回のみ `FAMILY_INBOX_ACCEPTANCE_TOKEN` をScript Propertiesとworkerプロジェクトの `.env` の両方へ設定する。Mini/worker/PC Review tokenとは異なる値を使う。未設定時はfail-closed。他の入口・通常Importerは変更しない。
+
+許可operationは `familyInbox.acceptance.check / place / import / verify` の4つのみ。server設定済みDrop Folder・home・submitterを使い、clientからfolder ID、home、member、profileは受け付けない。`place` は5 MiB以下のPDFを実験UUID名で1件保存、`import` はその名前＋SHAの1件だけ既存Drive Drop内部処理で登録する。フォルダ全体のImporterは呼ばない。`verify` は新規Inboxと両ledgerのpublish group・件数をread-only確認する。Drive IDや原本を応答へ含めない。
+
+既存Drive Drop / worker / PC Review設定および3つのSheetの最新schemaが必要。追加Sheet/headerなし。この追加sourceのpush/deployとtoken設定は別途承認後に1回必要。ランナーはdeploy、Property設定、schema migrationを行わない。詳しくはworkerの `docs/school-e2e-runner.md`。
+
 Family Inbox Phase 1専用の原本保存サービス。PALURU Miniからの内部APIだけを受け付ける。
 
 必要なScript Properties（値はsourceへ置かない）:
