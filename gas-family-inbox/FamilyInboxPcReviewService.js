@@ -3,7 +3,7 @@ const FAMILY_INBOX_PC_REVIEW_PROPERTIES = Object.freeze({
   reviewId: 'FAMILY_INBOX_PC_REVIEW_ID',
 });
 const FAMILY_INBOX_PC_REVIEW_SHEET_NAME = 'Family_Review_Items';
-const FAMILY_INBOX_PC_REVIEW_HEADERS = Object.freeze([
+const FAMILY_INBOX_PC_REVIEW_LEGACY_HEADERS = Object.freeze([
   'schemaVersion', 'reviewItemId', 'inboxId', 'homeId', 'reviewType', 'candidateType',
   'revision', 'status', 'createdAt', 'updatedAt', 'subjectMemberId', 'confidence',
   'sourceSha256', 'profile', 'model', 'extractorVersion', 'promptVersion', 'payloadDigest',
@@ -12,6 +12,9 @@ const FAMILY_INBOX_PC_REVIEW_HEADERS = Object.freeze([
   'durationMs', 'reviewedAt', 'reviewedByServiceId', 'reviewChannel', 'reviewAction',
   'reviewReason', 'reviewNote', 'reviewRequestId', 'reviewHistoryJson', 'promotedCandidateId',
 ]);
+const FAMILY_INBOX_PC_REVIEW_HEADERS = Object.freeze(
+  FAMILY_INBOX_PC_REVIEW_LEGACY_HEADERS.concat(['schoolMetadataJson'])
+);
 const FAMILY_INBOX_PC_REVIEW_SCHEMA_VERSION = 'page-fragment/1.0';
 
 function familyInboxPcReviewList_(body) {
@@ -108,6 +111,8 @@ function familyInboxPcReviewMutate_(operation, action, body) {
         revision: input.revision,
         reviewRequestId: input.reviewRequestId,
         payload: input.payload,
+        hasSchoolMetadata: input.hasSchoolMetadata,
+        schoolMetadata: input.schoolMetadata,
         reviewReason: input.reviewReason,
         reviewNote: input.reviewNote,
       });
@@ -242,6 +247,7 @@ function familyInboxPcReviewRowsFromPublish_(input, inboxEntry, now) {
       promptVersion: input.profile.promptVersion,
       payloadDigest: input.payloadDigest,
       payloadJson: JSON.stringify(item.payload),
+      schoolMetadataJson: item.schoolMetadata ? JSON.stringify(item.schoolMetadata) : '',
       reviewPayloadJson: '',
       evidenceJson: JSON.stringify(item.evidence),
       warningsJson: JSON.stringify(item.warnings),
@@ -264,22 +270,28 @@ function familyInboxPcReviewDeterministicItemId_(publishRequestId, index, candid
 }
 
 function familyInboxPcReviewValidatePublishedItem_(value) {
-  familyInboxWorkerValidateKeys_(value, {
+  const allowed = {
     reviewType: true, status: true, candidateType: true, confidence: true, fragmentCount: true,
     evidence: true, warnings: true, questions: true, payload: true,
-  });
+    schoolMetadata: true,
+  };
+  familyInboxWorkerValidateKeys_(value, allowed);
   if (String(value.reviewType || '') !== 'page_fragment' || String(value.status || '') !== 'needs_review') throw familyInboxError_('INVALID_CANDIDATE');
   const candidateType = String(value.candidateType || '');
   const confidence = Number(value.confidence);
   if (!isFinite(confidence) || confidence < 0 || confidence > 1) throw familyInboxError_('INVALID_CANDIDATE');
   const fragmentCount = familyInboxWorkerBoundedInteger_(value.fragmentCount, 1, FAMILY_INBOX_LONG_MAX_ITEMS);
-  return {
+  const normalized = {
     reviewType: 'page_fragment', status: 'needs_review', candidateType: candidateType, confidence: confidence, fragmentCount: fragmentCount,
     evidence: familyInboxWorkerValidateEvidence_(value.evidence),
     warnings: familyInboxWorkerStringArray_(value.warnings, 10, 200),
     questions: familyInboxWorkerStringArray_(value.questions, 10, 200),
     payload: familyInboxPcReviewValidateFragmentPayload_(candidateType, value.payload),
   };
+  if (!Object.prototype.hasOwnProperty.call(value, 'schoolMetadata')) return normalized;
+  if (candidateType !== 'schedule.event') throw familyInboxError_('INVALID_CANDIDATE');
+  normalized.schoolMetadata = familyInboxWorkerValidateSchoolMetadata_(value.schoolMetadata);
+  return normalized;
 }
 
 function familyInboxPcReviewValidateFragmentPayload_(candidateType, payload) {
@@ -324,11 +336,13 @@ function familyInboxPcReviewValidateFragmentPayload_(candidateType, payload) {
 function familyInboxPcReviewMutationInput_(body, action, identity) {
   familyInboxWorkerValidateKeys_(body, {
     operation: true, pcReviewToken: true, inboxId: true, itemId: true, revision: true,
-    reviewRequestId: true, payload: true, reviewReason: true, reviewNote: true, traceId: true,
+    reviewRequestId: true, payload: true, schoolMetadata: true, reviewReason: true, reviewNote: true, traceId: true,
   });
   const hasPayload = Object.prototype.hasOwnProperty.call(body, 'payload');
+  const hasSchoolMetadata = Object.prototype.hasOwnProperty.call(body, 'schoolMetadata');
   const hasReason = Object.prototype.hasOwnProperty.call(body, 'reviewReason');
   if ((action !== 'rejected') !== hasPayload || (action === 'rejected') !== hasReason) throw familyInboxError_('INVALID_INPUT');
+  if (action === 'rejected' && hasSchoolMetadata) throw familyInboxError_('INVALID_INPUT');
   const itemId = String(body.itemId || '').trim();
   if (!/^(?:cand|rvi)_[0-9a-f]{32}$/i.test(itemId)) throw familyInboxError_('INVALID_INPUT');
   const revision = familyInboxWorkerInteger_(body.revision, -1);
@@ -338,6 +352,7 @@ function familyInboxPcReviewMutationInput_(body, action, identity) {
   return {
     action: action, inboxId: familyInboxReviewInboxId_(body.inboxId), itemId: itemId, revision: revision,
     reviewRequestId: familyInboxPcReviewRequestId_(body.reviewRequestId), payload: hasPayload ? body.payload : null,
+    hasSchoolMetadata: hasSchoolMetadata, schoolMetadata: body.schoolMetadata,
     reviewReason: reviewReason, reviewNote: familyInboxPcReviewNote_(body.reviewNote), identity: identity,
   };
 }
@@ -369,17 +384,23 @@ function familyInboxPcReviewMutateItemCore_(context, input) {
     if (String(entry.record.status || '') !== 'pending' || history.length >= FAMILY_INBOX_REVIEW_MAX_HISTORY) throw familyInboxError_('INVALID_STATE');
     const previousPayload = familyInboxPcReviewEffectiveItemPayload_(entry.record);
     const nextPayload = input.action === 'rejected' ? previousPayload : familyInboxPcReviewValidateFragmentPayload_(String(entry.record.candidateType || ''), input.payload);
+    const previousSchoolMetadata = familyInboxReviewSchoolMetadata_(entry.record);
+    const nextSchoolMetadata = input.action === 'rejected' || !input.hasSchoolMetadata
+      ? previousSchoolMetadata
+      : familyInboxPcReviewValidateSchoolMetadata_(entry.record, input.schoolMetadata);
     const now = familyInboxNow_();
     let promoted = null;
     let nextStatus = input.action === 'rejected' ? 'rejected' : 'pending';
     let promotedCandidateId = '';
     if (input.action === 'approved') {
       const canonicalPayload = familyInboxPcReviewCanonicalPayload_(String(entry.record.candidateType || ''), nextPayload);
-      const candidate = familyInboxWorkerValidateCandidate_({
+      const candidateValue = {
         candidateType: String(entry.record.candidateType || ''), schemaVersion: FAMILY_INBOX_CANDIDATE_SCHEMAS[String(entry.record.candidateType || '')],
         confidence: Number(entry.record.confidence), evidence: familyInboxReviewJsonArray_(entry.record.evidenceJson),
         warnings: familyInboxReviewJsonArray_(entry.record.warningsJson), questions: familyInboxReviewJsonArray_(entry.record.questionsJson), payload: canonicalPayload,
-      });
+      };
+      if (nextSchoolMetadata) candidateValue.schoolMetadata = nextSchoolMetadata;
+      const candidate = familyInboxWorkerValidateCandidate_(candidateValue, FAMILY_INBOX_WORKER_PROFILES[String(entry.record.profile || '')]);
       const existingPromotion = candidates.find(function(item) { return String(item.record.sourceReviewItemId || '') === input.itemId; });
       if (existingPromotion) {
         if (String(existingPromotion.record.payloadDigest || '') !== String(entry.record.payloadDigest || '')) throw familyInboxError_('DATA_INTEGRITY_ERROR');
@@ -398,12 +419,14 @@ function familyInboxPcReviewMutateItemCore_(context, input) {
       reviewRequestId: input.reviewRequestId, requestDigest: requestDigest, reviewedAt: now,
       reviewedByServiceId: context.identity.reviewId, reviewChannel: 'pc_backoffice', reviewReason: input.reviewReason,
       reviewNote: input.reviewNote, previousStatus: 'pending', status: nextStatus,
-      previousPayload: previousPayload, payload: nextPayload, promotedCandidateId: promotedCandidateId,
+      previousPayload: previousPayload, payload: nextPayload,
+      previousSchoolMetadata: previousSchoolMetadata, schoolMetadata: nextSchoolMetadata, promotedCandidateId: promotedCandidateId,
     };
     const historyJson = JSON.stringify(history.concat([event]));
     if (Utilities.newBlob(historyJson).getBytes().length > FAMILY_INBOX_REVIEW_MAX_HISTORY_BYTES) throw familyInboxError_('INVALID_STATE');
     familyInboxPcReviewUpdateItemRow_(itemLedger, entry, {
       revision: nextRevision, updatedAt: now, status: nextStatus, reviewPayloadJson: JSON.stringify(nextPayload),
+      schoolMetadataJson: nextSchoolMetadata ? JSON.stringify(nextSchoolMetadata) : '',
       reviewedAt: input.action === 'updated' ? '' : now, reviewedByServiceId: context.identity.reviewId,
       reviewChannel: 'pc_backoffice', reviewAction: event.action, reviewReason: input.reviewReason, reviewNote: input.reviewNote,
       reviewRequestId: input.reviewRequestId, reviewHistoryJson: historyJson, promotedCandidateId: promotedCandidateId,
@@ -417,6 +440,11 @@ function familyInboxPcReviewMutateItemCore_(context, input) {
 function familyInboxPcReviewCanonicalPayload_(candidateType, payload) {
   if (candidateType === 'school.belongings') return { date: payload.date, items: payload.items };
   return payload;
+}
+
+function familyInboxPcReviewValidateSchoolMetadata_(record, value) {
+  if (String(record.profile || '') !== 'school-v1-long' || String(record.candidateType || '') !== 'schedule.event') throw familyInboxError_('INVALID_INPUT');
+  return familyInboxWorkerValidateSchoolMetadata_(value);
 }
 
 function familyInboxPcReviewValidateCanonicalCorrection_(candidateType, current, supplied) {
@@ -437,6 +465,7 @@ function familyInboxPcReviewPromotedCandidateRow_(candidate, reviewRecord, now) 
     reviewStatus: 'pending', domainWriteResult: '', reviewPayloadJson: '', reviewedAt: '', reviewedByMemberId: '', reviewAction: '',
     reviewReason: '', reviewNote: '', reviewRequestId: '', reviewHistoryJson: '', reviewedByServiceId: '', reviewChannel: '',
     sourceReviewItemId: String(reviewRecord.reviewItemId || ''),
+    schoolMetadataJson: candidate.schoolMetadata ? JSON.stringify(candidate.schoolMetadata) : '',
   };
 }
 
@@ -469,16 +498,17 @@ function familyInboxPcReviewAssertGroup_(candidateEntries, reviewEntries) {
 
 function familyInboxPcReviewCandidateDto_(record) {
   const value = familyInboxReviewCandidateDto_(record);
-  return {
+  const dto = {
     itemId: value.candidateId, origin: 'canonical', candidateType: value.candidateType, revision: value.revision,
     confidence: value.confidence, payload: value.payload, evidenceSummary: value.evidenceSummary,
     warnings: value.warnings, questions: value.questions, reviewStatus: value.reviewStatus,
     reviewedAt: value.reviewedAt, reviewAction: value.reviewAction, reviewReason: value.reviewReason,
   };
+  return value.schoolMetadata ? Object.assign(dto, { schoolMetadata: value.schoolMetadata }) : dto;
 }
 
 function familyInboxPcReviewItemDto_(record) {
-  return {
+  const dto = {
     itemId: String(record.reviewItemId || ''), origin: 'review_item', reviewType: String(record.reviewType || ''),
     candidateType: String(record.candidateType || ''), revision: familyInboxWorkerInteger_(record.revision, 1),
     confidence: Number(record.confidence), payload: familyInboxPcReviewEffectiveItemPayload_(record),
@@ -487,6 +517,8 @@ function familyInboxPcReviewItemDto_(record) {
     reviewedAt: String(record.reviewedAt || ''), reviewAction: String(record.reviewAction || ''), reviewReason: String(record.reviewReason || ''),
     promotedCandidateId: String(record.promotedCandidateId || ''),
   };
+  const schoolMetadata = familyInboxReviewSchoolMetadata_(record);
+  return schoolMetadata ? Object.assign(dto, { schoolMetadata: schoolMetadata }) : dto;
 }
 
 function familyInboxPcReviewEffectiveItemPayload_(record) {
@@ -532,9 +564,15 @@ function familyInboxPcReviewNote_(value) {
 }
 
 function familyInboxPcReviewRequestDigest_(input) {
-  return familyInboxSha256_(Utilities.newBlob(familyInboxWorkerStableStringify_({
+  const digestible = {
     action: input.action, inboxId: input.inboxId, itemId: input.itemId, revision: input.revision,
-    payload: input.payload, reviewReason: input.reviewReason, reviewNote: input.reviewNote,
+    payload: input.payload,
+    reviewReason: input.reviewReason, reviewNote: input.reviewNote,
     reviewedByServiceId: input.identity.reviewId, reviewChannel: 'pc_backoffice',
-  })).getBytes());
+  };
+  if (input.hasSchoolMetadata) {
+    digestible.hasSchoolMetadata = true;
+    digestible.schoolMetadata = input.schoolMetadata;
+  }
+  return familyInboxSha256_(Utilities.newBlob(familyInboxWorkerStableStringify_(digestible)).getBytes());
 }

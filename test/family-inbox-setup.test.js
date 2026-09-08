@@ -172,19 +172,37 @@ function valuesSnapshot(spreadsheet) {
   spreadsheet.addSheet('Family_Review_Items', [headers.reviewItems], headers.reviewItems.length);
   const existingRowBefore = clone(candidateSheet.values[1]);
 
-  assert.strictEqual(context.setupFamilyInboxSchema(), 'CREATED', 'FI-MIG01 36 to 39');
+  assert.strictEqual(context.setupFamilyInboxSchema(), 'CREATED', 'FI-MIG01 36 to 40');
   assert.deepStrictEqual(candidateSheet.values[0].slice(0, 36), legacyCandidateHeaders, 'FI-MIG02 existing headers retain order and names');
-  assert.deepStrictEqual(candidateSheet.values[0].slice(36), ['reviewedByServiceId', 'reviewChannel', 'sourceReviewItemId'], 'FI-MIG03 append-only headers');
+  assert.deepStrictEqual(candidateSheet.values[0].slice(36), ['reviewedByServiceId', 'reviewChannel', 'sourceReviewItemId', 'schoolMetadataJson'], 'FI-MIG03 append-only headers');
   assert.deepStrictEqual(candidateSheet.values[1], existingRowBefore, 'FI-MIG04 existing row values unchanged');
   assert.strictEqual(candidateSheet.values[1][legacyCandidateHeaders.indexOf('reviewHistoryJson')], '[{"revision":4,"reviewAction":"updated"}]', 'FI-MIG05 review history unchanged');
   const headerWrite = candidateSheet.calls.find((call) => call.method === 'setValues');
   assert.deepStrictEqual(headerWrite, {
     method: 'setValues', row: 1, column: 37,
-    values: [['reviewedByServiceId', 'reviewChannel', 'sourceReviewItemId']],
+    values: [['reviewedByServiceId', 'reviewChannel', 'sourceReviewItemId', 'schoolMetadataJson']],
   }, 'FI-MIG06 only right edge header write');
-  assert(candidateSheet.calls.some((call) => call.method === 'insertColumnsAfter' && call.column === 36 && call.count === 3), 'FI-MIG07 only missing columns appended');
+  assert(candidateSheet.calls.some((call) => call.method === 'insertColumnsAfter' && call.column === 36 && call.count === 4), 'FI-MIG07 only missing columns appended');
   assert.strictEqual(context.setupFamilyInboxSchema(), 'VERIFIED', 'FI-MIG08 replay');
   assert.deepStrictEqual(candidateSheet.values[1], existingRowBefore, 'FI-MIG09 replay row unchanged');
+}
+
+{
+  const { context, spreadsheet, headers } = loadHarness();
+  const candidateHeaders39 = headers.candidates.slice(0, -1);
+  const reviewItemHeaders38 = headers.reviewItems.slice(0, -1);
+  const candidateRow = candidateHeaders39.map((header) => header === 'reviewHistoryJson' ? '[{"revision":3}]' : `candidate-${header}`);
+  const reviewItemRow = reviewItemHeaders38.map((header) => header === 'reviewHistoryJson' ? '[{"revision":2}]' : `review-${header}`);
+  spreadsheet.addSheet('Family_Inbox', [headers.inbox], headers.inbox.length);
+  const candidateSheet = spreadsheet.addSheet('Family_Candidates', [candidateHeaders39, candidateRow], candidateHeaders39.length);
+  const reviewItemSheet = spreadsheet.addSheet('Family_Review_Items', [reviewItemHeaders38, reviewItemRow], reviewItemHeaders38.length);
+  const beforeCandidate = clone(candidateSheet.values[1]);
+  const beforeReviewItem = clone(reviewItemSheet.values[1]);
+  assert.strictEqual(context.setupFamilyInboxSchema(), 'CREATED', 'FI-MIG14 metadata columns appended');
+  assert.strictEqual(candidateSheet.values[0].at(-1), 'schoolMetadataJson', 'FI-MIG15 candidate metadata header');
+  assert.strictEqual(reviewItemSheet.values[0].at(-1), 'schoolMetadataJson', 'FI-MIG16 review item metadata header');
+  assert.deepStrictEqual(candidateSheet.values[1], beforeCandidate, 'FI-MIG17 candidate row unchanged');
+  assert.deepStrictEqual(reviewItemSheet.values[1], beforeReviewItem, 'FI-MIG18 review item row unchanged');
 }
 
 {

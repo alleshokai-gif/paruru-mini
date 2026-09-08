@@ -423,7 +423,7 @@ function familyInboxWorkerValidatePublish_(body, profile) {
   const suppliedReviewItems = Object.prototype.hasOwnProperty.call(body, 'reviewItems') ? body.reviewItems : [];
   if (!Array.isArray(suppliedReviewItems) || (!profile.allowReviewItems && suppliedReviewItems.length)) throw familyInboxError_('INVALID_CANDIDATE');
   if (body.candidates.length + suppliedReviewItems.length > profile.maxItems) throw familyInboxError_('INVALID_CANDIDATE');
-  const candidates = body.candidates.map(familyInboxWorkerValidateCandidate_);
+  const candidates = body.candidates.map(function(candidate) { return familyInboxWorkerValidateCandidate_(candidate, profile); });
   const reviewItems = suppliedReviewItems.map(familyInboxPcReviewValidatePublishedItem_);
   if (candidates.filter(function(candidate) { return candidate.candidateType === 'school.document'; }).length !== 1) throw familyInboxError_('INVALID_CANDIDATE');
   const digestValue = profile.allowReviewItems ? { candidates: candidates, reviewItems: reviewItems } : candidates;
@@ -475,6 +475,7 @@ function familyInboxWorkerCandidateRows_(input, inboxEntry, now) {
       promptVersion: input.profile.promptVersion,
       payloadDigest: input.payloadDigest,
       payloadJson: JSON.stringify(candidate.payload),
+      schoolMetadataJson: candidate.schoolMetadata ? JSON.stringify(candidate.schoolMetadata) : '',
       evidenceJson: JSON.stringify(candidate.evidence),
       warningsJson: JSON.stringify(candidate.warnings),
       questionsJson: JSON.stringify(candidate.questions),
@@ -489,11 +490,14 @@ function familyInboxWorkerCandidateRows_(input, inboxEntry, now) {
   });
 }
 
-function familyInboxWorkerValidateCandidate_(candidate) {
-  familyInboxWorkerValidateKeys_(candidate, {
+function familyInboxWorkerValidateCandidate_(candidate, profile) {
+  const allowSchoolMetadata = profile && profile.profile === 'school-v1-long';
+  const allowed = {
     candidateType: true, schemaVersion: true, confidence: true, payload: true,
     evidence: true, warnings: true, questions: true,
-  });
+  };
+  if (allowSchoolMetadata) allowed.schoolMetadata = true;
+  familyInboxWorkerValidateKeys_(candidate, allowed);
   const candidateType = String(candidate.candidateType || '');
   const schemaVersion = String(candidate.schemaVersion || '');
   if (!FAMILY_INBOX_CANDIDATE_SCHEMAS[candidateType] || FAMILY_INBOX_CANDIDATE_SCHEMAS[candidateType] !== schemaVersion) throw familyInboxError_('INVALID_CANDIDATE');
@@ -503,7 +507,7 @@ function familyInboxWorkerValidateCandidate_(candidate) {
   const warnings = familyInboxWorkerStringArray_(candidate.warnings, 10, 200);
   const questions = familyInboxWorkerStringArray_(candidate.questions, 10, 200);
   const payload = familyInboxWorkerValidatePayload_(candidateType, candidate.payload);
-  return {
+  const normalized = {
     candidateType: candidateType,
     schemaVersion: schemaVersion,
     confidence: confidence,
@@ -512,6 +516,18 @@ function familyInboxWorkerValidateCandidate_(candidate) {
     questions: questions,
     payload: payload,
   };
+  if (!Object.prototype.hasOwnProperty.call(candidate, 'schoolMetadata')) return normalized;
+  if (!allowSchoolMetadata || candidateType !== 'schedule.event') throw familyInboxError_('INVALID_CANDIDATE');
+  normalized.schoolMetadata = familyInboxWorkerValidateSchoolMetadata_(candidate.schoolMetadata);
+  return normalized;
+}
+
+function familyInboxWorkerValidateSchoolMetadata_(value) {
+  if (!familyInboxPlainObject_(value)) throw familyInboxError_('INVALID_CANDIDATE');
+  familyInboxWorkerValidateKeys_(value, { targetGrade: true, dismissalTime: true });
+  const targetGrade = Number(value.targetGrade);
+  if (!isFinite(targetGrade) || Math.floor(targetGrade) !== targetGrade || targetGrade < 1 || targetGrade > 6) throw familyInboxError_('INVALID_CANDIDATE');
+  return { targetGrade: targetGrade, dismissalTime: familyInboxWorkerNullableTime_(value.dismissalTime) };
 }
 
 function familyInboxWorkerValidateEvidence_(value) {

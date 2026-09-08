@@ -2,9 +2,12 @@ const FAMILY_INBOX_REVIEW_EXTRA_HEADERS = Object.freeze([
   'reviewPayloadJson', 'reviewedAt', 'reviewedByMemberId', 'reviewAction',
   'reviewReason', 'reviewNote', 'reviewRequestId', 'reviewHistoryJson',
 ]);
-const FAMILY_INBOX_PC_REVIEW_CANDIDATE_HEADERS = Object.freeze([
+const FAMILY_INBOX_PC_REVIEW_CANDIDATE_LEGACY_HEADERS = Object.freeze([
   'reviewedByServiceId', 'reviewChannel', 'sourceReviewItemId',
 ]);
+const FAMILY_INBOX_PC_REVIEW_CANDIDATE_HEADERS = Object.freeze(
+  FAMILY_INBOX_PC_REVIEW_CANDIDATE_LEGACY_HEADERS.concat(['schoolMetadataJson'])
+);
 const FAMILY_INBOX_REVIEW_REASONS = Object.freeze({
   incorrect: true,
   duplicate: true,
@@ -130,6 +133,12 @@ function familyInboxReviewMutateCandidateCore_(context, input) {
     const nextPayload = input.action === 'updated' || (input.action === 'approved' && input.payload)
       ? correctionValidator(String(entry.record.candidateType || ''), previousPayload, input.payload)
       : previousPayload;
+    const previousSchoolMetadata = familyInboxReviewSchoolMetadata_(entry.record);
+    let nextSchoolMetadata = previousSchoolMetadata;
+    if (input.hasSchoolMetadata) {
+      if (input.reviewChannel !== 'pc_backoffice' || String(entry.record.profile || '') !== 'school-v1-long' || String(entry.record.candidateType || '') !== 'schedule.event') throw familyInboxError_('INVALID_INPUT');
+      nextSchoolMetadata = familyInboxWorkerValidateSchoolMetadata_(input.schoolMetadata);
+    }
     const now = familyInboxNow_();
     const nextRevision = currentRevision + 1;
     const nextReviewStatus = input.action === 'approved' ? 'approved' : input.action === 'rejected' ? 'rejected' : 'pending';
@@ -140,6 +149,10 @@ function familyInboxReviewMutateCandidateCore_(context, input) {
       previousReviewStatus: String(entry.record.reviewStatus || 'pending'), reviewStatus: nextReviewStatus,
       previousPayload: previousPayload, payload: nextPayload,
     };
+    if (previousSchoolMetadata || nextSchoolMetadata) {
+      event.previousSchoolMetadata = previousSchoolMetadata;
+      event.schoolMetadata = nextSchoolMetadata;
+    }
     const historyJson = JSON.stringify(history.concat([event]));
     if (Utilities.newBlob(historyJson).getBytes().length > FAMILY_INBOX_REVIEW_MAX_HISTORY_BYTES) throw familyInboxError_('INVALID_STATE');
     const updates = {
@@ -149,6 +162,7 @@ function familyInboxReviewMutateCandidateCore_(context, input) {
     };
     if (candidateLedger.headers.indexOf('reviewedByServiceId') >= 0) updates.reviewedByServiceId = input.reviewedByServiceId || '';
     if (candidateLedger.headers.indexOf('reviewChannel') >= 0) updates.reviewChannel = input.reviewChannel || 'paluru';
+    if (candidateLedger.headers.indexOf('schoolMetadataJson') >= 0 && (previousSchoolMetadata || nextSchoolMetadata)) updates.schoolMetadataJson = nextSchoolMetadata ? JSON.stringify(nextSchoolMetadata) : '';
     familyInboxReviewUpdateCandidateRow_(candidateLedger, entry, updates);
     context.trace.inboxId = input.inboxId;
     context.trace.status = familyInboxReviewAggregateStatus_(inboxCandidates);
@@ -276,7 +290,7 @@ function familyInboxReviewDetailDto_(inboxEntry, candidates) {
 }
 
 function familyInboxReviewCandidateDto_(record) {
-  return {
+  const dto = {
     candidateId: String(record.candidateId || ''),
     candidateType: String(record.candidateType || ''),
     revision: familyInboxWorkerInteger_(record.revision, 1),
@@ -290,6 +304,23 @@ function familyInboxReviewCandidateDto_(record) {
     reviewAction: String(record.reviewAction || ''),
     reviewReason: String(record.reviewReason || ''),
   };
+  const schoolMetadata = familyInboxReviewSchoolMetadata_(record);
+  return schoolMetadata ? Object.assign(dto, { schoolMetadata: schoolMetadata }) : dto;
+}
+
+function familyInboxReviewOptionalJsonObject_(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const parsed = familyInboxReviewJsonObject_(text);
+  if (!parsed) throw familyInboxError_('DATA_INTEGRITY_ERROR');
+  return parsed;
+}
+
+function familyInboxReviewSchoolMetadata_(record) {
+  const metadata = familyInboxReviewOptionalJsonObject_(record.schoolMetadataJson);
+  if (!metadata) return null;
+  if (String(record.profile || '') !== 'school-v1-long' || String(record.candidateType || '') !== 'schedule.event') throw familyInboxError_('DATA_INTEGRITY_ERROR');
+  try { return familyInboxWorkerValidateSchoolMetadata_(metadata); } catch (_) { throw familyInboxError_('DATA_INTEGRITY_ERROR'); }
 }
 
 function familyInboxReviewEvidenceSummary_(value) {
@@ -397,6 +428,10 @@ function familyInboxReviewRequestDigest_(input) {
     reviewedByServiceId: input.reviewedByServiceId || '',
     reviewChannel: input.reviewChannel || 'paluru',
   };
+  if (input.hasSchoolMetadata) {
+    digestible.hasSchoolMetadata = true;
+    digestible.schoolMetadata = input.schoolMetadata;
+  }
   return familyInboxSha256_(Utilities.newBlob(familyInboxWorkerStableStringify_(digestible)).getBytes());
 }
 

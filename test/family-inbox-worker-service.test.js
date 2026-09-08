@@ -22,7 +22,7 @@ const candidateHeaders = [
   'inputTokens', 'outputTokens', 'durationMs', 'reviewStatus', 'domainWriteResult',
   'reviewPayloadJson', 'reviewedAt', 'reviewedByMemberId', 'reviewAction',
   'reviewReason', 'reviewNote', 'reviewRequestId', 'reviewHistoryJson',
-  'reviewedByServiceId', 'reviewChannel', 'sourceReviewItemId',
+  'reviewedByServiceId', 'reviewChannel', 'sourceReviewItemId', 'schoolMetadataJson',
 ];
 const reviewItemHeaders = [
   'schemaVersion', 'reviewItemId', 'inboxId', 'homeId', 'reviewType', 'candidateType',
@@ -31,7 +31,7 @@ const reviewItemHeaders = [
   'payloadJson', 'reviewPayloadJson', 'evidenceJson', 'warningsJson', 'questionsJson',
   'publishRequestId', 'claimVersion', 'fragmentCount', 'inputTokens', 'outputTokens',
   'durationMs', 'reviewedAt', 'reviewedByServiceId', 'reviewChannel', 'reviewAction',
-  'reviewReason', 'reviewNote', 'reviewRequestId', 'reviewHistoryJson', 'promotedCandidateId',
+  'reviewReason', 'reviewNote', 'reviewRequestId', 'reviewHistoryJson', 'promotedCandidateId', 'schoolMetadataJson',
 ];
 
 class Range {
@@ -225,6 +225,7 @@ function longReviewItemsFixture() {
     evidence: [{ page: index + 2, quote: `架空予定${index + 1}`, fieldPaths: ['title'] }],
     warnings: ['unresolved_required_field:date'], questions: ['confirm_event_date'],
     payload: { title: `架空予定${index + 1}`, date: null, startTime: null, endTime: null, location: null, notes: null },
+    ...(index === 0 ? { schoolMetadata: { targetGrade: 3, dismissalTime: '14:25' } } : {}),
   } : index < 8 ? {
     reviewType: 'page_fragment', status: 'needs_review', candidateType: 'school.deadline', confidence: 0.79, fragmentCount: 1,
     evidence: [{ page: index + 2, quote: `架空締切${index + 1}`, fieldPaths: ['title'] }],
@@ -639,23 +640,28 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   assert(!JSON.stringify(detail).includes('drive-secret-'));
 
   const fragment = detail.items.find((item) => item.origin === 'review_item' && item.candidateType === 'schedule.event');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(fragment.schoolMetadata)), { targetGrade: 3, dismissalTime: '14:25' });
   const correctedPayload = { ...fragment.payload, date: '2026-09-10' };
+  const correctedSchoolMetadata = { targetGrade: 3, dismissalTime: '14:30' };
   const updated = f.api.familyInboxPcReviewUpdate_(pcReviewBody('familyInbox.pcReview.update', {
     inboxId: created.inboxId, itemId: fragment.itemId, revision: fragment.revision,
-    reviewRequestId: uuid(1201), payload: correctedPayload, reviewNote: 'synthetic correction',
+    reviewRequestId: uuid(1201), payload: correctedPayload, schoolMetadata: correctedSchoolMetadata, reviewNote: 'synthetic correction',
   }));
   assert.strictEqual(updated.item.revision, 2);
   assert.strictEqual(updated.item.reviewStatus, 'pending');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(updated.item.schoolMetadata)), correctedSchoolMetadata);
   const promoted = f.api.familyInboxPcReviewApprove_(pcReviewBody('familyInbox.pcReview.approve', {
     inboxId: created.inboxId, itemId: fragment.itemId, revision: 2,
-    reviewRequestId: uuid(1202), payload: correctedPayload, reviewNote: '',
+    reviewRequestId: uuid(1202), payload: correctedPayload, schoolMetadata: correctedSchoolMetadata, reviewNote: '',
   }));
   assert.strictEqual(promoted.item.reviewStatus, 'promoted');
   assert.strictEqual(promoted.promotedCandidate.reviewStatus, 'pending');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(promoted.promotedCandidate.schoolMetadata)), correctedSchoolMetadata);
+  assert.strictEqual(promoted.promotedCandidate.payload.endTime, null, 'dismissal time must not overwrite event endTime');
   assert.strictEqual(f.candidates.values.length, 5, 'promotion appends one canonical candidate');
   const promotionReplay = f.api.familyInboxPcReviewApprove_(pcReviewBody('familyInbox.pcReview.approve', {
     inboxId: created.inboxId, itemId: fragment.itemId, revision: 2,
-    reviewRequestId: uuid(1202), payload: correctedPayload, reviewNote: '',
+    reviewRequestId: uuid(1202), payload: correctedPayload, schoolMetadata: correctedSchoolMetadata, reviewNote: '',
   }));
   assert.strictEqual(promotionReplay.idempotency.replayed, true);
   assert.strictEqual(f.candidates.values.length, 5, 'promotion replay must not duplicate candidate');

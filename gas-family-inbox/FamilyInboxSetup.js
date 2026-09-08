@@ -44,6 +44,7 @@ function setupFamilyInboxSchema() {
 function familyInboxSetupDefinitions_() {
   const candidateBaseHeaders = FAMILY_INBOX_CANDIDATE_HEADERS.slice();
   const candidateReviewHeaders = candidateBaseHeaders.concat(FAMILY_INBOX_REVIEW_EXTRA_HEADERS);
+  const candidateLegacyPcReviewHeaders = candidateReviewHeaders.concat(FAMILY_INBOX_PC_REVIEW_CANDIDATE_LEGACY_HEADERS);
   const candidatePcReviewHeaders = candidateReviewHeaders.concat(FAMILY_INBOX_PC_REVIEW_CANDIDATE_HEADERS);
   return [
     {
@@ -54,12 +55,12 @@ function familyInboxSetupDefinitions_() {
     {
       name: FAMILY_INBOX_CANDIDATE_SHEET_NAME,
       headers: candidatePcReviewHeaders,
-      migrationStages: [candidateBaseHeaders, candidateReviewHeaders, candidatePcReviewHeaders],
+      migrationStages: [candidateBaseHeaders, candidateReviewHeaders, candidateLegacyPcReviewHeaders, candidatePcReviewHeaders],
     },
     {
       name: FAMILY_INBOX_PC_REVIEW_SHEET_NAME,
       headers: FAMILY_INBOX_PC_REVIEW_HEADERS.slice(),
-      migrationStages: [FAMILY_INBOX_PC_REVIEW_HEADERS.slice()],
+      migrationStages: [FAMILY_INBOX_PC_REVIEW_LEGACY_HEADERS.slice(), FAMILY_INBOX_PC_REVIEW_HEADERS.slice()],
     },
   ];
 }
