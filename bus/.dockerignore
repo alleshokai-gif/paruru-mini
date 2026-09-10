@@ -1,0 +1,17 @@
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!core
+!core/**
+!config
+!config/**
+!http
+!http/**
+!runtime
+!runtime/**
+!providers
+!providers/kawasaki
+!providers/kawasaki/adapter.js
+!generated
+!generated/p0-static.json

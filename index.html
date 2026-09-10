@@ -9,6 +9,7 @@
   <link rel="icon" href="./assets/icons/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
   <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./features/bus/bus.css">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
@@ -300,6 +301,10 @@
         <div id="popioHealthMount"></div>
       </section>
 
+      <section id="busView" class="app-view" data-view="bus" aria-label="いつものバス" hidden>
+        <div id="busMount"></div>
+      </section>
+
       <p id="message" class="message" role="status" aria-live="polite"></p>
     </main>
 
@@ -320,6 +325,7 @@
         <button class="drawer-menu-item" type="button" data-target-view="inbox">Inbox</button>
         <button class="drawer-menu-item" type="button" data-target-view="nurse-okan">ナースおかん</button>
         <button class="drawer-menu-item" type="button" data-target-view="popio-health">🐶 ぽぴお</button>
+        <button class="drawer-menu-item" type="button" data-target-view="bus">Bus</button>
         <button class="drawer-menu-item" type="button" data-target-view="settings">設定</button>
       </nav>
     </aside>
@@ -511,6 +517,8 @@
     <script src="./app.js" defer></script>
     <script src="./features/nurse-okan/nurse-okan.js" defer></script>
     <script src="./features/popio-health/popio-health.js" defer></script>
+    <script src="./features/bus/config.js" defer></script>
+    <script src="./features/bus/bus.js" defer></script>
   </body>
 </html>
 

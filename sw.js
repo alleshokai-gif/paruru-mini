@@ -12,6 +12,9 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/nurse-okan/health-routine.js"),
   versioned("features/nurse-okan/nurse-okan.js"),
   versioned("features/popio-health/popio-health.js"),
+  versioned("features/bus/config.js"),
+  versioned("features/bus/bus.js"),
+  versioned("features/bus/bus.css"),
   "manifest.json",
 ];
 
@@ -64,6 +67,12 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
 
   if (request.method !== "GET") {
+    return;
+  }
+
+  // Bus owns freshness and explicit stale states. Never replay an API response from the PWA cache.
+  if (new URL(request.url).pathname === "/api/bus/arrivals") {
+    event.respondWith(fetch(request, { cache: "no-store" }));
     return;
   }
 

@@ -1,7 +1,69 @@
 # PALURU Bus P0 設計案
 
+## 2026-09-10 追補：Cloud Run準備・Position調査の最新境界
+
+- Google Cloud前提（ユーザー申告）：project `paluru-bus`、region `asia-northeast1`、課金有効、Run Admin / Build / Artifact Registry / Logging API有効。CLIからのアカウント・IAM・API照合は未実施。
+- Docker Desktopは利用しない。Node実HTTPでローカル検証し、`cloudbuild.yaml`でremote image buildとSecretなしの起動試験を行う。今回の許可範囲は設計・ローカルHTTP・Cloud Run構成・remote build/deploy準備まで。本番公開は別判断。
+- Node 24 / Linux amd64 / standard HTTP、候補service `paluru-bus-api`。検証時は別名 `paluru-bus-api-validation`、IAM認証付き。PWAの公開URLは実Cloud Runの検証後にユーザーが変更する。旧Worker URL設定は今回変更しない。
+- runtimeは `core/service.js` に共有cache/single-flight、`http/handler.js`に共通HTTP契約、`runtime/*`にNode入出力・起動・安全な計測を配置。Worker側は再exportとCache API変換のみ。位置・時刻のCore契約は変更しない。
+- Staticのread/検証/indexは起動時だけ。Cloud Buildには生成済み2,616,507 bytesのP0 JSONを渡す。image内で全GTFSを取得・展開しない。
+- **市バスナビ内部JSONは検証の参照専用。本番データソース候補にしない。** 今後の公開許可の調査結果によらず、このフェーズの本番AdapterはODPTのみ。
+- **位置の主根拠はODPT緯度経度・timestamp・同一tripの連続観測と公式Staticの停留所座標/順序。`current_stop_sequence` / `stop_id` / statusは補助記録。sequence差で停留所間を決めない。** `content`、公式画面の位置/通過表示と時刻帯を合わせて比較する。
+- 観測した溝16のStaticにはshape_idもshape距離もない。停留所を直線で結んだ図形を実際の走行経路として扱わない。GPSが停留所付近にある証拠と「区間を通過した」証拠を分ける。同名標柱・対向車線・GPS誤差・更新時刻差で一意にならない場合はnull。
+- 23:25の同時取得でNavi/ODPT座標差0.90mと235.79m、23:26に0.44mを観測。内部JSONに車両観測timestampの確認済み項目がなく、同時HTTP取得だけでは同じ瞬間のGPSと証明できない。4方向の位置受入は未達。`BUS_POSITION_UI_ENABLED=false`を維持する。
+- 詳細： [DATA_VALIDATIONの参照観測](PALURU_BUS_P0_DATA_VALIDATION.md)、[Cloud Run準備と手順](PALURU_BUS_P0_DEPLOYMENT.md)。以下の古いsequence中心/Worker公開手順は当時の履歴であり、本追補を優先する。
+
+## Cloud Run移行の作業契約（2026-09-10、実装前）
+
+最新のユーザー指定により、本番候補をCloud Runへ変更する。Worker方式は初期方式として保存し、Free CPU超過による本番NO-GOの履歴は削除しない。本節が過去のWorker前提より優先する。
+
+- 問題/証拠：Cloudflare Freeの10msに対し、本番用moduleのremote CPUはcold 53ms・再取得34ms（DEPLOYMENT参照）。
+- 方針：PWA → HTTPS / Cloud Run → 共通HTTP handler → Bus service/Core → Kawasaki Adapter → ODPT。Node.js標準HTTPを使い、HTTP pathと4方向DTOを維持する。新しいWeb framework/DB/他事業者実装は追加しない。
+- 影響範囲：`bus/` のruntime/HTTP/Cache接続・コンテナ・関連試験、指定MD 3本。既存PWA/Pages、GAS、Agent、OS、Position UIは変更しない。
+- 再利用：固定config、生成Static JSON、RT Adapter、Core/Normalize、fallback/stale判定、既存試験。Cache APIのWebオブジェクト変換はlegacy Worker側へ分離する。
+- 配置：既存`core/`、`providers/`、`config/`、`generated/`を維持。`http/handler.js`、`runtime/server.js`/`start.js`、Dockerfileを追加。Static検証を生成処理から切り出し、起動時検証でZIP decoderを読み込まない。
+- API：既存PWA互換の `GET /api/bus/arrivals`（4方向一括、queryなし）を維持。例示された `?id=` は今回は追加しない。Cloud Runのみ `GET /health` を追加。healthはStatic/設定が妥当でHTTP起動できたことを示し、ODPTの稼働保証にはしない。
+- PORT：Cloud Run注入のPORT（既定8080）を0.0.0.0でlisten、TLSはCloud Run側。SIGTERMでHTTP受付を閉じる。上流timeout20秒、Cloud Run候補timeout30秒。
+- Secret：本番はSecret Managerの固定versionを環境変数`ODPT_ACCESS_TOKEN`に注入する。ローカルは既存gitignore済み`.dev.vars`から起動時だけ読込。image/build args/ソース/upload context/ログ/APIに値を入れない。
+- CORS：productionは`https://alleshokai-gif.github.io`のみ、その他の設定は起動時に拒否。localhostはdevelopmentのみ。CORSは認証の代替ではなく、検証Cloud RunはIAM認証付きで非公開とする。
+- Cache：provider単位のservice instanceごとにRT25秒とin-flight共有、失敗backoff25秒、既存120秒の鮮度判定を維持。背景timerで定期fetchしない。複数Cloud Run instance間では共有されないことを明記する。初期候補は1 CPU / 512MiB / concurrency8 / min0 / max1（確定前にproject/課金/region照合）。max1は厳密な全球重複ゼロの保証ではない。
+- 性能：Static read/validation/indexはprocess起動時だけ。既存service indexを再利用。移行と大きな索引変更を混ぜず、不要なRT全件処理・候補走査は計測結果と次の最適化課題に残す。Cloudflareの10msはCloud Runの判定に使わない。
+- 観測：安全なrequest ID・status・経過時間・サイズ・memoryのみ。要求URL全文/headers/token/GTFS/RT本文はログへ出さない。Nodeのcold起動、Docker起動、Cloud Run cold startを別々に報告する。
+- rollback：Cloud Run本番候補を未接続のまま検証。将来公開後は前revisionへtrafficを戻し、PWA API URLを前の承認済み値へ戻す。FreeでNO-GOのWorkerへ自動fallbackしない。今回既存公開構成は触らない。
+- 受入一覧：Repository/Bus/Static生成、Node実HTTP4方向、同時要求のsingle-flight、RTあり/なし/stale/過去ETA、CORS、health、Secret未設定/Static破損の起動拒否、Docker image秘密非混入、実ブラウザカード表示、Cloud Run cold/warm/fetch/JOIN/memory/応答、実PWA/Android。実行できない項目は未確認のままとする。
+- 公開ゲート：Google Cloud account/project/課金/API/IAM/Secret準備 → ローカル/コンテナ → 認証付きCloud Run検証 → ユーザー公開判断。Positionは引き続きOFF、別のPosition P1としてのみ扱う。
+
+市バスナビ調査は別テーマとしてDATA_VALIDATIONへ記録する。公開JS/通常画面の観察と正規ODPTの限定観測を行い、内部APIは本番Adapterへ追加しない。HTMLスクレイピングは実装しない。便の同一性を証明できない観測は「同一便照合」と表現しない。
+
+> 2026-09-10 本番準備フェーズ：StaticのWorker内取得/6時間cache/24時間上限は生成JSON同梱方式へ置換した。現在の構成・設定・計測は [DEPLOYMENT](PALURU_BUS_P0_DEPLOYMENT.md) を優先する。以下の初期実装・測定は当時の記録として保持する。
+
+> 2026-09-10 実装着手のユーザー決定: Static 4方向・scheduled・estimated/delay・VehiclePosition結合はGO、etaMinutesは条件付きGO。以下の旧「実装前」「GO保留」や15秒pollingより、この追記を優先する。位置表示はOFF。本番deployは対象外。
+
+## 2026-09-10 P0実装の作業契約
+
+- 問題: 実データで確認できた4方向をPALURUで表示するAPI/UIがない。データ根拠は [検証記録9節](PALURU_BUS_P0_DATA_VALIDATION.md)。未確認の位置解釈は補わない。
+- 方針: `bus/config` → Kawasaki Adapter → Bus Core → read-only Worker → `features/bus`。既存Miniは画面許可だけに使用。Busの失敗はBus内に閉じる。
+- 影響範囲: Bus配下、新規UI、PWA画面登録・利用許可・静的素材登録・Build ID、Bus関連テストと文書。既存Agent/OS/データ更新契約は変更しない。
+- 副作用: Bus画面を表示中だけ30秒間隔でread APIを呼ぶ。非表示・別画面・認証ロックでは停止し、復帰時に即更新。サーバーRTキャッシュは25秒。
+- ロールバック: Busメニュー・画面・スクリプトの登録とallowedViews追加を戻す。Workerを未接続にする。DB移行や既存データ変更はない。既存の検証ファイル変更は保持する。
+- 受入項目: 4方向各最大3便、静的の運行日/24時超/乗降順、RTによる順位入替、time優先/delayのみ/明示0/欠損/取消/過去ETA、30秒更新、hiddenと別画面で停止、復帰更新、stale/fallback/fetch error、APIキー非露出、位置DOMなし、既存78テストの回帰、ローカル実Workerとスマホ幅ブラウザ。ユーザーdeploy・実PWA受入は別段階。
+
+### 実装時の具体値と境界
+
+- APIは固定の `GET /api/bus/arrivals` のみ。任意stop・URL・プロキシ引数は受け付けない。公共交通だけのread APIとし、Miniの家族トークンを渡さない。CORSは許可Origin設定で絞るが認証ではない。実運用URL・Worker名・plan・公開設定は未確定で、ローカル専用設定を用意する。
+- `ODPT_ACCESS_TOKEN` はWorker環境にだけ渡す。エラーは固定コード化し、上流URL・本文・例外本文を返さない。ZIPは観測済み公式配布先へ1回だけ転送を許可する。
+- 静的GTFSは設定版 `20260828` を取得し、6時間キャッシュ、取得失敗時の最長利用24時間。版変更はカタログ確認後に設定を更新する。全線ZIPをメモリ内で逐次展開し、必要テーブル/対象路線/乗降stopの行だけを内部indexに残す。原本は保存・配信しない。Cache API以外のDB/KV/R2/定期ジョブを追加しない。CPU/メモリの本番制限適合は計測・plan確認の別ゲート。
+- RTは観測でTU/VP両方が入っていた単一の `trip_update` FULL_DATASETを使用し、別版feedを混ぜない。乗車stopへの直接departureイベントだけを利用する。疎な更新からの遅延伝播は行わない。
+- 時刻計算はepoch秒、運行日はAsia/Tokyo。前日・当日・翌日の静的便を探索し、運行calendarと例外日、乗車→降車順を確認する。0件は「検索範囲内の便なし」。scheduledはStatic、estimatedは同じdepartureのtime優先、delayだけならscheduled+delay、delay秒は差分で検算、etaMinutesは未来時刻だけ切上げ。
+- RT鮮度の実装用上限: feed120秒、便timestamp180秒（測定済み周期31〜32秒に対する保守的な設定値で、安定性の実証値ではない）。古いRTは `realtime_stale`、RT未取得/項目不足は `static_fallback`、HTTP更新失敗は別の `fetch_error`。古い予測のETAは表示しない。
+- 過去の予測は通常除外。ただし同一便・同一乗車stopに鮮度内の `STOPPED_AT` がある便は「予測更新待ち」としてETAをnullにし、次便判定を断定しない。過去の予定時刻しかない便は除外する。予測時刻が未来なら予定時刻が過去でも表示対象。
+- 共通応答は `directions` 内に指定DTOを4件返す。各便に便識別子、路線、実際の行先、乗り場、ISO時刻、時刻根拠・鮮度状態を加える。PWAはGTFS/ODPTのフィールドを扱わずCoreの順序を維持する。
+- カードは行き/帰り各2枚。系統・行先・予定発車時刻・乗り場を最大3便並べ、先発便のETA/遅れを強調する。RTなしと時刻表のみを明示。登戸は公式番号不明なので「登05のりば」、神木本町/溝口の番号は検証済み対応表から表示する。
+- `BUS_POSITION_UI_ENABLED = false`。初期Adapterも `position.supported=false` と全位置値nullを返す。位置解釈の4方向検証と利用者判断を経ずに有効化しない。
+
+
 - 作成日・調査日: 2026-09-06（Asia/Tokyo）
-- 状態: **設計レビュー待ち / 実装前 / P0は途中**
+- 状態: **ユーザー判断で位置OFFのP0実装 / ローカル検証あり / 本番設定・受入待ち**
 - 対象Repository: `paruru-mini`
 - 調査開始時: branch `main` / HEAD `b1959d08c4b23e3ea655903542c977b7526dbf4c` / `git status --short` 出力なし
 - 初回（2026-09-06）の変更: この設計書と `bus/README.md` の追加のみ
@@ -198,7 +260,7 @@ GTFSの同一trip内で乗車停留所の後に目的停留所があり、乗降
 ただし、実際に取得する配布物/メタデータに別の条件がないことまでは確認できていない。
 
 **判断:** 正規APIを自動利用するための許諾経路は確認できた。一方、現段階でAcceptance 12をPASSとはしない。
-利用する版の条件、15秒相当の取得負荷、PALURU内の限定表示APIの扱い、必要な表記を確認した記録を残す。
+利用する版の条件、30秒polling・25秒共有cacheの取得負荷、PALURU内の限定表示APIの扱い、必要な表記を確認した記録を残す。
 判別できない追加条件が出た場合は取得/公開を止め、ODPTへ確認する。問い合わせはまだ送っていない。
 
 ## 6. アーキテクチャ案
@@ -413,19 +475,19 @@ VehiclePositionの便対応、`current_stop_sequence`/`stop_id`、`current_statu
 
 更新を許可する条件は **Bus view表示中 AND document非hidden AND active member**。
 
-- 入場/再表示で即時refresh。通常は15秒間隔を目安にする。
+- 入場/再表示で即時refresh。通常は30秒間隔。2026-09-10のユーザー決定を採用する。
 - `document.hidden`、Bus以外への遷移、`pagehide`、認証失効でtimer停止・AbortControllerで通信を中断。
 - `pageshow`/再入場は状態を再評価し、timerを重複登録しない。
 - 同時に1つのfetchだけ。遅い応答に次の要求を重ねない。離れた画面への古い応答を適用しない。
-- エラー時は即時の無制限再試行をせず、30→60秒を上限とするbackoff案。429はRetry-Afterを優先する。
-- 利用条件の最小間隔や上流生成周期が15秒より長い場合はそちらを優先し、APIの `pollAfterSeconds` で表現する。15秒ごとに新しい位置が届くとは限らない。
+- エラー時は即時の無制限再試行をせず、30秒間隔を維持する。Workerも失敗後25秒は再取得を抑制する。
+- 実測feed更新は約31〜32秒。APIの `pollAfterSeconds` は30秒。毎回内容が変わる保証はない。
 
 ### 10.2 Cache
 
 | 対象 | 提案値 | 守る条件 |
 | --- | --- | --- |
 | 静的GTFS・停留所index | 更新確認6時間、再利用上限24時間 | feed/サービス日の有効期間と配布条件を優先 |
-| TripUpdates/VehiclePosition/Alert | 10〜20秒、初期案15秒 | 上流の観測時刻・有効期限も検査。TTLだけで鮮度を決めない |
+| TripUpdates/VehiclePosition | 25秒 | 上流の観測時刻・有効期限も検査。TTLだけで鮮度を決めない |
 | PWAへのAPI応答 | HTTP `Cache-Control: no-store` | ブラウザ/SWに過去のRTを残さない |
 | PWAのHTML/JS/CSS | 既存network first | Busファイルをapp shellの更新対象へ追加 |
 | 画像 | 既存cache first | Busのためだけの版数変更で解決扱いしない |
@@ -499,7 +561,7 @@ Build変更、GAS実行、Spreadsheet更新、commit/push、Cloudflare設定、�
 | 5 | 取得可能なら遅延 | 同じイベントの予定/予測で照合。未知≠0 | 未検証 |
 | 6 | 先発便の位置を最下段に表示 | 3つ前/2つ前/1つ前/当停留所、区間、sequence欠番、順位切替時の便一致を照合 | UI指定を設計に反映、GTFS-RT未検証 |
 | 7 | 案内板に先発順の最大3便 | 系統/行き先/予定出発時刻/のりば、RTによる順位逆転、残り2便/終バス/翌日 | 未実装 |
-| 8 | 約15秒更新 | 実Networkでinterval、上流timestamp、要求数計測 | 未実装 |
+| 8 | 約30秒更新 | 実Networkでinterval、上流timestamp、要求数計測 | 未実装 |
 | 9 | 非表示中polling停止 | 別view、別タブ、バックグラウンド、BFCache復帰 | 未実装 |
 | 10 | 障害が他機能へ波及しない | timeout/429/不正feed時もHome・Inbox・Health等を操作 | 未実装 |
 | 11 | RT経路にGASなし | Bus更新中のNetwork/Worker診断でGAS要求0を確認 | 設計のみ |

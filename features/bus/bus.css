@@ -1,0 +1,31 @@
+.paluru-bus { color: #21314a; padding-bottom: 24px; }
+.bus-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-left: 44px; }
+.bus-header h1 { margin: 0; font-size: 32px; letter-spacing: -.04em; }
+.bus-eyebrow { color: #68758a; margin: 0 0 4px; font-size: 13px; }
+.bus-refresh { width: 72px; flex: 0 0 72px; min-height: 48px; font-size: 16px; border-radius: 14px; background: #365678; color: #fff; border: 0; box-shadow: none; }
+.bus-refresh:disabled { opacity: .65; }
+.bus-status { min-height: 24px; margin: 16px 0 20px; font-size: 13px; color: #596a80; overflow-wrap: anywhere; }
+.bus-status.is-stale { background: #fff0cf; color: #744713; padding: 12px; border-radius: 12px; }
+.bus-group-title { font-size: 15px; margin: 24px 0 10px; color: #64748b; letter-spacing: .08em; }
+.bus-card { min-width: 0; border: 1px solid #dbe4ed; border-radius: 18px; background: #fff; box-shadow: 0 3px 12px #273b5410; overflow: hidden; margin-bottom: 16px; }
+.bus-direction { margin: 0; background: #243b54; color: #fff; padding: 16px; font-size: 17px; line-height: 1.5; overflow-wrap: anywhere; }
+.bus-board { list-style: none; margin: 0; padding: 0 16px; }
+.bus-row { padding: 14px 0; border-top: 1px solid #e7edf3; }
+.bus-row:first-child { border-top: 0; padding-top: 18px; padding-bottom: 18px; }
+.bus-row-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.bus-rank { color: #64748b; font-size: 11px; min-width: 34px; }
+.bus-route { font-size: 14px; font-weight: 700; letter-spacing: .025em; }
+.bus-platform { margin-left: auto; color: #526982; background: #eff4f8; border-radius: 6px; font-size: 12px; padding: 3px 7px; }
+.bus-headsign { font-size: 13px; color: #53657c; margin: 6px 0 10px; overflow-wrap: anywhere; }
+.bus-timing { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; column-gap: 12px; row-gap: 6px; }
+.bus-scheduled { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bus-row:first-child .bus-scheduled { font-size: 23px; }
+.bus-eta { color: #126a60; font-weight: 750; font-size: 18px; white-space: nowrap; }
+.bus-row:first-child .bus-eta { font-size: 27px; }
+.bus-delay { text-align: right; color: #a45b16; margin: 4px 0 0; font-size: 12px; }
+.bus-no-realtime { font-size: 12px; color: #6d7784; }
+.bus-empty { color: #697588; font-size: 14px; padding: 18px 0; }
+.bus-data-time { color: #778496; font-size: 11px; margin: 0; padding: 8px 16px 12px; border-top: 1px solid #e7edf3; }
+.bus-footer { color: #778496; font-size: 11px; line-height: 1.7; margin-top: 22px; }
+.bus-footer a { color: #536d89; display: inline-flex; align-items: center; min-height: 48px; font-size: 13px; }
+@media (min-width: 760px) { .bus-group { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .bus-group-title { grid-column: 1 / -1; margin-bottom: 0; } }

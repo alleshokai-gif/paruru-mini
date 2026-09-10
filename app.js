@@ -766,6 +766,7 @@ function petHealthDashboardCacheFacade_() {
 function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
   if (state !== "active_member") {
+    try { globalThis.PALURUBus?.setActive(false); } catch { /* Bus lifecycle must not block authentication. */ }
     activeMembershipContext = null;
     if (typeof pendingHomeAgentActionCandidate !== "undefined") pendingHomeAgentActionCandidate = null;
   }
@@ -1618,6 +1619,7 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
+  try { globalThis.PALURUBus?.setActive(resolvedView === "bus"); } catch { /* Keep Bus failures inside its view. */ }
   views.forEach((view) => {
     const allowed = isViewAllowed_(view.dataset.view);
     view.hidden = !allowed;

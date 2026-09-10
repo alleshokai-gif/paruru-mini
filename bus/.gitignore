@@ -7,3 +7,11 @@
 .venv/
 __pycache__/
 *.pyc
+node_modules/
+.wrangler/
+dist/
+.local/
+
+# Server-only generated Static. Never publish to Pages or commit real feed extracts.
+generated/*.json
+generated/*.tmp

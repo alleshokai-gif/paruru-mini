@@ -1,0 +1,6 @@
+[
+  {"id":"home_to_noborito","group":"outbound","provider":"kawasaki","from":"神木本町","to":"登戸","fromStopIds":["184_2"],"toStopIds":["362_1"],"routeIds":["10044"]},
+  {"id":"home_to_mizonokuchi","group":"outbound","provider":"kawasaki","from":"神木本町","to":"溝の口駅南口","fromStopIds":["184_1"],"toStopIds":["434_5","434_1"],"routeIds":["10032","10033","10034","10035","10036","10037"]},
+  {"id":"noborito_to_home","group":"inbound","provider":"kawasaki","from":"登戸","to":"神木本町","fromStopIds":["362_1"],"toStopIds":["184_3"],"routeIds":["10044"]},
+  {"id":"mizonokuchi_to_home","group":"inbound","provider":"kawasaki","from":"溝の口駅南口","to":"神木本町","fromStopIds":["434_2","434_3","434_4"],"toStopIds":["184_3"],"routeIds":["10032","10033","10034","10035","10036","10037"]}
+]

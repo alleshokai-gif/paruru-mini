@@ -1,0 +1,34 @@
+# Build only. Deployment/public IAM changes are deliberately separate commands.
+# No ODPT secret is available to this build or its image layers.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '--platform=linux/amd64', '-t', '${_IMAGE}', '.']
+  - name: gcr.io/cloud-builders/docker
+    args: ['run', '--detach', '--name', 'bus-build-smoke', '-e', 'ODPT_ACCESS_TOKEN=synthetic-build-health-only', '${_IMAGE}']
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        for attempt in {1..15}; do
+          if docker exec bus-build-smoke node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import { existsSync } from "node:fs";
+            const r = await fetch("http://127.0.0.1:8080/health");
+            assert.equal(r.status,200); assert.equal((await r.json()).status,"ok");
+            assert.equal(existsSync("/app/.dev.vars"),false);
+            assert.equal(existsSync("/app/scripts"),false);
+            assert.equal(existsSync("/app/node_modules/fflate"),false);
+            assert.equal(process.versions.node.split(".")[0],"24");
+            const denied = await fetch("http://127.0.0.1:8080/health",{headers:{Origin:"http://localhost:8788"}});
+            assert.equal(denied.status,403);
+            console.log(JSON.stringify({status:"IMAGE_HEALTH_PASS",nodeVersion:process.versions.node}));
+          '; then docker rm -f bus-build-smoke; exit 0; fi
+          sleep 1
+        done
+        docker rm -f bus-build-smoke
+        exit 1
+images: ['${_IMAGE}']
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 900s

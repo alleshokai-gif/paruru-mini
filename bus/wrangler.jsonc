@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "paluru-bus-api",
+  "main": "worker/entry.js",
+  "compatibility_date": "2026-09-10",
+  "minify": true,
+  "send_metrics": false,
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [],
+  "observability": { "enabled": false },
+  "vars": { "ALLOWED_ORIGINS": "https://alleshokai-gif.github.io" },
+  "build": { "command": "node scripts/check-static.js" }
+}

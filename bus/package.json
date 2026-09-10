@@ -1,0 +1,29 @@
+{
+  "name": "paluru-bus-p0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node runtime/start.js",
+    "dev:run": "node scripts/local-run.js",
+    "test:run": "node scripts/check-run-http.js",
+    "test": "node --test test/*.test.js",
+    "dev": "node scripts/local-worker.js",
+    "dev:ui": "node scripts/local-ui.js",
+    "test:live": "node scripts/live-check.js",
+    "build:static": "node scripts/build-p0-static.js",
+    "check:static": "node scripts/check-static.js",
+    "check:bundle": "node scripts/check-bundle.js",
+    "check:deploy": "node scripts/check-deploy.js",
+    "test:integration": "node scripts/integration-check.js",
+    "check:secrets": "node scripts/check-secrets.js"
+  },
+  "dependencies": {
+    "gtfs-realtime-bindings": "2.2.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.130.0",
+    "esbuild": "0.28.1",
+    "miniflare": "5.20260908.0-alpha",
+    "fflate": "0.8.3"
+  }
+}

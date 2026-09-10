@@ -27,6 +27,9 @@ JST = dt.timezone(dt.timedelta(hours=9), "Asia/Tokyo")  # No DST in target area.
 API_ROOT = "https://api.odpt.org/api/v4/"
 STATIC_PATH = "files/odpt/TransportationBureau_CityOfKawasaki/AllLines.zip"
 RT_PREFIX = "gtfs/realtime/odpt_TransportationBureau_CityOfKawasaki_AllLines_"
+STATIC_DELIVERY_HOST = "dataodpt.blob.core.windows.net"
+STATIC_DELIVERY_PREFIX = "/files-dc-public/odpt/TransportationBureau_CityOfKawasaki/AllLines-"
+USER_AGENT = "PALURU-Bus-P0-validation/1"
 MAX_BYTES = 32 * 1024 * 1024
 MAX_EXPANDED_BYTES = 200 * 1024 * 1024
 MAX_EXAMPLES = 3
@@ -90,6 +93,26 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ObservationError("UPSTREAM_REDIRECT_REJECTED")
 
 
+class StaticDeliveryRedirect(NoRedirect):
+    """ODPT's observed static-file delivery only. Never forward the ODPT key."""
+    def __init__(self, static_date):
+        self.expected_path = STATIC_DELIVERY_PREFIX + static_date + ".zip"
+        self.followed = False
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlsplit(newurl)
+        query_names = set(urllib.parse.parse_qs(parsed.query))
+        if (self.followed or code not in {302, 303, 307, 308} or
+                parsed.scheme != "https" or parsed.hostname != STATIC_DELIVERY_HOST or
+                parsed.port is not None or parsed.username or parsed.password or parsed.fragment or
+                parsed.path != self.expected_path or
+                not query_names <= {"se", "sig", "sp", "sr", "st", "sv"} or "sig" not in query_names):
+            raise ObservationError("UPSTREAM_REDIRECT_REJECTED")
+        self.followed = True
+        # Use exactly the server's signed URL; copy no original query or auth headers.
+        return urllib.request.Request(newurl, headers={"User-Agent": USER_AGENT})
+
+
 def fetch(kind, token, static_date):
     paths = {"static": STATIC_PATH, "trip_update": RT_PREFIX + "trip_update",
              "vehicle": RT_PREFIX + "vehicle"}
@@ -97,10 +120,11 @@ def fetch(kind, token, static_date):
     if kind == "static":
         query["date"] = static_date
     url = API_ROOT + paths[kind] + "?" + urllib.parse.urlencode(query)
-    request = urllib.request.Request(url, headers={"User-Agent": "PALURU-Bus-P0-validation/1"})
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    redirect = StaticDeliveryRedirect(static_date) if kind == "static" else NoRedirect()
     start = time.monotonic()
     try:
-        with urllib.request.build_opener(NoRedirect).open(request, timeout=25) as response:
+        with urllib.request.build_opener(redirect).open(request, timeout=25) as response:
             data = response.read(MAX_BYTES + 1)
             if len(data) > MAX_BYTES:
                 raise ObservationError("UPSTREAM_SIZE_LIMIT")
@@ -109,6 +133,7 @@ def fetch(kind, token, static_date):
     except (urllib.error.URLError, TimeoutError, OSError):
         raise ObservationError("UPSTREAM_NETWORK_FAILURE") from None
     return data, {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+                  "staticDeliveryRedirect": isinstance(redirect, StaticDeliveryRedirect) and redirect.followed,
                   "elapsedMs": round((time.monotonic() - start) * 1000),
                   "fetchedAt": dt.datetime.now(JST).isoformat(timespec="seconds")}
 
@@ -281,9 +306,20 @@ def vehicle_location(chain, target_index, vehicle, unsafe_sequence=False):
     return result
 
 
+def kawasaki_location_for_observation(chain, target_index, vehicle, unsafe_sequence=False):
+    result = vehicle_location(chain, target_index, vehicle, unsafe_sequence)
+    # 2026-09-10: STOPPED_AT(seq 9) -> IN_TRANSIT_TO(seq 9) was observed
+    # with forward movement. Do not assert the spec's inbound segment as fact.
+    if result.get("effectiveStatus") == "IN_TRANSIT_TO" and not result["targetPassed"]:
+        result["unverifiedSpecStopsAway"] = result["stopsAway"]
+        result.update(stopsAway=None, previousStopId=None, nextStopId=None,
+                      reason="KAWASAKI_TRANSIT_SEQUENCE_MEANING_UNVERIFIED")
+    return result
+
+
 def static_summary(static, meta, now):
     stops = static["stops"]
-    stop_fields = ("stop_id", "stop_name", "platform_code", "parent_station", "location_type", "stop_lat", "stop_lon", "stop_desc")
+    stop_fields = ("stop_id", "stop_name", "stop_code", "platform_code", "parent_station", "location_type", "stop_lat", "stop_lon", "stop_desc")
     result = {"phase": "static", **meta, "tableRows": {k: len(v) for k, v in static["tables"].items()},
               "feedInfo": [{k: r.get(k) for k in ("feed_version", "feed_start_date", "feed_end_date")}
                            for r in static["tables"]["feed_info"]],
@@ -303,7 +339,8 @@ def static_summary(static, meta, now):
             for i, j in pairs:
                 combinations.add((chain[i]["stop_id"], chain[j]["stop_id"], trip["route_id"], route.get("route_short_name", "")))
                 example = {"tripId": tid, "routeId": trip["route_id"], "routeLabel": route.get("route_short_name"),
-                           "headsign": trip.get("trip_headsign"), "boardingStopId": chain[i]["stop_id"],
+                           "headsign": trip.get("trip_headsign"), "stopHeadsign": chain[i].get("stop_headsign"),
+                           "lastStopName": stops[chain[-1]["stop_id"]]["stop_name"], "boardingStopId": chain[i]["stop_id"],
                            "alightingStopId": chain[j]["stop_id"], "boardingSequence": int(chain[i]["stop_sequence"]),
                            "alightingSequence": int(chain[j]["stop_sequence"]), "platform": stops[chain[i]["stop_id"]].get("platform_code") or None}
                 if len(examples) < MAX_EXAMPLES:
@@ -344,6 +381,16 @@ def field_counts(messages, fields):
     return {f: sum(m.HasField(f) for m in messages) for f in fields}
 
 
+def choose_coherent_snapshot(feeds):
+    candidates = [(name, feed) for name, feed in feeds.items()
+                  if feed.header.incrementality == 0 and
+                  all(any(e.HasField(kind) for e in feed.entity) for kind in ("trip_update", "vehicle"))]
+    if not candidates:
+        raise ObservationError("COMBINED_SNAPSHOT_UNAVAILABLE")
+    name, feed = max(candidates, key=lambda item: optional(item[1].header, "timestamp") or 0)
+    return name, feed
+
+
 def realtime_summary(static, tu_feed, vp_feed, now):
     # Only FULL_DATASET snapshots are joinable in this bounded observer.
     if tu_feed.header.incrementality != 0 or vp_feed.header.incrementality != 0:
@@ -367,6 +414,7 @@ def realtime_summary(static, tu_feed, vp_feed, now):
                 direct = [stu for stu in tu.stop_time_update if resolve_stop(chain, stu) == i]
                 sample = {"trip": descriptor(tu.trip), "tripRelationship": relationship,
                           "boardingStopId": row["stop_id"], "boardingSequence": int(row["stop_sequence"]),
+                          "stopHeadsign": row.get("stop_headsign"), "lastStopName": static["stops"][chain[-1]["stop_id"]]["stop_name"],
                           "alightingStopId": chain[j]["stop_id"], "tripUpdateTimestamp": iso(optional(tu, "timestamp")),
                           "tripLevelDelaySeconds": optional(tu, "delay"), "issues": []}
                 day = None
@@ -394,6 +442,7 @@ def realtime_summary(static, tu_feed, vp_feed, now):
                         if stu.HasField(event):
                             sample[event] = event_summary(getattr(stu, event), scheduled, now)
                             counts[event + "Present"] += 1
+                            counts[event + ".delayCheckMismatch"] += int(sample[event]["delayCheck"] is False)
                             for f in ("time", "delay"):
                                 counts[event + "." + f] += int(getattr(stu, event).HasField(f))
                         else:
@@ -411,13 +460,18 @@ def realtime_summary(static, tu_feed, vp_feed, now):
                     vp = vp_candidates[0]
                     counts["uniqueVehicleJoin"] += 1
                     unsafe = any(stu.schedule_relationship != 0 for stu in tu.stop_time_update)
-                    location = vehicle_location(chain, i, vp, unsafe)
+                    location = kawasaki_location_for_observation(chain, i, vp, unsafe)
+                    for prefix in ("previous", "next", "current"):
+                        sid = location.get(prefix + "StopId")
+                        location[prefix + "StopName"] = static["stops"][sid]["stop_name"] if sid else None
                     sample["vehicle"] = {"trip": descriptor(vp.trip), "timestamp": iso(optional(vp, "timestamp")),
                         "timestampAgeSeconds": now - vp.timestamp if vp.HasField("timestamp") else None,
                         "latitude": optional(vp.position, "latitude") if vp.HasField("position") else None,
                         "longitude": optional(vp.position, "longitude") if vp.HasField("position") else None,
                         **location}
                     counts["stopsAwayReconstructed"] += int(location["stopsAway"] is not None)
+                    if len(direct) != 1:
+                        counts["directUpdateMissingPassed" if location["targetPassed"] else "directUpdateMissingNotPassed"] += 1
                 else:
                     sample["issues"].append("VEHICLE_JOIN_MISSING_OR_AMBIGUOUS")
                 event = sample.get("departure", {})
@@ -433,6 +487,7 @@ def realtime_summary(static, tu_feed, vp_feed, now):
             "allStopUpdatesOfTargetTrips": {"count": len(updates), **field_counts(updates, ("stop_id", "stop_sequence", "arrival", "departure"))},
             "vehicleFieldPresence": field_counts(target_vps, ("trip", "current_stop_sequence", "current_status", "stop_id", "position", "timestamp")),
             "vehicleCoordinatePresence": {f: sum(vp.HasField("position") and vp.position.HasField(f) for vp in target_vps) for f in ("latitude", "longitude")},
+            "vehicleStatuses": dict(collections.Counter(enum_name(vp, "current_status") or "ABSENT" for vp in target_vps)),
             "counts": dict(counts), "examples": samples[:MAX_EXAMPLES], "examplesTruncated": len(samples) > MAX_EXAMPLES}
     return result
 
@@ -473,8 +528,12 @@ def run():
             except ObservationError as exc:
                 info[kind] = {"error": exc.args[0]}
                 break
-        summary = realtime_summary(static, feeds["trip_update"], feeds["vehicle"], time.time()) if len(feeds) == 2 else None
-        emit({"phase": "realtime", "sample": index + 1, "feeds": info, "directions": summary})
+        summary, source = None, None
+        if len(feeds) == 2:
+            source, coherent = choose_coherent_snapshot(feeds)
+            summary = realtime_summary(static, coherent, coherent, time.time())
+        emit({"phase": "realtime", "sample": index + 1, "feeds": info,
+              "joinSnapshotSource": source, "directions": summary})
         if any(info[kind].get("error") for kind in info):
             emit({"phase": "stopped", "reason": "UPSTREAM_ERROR_NO_AUTOMATIC_RETRY"})
             raise ObservationError("UPSTREAM_SAMPLE_FAILED")

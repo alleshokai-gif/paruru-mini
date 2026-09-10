@@ -113,6 +113,16 @@ class ObservationTests(unittest.TestCase):
         vehicle.ClearField("current_stop_sequence")
         self.assertEqual(v.vehicle_location(chain, 1, vehicle)["reason"], "CURRENT_SEQUENCE_MISSING")
 
+    def test_kawasaki_transit_is_not_asserted_as_verified_segment(self):
+        chain = [{"stop_id": "A", "stop_sequence": "10"}, {"stop_id": "B", "stop_sequence": "20"}]
+        vehicle = pb.VehiclePosition(current_stop_sequence=10, stop_id="A", current_status=pb.VehiclePosition.STOPPED_AT)
+        self.assertEqual(v.kawasaki_location_for_observation(chain, 1, vehicle)["stopsAway"], 1)
+        vehicle.current_status = pb.VehiclePosition.IN_TRANSIT_TO
+        result = v.kawasaki_location_for_observation(chain, 1, vehicle)
+        self.assertIsNone(result["stopsAway"])
+        self.assertIsNone(result["nextStopId"])
+        self.assertEqual(result["reason"], "KAWASAKI_TRANSIT_SEQUENCE_MEANING_UNVERIFIED")
+
     def test_repeat_stop_requires_sequence(self):
         chain = [{"stop_id": "A", "stop_sequence": "10"}, {"stop_id": "A", "stop_sequence": "20"}]
         update = pb.TripUpdate.StopTimeUpdate(stop_id="A")
@@ -163,9 +173,37 @@ class ObservationTests(unittest.TestCase):
                 v.fetch("vehicle", secret, "20260828")
         self.assertEqual(str(caught.exception), "UPSTREAM_HTTP_403")
 
+    def test_join_uses_one_complete_snapshot_when_endpoint_times_differ(self):
+        old = pb.FeedMessage(header=pb.FeedHeader(gtfs_realtime_version="2.0", timestamp=100))
+        old.entity.add(id="old-tu").trip_update.trip.trip_id = "old"
+        old.entity.add(id="old-vp").vehicle.trip.trip_id = "old"
+        new = pb.FeedMessage(header=pb.FeedHeader(gtfs_realtime_version="2.0", timestamp=131))
+        new.entity.add(id="new-tu").trip_update.trip.trip_id = "new"
+        new.entity.add(id="new-vp").vehicle.trip.trip_id = "new"
+        name, feed = v.choose_coherent_snapshot({"trip_update": new, "vehicle": old})
+        self.assertEqual(name, "trip_update")
+        self.assertIs(feed, new)
+        self.assertEqual(feed.entity[1].vehicle.trip.trip_id, "new")
+
     def test_redirect_is_rejected_without_forwarding_secret(self):
         with self.assertRaises(v.ObservationError):
             v.NoRedirect().redirect_request(None, None, 302, None, {}, "https://example.invalid/")
+
+    def test_only_observed_static_delivery_is_allowed_once_without_original_auth(self):
+        handler = v.StaticDeliveryRedirect("20260828")
+        signed_url = "https://" + v.STATIC_DELIVERY_HOST + v.STATIC_DELIVERY_PREFIX + "20260828.zip?sig=SYNTHETIC&sv=1"
+        original = v.urllib.request.Request("https://api.odpt.org/?acl:consumerKey=SYNTHETIC", headers={"Authorization": "SYNTHETIC"})
+        redirected = handler.redirect_request(original, None, 302, None, {}, signed_url)
+        self.assertEqual(redirected.full_url, signed_url)
+        self.assertIsNone(redirected.get_header("Authorization"))
+        self.assertNotIn("consumerKey", redirected.full_url)
+        with self.assertRaises(v.ObservationError):
+            handler.redirect_request(original, None, 302, None, {}, signed_url)
+        for wrong in (signed_url.replace(v.STATIC_DELIVERY_HOST, "example.invalid"),
+                      signed_url.replace("20260828.zip", "20260901.zip"),
+                      signed_url + "&acl:consumerKey=SYNTHETIC"):
+            with self.assertRaises(v.ObservationError):
+                v.StaticDeliveryRedirect("20260828").redirect_request(original, None, 302, None, {}, wrong)
 
 
 if __name__ == "__main__":
