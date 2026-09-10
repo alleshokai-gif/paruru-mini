@@ -1,0 +1,9 @@
+# Local secrets (the empty template is the only exception).
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Local validation runtime.
+.venv/
+__pycache__/
+*.pyc

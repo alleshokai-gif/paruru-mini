@@ -389,6 +389,10 @@
     const saving = Object.create(null);
     const requests = Object.create(null);
     const createId = deps.createRequestId;
+    const now = typeof deps.now === 'function' ? deps.now : function () { return Date.now(); };
+    const emit = function (diagnostic) {
+      try { if (typeof deps.log === 'function') deps.log(diagnostic); } catch (_) { /* diagnostics never change save state */ }
+    };
     return {
       async save(formKey, event, write) {
         const key = String(formKey || '');
@@ -399,22 +403,82 @@
           requests[key] = { id: createId(), fingerprint: fingerprint };
         }
         const request = buildPetHealthWriteRequest_(requests[key].id, event, write);
+        const startedAtMs = Number(now());
+        let writeRespondedAtMs = null;
+        const uiErrors = [];
+        const diagnostic = function (stage, classification) {
+          const atMs = Number(now());
+          emit({
+            requestIdSuffix: String(request.clientRequestId || '').slice(-8),
+            stage: stage,
+            elapsedMs: Math.max(0, atMs - startedAtMs),
+            writeToFormEnabledMs: writeRespondedAtMs === null || stage !== 'FORM_REENABLED' ? null : Math.max(0, atMs - writeRespondedAtMs),
+            classification: classification || null,
+          });
+        };
+        const runUi = async function (stage, callback, args) {
+          if (typeof callback !== 'function') return undefined;
+          try { return await callback.apply(null, args || []); }
+          catch (error) {
+            uiErrors.push({ stage: stage, error: error });
+            diagnostic(stage, 'POST_SAVE_UI_FAILED');
+            return undefined;
+          }
+        };
+        const release = async function () {
+          saving[key] = false;
+          const releaseErrorCount = uiErrors.length;
+          await runUi('FORM_RELEASE_UI_FAILED', deps.onRelease, [key, request]);
+          diagnostic(uiErrors.length === releaseErrorCount ? 'FORM_REENABLED' : 'FORM_REENABLE_FAILED', uiErrors.length ? 'POST_SAVE_UI_FAILED' : null);
+          await runUi('POST_SAVE_SETTLED_UI_FAILED', deps.onSettled, [key, request]);
+        };
         saving[key] = true;
-        if (deps.onSaving) deps.onSaving(key, request);
+        diagnostic('SAVE_STARTED');
+        await runUi('SAVE_START_UI_FAILED', deps.onSaving, [key, request]);
+        if (uiErrors.length) {
+          await release();
+          return { skipped: false, saved: false, classification: 'POST_SAVE_UI_FAILED', error: uiErrors[0].error };
+        }
+        let data;
         try {
           if (deps.isOnline && !deps.isOnline()) { const error = new Error('OFFLINE'); error.code = 'OFFLINE'; throw error; }
-          const data = await deps.call(request, action);
-          delete requests[key];
-          const postSave = deps.onSuccess ? await deps.onSuccess(key, data, request, action) : null;
-          if (deps.onSaved) deps.onSaved(key, data, postSave, request, action);
-          return { skipped: false, saved: true, data: data, postSave: postSave };
+          data = await deps.call(request, action);
         } catch (error) {
-          if (deps.onFailure) deps.onFailure(key, error, request);
-          return { skipped: false, saved: false, error: error };
-        } finally {
-          saving[key] = false;
-          if (deps.onSettled) deps.onSettled(key);
+          diagnostic('WRITE_FAILED', 'WRITE_FAILED');
+          await runUi('WRITE_FAILURE_UI_FAILED', deps.onFailure, [key, error, request, { classification: 'WRITE_FAILED' }]);
+          await release();
+          return { skipped: false, saved: false, classification: 'WRITE_FAILED', error: error, uiErrors: uiErrors };
         }
+
+        writeRespondedAtMs = Number(now());
+        diagnostic('WRITE_RESPONSE_RECEIVED');
+        delete requests[key];
+        const initialPostSave = { writeSaved: true, dashboardRefreshed: null, summaryRefreshed: null, recentRefreshed: null };
+        await runUi('POST_SAVE_UI_FAILED', deps.onSuccess, [key, data, request, action]);
+        await release();
+        await runUi('POST_SAVE_UI_FAILED', deps.onSaved, [key, data, initialPostSave, request, action]);
+
+        let refreshed = true;
+        if (typeof deps.refresh === 'function') {
+          try { refreshed = (await deps.refresh(key, data, request, action)) !== false; }
+          catch (error) {
+            refreshed = false;
+            uiErrors.push({ stage: 'DASHBOARD_REFRESH_UI_FAILED', error: error });
+            diagnostic('DASHBOARD_REFRESH_UI_FAILED', 'POST_SAVE_UI_FAILED');
+          }
+        }
+        const postSave = { writeSaved: true, dashboardRefreshed: refreshed, summaryRefreshed: refreshed, recentRefreshed: refreshed };
+        diagnostic('DASHBOARD_REFRESH_COMPLETED', uiErrors.length ? 'POST_SAVE_UI_FAILED' : (refreshed ? null : 'REFRESH_FAILED'));
+        if (!refreshed) await runUi('POST_SAVE_UI_FAILED', deps.onRefreshFailed, [key, data, postSave, request, action]);
+        else await runUi('POST_SAVE_UI_FAILED', deps.onRefreshed, [key, data, postSave, request, action]);
+        return {
+          skipped: false,
+          saved: true,
+          classification: uiErrors.length ? 'POST_SAVE_UI_FAILED' : (refreshed ? null : 'REFRESH_FAILED'),
+          data: data,
+          postSave: postSave,
+          uiErrors: uiErrors,
+        };
       },
       contentChanged(formKey) { const key = String(formKey || ''); if (!saving[key]) delete requests[key]; },
       isSaving(formKey) { return Boolean(saving[String(formKey || '')]); },
@@ -429,18 +493,17 @@
       isOnline: function () { return typeof navigator === 'undefined' || navigator.onLine !== false; },
       call: function (request, action) { return call_(action, request); },
       onSaving: function (key) { setFormSaving_(key, true); setFormStatus_(key, '保存中…'); },
-      onSuccess: async function (key) {
+      onSuccess: function (key) {
         const form = form_(key);
         if (form) { form.reset(); resetTimestampControl_(form); exitCorrectionMode_(form); }
-        const refreshed = await loadDashboard_({ quiet: true });
-        return { writeSaved: true, dashboardRefreshed: refreshed, summaryRefreshed: refreshed, recentRefreshed: refreshed };
       },
       onSaved: function (key, _data, postSave, _request, action) { setFormStatus_(key, savedStatusMessage_(postSave, action)); },
+      refresh: function () { return loadDashboard_({ quiet: true }); },
+      onRefreshFailed: function (key, _data, postSave, _request, action) { setFormStatus_(key, savedStatusMessage_(postSave, action)); },
       onFailure: function (key, error) { setFormStatus_(key, error && error.code === 'OFFLINE' ? 'オフライン中。未保存です。入力は残しています。' : '保存できませんでした。入力は残しています。'); },
-      onSettled: function (key) {
-        setFormSaving_(key, false);
-        if (key === 'water_bottle') renderWaterBottle_();
-      },
+      onRelease: function (key) { setFormSaving_(key, false); },
+      onSettled: function (key) { if (key === 'water_bottle') renderWaterBottle_(); },
+      log: logPetHealthSaveDiagnostic_,
     });
     return saveFlow_;
   }
@@ -824,6 +887,22 @@
       ? saved + '。最新表示を更新できませんでした。' : saved;
   }
   function setFormStatus_(key, message) { const form = form_(key); const status = form && form.querySelector('[data-popio-form-status]'); if (status) status.textContent = message || ''; }
+
+  function logPetHealthSaveDiagnostic_(diagnostic) {
+    try {
+      if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+      console.info('[PALURU Pet Save]', {
+        requestIdSuffix: String(diagnostic && diagnostic.requestIdSuffix || '').slice(-8),
+        stage: String(diagnostic && diagnostic.stage || 'UNKNOWN').replace(/[^A-Z0-9_]/g, '').slice(0, 80) || 'UNKNOWN',
+        elapsedMs: Math.max(0, Number(diagnostic && diagnostic.elapsedMs || 0)),
+        writeToFormEnabledMs: diagnostic && Number.isFinite(Number(diagnostic.writeToFormEnabledMs)) ? Math.max(0, Number(diagnostic.writeToFormEnabledMs)) : null,
+        classification: diagnostic && diagnostic.classification ? String(diagnostic.classification) : null,
+        buildId: typeof globalThis.BUILD_ID === 'string' ? globalThis.BUILD_ID : '',
+      });
+    } catch (_) {
+      // Diagnostics must never change the save result.
+    }
+  }
 
   function shouldBlockPetHealthOffline_(action, online) {
     return online === false && !PET_HEALTH_READ_ACTIONS[action];
@@ -1292,6 +1371,7 @@
     reminderIcon_: reminderIcon_,
     recordingReminderModel_: recordingReminderModel_,
     savedStatusMessage_: savedStatusMessage_,
+    logPetHealthSaveDiagnostic_: logPetHealthSaveDiagnostic_,
     shouldBlockPetHealthOffline_: shouldBlockPetHealthOffline_,
     summaryDisplayModel_: summaryDisplayModel_,
     timestampLabel_: timestampLabel_,

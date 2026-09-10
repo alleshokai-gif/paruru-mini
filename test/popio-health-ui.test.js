@@ -215,7 +215,7 @@ const periodControlsCss = cssSource.slice(cssSource.indexOf('.popio-observation-
 assert(periodControlsCss.includes('min-width: 0;') && periodControlsCss.includes('flex-wrap: nowrap;') && periodControlsCss.includes('overflow-x: visible;'), 'PH-COLL09 period container can force horizontal overflow');
 assert(periodControlsCss.includes('width: 64px;') && periodControlsCss.includes('max-width: 64px;') && periodControlsCss.includes('min-width: 64px;') && periodControlsCss.includes('flex: 0 0 64px;') && periodControlsCss.includes('flex-shrink: 0;') && periodControlsCss.includes('white-space: nowrap;'), 'PH-COLL09/10 period buttons can stretch or wrap');
 assert(64 * 2 + 8 <= 360 - 48 - 30, 'PH-COLL10 two fixed period buttons exceed the 360px mobile content contract');
-assert(featureSource.includes("loadDashboard_({ quiet: true })"), 'PH-TU10 correction save no longer refreshes Dashboard');
+assert(featureSource.includes("refresh: function () { return loadDashboard_({ quiet: true }); }"), 'PH-TU10 correction save no longer refreshes Dashboard');
 
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
 
@@ -250,7 +250,7 @@ async function run() {
     createRequestId: () => uuid(10 + calls),
     isOnline: () => true,
     call: async (request) => { calls += 1; sent.push(plain(request)); return gate.promise; },
-    onSuccess: async () => { summaryRefreshes += 1; },
+    refresh: async () => { summaryRefreshes += 1; },
   });
   const event = { eventType: 'stool' };
   const first = flow.save('stool', event);
@@ -277,7 +277,9 @@ async function run() {
       return { event: { eventId: 'event-2' } };
     },
   });
-  assert.strictEqual((await retryFlow.save('water', retainedInput)).saved, false);
+  const writeFailure = await retryFlow.save('water', retainedInput);
+  assert.strictEqual(writeFailure.saved, false);
+  assert.strictEqual(writeFailure.classification, 'WRITE_FAILED', 'PH-SAVE00 Write failure classification');
   assert.deepStrictEqual(retainedInput, { eventType: 'water', amountMl: 150 }, 'PH-U11 input mutated on failure');
   assert(retryFlow.requestId('water'), 'PH-U12 failed request ID was discarded');
   assert.strictEqual((await retryFlow.save('water', retainedInput)).saved, true);
@@ -337,7 +339,7 @@ async function run() {
     createRequestId: () => uuid(61),
     isOnline: () => true,
     call: async () => ({ event: { eventId: 'bottle-1' } }),
-    onSuccess: async () => { bottleRefreshes += 1; },
+    refresh: async () => { bottleRefreshes += 1; },
   });
   assert.strictEqual((await bottleSuccessFlow.save('water_bottle', savedBottle)).saved, true, 'PH-WU09 bottle save');
   assert.strictEqual(bottleRefreshes, 1, 'PH-WU09 bottle save refresh');
@@ -361,20 +363,113 @@ async function run() {
     createRequestId: () => uuid(saveSequence++),
     isOnline: () => true,
     call: async (request) => { saveIds.push(request.clientRequestId); return { event: { eventId: 'saved-meal' } }; },
-    onSuccess: async () => ({ writeSaved: true, summaryRefreshed: false }),
-    onSaved: (_key, _data, postSave) => { postSaveResults.push(plain(postSave)); saveStatuses.push(api.savedStatusMessage_(postSave)); },
+    refresh: async () => false,
+    onSaved: (_key, _data, postSave) => { saveStatuses.push(api.savedStatusMessage_(postSave)); },
+    onRefreshFailed: (_key, _data, postSave) => { postSaveResults.push(plain(postSave)); saveStatuses.push(api.savedStatusMessage_(postSave)); },
   });
   const mealSave = await postSaveFlow.save('meal', { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished' });
   assert.strictEqual(mealSave.saved, true, 'PH-SF02 refresh failure must not revert a saved Write');
-  assert.deepStrictEqual(plain(mealSave.postSave), { writeSaved: true, summaryRefreshed: false }, 'PH-SF02 save outcome');
+  assert.strictEqual(mealSave.classification, 'REFRESH_FAILED', 'PH-SF02 refresh failure classification');
+  assert.deepStrictEqual(plain(mealSave.postSave), { writeSaved: true, dashboardRefreshed: false, summaryRefreshed: false, recentRefreshed: false }, 'PH-SF02 save outcome');
   assert.strictEqual(postSaveFlow.requestId('meal'), '', 'PH-SF02 saved Write retained request ID');
-  assert.deepStrictEqual(postSaveResults, [{ writeSaved: true, summaryRefreshed: false }], 'PH-SF02 saved outcome was not delivered');
-  assert.deepStrictEqual(saveStatuses, ['保存しました。最新表示を更新できませんでした。'], 'PH-SF02 saved message must not say Write failed');
+  assert.deepStrictEqual(postSaveResults, [{ writeSaved: true, dashboardRefreshed: false, summaryRefreshed: false, recentRefreshed: false }], 'PH-SF02 saved outcome was not delivered');
+  assert.deepStrictEqual(saveStatuses, ['保存しました', '保存しました。最新表示を更新できませんでした。'], 'PH-SF02 must acknowledge the Write before reporting refresh failure');
   assert.strictEqual(postSaveFlow.isSaving('meal'), false, 'PH-RCA02 summary failure left the save flow busy');
   const secondMealSave = await postSaveFlow.save('meal', { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished' });
   assert.strictEqual(secondMealSave.saved, true, 'PH-SF08 later new save remains possible');
   assert.notStrictEqual(saveIds[0], saveIds[1], 'PH-SF08 summary failure reused a saved Write request ID');
   assert.strictEqual(api.savedStatusMessage_({ writeSaved: true, summaryRefreshed: true }), '保存しました', 'PH-SF01 success message');
+
+  // PH-SAVE01-09: an acknowledged Write releases the form before Dashboard
+  // refresh, and no later callback failure can become WRITE_FAILED.
+  let phaseClock = 1000;
+  const phaseOrder = [];
+  const phaseDiagnostics = [];
+  const refreshStarted = deferred();
+  const refreshFinished = deferred();
+  const phaseFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(90),
+    now: () => phaseClock,
+    log: (entry) => { phaseDiagnostics.push(plain(entry)); },
+    call: async () => { phaseClock = 1100; phaseOrder.push('write-response'); return { event: { eventId: 'phase-event' } }; },
+    onSaving: () => { phaseOrder.push('saving'); },
+    onSuccess: () => { phaseClock = 1120; phaseOrder.push('reset'); },
+    onRelease: () => { phaseClock = 1180; phaseOrder.push('reenable'); },
+    onSettled: () => { phaseOrder.push('settled'); },
+    onSaved: (_key, _data, postSave) => { phaseOrder.push(api.savedStatusMessage_(postSave)); },
+    refresh: async () => { phaseOrder.push('refresh-start'); refreshStarted.resolve(); return refreshFinished.promise; },
+  });
+  const phasePending = phaseFlow.save('meal', { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished' });
+  await refreshStarted.promise;
+  assert.strictEqual(phaseFlow.isSaving('meal'), false, 'PH-SAVE01 form stayed saving while Dashboard refreshed');
+  assert.strictEqual(phaseFlow.requestId('meal'), '', 'PH-SAVE02 acknowledged Write retained request ID');
+  assert.deepStrictEqual(phaseOrder, ['saving', 'write-response', 'reset', 'reenable', 'settled', '保存しました', 'refresh-start'], 'PH-SAVE03 Write acknowledgement sequence');
+  const enabledDiagnostic = phaseDiagnostics.find((entry) => entry.stage === 'FORM_REENABLED');
+  assert(enabledDiagnostic && enabledDiagnostic.writeToFormEnabledMs === 80 && enabledDiagnostic.writeToFormEnabledMs <= 300, 'PH-SAVE04 form re-enable exceeded the injected 300ms target');
+  phaseClock = 1500;
+  refreshFinished.resolve(true);
+  const phaseResult = await phasePending;
+  assert.strictEqual(phaseResult.saved, true, 'PH-SAVE05 successful independent refresh changed Write result');
+  assert.strictEqual(phaseResult.classification, null, 'PH-SAVE05 success classification');
+  assert.deepStrictEqual(phaseDiagnostics.filter((entry) => ['SAVE_STARTED', 'WRITE_RESPONSE_RECEIVED', 'FORM_REENABLED', 'DASHBOARD_REFRESH_COMPLETED'].includes(entry.stage)).map((entry) => entry.stage), ['SAVE_STARTED', 'WRITE_RESPONSE_RECEIVED', 'FORM_REENABLED', 'DASHBOARD_REFRESH_COMPLETED'], 'PH-SAVE06 timing stages');
+  assert(phaseDiagnostics.every((entry) => Object.keys(entry).every((key) => ['requestIdSuffix', 'stage', 'elapsedMs', 'writeToFormEnabledMs', 'classification'].includes(key))), 'PH-SAVE06 diagnostics leaked request data');
+
+  let genericSaveFailures = 0;
+  let uiReleaseCalls = 0;
+  const postWriteUiFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(91),
+    call: async () => ({ event: { eventId: 'stored-before-ui-error' } }),
+    onSuccess: async () => { throw new Error('reset render failed'); },
+    onRelease: () => { uiReleaseCalls += 1; },
+    onSaved: () => { throw new Error('status render failed'); },
+    onSettled: () => { throw new Error('settled render failed'); },
+    onFailure: () => { genericSaveFailures += 1; },
+    refresh: async () => true,
+  });
+  const postWriteUiResult = await postWriteUiFlow.save('meal', { eventType: 'meal', mealSlot: 'breakfast', completion: 'finished' });
+  assert.strictEqual(postWriteUiResult.saved, true, 'PH-SAVE07 post-Write UI exception became save failure');
+  assert.strictEqual(postWriteUiResult.classification, 'POST_SAVE_UI_FAILED', 'PH-SAVE07 post-Write UI classification');
+  assert.strictEqual(genericSaveFailures, 0, 'PH-SAVE07 displayed 保存できませんでした after acknowledged Write');
+  assert.strictEqual(uiReleaseCalls, 1, 'PH-SAVE07 release callback was skipped');
+  assert.strictEqual(postWriteUiFlow.isSaving('meal'), false, 'PH-SAVE07 UI exception left saving=true');
+  assert.strictEqual(postWriteUiFlow.requestId('meal'), '', 'PH-SAVE07 UI exception restored acknowledged request ID');
+
+  let refreshFailureSaveErrors = 0;
+  const refreshThrowFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(92),
+    call: async () => ({ event: { eventId: 'stored-before-refresh-error' } }),
+    refresh: async () => { throw new Error('Dashboard render failed'); },
+    onFailure: () => { refreshFailureSaveErrors += 1; },
+  });
+  const refreshThrowResult = await refreshThrowFlow.save('stool', { eventType: 'stool' });
+  assert.strictEqual(refreshThrowResult.saved, true, 'PH-SAVE08 refresh exception changed Write success');
+  assert.strictEqual(refreshThrowResult.classification, 'POST_SAVE_UI_FAILED', 'PH-SAVE08 escaped Dashboard render/state exception classification');
+  assert.strictEqual(refreshFailureSaveErrors, 0, 'PH-SAVE08 refresh exception invoked Write failure UI');
+  assert.strictEqual(refreshThrowFlow.isSaving('stool'), false, 'PH-SAVE08 refresh exception left saving=true');
+
+  let startWriteCalls = 0;
+  const startUiThrowFlow = api.createPetHealthSaveFlow_({
+    createRequestId: () => uuid(93),
+    onSaving: () => { throw new Error('saving UI failed'); },
+    onRelease: () => {},
+    onSettled: () => { throw new Error('settled UI failed'); },
+    call: async () => { startWriteCalls += 1; return {}; },
+  });
+  const startUiThrowResult = await startUiThrowFlow.save('urine', { eventType: 'urine' });
+  assert.strictEqual(startUiThrowResult.classification, 'POST_SAVE_UI_FAILED', 'PH-SAVE09 onSaving classification');
+  assert.strictEqual(startWriteCalls, 0, 'PH-SAVE09 Write ran after saving UI failed');
+  assert.strictEqual(startUiThrowFlow.isSaving('urine'), false, 'PH-SAVE09 onSaving/onSettled exception left saving=true');
+
+  const originalConsoleInfo = console.info;
+  let safeSaveDiagnostic = null;
+  try {
+    console.info = (_label, value) => { safeSaveDiagnostic = plain(value); };
+    api.logPetHealthSaveDiagnostic_({ requestIdSuffix: '12345678', stage: 'FORM_REENABLED', elapsedMs: 250, writeToFormEnabledMs: 80, classification: null, event: { note: 'private' }, serviceToken: 'secret', homeId: 'private-home' });
+  } finally {
+    console.info = originalConsoleInfo;
+  }
+  assert.deepStrictEqual(Object.keys(safeSaveDiagnostic).sort(), ['buildId', 'classification', 'elapsedMs', 'requestIdSuffix', 'stage', 'writeToFormEnabledMs'].sort(), 'PH-SAVE10 diagnostic field allowlist');
+  assert(!JSON.stringify(safeSaveDiagnostic).includes('private') && !JSON.stringify(safeSaveDiagnostic).includes('secret'), 'PH-SAVE10 diagnostic leaked health or credential data');
 
   // PH-SF03 - PH-SF06: the recovery control is Read-only and only appears for a failed summary.
   assert(featureSource.includes('type="button" data-popio-water-bottle-reload'), 'PH-SF03 reload must never submit a record');
@@ -432,7 +527,7 @@ async function run() {
   assert.deepStrictEqual(plain(api.dashboardFailureState_(dashboardFixture)).summary, dashboardFixture.summary, 'PH-DU05 fresh failure keeps last-good summary');
   assert.deepStrictEqual(plain(api.dashboardFailureState_(null)), { dashboard: null, summary: null, summaryStatus: 'failed', recentEvents: [], recentStatus: 'failed', dashboardFresh: false }, 'PH-DU06 cacheless failure is a settled failed state');
   assert(featureSource.includes('dashboardLoad_ = null'), 'PH-DU07 Dashboard loading does not always settle');
-  assert(featureSource.includes("const refreshed = await loadDashboard_({ quiet: true });"), 'PH-DU08 save success does not issue one Dashboard refresh');
+  assert(featureSource.includes("refresh: function () { return loadDashboard_({ quiet: true }); }"), 'PH-DU08 save success does not issue one Dashboard refresh');
   assert.strictEqual(api.savedStatusMessage_({ writeSaved: true, dashboardRefreshed: false }), '保存しました。最新表示を更新できませんでした。', 'PH-DU09 failed Dashboard refresh must preserve Write success');
   assert.strictEqual(api.waterBottleUiModel_(dashboardFixture.summary, 'loaded', false).ready, false, 'PH-DU10 cached Dashboard must keep water bottle Write disabled');
   assert.strictEqual(api.waterBottleUiModel_(dashboardFixture.summary, 'loaded', true).ready, true, 'PH-DU11 fresh Dashboard enables water bottle Write');
@@ -547,7 +642,7 @@ async function run() {
   assert(dashboardStatusCss.includes('flex: 1 0 100%') && dashboardStatusCss.includes('min-width: 100%') && dashboardStatusCss.includes('word-break: normal'), 'PH-CSS01/03 status is not a full-width Japanese text row');
   assert(dashboardRetryCss.includes('margin-left: auto') && dashboardRetryCss.includes('flex: 0 0 auto'), 'PH-CSS02 retry button is not on its own right-aligned row');
 
-  console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, PH-WU01-PH-WU10, PH-M01-PH-M08, PH-H01-PH-H10, PH-TU01-PH-TU10, and PH-COLL01-PH-COLL10 Pet Health UI contracts');
+  console.log('PASS PH-U01-PH-U19, PH-TUI01-PH-TUI12, PH-WU01-PH-WU10, PH-M01-PH-M08, PH-H01-PH-H10, PH-TU01-PH-TU10, PH-COLL01-PH-COLL10, and PH-SAVE00-PH-SAVE10 Pet Health UI contracts');
 }
 
 run().catch((error) => { console.error(error.stack || error); process.exitCode = 1; });
