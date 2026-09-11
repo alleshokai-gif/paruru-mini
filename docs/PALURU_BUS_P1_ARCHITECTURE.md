@@ -78,6 +78,10 @@ PWA接続先は既存`features/bus/config.js`の`PALURU_BUS_API_URL` 1箇所。C
 
 ## 検証結果
 
+### CRLF対応の追加承認と作業範囲
+
+2026-09-11、ユーザーが既存Agent UIテスト1箇所の修正を承認。対象は`test/pwa-agent-chat.test.js:478`のみ。該当assert内でCRLFをLFへ正規化してから既存の文字列一致を行う。本体コード、期待文字列、テスト意図、他のassertは変えない。副作用は該当検査で改行形式の違いを許容することだけ。rollbackは追加した正規化処理を取り除く。LF/CRLF両方と内容不一致の拒否を確認し、Repository84件・Bus51件・Secret scanを再実行する。全PASS後にArchitectureのGO判定を更新する。deploy/commit/pushは行わない。
+
 変更ファイル（`bus/`配下、文書を除く）：
 
 - 新規：`config/{policy,queries}.js`、`core/queries.js`、`providers/kawasaki/{config,attribution,context,position-reference}.js`、`test/{architecture.test,p0-cases}.js`、`test/p0-dto-baseline.json`。
@@ -101,10 +105,10 @@ PWA接続先は既存`features/bus/config.js`の`PALURU_BUS_API_URL` 1箇所。C
 |旧Worker互換|ローカルworkerdのRTあり/上流失敗で各4方向×3便。各シナリオのRT fetch1回、CORS PASS。実ネット通信0|
 |Python検証器|既存合成テスト14/14 PASS（専用.venv）|
 |構文|変更したBus JavaScript27ファイルのnode --check PASS|
-|Secret|332対象scan、実キー値一致0。HTTP body/プロセス計測ログもキー非露出。scanは値を出さず件数のみ|
-|Repository全体|83/84 PASS。既存Agent UIテスト1件がLF固定の文字列一致でCRLFファイルに失敗。Bus/PWA処理による差分ではない。修正範囲追加の回答待ち|
+|Secret|承認後の再実行も332対象scan、実キー値一致0。前フェーズの実HTTP body/プロセス計測ログもキー非露出。scanは値を出さず件数のみ|
+|Repository全体|承認された既存テスト1箇所の改行対応後、84/84 PASS（fail/skip 0）。Busも51/51 PASS（fail/skip 0）を再確認|
 
-リポジトリ既存失敗の証拠：`app.js`は改行を正規化するとHEADと完全一致。`test/pwa-agent-chat.test.js:478`の対象文字列はHEADのLFソースに存在し、Windows CRLFソースでは一致せず、LF正規化後は一致する。本体ソースは変更していない。Bus内の既存Docker allowlistテストにも同様のLF固定検査があり、今回対象内で`\r?\n`対応にした。検査内容・allowlistは緩和していない。
+変更前の既存失敗の証拠：`app.js`は改行を正規化するとHEADと完全一致。`test/pwa-agent-chat.test.js:478`の対象文字列はHEADのLFソースに存在し、Windows CRLFソースでは一致せず、LF正規化後は一致した。承認後はこのassertだけに`appSource.replace(/\r\n/g, '\n')`を追加し、期待文字列は変更していない。実際のassertをLF/CRLF両方のソースに適用してPASS、呼出し内容変更・await欠落・単独CRではFAILすることを確認。本体ソースは変更していない。Bus内の既存Docker allowlistテストの改行対応は前フェーズの変更で、今回再変更していない。
 
 ### ローカル実ブラウザ
 
@@ -118,6 +122,8 @@ In-app Chromiumで受入用ページから**既存Bus component → ローカル
 
 ### Architecture Acceptanceと残件
 
-1〜8、10〜11はローカル根拠でPASS：P0同一結果、Core固定依存除去、Provider追加境界、内部GPS/公開非露出、位置OFF、Node runtime、新規テスト、秘密管理。9「既存tests全PASS」は上記1件により未達。**厳密なArchitecture判定は現時点NO-GO（全体テストの改行依存1件の解消待ち）**。Bus単体とローカル実HTTPの検証はPASS。本番deploy/Cloud Build/Secret登録/commit/pushは実施していない。
+**P1 Architecture：GO（2026-09-11、ユーザー指定の判定条件に基づく）。** 1〜11をローカル根拠で満たした：P0同一結果、Core固定依存除去、Provider追加境界、内部GPS/公開非露出、位置OFF、Node runtime、既存/新規tests、秘密管理。今回Repository84/84、Bus51/51、Secret scan332対象・一致0を再実行で確認し、旧NO-GO理由だった改行依存1件を解消した。
+
+今回の変更は承認された既存テスト1行と本書の検証記録のみ。本体実装・API・PWA設定・Feature Gateは変更していない。Node実HTTP/実ブラウザは前フェーズの記録を維持し、今回は再実行していない。Cloud Run実環境/本番PWA/Androidの受入、Position UI解禁は別ゲートであり、Architecture GOを本番完成や公開承認とは扱わない。今回deploy/Cloud Build/Secret登録/commit/pushは実施していない。
 
 次のPosition P1案：同一便のGPS＋timestampの連続観測と、同一Static版の完全な停留所列/stop座標を用意する。Position Engineは鮮度・便同一性・複数区間候補・折返し/停車を明示的に扱い、曖昧ならnull。sequence/stopIdは補助照合に留める。必要ならshapeを別フェーズで評価する。4方向で検証・受入した後にだけPublic DTOとFeature Gateの変更を別途判断する。今回この判定処理は実装していない。

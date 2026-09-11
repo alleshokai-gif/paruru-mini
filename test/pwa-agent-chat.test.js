@@ -475,7 +475,7 @@ test('OWN-TODAY TOP aggregate entry remains independent of conversation routing'
   await initial.run('loadNotificationCandidates({ force: true })');
   assert(initial.requests.some((entry) => entry.payload?.action === 'todayParuruContext'), 'TOP initial load did not use todayParuruContext');
 
-  assert(appSource.includes('if (resolvedView === "home") {\n    await loadNotificationCandidates();\n  }'),
+  assert(appSource.replace(/\r\n/g, '\n').includes('if (resolvedView === "home") {\n    await loadNotificationCandidates();\n  }'),
     'TOP Home re-display no longer refreshes the existing aggregate entry');
 
   const refresh = createHarness();
