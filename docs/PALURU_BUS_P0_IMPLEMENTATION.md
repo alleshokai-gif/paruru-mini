@@ -1,5 +1,25 @@
 # PALURU Bus P0 実装・ローカル検証記録
 
+## 2026-09-11 P1 Architecture差分
+
+詳細は[P1 Architecture](PALURU_BUS_P1_ARCHITECTURE.md)。P0の表示・公開DTOは維持し、内部依存だけを整理した。
+
+|境界|変更|
+|---|---|
+|Query|既存`favorites.json`は保持。`config/queries.js`でFavorite型・labelを追加し、呼出し側からCoreへ渡す|
+|Core|`FAVORITES`、乗り場表、川崎固定attributionを除去。`core/queries.js`がOD/route条件で候補を解決し、既存の順位・時刻・stale処理へ渡す|
+|Provider|`providers/kawasaki/{config,attribution,context}.js`がID/出典/乗り場/RT schemaを供給。Static parserはQueryを明示的に受け取る|
+|Vehicle|`position:{lat,lon}`を内部保持。欠損/不正値はnull、明示0は0。trip/route/timestamp/status/sequence/stopIdを維持|
+|公開DTO|Internal Vehicleを展開しない。座標非露出、`position.supported=false`。API経路・応答項目はP0のまま|
+|Service/runtime|QueryとProvider contextを必須注入。Node/旧WorkerのcompositionだけがP0設定を選択。RT cacheはProvider/version/schema単位|
+|Position Static|任意の同一版・完全な停留所列indexの参照境界。実index生成・GPS判定・shape処理は未実装|
+
+Bus tests **51/51 PASS**（既存28＋新規23）。P0変更前commit `ca99837`の合成レスポンスを記録し、RT/time/delay-only/欠損/stale/エラー/過去ETA/取消/順位/日付越えなど13ケースでJSON全体のSHA256が完全一致。期待値は変更前に採取し、P1結果から再生成していない。
+
+Windows Nodeの実HTTP＋ODPTでは4方向×3便/health/CORS/cache/秘密非露出がPASS。ローカル実ブラウザのBus componentでも4カード×3便、stale/時刻表、別画面停止・復帰取得、スマホ幅を確認。Cloud Run実環境・本番PWA・Androidの受入とは分ける。全体テストと最終Acceptanceは[P1記録](PALURU_BUS_P1_ARCHITECTURE.md)を参照。
+
+本番deploy/commit/pushなし。以下のP0初期実装・測定は当時の履歴。
+
 > 2026-09-10 本番準備フェーズ：StaticのWorker内取得/6時間cache/24時間上限は生成JSON同梱方式へ置換した。現在の構成・設定・計測は [DEPLOYMENT](PALURU_BUS_P0_DEPLOYMENT.md) を優先する。以下の初期実装・測定は当時の記録として保持する。
 
 2026-09-10 / Asia/Tokyo。ユーザーの実装GOに基づく時刻中心のP0。**位置UI OFF、本番deploy前、P0全体は途中**。

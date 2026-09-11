@@ -5,7 +5,8 @@ import { csvReader } from '../providers/kawasaki/static.js';
 import { parseRealtime, fetchRealtime, createKawasakiAdapter } from '../providers/kawasaki/adapter.js';
 import { fetchStatic } from '../providers/kawasaki/static-source.js';
 import { NOW, indexFixture, realtimeFixture, protoFixture } from './fixtures.js';
-const result = (realtime, index = indexFixture(), now = NOW) => getArrivals({ index, realtime, now });
+import { P0_INPUT } from './fixtures.js';
+const result = (realtime, index = indexFixture(), now = NOW) => getArrivals({ index, realtime, now, ...P0_INPUT });
 const first = (data) => data.directions[0].arrivals[0];
 
 test('runtime Adapter fetches and decodes RT only', async () => {

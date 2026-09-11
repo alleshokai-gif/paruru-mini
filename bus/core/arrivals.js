@@ -1,5 +1,6 @@
-import { FAVORITES, LIMITS, BUS_POSITION_UI_ENABLED } from '../config/settings.js';
+import { LIMITS, BUS_POSITION_UI_ENABLED } from '../config/policy.js';
 import { clockSeconds } from './time.js';
+import { resolveQuerySet } from './queries.js';
 
 const DAY = 86400, JST = 9 * 3600;
 export const iso = (seconds) => new Date((seconds + JST) * 1000).toISOString().replace('Z', '+09:00');
@@ -8,22 +9,8 @@ const dateKey = (seconds) => iso(seconds).slice(0, 10).replaceAll('-', '');
 const dayStart = (seconds) => Math.floor((seconds + JST) / DAY) * DAY - JST;
 const fresh = (timestamp, now, limit) => timestamp !== null && timestamp <= now + 5 && now - timestamp <= limit;
 const unsupportedPosition = () => ({ supported: false, status: null, stopsAway: null, previousStop: null, nextStop: null });
-const prepared = new WeakMap();
-// Build small service lookup tables once per immutable Static bundle, outside request handling.
-export function prepareStatic(index) {
-  if (!prepared.has(index)) {
-    const directions = new Map();
-    for (const favorite of FAVORITES) {
-      const groups = new Map();
-      for (const row of index.directions[favorite.id]) {
-        if (!groups.has(row.serviceId)) groups.set(row.serviceId, []);
-        groups.get(row.serviceId).push(row);
-      }
-      directions.set(favorite.id, groups);
-    }
-    prepared.set(index, directions);
-  }
-  return prepared.get(index);
+export function prepareStatic(index, queries, providerContext) {
+  return resolveQuerySet(index, queries, providerContext);
 }
 
 export function serviceActive(index, serviceId, day) {
@@ -40,7 +27,8 @@ function joins(descriptor, row, date) {
     && (!descriptor.startTime || clockSeconds(descriptor.startTime) === clockSeconds(row.startTime));
 }
 
-export function getArrivals({ index, realtime = null, now, fetchError = false, staticStale = false }) {
+export function getArrivals({ index, realtime = null, queries, providerContext, now, fetchError = false, staticStale = false }) {
+  const resolved = prepareStatic(index, queries, providerContext);
   if (dateKey(now) > index.feedInfo.feed_end_date || dateKey(now + DAY) < index.feedInfo.feed_start_date) throw new Error('BUS_STATIC_OUT_OF_RANGE');
   const feedFresh = realtime && fresh(realtime.timestamp, now, LIMITS.feedMaxAgeSec);
   const updates = new Map(), vehicles = new Map();
@@ -53,13 +41,12 @@ export function getArrivals({ index, realtime = null, now, fetchError = false, s
   }
   const days = [-1, 0, 1].map((offset) => dayStart(now) + offset * DAY);
   const active = new Map();
-  const grouped = prepareStatic(index);
-  const directions = FAVORITES.map((favorite) => {
+  const directions = resolved.map(({ query, groups }) => {
     const arrivals = [];
     for (const day of days) {
       const date = dateKey(day);
       if (date < index.feedInfo.feed_start_date || date > index.feedInfo.feed_end_date) continue;
-      for (const [serviceId, rows] of grouped.get(favorite.id)) {
+      for (const [serviceId, rows] of groups) {
         const serviceKey = `${serviceId}|${date}`;
         if (!active.has(serviceKey)) active.set(serviceKey, serviceActive(index, serviceId, day));
         if (!active.get(serviceKey)) continue;
@@ -104,7 +91,7 @@ export function getArrivals({ index, realtime = null, now, fetchError = false, s
     }
     arrivals.sort((a, b) => a.sort - b.sort || a.scheduled - b.scheduled || `${a.date}:${a.row.tripId}`.localeCompare(`${b.date}:${b.row.tripId}`));
     const selected = arrivals.slice(0, LIMITS.arrivals).map(({ row, date, scheduled, estimated, delay, rt, state, timingSource, tu, departure }) => ({
-      tripId: `${date}:${row.tripId}`, routeLabel: row.routeLabel, headsign: row.headsign, platform: row.platform,
+      tripId: `${date}:${row.tripId}`, routeLabel: row.routeLabel, headsign: row.headsign, platform: providerContext.platformResolver(row.fromStopId, index),
       scheduledTime: clock(scheduled), scheduledAt: iso(scheduled),
       estimatedTime: rt ? clock(estimated) : null, estimatedAt: rt ? iso(estimated) : null,
       etaMinutes: rt ? Math.max(0, Math.ceil((estimated - now) / 60)) : null,
@@ -115,7 +102,7 @@ export function getArrivals({ index, realtime = null, now, fetchError = false, s
       position: unsupportedPosition()
     }));
     const timestamp = realtime?.timestamp ?? index.fetchedAt;
-    return { id: favorite.id, group: favorite.group, provider: favorite.provider, from: favorite.from, to: favorite.to,
+    return { id: query.id, group: query.group, provider: providerContext.id, from: query.from, to: query.to,
       routeLabel: selected[0]?.routeLabel || null, updatedAt: iso(timestamp), dataAgeSec: Math.max(0, Math.floor(now - timestamp)),
       state: selected.some((r) => r.state === 'realtime_stale') || (realtime && !feedFresh) ? 'realtime_stale'
         : selected.some((r) => r.realtime) ? 'realtime' : 'static_fallback',
@@ -124,5 +111,6 @@ export function getArrivals({ index, realtime = null, now, fetchError = false, s
   return { success: true, generatedAt: iso(now), pollAfterSeconds: LIMITS.pollSec,
     positionUiEnabled: BUS_POSITION_UI_ENABLED, fetchError, staticStale, staticVersion: index.feedInfo.feed_version, staticUpdatedAt: iso(index.fetchedAt),
     searchUntil: iso(dayStart(now) + 2 * DAY), directions,
-    attribution: { provider: '川崎市交通局', distributor: '公共交通オープンデータセンター', url: 'https://www.odpt.org/' } };
+    attribution: { provider: providerContext.attribution.provider, distributor: providerContext.attribution.distributor,
+      url: providerContext.attribution.url } };
 }

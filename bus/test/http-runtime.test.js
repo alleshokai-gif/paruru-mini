@@ -7,6 +7,7 @@ import { createHttpHandler } from '../http/handler.js';
 import { createBusService } from '../core/service.js';
 import { recordStages } from '../runtime/metrics.js';
 import { NOW, indexFixture, realtimeFixture } from './fixtures.js';
+import { P0_INPUT } from './fixtures.js';
 
 async function fixture(t) {
   let now = NOW, calls = 0, failure = false;
@@ -15,7 +16,7 @@ async function fixture(t) {
     index.directions[id] = [0, 1, 2].map((i) => ({ ...rows[0], tripId: i ? `${rows[0].tripId}-${i}` : rows[0].tripId,
       scheduledSeconds: rows[0].scheduledSeconds + i * 600 }));
   }
-  const service = createBusService({ index, version: 'synthetic', now: () => now, measure: recordStages,
+  const service = createBusService({ index, version: 'synthetic', now: () => now, measure: recordStages, ...P0_INPUT,
     adapter: { async getRealtime() { calls++; await new Promise((r) => setTimeout(r, 5));
       if (failure) throw Error('private-upstream-detail'); return realtimeFixture(); } } });
   const env = runtimeConfig({ ODPT_ACCESS_TOKEN: 'synthetic-config-only' }).env;
@@ -99,7 +100,8 @@ test('shared cache keys isolate providers and versions without Cloudflare APIs',
   const stored = new Map(); let calls = 0;
   const cache = { async read(key) { return stored.get(key); }, async write(key, data) { stored.set(key, data); } };
   const adapter = { async getRealtime() { calls++; return realtimeFixture(); } };
-  const run = (provider, version) => createBusService({ index: indexFixture(), adapter, cache, provider, version, now: () => NOW }).getArrivals();
+  const run = (provider, version) => createBusService({ index: indexFixture(), adapter, cache, version, now: () => NOW,
+    providerContext: { ...P0_INPUT.providerContext, id: provider }, queries: P0_INPUT.queries.map(q => ({ ...q, provider })) }).getArrivals();
   await run('kawasaki', 'v1'); await run('kawasaki', 'v1'); assert.equal(calls, 1);
   await run('synthetic-other', 'v1'); await run('kawasaki', 'v2'); assert.equal(calls, 3);
 });

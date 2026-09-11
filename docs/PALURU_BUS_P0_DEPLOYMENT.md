@@ -1,5 +1,33 @@
 # PALURU Bus P0 deploy準備
 
+## P1 Architectureのローカル検証（2026-09-11）
+
+Cloud Runを本番候補としたまま、[P1 Architecture](PALURU_BUS_P1_ARCHITECTURE.md)の内部境界へ更新。Core/ServiceはQueryとProvider contextの注入方式。Node起動ログのbuild識別は`bus-p1-architecture-v1`、PWA Build IDと公開URLは変更していない。旧Cloudflare FreeのCPU NO-GOは下記履歴のまま。
+
+- Dockerfile/.dockerignore/.gcloudignoreにKawasakiの`config.js`、`attribution.js`、`context.js`、`position-reference.js`を明示追加。Core/Queryの新ファイルは既存allowlist内。buildへSecret・テスト・調査データを送らない。
+- image同梱Staticは既存 **2,616,507 bytes**、version `20260701_20260828`、4方向660/3820/660/3716行を維持。今回再取得・再生成していない。生成器の合成GTFS/検証/失敗時旧JSON維持テストと実artifact preflightはPASS。
+- Internal RT schemaは1→2。cache keyは`provider:version:schema:kind`。schema1のcacheを新モデルとして採用しない。25秒cache、4方向一括取得、single-flight/失敗backoff、30秒pollingは維持。
+- 既存remote build/Secret登録/認証付き検証/rollback手順は下記を再利用。P1をbuildする場合は新しいimage tag/digestを記録し、旧image tagを再利用しない。今回はCloud Build/Run/Secret操作を実行しない。
+- ローカルrollbackはP1変更対象だけをP0へ戻す。将来remote検証する場合も別validation serviceで行い、本番へのtraffic移行は別の承認・受入後。Secret値やStatic artifactはソースrollbackで削除しない。
+
+15:02:49 JSTまでの`npm run test:run`による実測。**Windows Node＋実Static/ODPT、Cloud Run cold startやCPU時間の実測ではない。**
+
+|項目|P1ローカル実測|
+|---|---|
+|process spawn → health200|310.98ms|
+|起動時Static read/validate/index＋日付確認|76.88ms|
+|初回HTTP cache miss|109.96ms（ODPT83.51ms、decode15.67ms、JOIN4.11ms）|
+|warm cache hit|5.32 / 6.30 / 6.87ms（JOIN2.30〜4.14ms）|
+|26秒後refresh|88.52ms（ODPT66.72ms、decode12.41ms、JOIN3.70ms）|
+|要求内Static参照|0.0007〜0.0025ms。JSON read/parse、ZIP/CSV処理なし|
+|ODPT取得回数|1 / 0 / 0 / 1 / 0|
+|response size|8,084〜8,098 bytes|
+|process RSS|約69.0〜85.1MiB|
+
+全4方向HTTP200/各3便。今回の最終sampleでは神木→溝口がRT（15:02予定→15:03予測、ETA1分、delay1分など）、他3方向はStatic fallback（estimated/eta/delayはnull）。別のブラウザ取得時点では溝口→神木にもRTあり。**4方向すべてで同時に未来RTを観測したとは扱わない。** 4方向のRTと欠損は合成HTTP/既存回帰テストで別途確認した。
+
+Cloud Run実環境の起動/応答/CPU/memory/IAM、remote image、Android、本番PWA受入は未実施。最終テスト一覧とArchitecture判定は[P1記録](PALURU_BUS_P1_ARCHITECTURE.md)を参照。
+
 ## 朝の再確認（2026-09-11）
 
 位置調査を再開し、4方向のGPS/TUと市バスナビ参照を16回観測した。証拠は[DATA_VALIDATION](PALURU_BUS_P0_DATA_VALIDATION.md)冒頭。位置P1の自動表示は未達、Position UI OFF。本番Core/Adapter/UI設定は変更していない。調査script/要約はdeny-all方式のDocker/Cloud Build contextに含まれない。

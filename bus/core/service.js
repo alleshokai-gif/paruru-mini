@@ -1,18 +1,20 @@
-import { getArrivals } from './arrivals.js';
-import { LIMITS } from '../config/settings.js';
+import { getArrivals, prepareStatic } from './arrivals.js';
+import { LIMITS } from '../config/policy.js';
 
-export function createBusService({ index, adapter, cache = null, now = () => Date.now() / 1000, version, provider = 'kawasaki', measure = () => {} }) {
+export function createBusService({ index, adapter, queries, providerContext, cache = null, now = () => Date.now() / 1000, version, measure = () => {} }) {
+  prepareStatic(index, queries, providerContext);
+  const querySet = structuredClone(queries);
   const memory = new Map(), pending = new Map(), retryAfter = new Map();
   async function load(kind, refresh, maxAge, loader) {
     if (pending.has(kind)) return pending.get(kind);
     const task = (async () => {
-      const key = `${provider}:${version}:${kind}`;
+      const key = `${providerContext.id}:${version}:schema${providerContext.realtimeSchemaVersion}:${kind}`;
       let previous = memory.get(kind);
       if (!previous && cache) {
         try {
           const data = await cache.read(key);
           if (data) {
-            if (data.schemaVersion === 1 && Number.isFinite(data.fetchedAt)) previous = data;
+            if (data.schemaVersion === providerContext.realtimeSchemaVersion && Number.isFinite(data.fetchedAt)) previous = data;
           }
         } catch { /* Cache eviction/failure is independent of the upstream source. */ }
       }
@@ -24,7 +26,9 @@ export function createBusService({ index, adapter, cache = null, now = () => Dat
         throw new Error('BUS_SOURCE_UNAVAILABLE');
       }
       try {
-        const data = await loader(); memory.set(kind, data);
+        const data = await loader();
+        if (data?.schemaVersion !== providerContext.realtimeSchemaVersion || !Number.isFinite(data.fetchedAt)) throw Error('BUS_RT_SCHEMA');
+        memory.set(kind, data);
         retryAfter.delete(kind);
         if (cache) {
           try { await cache.write(key, data, maxAge); } catch { /* In-memory result is still usable. */ }
@@ -51,7 +55,7 @@ export function createBusService({ index, adapter, cache = null, now = () => Dat
       catch { rt = { data: null, error: true }; }
       const realtimeMs = performance.now() - rtStarted;
       const joinStarted = performance.now();
-      const data = getArrivals({ index: staticIndex, realtime: rt.data, now: now(), fetchError: rt.error });
+      const data = getArrivals({ index: staticIndex, realtime: rt.data, queries: querySet, providerContext, now: now(), fetchError: rt.error });
       measure({ staticMs, realtimeMs, joinMs: performance.now() - joinStarted, totalMs: performance.now() - started });
       return data;
     }

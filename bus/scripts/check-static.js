@@ -3,10 +3,12 @@ import { readFileSync } from 'node:fs';
 import source from '../config/static-source.json' with { type: 'json' };
 import { validateArtifact } from './p0-static.js';
 import { getArrivals } from '../core/arrivals.js';
+import { P0_QUERIES } from '../config/queries.js';
+import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
 try {
   const text = readFileSync(new URL('../generated/p0-static.json', import.meta.url), 'utf8');
   const index = validateArtifact(JSON.parse(text), source.sourceDate);
-  const data = getArrivals({ index, now: Date.now() / 1000 });
+  const data = getArrivals({ index, queries: P0_QUERIES, providerContext: KAWASAKI_CONTEXT, now: Date.now() / 1000 });
   if (data.directions.some((d) => !d.arrivals.length)) throw Error('STATIC_NEXT_TRIP_MISSING');
   console.log(JSON.stringify({ status: 'STATIC_PREFLIGHT_PASS', sourceVersion: index.sourceVersion,
     bytes: Buffer.byteLength(text), counts: index.stats.selectedRows }));

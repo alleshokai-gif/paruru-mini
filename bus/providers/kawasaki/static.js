@@ -1,5 +1,6 @@
 import { Unzip, UnzipInflate } from 'fflate';
-import { FAVORITES, PLATFORMS, LIMITS } from '../../config/settings.js';
+import { LIMITS } from '../../config/policy.js';
+import { PROVIDER_ID, resolvePlatform } from './config.js';
 import { clockSeconds } from '../../core/time.js';
 
 const REQUIRED = ['agency', 'stops', 'routes', 'trips', 'stop_times', 'feed_info'];
@@ -65,11 +66,12 @@ function readZip(bytes, wanted, accept) {
 }
 const object = (columns, values) => Object.fromEntries(columns.map((key, i) => [key, values[i]]));
 
-export function parseStatic(bytes, fetchedAt) {
+export function parseStatic(bytes, fetchedAt, queries) {
+  if (!Array.isArray(queries) || !queries.length || queries.some(q => q.type !== 'favorite' || q.provider !== PROVIDER_ID)) fail('STATIC_QUERY_CONFIG');
   const stops = new Map(), routes = new Map(), trips = new Map();
   const tables = { agency: [], calendar: [], calendar_dates: [], feed_info: [], frequencies: [] };
-  const routeIds = new Set(FAVORITES.flatMap((f) => f.routeIds));
-  const stopIds = new Set(FAVORITES.flatMap((f) => [...f.fromStopIds, ...f.toStopIds]));
+  const routeIds = new Set(queries.flatMap((q) => q.routeIds));
+  const stopIds = new Set(queries.flatMap((q) => [...q.fromStopIds, ...q.toStopIds]));
   const rowCounts = {};
   const seen = readZip(bytes, META, (name, columns, values) => {
     rowCounts[name] = (rowCounts[name] || 0) + 1;
@@ -106,11 +108,11 @@ export function parseStatic(bytes, fetchedAt) {
     selected.get(id).push(row);
   });
   if (!seenTimes.has('stop_times')) fail('STATIC_TABLE_MISSING');
-  const directions = Object.fromEntries(FAVORITES.map((f) => [f.id, []]));
+  const directions = Object.fromEntries(queries.map((q) => [q.id, []]));
   for (const [tripId, chain] of selected) {
     const trip = trips.get(tripId);
     if (new Set(chain.map((s) => s.sequence)).size !== chain.length) fail('STATIC_DUPLICATE_SEQUENCE');
-    for (const f of FAVORITES) {
+    for (const f of queries) {
       if (!f.routeIds.includes(trip.route_id)) continue;
       const pairs = [];
       for (const from of chain) for (const to of chain) {
@@ -127,7 +129,7 @@ export function parseStatic(bytes, fetchedAt) {
       directions[f.id].push({ tripId, routeId: trip.route_id, routeLabel: routes.get(trip.route_id).route_short_name,
         serviceId: trip.service_id, directionId: trip.direction_id || null, startTime: starts.get(tripId).time, fromStopId: from.stop_id, toStopId: to.stop_id,
         stopSequence: from.sequence, alightSequence: to.sequence, scheduledSeconds: seconds,
-        headsign: from.stop_headsign || trip.trip_headsign || null, platform: PLATFORMS[from.stop_id] || null });
+        headsign: from.stop_headsign || trip.trip_headsign || null, platform: resolvePlatform(from.stop_id) });
     }
   }
   if (Object.values(directions).some((rows) => !rows.length)) fail('STATIC_DIRECTION_EMPTY');

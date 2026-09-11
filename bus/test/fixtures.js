@@ -1,6 +1,9 @@
 import { zipSync, strToU8 } from 'fflate';
 import bindings from 'gtfs-realtime-bindings';
 import { FAVORITES } from '../config/settings.js';
+import { P0_QUERIES } from '../config/queries.js';
+import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
+export const P0_INPUT = Object.freeze({ queries: P0_QUERIES, providerContext: KAWASAKI_CONTEXT });
 import { parseStatic } from '../providers/kawasaki/static.js';
 export const NOW = Date.parse('2026-09-10T07:50:00+09:00') / 1000;
 const csv = (rows) => strToU8(rows.map((row) => row.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(',')).join('\r\n'));
@@ -20,9 +23,9 @@ export function staticZip() {
     'feed_info.txt': csv([['feed_version', 'feed_start_date', 'feed_end_date'], ['synthetic', '20260101', '20261231']])
   });
 }
-export const indexFixture = () => parseStatic(staticZip(), NOW);
+export const indexFixture = () => parseStatic(staticZip(), NOW, P0_QUERIES);
 export function realtimeFixture({ delay = 180, time = NOW + 420, timestamp = NOW, relationship = 0 } = {}) {
-  return { schemaVersion: 1, fetchedAt: NOW, timestamp, vehicles: [], updates: FAVORITES.map((f, i) => ({
+  return { schemaVersion: KAWASAKI_CONTEXT.realtimeSchemaVersion, fetchedAt: NOW, timestamp, vehicles: [], updates: FAVORITES.map((f, i) => ({
     trip: { tripId: `synthetic-${i}`, startDate: '20260910', startTime: '07:54:00', routeId: f.routeIds[0], relationship },
     timestamp, stops: [{ stopId: f.fromStopIds[0], sequence: 1, relationship: 0, departure: { time, delay, uncertainty: null } }] })) };
 }

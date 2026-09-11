@@ -1,8 +1,7 @@
 import bindings from 'gtfs-realtime-bindings';
-import { LIMITS } from '../../config/settings.js';
+import { LIMITS } from '../../config/policy.js';
+import { API_ROOT, REALTIME_PATH, REALTIME_SCHEMA_VERSION } from './config.js';
 
-const API = 'https://api.odpt.org/api/v4/';
-const RT_PATH = 'gtfs/realtime/odpt_TransportationBureau_CityOfKawasaki_AllLines_trip_update';
 const own = (value, name) => value && Object.hasOwn(value, name);
 const num = (value, name) => own(value, name) && Number.isSafeInteger(Number(value[name])) ? Number(value[name]) : null;
 const epoch = (value, name) => { const n = num(value, name); return n !== null && n >= 0 && n <= 8640000000000 ? n : null; };
@@ -10,7 +9,7 @@ const fail = (code) => { throw new Error(code); };
 
 export async function fetchRealtime(token, fetcher = fetch) {
   if (!token || /\s/.test(token)) fail('BUS_SECRET_MISSING');
-  const url = new URL(RT_PATH, API);
+  const url = new URL(REALTIME_PATH, API_ROOT);
   url.searchParams.set('acl:consumerKey', token);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LIMITS.requestTimeoutMs);
@@ -43,6 +42,12 @@ function event(value) {
   if (!value) return null;
   return { time: epoch(value, 'time'), delay: num(value, 'delay'), uncertainty: num(value, 'uncertainty') };
 }
+function coordinate(value, name, bound) {
+  // Protobuf prototype defaults are not observed coordinates. Preserve an explicit zero.
+  if (!own(value, name)) return null;
+  const n = value[name];
+  return Number.isFinite(n) && Math.abs(n) <= bound ? n : null;
+}
 export function parseRealtime(bytes, fetchedAt) {
   let feed; try { feed = bindings.transit_realtime.FeedMessage.decode(bytes); } catch { fail('BUS_RT_DECODE'); }
   if ((num(feed.header, 'incrementality') ?? 0) !== 0 || !epoch(feed.header, 'timestamp')) fail('BUS_RT_HEADER');
@@ -56,13 +61,22 @@ export function parseRealtime(bytes, fetchedAt) {
       departure: event(s.departure) })) });
     const vehicleTrip = descriptor(vp?.trip);
     if (vehicleTrip) vehicles.push({ trip: vehicleTrip, timestamp: epoch(vp, 'timestamp'), stopId: vp.stopId || null,
-      sequence: num(vp, 'currentStopSequence'), status: num(vp, 'currentStatus') });
+      sequence: num(vp, 'currentStopSequence'), status: num(vp, 'currentStatus'),
+      position: { lat: coordinate(vp.position, 'latitude', 90), lon: coordinate(vp.position, 'longitude', 180) } });
   }
-  // Coordinates and vehicle IDs are intentionally not sent into the public Core DTO.
-  return { schemaVersion: 1, fetchedAt, timestamp: Number(feed.header.timestamp), updates, vehicles };
+  // Coordinates are internal only. Public DTO construction is an explicit allowlist in Core.
+  return { schemaVersion: REALTIME_SCHEMA_VERSION, fetchedAt, timestamp: Number(feed.header.timestamp), updates, vehicles };
 }
-export function createKawasakiAdapter({ token, fetcher = fetch, now = () => Date.now() / 1000 }) {
+export function createKawasakiAdapter({ token, fetcher = fetch, now = () => Date.now() / 1000, measure = () => {} }) {
   return {
-    async getRealtime() { const bytes = await fetchRealtime(token, fetcher); return parseRealtime(bytes, now()); }
+    async getRealtime() {
+      const begin = performance.now(); let bytes;
+      measure({ odptFetches: 1 });
+      try { bytes = await fetchRealtime(token, fetcher); }
+      finally { measure({ odptFetchMs: performance.now() - begin }); }
+      const decode = performance.now();
+      try { return parseRealtime(bytes, now()); }
+      finally { measure({ rtDecodeMs: performance.now() - decode }); }
+    }
   };
 }

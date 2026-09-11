@@ -1,0 +1,58 @@
+{
+  "sourceCommit": "ca99837001bcc3a84c3a698b408e5ec76577b16c",
+  "syntheticOnly": true,
+  "results": [
+    {
+      "name": "realtime",
+      "sha256": "b3fa19fab95c1805e0eccd82cb0fd9b9a9bc012bd833cabf90f709e9e52d753c"
+    },
+    {
+      "name": "static",
+      "sha256": "c62a9b4a7d821ebd691123046842e9131c2c8074fbb5bf6f262b45655b2ca8ed"
+    },
+    {
+      "name": "delay_only_zero",
+      "sha256": "81e084b5d7a8f5ffac92a5e4c6983d92717ef162d806decc6352a3ab62bdfb90"
+    },
+    {
+      "name": "missing_prediction",
+      "sha256": "ea85f85b39185b83cbb7eaed96da9a087ff694bab4c2465af8acad4a7f9bfff7"
+    },
+    {
+      "name": "stale_feed",
+      "sha256": "e78818ab15e6b358a5f078460e8a091d264c4aca46527910b02b489b4fe8bc59"
+    },
+    {
+      "name": "stale_trip",
+      "sha256": "f7811da223f27977866508b8d3726c2e6d874085aa8e28055dbf31220a8e4c98"
+    },
+    {
+      "name": "fetch_error",
+      "sha256": "bfff1d175a6860cb2d02e1eebd8938870facc6ccac370bf28838e07b89e01e24"
+    },
+    {
+      "name": "static_stale",
+      "sha256": "62d1a4e794fde6cefb724592ddfc34133892ac101a007d8e4b5022116515916f"
+    },
+    {
+      "name": "past_eta",
+      "sha256": "6516ffc22e05536c18ed1655cc8f164084e3339da40b1dfa5a39bff3bebc7afa"
+    },
+    {
+      "name": "origin_prediction_pending",
+      "sha256": "a8a0e1ef35ad5683581c10f09bf2dd45a1ac317e6f399bd1cb1997e57e678b12"
+    },
+    {
+      "name": "reordered",
+      "sha256": "ddc9269baf35dd0244e62082beafa15a758ebc4d90153c5912981c17468d7746"
+    },
+    {
+      "name": "cancelled",
+      "sha256": "c1a749d07dced1b6755d0edcff8dcfe00d04d2dfca27d9105de22e32c24a894a"
+    },
+    {
+      "name": "previous_service_day",
+      "sha256": "06fd60d65d3387851fd31ab3d3ad5a2c0aa52fbda4137074241d1115ca99ffd2"
+    }
+  ]
+}

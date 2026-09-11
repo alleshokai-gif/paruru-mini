@@ -3,19 +3,22 @@ import { readFileSync } from 'node:fs';
 import { createKawasakiAdapter } from '../providers/kawasaki/adapter.js';
 import { createBusService } from '../worker/service.js';
 import { prepareStatic } from '../core/arrivals.js';
+import { P0_QUERIES } from '../config/queries.js';
+import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
 import { readLocalToken } from './local-secret.js';
 try {
   const token = readLocalToken(), staticStarted = performance.now();
   const text = readFileSync(new URL('../generated/p0-static.json', import.meta.url), 'utf8');
   const index = JSON.parse(text);
-  prepareStatic(index);
+  prepareStatic(index, P0_QUERIES, KAWASAKI_CONTEXT);
   const startupStaticReadMs = performance.now() - staticStarted;
   const stages = [], fetches = []; let last;
   const adapter = createKawasakiAdapter({ token, fetcher: async (url, init) => {
     const started = performance.now();
     const response = await fetch(url, init); fetches.push({ headersMs: performance.now() - started }); return response;
   } });
-  const service = createBusService({ index, adapter, version: index.sourceHash, measure: (v) => stages.push(v) });
+  const service = createBusService({ index, adapter, queries: P0_QUERIES, providerContext: KAWASAKI_CONTEXT,
+    version: index.sourceHash, measure: (v) => stages.push(v) });
   const samples = [];
   for (let i = 0; i < 4; i++) {
     const started = performance.now(), cpu = process.cpuUsage();

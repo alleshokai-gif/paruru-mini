@@ -5,12 +5,15 @@ import { createWorker } from '../worker/index.js';
 import { createBusService } from '../worker/service.js';
 import { createKawasakiAdapter } from '../providers/kawasaki/adapter.js';
 import { prepareStatic } from '../core/arrivals.js';
-prepareStatic(index);
+import { P0_QUERIES } from '../config/queries.js';
+import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
+prepareStatic(index, P0_QUERIES, KAWASAKI_CONTEXT);
 let service, measurements;
 const worker = createWorker((env) => {
   if (!service) {
     const upstream = createKawasakiAdapter({ token: env.ODPT_ACCESS_TOKEN });
     service = createBusService({ index, cache: caches.default, version: index.sourceHash,
+      queries: P0_QUERIES, providerContext: KAWASAKI_CONTEXT,
       adapter: { async getRealtime() {
         measurements.odptFetches++;
         const start = performance.now();

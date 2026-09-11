@@ -12,7 +12,7 @@ COPY core ./core
 COPY config ./config
 COPY http ./http
 COPY runtime ./runtime
-COPY providers/kawasaki/adapter.js ./providers/kawasaki/adapter.js
+COPY providers/kawasaki/adapter.js providers/kawasaki/config.js providers/kawasaki/attribution.js providers/kawasaki/context.js providers/kawasaki/position-reference.js ./providers/kawasaki/
 COPY generated/p0-static.json ./generated/p0-static.json
 USER node
 EXPOSE 8080

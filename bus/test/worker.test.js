@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { createBusService } from '../worker/service.js';
 import { createWorker } from '../worker/index.js';
 import { NOW, indexFixture, realtimeFixture } from './fixtures.js';
+import { P0_INPUT } from './fixtures.js';
 
 test('25 second cache and single flight; RT failure preserves static and reports error', async () => {
   let now = NOW, calls = 0, fail = false;
   const adapter = { async getStatic() { return indexFixture(); }, async getRealtime() { calls++; if (fail) throw Error('upstream'); return realtimeFixture(); } };
-  const service = createBusService({ index: indexFixture(), adapter, now: () => now, version: 'synthetic' });
+  const service = createBusService({ index: indexFixture(), adapter, now: () => now, version: 'synthetic', ...P0_INPUT });
   await Promise.all([service.getArrivals(), service.getArrivals()]); assert.equal(calls, 1);
   now += 24; await service.getArrivals(); assert.equal(calls, 1);
   now += 2; fail = true;
@@ -20,7 +21,7 @@ test('25 second cache and single flight; RT failure preserves static and reports
 test('bundled static survives RT failures without static fetching; expiry still fails closed', async () => {
   let now = NOW;
   const index = indexFixture();
-  const service = createBusService({ index, version: 'synthetic', now: () => now, adapter: {
+  const service = createBusService({ index, version: 'synthetic', now: () => now, ...P0_INPUT, adapter: {
     async getStatic() { assert.fail('Static must not be fetched'); }, async getRealtime() { throw Error(); }
   } });
   await service.getArrivals(); now += 86401;

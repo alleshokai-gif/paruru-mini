@@ -6,12 +6,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { FAVORITES } from '../config/settings.js';
+import { P0_QUERIES } from '../config/queries.js';
 import { parseStatic } from '../providers/kawasaki/static.js';
 import { iso } from '../core/arrivals.js';
 
 export function buildP0Static(bytes, { now, sourceDate }) {
   if (!validDate(sourceDate)) fail('STATIC_SOURCE_DATE');
-  const index = validateP0Static(parseStatic(bytes, now));
+  const index = validateP0Static(parseStatic(bytes, now, P0_QUERIES));
   return { artifactVersion: 1, generatedAt: iso(now), sourceDate, sourceVersion: index.feedInfo.feed_version,
     sourceHash: sha256(bytes), configHash: configHash(), directionConfig: FAVORITES, ...index };
 }

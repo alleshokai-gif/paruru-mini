@@ -1,5 +1,15 @@
 # PALURU Bus P0 設計案
 
+## 2026-09-11 P1 Architecture
+
+ユーザー指定のProvider独立化を[P1 Architecture](PALURU_BUS_P1_ARCHITECTURE.md)へ記録した。P0の公開DTO・4方向・時刻処理・3便・30秒更新・25秒cache・欠損処理を維持し、Coreへの`queries/providerContext`注入へ変更する。以下の旧固定FAVORITES依存やWorker構成の記述は履歴として保持する。
+
+- `config/queries.js`が既存favoritesをFavorite Queryへ変換。Coreは固定4方向・Provider名・出典・乗り場表をimportしない。
+- ProviderはStatic/RTの解釈、ID、attribution、platformResolverを持つ。ServiceはProvider別のStatic/Query/RT/cacheを束ね、Coreは選択・順位・公開DTOを扱う。
+- Internal Vehicleに実際のlat/lonを追加。Public DTOは位置未対応のまま、PWAのPosition UIもOFF。位置判定・Hub統合はそれぞれ将来のPosition Engine/Hub Aggregatorの責務。
+- P0 Static artifactとconfig hashは互換維持。Position用の全停留所列/座標/shapeIdは将来別indexとして注入する境界だけ用意し、現在の乗降2点から補完しない。
+- Cloud Run Node runtime、CORS、Secret、PWA URL設定は維持。本番deploy、Cloud Build、PWA公開設定変更は行わない。
+
 ## 2026-09-10 追補：Cloud Run準備・Position調査の最新境界
 
 - Google Cloud前提（ユーザー申告）：project `paluru-bus`、region `asia-northeast1`、課金有効、Run Admin / Build / Artifact Registry / Logging API有効。CLIからのアカウント・IAM・API照合は未実施。

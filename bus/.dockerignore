@@ -13,5 +13,9 @@
 !providers
 !providers/kawasaki
 !providers/kawasaki/adapter.js
+!providers/kawasaki/config.js
+!providers/kawasaki/attribution.js
+!providers/kawasaki/context.js
+!providers/kawasaki/position-reference.js
 !generated
 !generated/p0-static.json

@@ -9,30 +9,24 @@ import { recordStages } from './metrics.js';
 import { createHttpHandler } from '../http/handler.js';
 import { createBusService } from '../core/service.js';
 import { prepareStatic, getArrivals } from '../core/arrivals.js';
-import { fetchRealtime, parseRealtime } from '../providers/kawasaki/adapter.js';
+import { createKawasakiAdapter } from '../providers/kawasaki/adapter.js';
+import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
+import { P0_QUERIES } from '../config/queries.js';
 
 export function start({ env = process.env, log = (v) => console.log(JSON.stringify(v)) } = {}) {
   const started = performance.now(), config = runtimeConfig(env);
   const index = validateArtifact(JSON.parse(readFileSync(new URL('../generated/p0-static.json', import.meta.url), 'utf8')), source.sourceDate);
-  prepareStatic(index);
+  const queries = P0_QUERIES, providerContext = KAWASAKI_CONTEXT;
+  prepareStatic(index, queries, providerContext);
   // Validate feed validity before advertising health. No ODPT call occurs at startup.
-  getArrivals({ index, now: Date.now() / 1000 });
+  getArrivals({ index, queries, providerContext, now: Date.now() / 1000 });
   const staticStartupMs = performance.now() - started;
-  const adapter = { async getRealtime() {
-    const begin = performance.now();
-    recordStages({ odptFetches: 1 });
-    let bytes;
-    try { bytes = await fetchRealtime(config.env.ODPT_ACCESS_TOKEN); }
-    finally { recordStages({ odptFetchMs: performance.now() - begin }); }
-    const decode = performance.now();
-    try { return parseRealtime(bytes, Date.now() / 1000); }
-    finally { recordStages({ rtDecodeMs: performance.now() - decode }); }
-  } };
+  const adapter = createKawasakiAdapter({ token: config.env.ODPT_ACCESS_TOKEN, measure: recordStages });
   // One provider instance owns its memory cache and pending fetches. No per-direction adapter construction.
-  const service = createBusService({ index, adapter, provider: 'kawasaki', version: index.sourceHash, measure: recordStages });
+  const service = createBusService({ index, adapter, queries, providerContext, version: index.sourceHash, measure: recordStages });
   const handler = createHttpHandler(() => service, { health: true });
   const server = createNodeServer({ handler, env: config.env, measure: log });
-  server.listen(config.port, config.host, () => log({ event: 'bus_startup', build: 'bus-p0-cloud-run-v1',
+  server.listen(config.port, config.host, () => log({ event: 'bus_startup', build: 'bus-p1-architecture-v1',
     startupMs: performance.now() - started, staticStartupMs, rssBytes: process.memoryUsage().rss, port: config.port }));
   const shutdown = () => {
     server.close(() => process.exit(0));

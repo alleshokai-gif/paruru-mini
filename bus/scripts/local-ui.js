@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { getArrivals, iso } from '../core/arrivals.js';
 import { indexFixture, realtimeFixture, NOW } from '../test/fixtures.js';
+import { P0_INPUT } from '../test/fixtures.js';
 import { readLocalConfig } from './local-config.js';
 const config = readLocalConfig();
 const uiOrigin = new URL(config.vars.ALLOWED_ORIGINS.split(',')[0]);
@@ -25,7 +26,7 @@ const server = createServer(async (request, response) => {
     if (['/fixture/fixture', '/fixture/static', '/fixture/stale', '/fixture/error'].includes(request.url)) {
       response.setHeader('Content-Type', 'application/json');
       if (request.url === '/fixture/error') { response.writeHead(503).end('{"success":false}'); return; }
-      const data = getArrivals({ index: indexFixture(), realtime: request.url === '/fixture/static' ? null : realtimeFixture(), now: NOW });
+      const data = getArrivals({ index: indexFixture(), realtime: request.url === '/fixture/static' ? null : realtimeFixture(), now: NOW, ...P0_INPUT });
       // Keep deterministic service-date fixtures in the future relative to receipt; UI uses generatedAt.
       for (const d of data.directions) {
         const row = d.arrivals[0];

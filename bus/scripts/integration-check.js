@@ -23,9 +23,12 @@ try {
   const source = `import { createWorker } from './worker/index.js';
     import { createBusService } from './worker/service.js';
     import { createKawasakiAdapter } from './providers/kawasaki/adapter.js';
+    import { P0_QUERIES } from './config/queries.js';
+    import { KAWASAKI_CONTEXT } from './providers/kawasaki/context.js';
     const index = ${JSON.stringify(index)};
     let service;
     export default createWorker(env => service ??= createBusService({index, version:'synthetic', now:()=>${NOW},
+      queries:P0_QUERIES, providerContext:KAWASAKI_CONTEXT,
       adapter:createKawasakiAdapter({token:env.ODPT_ACCESS_TOKEN, now:()=>${NOW}})}));`;
   const bundle = await build({ stdin: { contents: source, resolveDir: fileURLToPath(new URL('../', import.meta.url)) },
     bundle: true, write: false, format: 'esm', platform: 'browser', logLevel: 'silent' });
