@@ -1,5 +1,101 @@
 # PALURU Bus P0 deploy準備
 
+## 2026-09-11 Cloud Run公開・受入結果
+
+**Cloud Run API公開はGO。PALURU画面・Androidを含む全体受入は途中。** 下の認証待ち/未deploy記録は作業履歴。
+
+### 照合・build・公開先
+
+- ユーザーが明示したGoogleアカウントでCLIログイン成功。専用configuration `paluru-bus`のactive account、project `paluru-bus`、region `asia-northeast1`を照合した。project ACTIVE、billingEnabled=true、Cloud Run/Cloud Build/Artifact Registry/Logging APIが有効で、一覧/describeに成功。最初の認証承認待ちは解消済み。
+- 新規専用resource：Artifact Registry `paluru-bus`（東京/Docker）、runtime SA `paluru-bus-runtime@paluru-bus.iam.gserviceaccount.com`、Secret Manager `ODPT_ACCESS_TOKEN` version **1 / ENABLED**。Secret Manager APIも有効化した。
+- Secretは既存のGit除外済み`.dev.vars`から標準入力で登録し、値をCLI引数/出力/ファイル/imageへ追加していない。Secret単位のAccessorはruntime SAのみ。既存default Build SAはprojectの既存Editorを利用し、新たな広域権限を付与していない。
+- Cloud Build **SUCCESS**：[b256fa18-a24b-42b0-a4ed-3c5efffdf60b](https://console.cloud.google.com/cloud-build/builds;region=asia-northeast1/b256fa18-a24b-42b0-a4ed-3c5efffdf60b?project=paluru-bus)。18:38:52〜18:39:34 JST、約41.8秒。26ファイル/圧縮前約2.6MiB、P1 runtimeと2,616,507 bytesのStatic JSONを送信した。
+- image tag：`asia-northeast1-docker.pkg.dev/paluru-bus/paluru-bus/paluru-bus-api:p1-cf5385c-20260911`。digest：`sha256:57ba8627cc156702022e1d30c4184c2237883a1f90bb87ece5776f1f0fa599cf`。両serviceで同一digestを使用。
+- remote image smokeはNode **24.21.0**、health200、localhost Origin拒否、image内`.dev.vars`/scripts/fflate不在を確認し、`IMAGE_HEALTH_PASS`をCloud Loggingでも取得した。実ODPTキーはbuildに渡していない。
+
+|用途|URL / revision|アクセス|
+|---|---|---|
+|validation|`https://paluru-bus-api-validation-jwnmkrlyha-an.a.run.app` / `paluru-bus-api-validation-00001-tjq`|IAM認証。匿名health403、CLI proxy経由200|
+|production|`https://paluru-bus-api-jwnmkrlyha-an.a.run.app` / `paluru-bus-api-00001-zsp`|`allUsers: roles/run.invoker`。匿名health/API200|
+
+production endpointは`/api/bus/arrivals`、4方向一括。両serviceともgen2、CPU1、512MiB、concurrency8、min0/max1、timeout30秒、startup probe `/health`（5秒間隔）。production CORSは`https://alleshokai-gif.github.io`だけ。Secretはversion 1固定の`valueFrom.secretKeyRef`。Position UI/APIはOFF。
+
+Windowsでgcloud proxyを使うには、公式`cloud-run-proxy` component 0.5.1を追加し、SDKのbinを**起動プロセスのPATHだけ**へ追加した。bundled Python自己更新制約は既存Pythonでcomponentを導入して解消。system PATH変更、ローカルDocker利用はなし。private serviceを公開へ変更して試験する回避策は使っていない。
+
+### 実測とAPI受入
+
+`scripts/check-cloud-run.js`を追加。validationはlocalhost IAM proxy、本番は公開HTTPSへ実行し、各5回のAPIとhealth/CORS/read-only/Secret/Position DTOを検証。API全文は保存せず、時刻・状態・requestId・応答時間等の要約だけを`.local/cloud-run-{validation,production}-summary.json`へ保存。Cloud Loggingの安全なstageログをrequestIdで照合した。
+
+|指標|validation（18:45 JST）|production（18:49〜50 JST）|
+|---|---:|---:|
+|Cloud Monitoring container起動時間（各1観測）|5,016.944ms|5,016.647ms|
+|アプリ内初期化 / うちStatic|204.34 / 187.66ms|205.66 / 185.73ms|
+|初回観測APIの手元応答|174.35ms|157.19ms|
+|warm hitの手元応答|24.90〜30.84ms|22.52〜43.91ms|
+|26秒後refreshの手元応答|84.57ms|104.95ms|
+|サーバーHTTP処理：初回 / warm / refresh|148.17 / 3.69〜5.28 / 55.50ms|114.62 / 3.81〜5.04 / 60.60ms|
+|ODPT fetch：初回 / refresh|68.64 / 41.70ms|64.07 / 42.32ms|
+|RT decode：初回 / refresh|19.04 / 9.97ms|43.40 / 13.19ms|
+|JOIN：初回 / 以後|58.68 / 2.65〜4.14ms|4.14 / 2.57〜3.43ms|
+|API時のprocess RSS|94.51〜98.88MiB|95.64〜101.80MiB|
+|API size|8,095〜8,106 bytes|8,061 bytes|
+|5回のODPT fetch回数|1 / 0 / 0 / 1 / 0|1 / 0 / 0 / 1 / 0|
+
+Cloud Monitoringの[container/startup_latencies](https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z)は新規containerの起動時間。最初に観測したAPIはdeploy後の既存instanceへの要求であり、scale-to-zeroからの利用者リクエスト全体のcold latencyとは断定しない。上表のstage時間は経過時間で、CPU時間と同一ではない。通常warm応答に問題は観測されなかった。Staticの要求内参照は約0.0005〜0.003msで、ZIP/CSV/JSON全件parseは要求経路にない。
+
+|方向|validationの実データ|本番の実データ（18:50:08 JST）|
+|---|---|---|
+|神木本町→登戸|3便、RT＋Static。18:47便の予測18:51、ETA7分|3便。18:47→18:52、ETA3分、delay6分。次19:04/19:22はStatic|
+|神木本町→溝口南口|3便、RTあり|3便RT。先発18:53→18:54、次18:48→18:54、次々18:48→18:57。予定順ではなく予測順|
+|登戸→神木本町|3便。更新後に18:46→18:46、ETA1分、delay0分を観測|3便Static（19:03/19:21/19:40）。RT欠損値はnull|
+|溝口南口→神木本町|3便。18:46便の未来RTと、過去予測をETAにしないprediction_pendingを観測|3便Static（18:51/18:53/18:56）、3/2/4番のりば|
+
+delayは同一イベントの秒差から分へ丸めるため、表示HH:mmの差とは一致しない場合がある。API試験は秒差・delayMinutes・generatedAt基準ETAの整合を検算した。validationでは4方向すべてで未来RTを観測したが、本番の同時sampleでは2方向のみ。欠損を推測で補完していない。
+
+- 全4方向各3便、scheduled、RTのestimated/eta/delay、欠損null、過去ETA抑止、Position OFF/lat-lon非公開：PASS。
+- production Origin許可、localhost/異Origin403、OPTIONS204、POST405、秘密ファイル404：PASS。レスポンス/headersへの実ODPT token一致なし。
+- Cloud Logging：両serviceの起動/要求ログ取得・requestId照合PASS、確認時間帯のseverity ERROR以上0件。
+- 強制上流失敗→fresh RT保持→期限超過Static、stale UIは既存Node HTTP/Bus UIの合成回帰でPASS。**Cloud RunのODPTを故意に停止して試験したわけではない。** 自然発生の欠損/予測待ちは上記実APIで確認。
+- PWA URL/Build更新後のRepository **84/84**、Bus **51/51** PASS。旧Build固定期待が2件あったため、その文字列だけ更新。Secret scanは追加probe込み**333対象・一致0**、Build変更検査PASS。
+
+### PWA公開と残る受入
+
+Bus接続先を`features/bus/config.js`で本番URLへ切替。Buildは`v20260911-bus-p1-cloud-run-v1`。他機能の本体、GAS、位置UIは今回変更していない。Web公開後の結果は以下へ追記する。
+
+公開PALURUを認証済みブラウザで確認したところ、Busボタンは`hidden/disabled/aria-hidden=true`で、入口を開けなかった。ソースの`applyAllowedViews_`はMiniの`allowedViews`に従う。既存P0では`gas/HomeMembershipService.js`の3つのactiveロールへbusを追加済みで、[実装記録](PALURU_BUS_P0_IMPLEMENTATION.md)にもMiniの公開が必要と記載されている。**公開Miniのversion/内容はまだ照合しておらず、未公開と確定したわけではない。** 表示許可の確認とBus差分だけのMini公開について、今回のAPI設定限定範囲からの追加承認をユーザーへ依頼中。クライアント側で許可判定を迂回しない。
+
+このため公開PWAの4カード/30秒更新/停止復帰/通信失敗、Android実機受入は未実施。通常Homeが起動することは画面で確認したが、他機能の全操作受入を代替しない。
+
+### rollback
+
+今回はCloud Run初回deployで、本番revisionは`paluru-bus-api-00001-zsp`の1件だけ。**戻せる前revisionはまだ存在しない。** 次回更新ではこの受入済みrevision/digest/Secret versionを保存し、異常時は`gcloud run services update-traffic paluru-bus-api --to-revisions=paluru-bus-api-00001-zsp=100 --region=asia-northeast1 --configuration=paluru-bus`で戻す。今回はtraffic rollback操作を試していない。
+
+PWAの接続先/Buildは切替commitをrevertできる。ただし旧Worker URLは本番稼働の根拠がなく、そのURLへ戻すだけでBusが復旧するとは判定しない。Cloud Run APIが正常である限り接続先を維持し、PWA側の問題は切替差分だけで切り分ける。Secret version/image/Staticを削除しない。
+
+## 2026-09-11 P1公開フェーズの承認・作業契約
+
+ユーザーが今回、P1 Architecture commit/push、Cloud Build、検証用Cloud Run、受入後の本番Cloud Run、Bus接続先切替、PALURU Web更新、実PWA/Android受入を明示承認した。以下の旧「deployしない」「ユーザー実行」指定は過去フェーズの履歴として残す。今回の承認を他機能/GAS/他Cloudflare Workerの変更へ広げない。
+
+- 目的：ローカルでGOのP1をGoogle Cloudの実環境で検証し、通過後にPALURU公開画面へ接続する。
+- 対象：project `paluru-bus`、region `asia-northeast1`、先に`paluru-bus-api-validation`、後に`paluru-bus-api`。P1本体は既存`b5e6852`、GO受入のテスト/記録は`cf5385c`としてmainへpushした。
+- 手順：アカウント/project/課金/API/IAM/名称/既存revisionを照合 → Secret Managerにversion固定 → allowlist確認済みcontextをCloud Buildへ送る → image smoke → private validation受入/Cloud Logging/性能 → 同じdigestで本番 → Bus URL変更/必要なPWA Build識別更新 → Web公開/受入。ローカルDockerは使わない。
+- Secret：`.dev.vars`はGit/送信context外。ODPTキーはSecret Managerへ安全に登録し、buildへ渡さない。値や認証tokenをコマンド引数/本文ログ/MD/APIへ出さない。既存secret/versionがある場合は先に用途と状態を照合する。
+- 範囲：runtimeはP1を再利用。PWAの機能変更は`features/bus/config.js`のAPI URLのみ。公開版確認に必要な`build.js`と既存Build一致テストは同時更新する。位置OFF、GAS/Agent/OS契約/他機能は維持。
+- 副作用：Google Cloudの専用resource/image/revision作成と、その利用量に応じた課金。production APIへの公開アクセス、既存PWAのBus取得先変更。Cloudflare Freeの10ms基準は使わない。
+- rollback：既存serviceがある場合は変更前revision/trafficを記録し、そのrevisionへ戻せることを確認。初回deployでは架空の前revisionを作らず、公開前の構成と区別する。PWAは変更前commit/configへ戻せるが、未運用の旧Worker URLへ戻すだけでBusが復旧するとは扱わない。
+- 受入：health/API、全4方向各3便、RT/欠損/stale/過去ETA、CORS/Secret/位置OFF、ログ/実測性能、公開画面の行き帰り/のりば/分表示/更新と停止復帰、Androidの起動/背景復帰/通信失敗/他機能。未接続の実機は未確認と記録する。
+
+### 公開フェーズの実施記録（2026-09-11、Google Cloud認証待ち）
+
+- P1本体 `b5e6852c8edfa92dea1ccb62359bcbc25cce92b5` に続き、CRLF/LF同義の既存テスト修正とArchitecture GO記録を `cf5385c76b8a53bbc29a34ae755304a6b740cd6b` としてmainへcommit/push。push直前にRepository **84/84**、Bus **51/51**、Secret scan **332対象・一致0**を再確認した。
+- Google Cloud SDK **584.0.0**をGit対象外の`bus/.local/`へ導入。公式Windows x86_64 bundled Python ZIPは102,126,479 bytes、SHA256 `69b890b635e70b45ea84cc37568dc3b652a4ed6e20a951a5f8bf4a869095e1ae`で[公式versioned archives](https://docs.cloud.google.com/sdk/docs/downloads-versioned-archives)と照合。bundled Pythonでversion照合PASS。グローバルPATHを変更せず、専用`CLOUDSDK_CONFIG`も`.local/`配下とした。
+- `gcloud meta list-files-for-upload`実行PASS、送信対象はruntime/依存定義/生成Static/build設定の**26ファイル**。`.dev.vars`、`.local`、認証情報、Git、調査データ、tests、node_modulesは含まれない。`git check-ignore`でlocal SecretとSDKの除外も確認した。実際のCloud Build送信・image作成はまだ行っていない。
+- Consoleでproject `paluru-bus`のCloud Run service一覧が空であることを確認。CLIの認証アカウント一覧も空。CLIログイン開始は自動承認レビューにより拒否された（画面で得たアカウントを認証対象にするため、ユーザー本人のアカウント指定が必要）。認証先の確認をユーザーへ依頼しており、ログイン・IAM/Secret変更・build/deployは未実施。メールアドレスや認証URLは本記録へ保存しない。
+- GitHub Pages設定を実画面で確認：Sourceは**Deploy from a branch**、**main / root**、HTTPS有効、公開URLは`https://alleshokai-gif.github.io/paruru-mini/`。P1 GO記録push後の既存workflowは[pages build and deployment / 34570442510](https://github.com/alleshokai-gif/paruru-mini/actions/runs/34570442510)。公開`build.js`はHTTP200、`v20260910-bus-p0-static-v2`。**Cloud Run接続へのWeb更新はまだ実施していない。**
+- PWAの実URL定義は`features/bus/config.js`の1箇所。`sw.js`はAPIを`no-store`で取得し、HTML/JS/CSSはnetwork first、`skipWaiting`/`clients.claim`と`registration.update`/`updateViaCache: none`を維持していることをソースで確認。Cloud Run受入後にURLとBuild識別を更新し、mainへの公開push後に公開画面と実機を別途受け入れる。
+
+現時点の判定は**P1 Architecture GO / Cloud Run公開は認証・remote検証待ち**。Cloud Build結果、validation/production URL、remote性能、4方向API、本番Bus画面、Android、前revisionへのrollbackは未確認。Cloud Run/PWAの切替を実施していないため、今回rollback操作もない。
+
 ## P1 Architectureのローカル検証（2026-09-11）
 
 Cloud Runを本番候補としたまま、[P1 Architecture](PALURU_BUS_P1_ARCHITECTURE.md)の内部境界へ更新。Core/ServiceはQueryとProvider contextの注入方式。Node起動ログのbuild識別は`bus-p1-architecture-v1`、PWA Build IDと公開URLは変更していない。旧Cloudflare FreeのCPU NO-GOは下記履歴のまま。
