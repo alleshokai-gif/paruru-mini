@@ -40,5 +40,5 @@ assert(!app.includes('JSON.stringify(candidate)'));
 assert(css.includes('.family-inbox-form input') && css.includes('min-height: 48px') && css.includes('font-size: 16px'));
 assert(css.includes('.family-inbox-review-card button') && css.includes('.family-inbox-review-dialog button') && css.includes('min-height: 48px'));
 assert(css.includes('.family-inbox-review-dialog input') && css.includes('font-size: 16px'));
-assert(build.includes('v20260910-bus-p0-static-v2'));
+assert(build.includes('v20260911-bus-p1-cloud-run-v1'));
 console.log('PASS Family Inbox upload and Review PWA, Mini-only requests, human-readable candidates, mobile sizing, and build marker');
