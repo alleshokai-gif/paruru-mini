@@ -62,6 +62,11 @@ delayは同一イベントの秒差から分へ丸めるため、表示HH:mmの�
 
 Bus接続先を`features/bus/config.js`で本番URLへ切替。Buildは`v20260911-bus-p1-cloud-run-v1`。他機能の本体、GAS、位置UIは今回変更していない。Web公開後の結果は以下へ追記する。
 
+- Cloud Runの受入script/記録を`a8117d23a8c3dad384e3da74bb452f4ed60f5e4c`、PWA URL/Buildと一致テスト2件を`1dcdd6e9f43a7fe34ad540b8c2b49d3cd5b5423e`に分け、mainへpushした。
+- **Webアプリ更新の配信はPASS**：[GitHub Pages run 34587004695](https://github.com/alleshokai-gif/paruru-mini/actions/runs/34587004695)、19:00:00〜19:00:27 JST、SUCCESS。公開`build.js`と`features/bus/config.js`はHTTP200、改行差を除いてローカルと一致した。通常のPWA runtimeファイルにWorker URLは残っていない。
+- 更新後の公開PALURUをChromeで読み込み、設定画面に`アプリVersion: 1.1.0 / Build: v20260911-bus-p1-cloud-run-v1`が表示された。Home起動と設定への遷移を確認。Busボタンは引き続き非表示/無効で、Web更新の成功をBus画面受入PASSとは扱わない。
+- validation受入後、今回作成したlocalhost 8789の認証proxyを停止した。既存ローカルUI/APIは維持。validation serviceのprivate IAM、本番serviceのpublic IAMは維持している。
+
 公開PALURUを認証済みブラウザで確認したところ、Busボタンは`hidden/disabled/aria-hidden=true`で、入口を開けなかった。ソースの`applyAllowedViews_`はMiniの`allowedViews`に従う。既存P0では`gas/HomeMembershipService.js`の3つのactiveロールへbusを追加済みで、[実装記録](PALURU_BUS_P0_IMPLEMENTATION.md)にもMiniの公開が必要と記載されている。**公開Miniのversion/内容はまだ照合しておらず、未公開と確定したわけではない。** 表示許可の確認とBus差分だけのMini公開について、今回のAPI設定限定範囲からの追加承認をユーザーへ依頼中。クライアント側で許可判定を迂回しない。
 
 このため公開PWAの4カード/30秒更新/停止復帰/通信失敗、Android実機受入は未実施。通常Homeが起動することは画面で確認したが、他機能の全操作受入を代替しない。
