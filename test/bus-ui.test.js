@@ -44,6 +44,7 @@ test('UI never displays past or stale ETA, respects source order and gate OFF', 
   assert.equal(ui.displayRow(row, direction, data, 21000, false).eta, null);
   assert.equal(ui.displayRow(row, direction, data, 0, true).eta, null);
   assert.equal(ui.BUS_POSITION_UI_ENABLED, false);
+  assert.equal(ui.LEGACY_UI_DEFAULT_ENABLED, false);
   const utcRow = { ...row, scheduledAt: new Date(row.scheduledAt).toISOString() };
   assert.equal(ui.displayRow(utcRow, direction, data, 0, false).timeLabel, '07:49便');
   assert.equal(ui.validate(data).directions[0], direction);

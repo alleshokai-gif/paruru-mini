@@ -23,13 +23,18 @@ const arrival = (changes = {}) => ({
   ...changes
 });
 
-test('Kibukihoncho config binds both confirmed Tokyu directions and leaves Mizonokuchi unset', () => {
-  assert.deepEqual(KIBUKIHONCHO_HUB.purposes.map(({ id }) => id),
-    ['noborito', 'mizonokuchi', 'kajigaya', 'mukougaoka']);
+test('Kibukihoncho config groups by travel decision instead of Provider or platform', () => {
+  assert.deepEqual(KIBUKIHONCHO_HUB.decisionGroups.map(({ id }) => id),
+    ['kibukihoncho_north', 'kibukihoncho_mizonokuchi', 'kibukihoncho_kajigaya']);
+  const north = KIBUKIHONCHO_HUB.decisionGroups[0];
+  assert.deepEqual(north.providers, ['kawasaki', 'tokyu']);
+  assert.deepEqual(north.destinations, ['登戸駅', '向ヶ丘遊園駅南口']);
   assert.ok(KIBUKIHONCHO_HUB.sources.some((row) => row.provider === 'kawasaki' && row.sourceId === 'home_to_noborito'));
   assert.ok(KIBUKIHONCHO_HUB.sources.some((row) => row.provider === 'tokyu' && row.sourceId === 'kibukihoncho_to_kajigaya'));
   assert.ok(KIBUKIHONCHO_HUB.sources.some((row) => row.provider === 'tokyu' && row.sourceId === 'kibukihoncho_to_mukougaoka'));
-  assert.ok(!KIBUKIHONCHO_HUB.sources.some((row) => row.provider === 'tokyu' && row.purposeId === 'mizonokuchi'));
+  assert.ok(!KIBUKIHONCHO_HUB.sources.some((row) => row.provider === 'tokyu'
+    && row.decisionGroupId === 'kibukihoncho_mizonokuchi'));
+  assert.ok(KIBUKIHONCHO_HUB.sources.every((row) => !Object.hasOwn(row, 'purposeId')));
   assert.deepEqual(KIBUKIHONCHO_HUB.unresolved, []);
 });
 
@@ -68,7 +73,7 @@ test('ranking uses effective departure then ETA and ignores position as a rankin
   assert.deepEqual(ranked.map(({ rankingBasis }) => rankingBasis), ['effective_departure', 'eta', 'scheduled_departure']);
 });
 
-test('static-only schedule is explicitly lower quality than realtime even when scheduled earlier', () => {
+test('static-only participates in chronological comparison while retaining lower information quality', () => {
   const ranked = rankHubArrivals([
     normalizeHubArrival(arrival({ id: 'static-first', provider: 'tokyu', sourceId: 'kibukihoncho_to_kajigaya',
       routeId: 'tokyu-route', scheduledDeparture: NOW + 60, estimatedDeparture: null, etaMinutes: null,
@@ -76,9 +81,9 @@ test('static-only schedule is explicitly lower quality than realtime even when s
     normalizeHubArrival(arrival({ id: 'live-later', scheduledDeparture: NOW + 240,
       estimatedDeparture: NOW + 300, etaMinutes: 5 }), NOW)
   ], NOW);
-  assert.deepEqual(ranked.map(({ id }) => id), ['live-later', 'static-first']);
-  assert.deepEqual(ranked.map(({ recommendationQuality }) => recommendationQuality), ['realtime', 'static_only']);
-  assert.equal(ranked[1].rankingBasis, 'scheduled_departure');
+  assert.deepEqual(ranked.map(({ id }) => id), ['static-first', 'live-later']);
+  assert.deepEqual(ranked.map(({ recommendationQuality }) => recommendationQuality), ['static_only', 'realtime']);
+  assert.equal(ranked[0].rankingBasis, 'scheduled_departure');
 });
 
 test('low confidence is downranked and departure uncertain is never recommended', () => {
@@ -95,10 +100,26 @@ test('low confidence is downranked and departure uncertain is never recommended'
 test('Kawasaki-only result remains available when Tokyu is missing', () => {
   const hub = aggregateHub({ hub: KIBUKIHONCHO_HUB, generatedAt: NOW,
     providerResults: [{ provider: 'kawasaki', arrivals: [arrival()] }] });
-  assert.equal(hub.groups.find((group) => group.id === 'mizonokuchi').recommendedArrivalId, 'kawasaki-trip-1');
+  assert.equal(hub.decisionGroups.find((group) => group.id === 'kibukihoncho_mizonokuchi').recommendedArrivalId,
+    'kawasaki-trip-1');
   assert.equal(hub.providers.find((row) => row.provider === 'kawasaki').state, 'available');
   assert.deepEqual(hub.providers.find((row) => row.provider === 'tokyu'),
     { provider: 'tokyu', state: 'unavailable', code: 'RESULT_MISSING', invalidCount: 0 });
+});
+
+test('Hub aggregate and API model retain realtime delayMinutes and reject it for static-only', () => {
+  const hub = aggregateHub({ hub: KIBUKIHONCHO_HUB, generatedAt: NOW, providerResults: [
+    { provider: 'kawasaki', arrivals: [arrival({ delayMinutes: 7 })] },
+    { provider: 'tokyu', arrivals: [arrival({ id: 'tokyu-static', provider: 'tokyu',
+      sourceId: 'kibukihoncho_to_kajigaya', routeId: 'odpt.Busroute:TokyuBus.Kou01', routeLabel: '向０１',
+      destination: '梶が谷駅', scheduledDeparture: NOW + 120, estimatedDeparture: null, etaMinutes: null,
+      delayMinutes: null, platform: 'a', realtimeState: 'static_only', departureState: 'scheduled', actionability: null })] }
+  ] });
+  const live = hub.decisionGroups.find((group) => group.id === 'kibukihoncho_mizonokuchi').arrivals[0];
+  const staticOnly = hub.decisionGroups.find((group) => group.id === 'kibukihoncho_kajigaya').arrivals[0];
+  assert.equal(live.delayMinutes, 7);
+  assert.equal(hub.arrivals.find((row) => row.id === live.id).delayMinutes, 7);
+  assert.equal(staticOnly.delayMinutes, null);
 });
 
 test('Hub Provider status exposes safe static retrieval metadata', () => {
@@ -130,7 +151,7 @@ test('uncertain arrival remains explanatory while the next actionable trip is re
       departureState: 'departure_uncertain', actionability: 'do_not_recommend', realtimeState: 'realtime_stale' }),
     arrival({ id: 'next', scheduledDeparture: NOW + 600, estimatedDeparture: NOW + 660, etaMinutes: 11 })
   ] }] });
-  const group = hub.groups.find((value) => value.id === 'mizonokuchi');
+  const group = hub.decisionGroups.find((value) => value.id === 'kibukihoncho_mizonokuchi');
   assert.equal(group.recommendedArrivalId, 'next');
   assert.equal(group.arrivals.find((value) => value.id === 'overdue').recommendable, false);
 });
@@ -161,6 +182,7 @@ test('Kawasaki Provider adapter maps only the two Hub directions and preserves q
     { index, queries: P0_INPUT.queries });
   assert.equal(result.arrivals.length, 2);
   assert.deepEqual(result.arrivals.map((row) => row.sourceId).sort(), ['home_to_mizonokuchi', 'home_to_noborito']);
+  assert.ok(result.arrivals.every((row) => row.delayMinutes === 1));
   assert.ok(result.arrivals.every((row) => row.realtimeState === 'realtime' && row.position.supported === false));
   assert.doesNotMatch(JSON.stringify(result), /"lat"|"lon"/);
 });
@@ -179,10 +201,15 @@ test('Hub service combines Kawasaki realtime and Tokyu static; either Provider c
     tokyuProvider: { async getArrivals() { if (tokyuFails) throw Error(); return { provider: 'tokyu', arrivals: [tok, tokReverse] }; } }
   });
   const both = await create().getHub('kibukihoncho');
-  assert.equal(both.success, true); assert.equal(both.arrivals.length, 4);
-  assert.equal(both.groups.find((group) => group.id === 'kajigaya').arrivals[0].realtimeState, 'static_only');
-  assert.equal(both.groups.find((group) => group.id === 'mukougaoka').arrivals[0].platform, 'b');
-  assert.ok(!both.arrivals.some((row) => row.provider === 'tokyu' && row.purposeId === 'mizonokuchi'));
+  assert.equal(both.success, true); assert.equal(both.decisionGroups.length, 3);
+  const north = both.decisionGroups.find((group) => group.id === 'kibukihoncho_north');
+  assert.deepEqual([...new Set(north.arrivals.map((row) => row.provider))].sort(), ['kawasaki', 'tokyu']);
+  assert.ok(north.arrivals.some((row) => row.destination === '向ヶ丘遊園駅南口' && row.platform === 'b'));
+  assert.equal(both.decisionGroups.find((group) => group.id === 'kibukihoncho_kajigaya').arrivals[0].realtimeState,
+    'static_only');
+  assert.ok(!both.arrivals.some((row) => row.provider === 'tokyu'
+    && row.decisionGroupId === 'kibukihoncho_mizonokuchi'));
+  assert.equal(both.arrivals.find((row) => row.provider === 'kawasaki').delayMinutes, 1);
   const noTokyu = await create({ tokyuFails: true }).getHub('kibukihoncho');
   assert.equal(noTokyu.arrivals.filter((row) => row.provider === 'kawasaki').length, 2);
   const noKawasaki = await create({ kawasakiFails: true }).getHub('kibukihoncho');

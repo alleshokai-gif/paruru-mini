@@ -7,7 +7,7 @@
 
 ## 現在の状態
 
-**2026-09-13 最新：P2.1 Hub APIはCloud Run本番受入PASS、PWA source反映済み。** 川崎2方面のRealtimeと、正規ODPT Staticによる東急・向01 神木本町a→梶が谷駅 / b→向ヶ丘遊園駅南口を同じHub DTOへ統合した。東急Realtime/Positionは使わない。Hub UIのFeature Gateとassetはsourceへ反映済みで、GitHub Pages公開と実機受入は未実施。
+**2026-09-13 最新：P2.2 Hub UXをローカル実装中。** 神木本町を会社・乗り場別ではなく、`登戸・向ヶ丘遊園方面`、`溝の口方面`、`梶が谷方面`の3 decision groupへ再編する。Kawasaki Realtimeの`delayMinutes`はHub APIからUIまで保持し、P0と同じ分単位表示へ戻す。P2.1 Cloud Run本番APIは受入済みだが、P2.2は未deployである。
 
 - project `paluru-bus` / region `asia-northeast1`。Docker Desktop不要でCloud Buildを使う。既存P0のCloud Run運用手順はdeployment文書を参照する。
 - Node版：`bus/`で `npm run dev:run`（development、loopback8080）または `$env:PORT='8787'`を設定してUI harnessと接続。別ターミナルで`npm run dev:ui`。
@@ -61,7 +61,7 @@ npm run dev
 - `npm run test:live`: 生成済みStaticを読み、正規ODPTのRTを1回取得＋cache参照3回。四方向・Static/RT/JOIN/responseの安全な計測要約だけ出力。
 - 共通のローカル設定は `wrangler.local.jsonc`。本番Worker名・ドメインを表す設定ではない。
 - PWAの接続先は `features/bus/config.js` の `PALURU_BUS_API_URL` だけで管理する。P2.1の本番Cloud Run受入後、Hubは同じBus画面内で明示的に読み込み、`PALURU_BUS_HUB_UI_ENABLED=true`で有効化する。Position UIとPublic departure predictionは引き続き無効である。
-- `npm run test:hub:live` は正規ODPTから川崎Realtimeと東急Staticを取得し、4方面、各3便、a/b標柱、品質区分、欠損分離を秘密情報なしの要約で確認する。
+- `npm run test:hub:live` は正規ODPTから川崎Realtimeと東急Staticを取得し、3 decision group、各3便、品質区分、遅延field保持、欠損分離を秘密情報なしの要約で確認する。
 - `npm run test:tokyu:calendar:live` は向01両方向について、ODPT `Weekday/Saturday/Sunday`全便と東急公式`平日/土曜/休日`列を照合する。2026〜2027年の国民の祝日は内閣府公表一覧に限定して東急Sundayへ割り当て、範囲外は表示しない。
 
 RepositoryルートからPowerShellで実行する。
@@ -154,7 +154,7 @@ features/bus/                  # PWA Bus/Hub UI。Hub GateはON、Position Gate�
 gas-bus-observation/           # 観測専用GAS日次集計
 ```
 
-東急はP2.1の向01・神木本町→梶が谷駅だけをStatic-onlyで実装する。東急→溝の口、東急Realtime、Positionは未解決のまま扱い、推測で候補を作らない。`seibu/`、`iyotetsu/` は将来のProvider追加先に留める。
+東急はP2.1の向01・神木本町a→梶が谷駅 / b→向ヶ丘遊園駅南口をStatic-onlyで実装する。東急→溝の口、東急Realtime、Positionは未解決のまま扱い、推測で候補を作らない。`seibu/`、`iyotetsu/` は将来のProvider追加先に留める。
 
 ## 境界
 

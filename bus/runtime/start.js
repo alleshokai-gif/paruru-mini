@@ -40,7 +40,7 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
     normalizeKawasaki: (value) => normalizeKawasakiHubResult(value, { index, queries }), tokyuProvider });
   const handler = createHttpHandler(() => service, { health: true, hubServiceFactory: () => hubService });
   const server = createNodeServer({ handler, env: config.env, measure: log });
-  server.listen(config.port, config.host, () => log({ event: 'bus_startup', build: 'bus-p2-1-hub-local-v1',
+  server.listen(config.port, config.host, () => log({ event: 'bus_startup', build: 'bus-p2-2-decision-hub-v1',
     startupMs: performance.now() - started, staticStartupMs, positionStartupMs, positionStatus:position.status,
     positionIndex:position.stats, rssBytes: process.memoryUsage().rss, port: config.port }));
   const shutdown = () => {

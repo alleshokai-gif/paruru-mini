@@ -38,28 +38,35 @@ try {
   assert.equal(p0.directions.length, 4); assert.ok(p0.directions.every((direction) => direction.arrivals.length === 3));
   phase = 'hub'; const hub = await request('/api/bus/hub?id=kibukihoncho');
   phase = 'hub_identity'; assert.equal(hub.success, true); assert.equal(hub.hubId, 'kibukihoncho');
-  const byGroup = Object.fromEntries(hub.groups.map((group) => [group.id, group]));
-  diagnostic = { groups: hub.groups.map((group) => ({ id: group.id, count: group.arrivals.length,
+  assert.equal(hub.hubLabel, '神木本町'); assert.equal(hub.decisionGroups.length, 3);
+  const byGroup = Object.fromEntries(hub.decisionGroups.map((group) => [group.id, group]));
+  diagnostic = { groups: hub.decisionGroups.map((group) => ({ id: group.id, count: group.arrivals.length,
     providers: [...new Set(group.arrivals.map((row) => row.provider))] })),
   providers: hub.providers.map((row) => ({ provider: row.provider, state: row.state, code: row.code })) };
-  const groupIds = ['noborito', 'mizonokuchi', 'kajigaya', 'mukougaoka'];
+  const groupIds = ['kibukihoncho_north', 'kibukihoncho_mizonokuchi', 'kibukihoncho_kajigaya'];
   phase = 'hub_group_presence'; for (const id of groupIds) assert.ok(byGroup[id]);
   phase = 'hub_group_counts'; for (const id of groupIds) assert.equal(byGroup[id].arrivals.length, 3);
-  const tokyu = [...byGroup.kajigaya.arrivals, ...byGroup.mukougaoka.arrivals];
+  phase = 'north_contract';
+  assert.deepEqual(byGroup.kibukihoncho_north.providers, ['kawasaki', 'tokyu']);
+  assert.deepEqual(byGroup.kibukihoncho_north.destinations, ['登戸駅', '向ヶ丘遊園駅南口']);
+  const tokyu = hub.arrivals.filter((row) => row.provider === 'tokyu');
   phase = 'tokyu_static_contract';
   assert.ok(tokyu.every((row) => row.provider === 'tokyu' && row.realtimeState === 'static_only'
     && row.estimatedDeparture === null && row.etaMinutes === null && row.delayMinutes === null
     && row.position.supported === false));
-  assert.deepEqual([...new Set(tokyu.map((row) => row.platform))].sort(), ['a', 'b']);
-  phase = 'tokyu_mizonokuchi_absent'; assert.ok(!hub.arrivals.some((row) => row.provider === 'tokyu' && row.purposeId === 'mizonokuchi'));
+  assert.ok(byGroup.kibukihoncho_kajigaya.arrivals.every((row) => row.provider === 'tokyu' && row.platform === 'a'));
+  phase = 'tokyu_mizonokuchi_absent'; assert.ok(!hub.arrivals.some((row) => row.provider === 'tokyu'
+    && row.decisionGroupId === 'kibukihoncho_mizonokuchi'));
+  phase = 'delay_contract'; assert.ok(hub.arrivals.filter((row) => row.provider === 'kawasaki')
+    .every((row) => Object.hasOwn(row, 'delayMinutes')));
   assert.equal(unsafe, false);
-  console.log(JSON.stringify({ status: 'P2_1_HUB_LIVE_PASS', p0Directions: p0.directions.length,
-    groups: hub.groups.map((group) => ({ id: group.id, count: group.arrivals.length,
+  console.log(JSON.stringify({ status: 'P2_2_HUB_LIVE_PASS', p0Directions: p0.directions.length,
+    groups: hub.decisionGroups.map((group) => ({ id: group.id, count: group.arrivals.length,
       providers: [...new Set(group.arrivals.map((row) => row.provider))],
       quality: [...new Set(group.arrivals.map((row) => row.realtimeState))] })),
-    tokyuRealtimeFieldsNull: true, tokyuMizonokuchiAbsent: true, positionUiEnabled: p0.positionUiEnabled,
+    delayFieldPreserved: true, tokyuRealtimeFieldsNull: true, tokyuMizonokuchiAbsent: true, positionUiEnabled: p0.positionUiEnabled,
     secretLeak: false }));
 } catch (error) {
   const code = /^[A-Z0-9_]+$/.test(error?.message || '') ? error.message : error?.name === 'AssertionError' ? 'ASSERTION_FAILED' : 'UNKNOWN';
-  console.log(JSON.stringify({ status: 'P2_1_HUB_LIVE_FAILED', phase, code, diagnostic })); process.exitCode = 1;
+  console.log(JSON.stringify({ status: 'P2_2_HUB_LIVE_FAILED', phase, code, diagnostic })); process.exitCode = 1;
 } finally { child?.kill(); }

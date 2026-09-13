@@ -188,7 +188,7 @@ P2.1の本番Cloud Run受入前はlocal harnessだけが`PALURU_BUS_HUB_UI_ENABL
 
 ## 拡張境界
 
-新Provider追加は、ProviderがNormalized Hub Arrivalを返し、Hub configに`provider + sourceId + purposeId`を足す。Aggregator/Ranking変更は原則不要。Nearby、Platform、溝の口Hubは別config/resolve段階を追加し、Provider内で最終UI groupを決めない。
+新Provider追加は、ProviderがNormalized Hub Arrivalを返し、Hub configに`provider + sourceId + decisionGroupId`を足す。Aggregator/Ranking変更は原則不要。Nearby、Platform、溝の口Hubは別config/resolve段階を追加し、Provider内で最終UI groupを決めない。
 
 ## Acceptance
 
@@ -254,3 +254,7 @@ P2.1 imageはユーザー操作でCloud Run validationとproductionへdeployし�
 - **Tokyu Realtime / 事業者横断Realtime Hub: NO-GO**。正規RTデータが確認できない。
 - **東急 神木本町→溝の口: NO-GO**。正式routeが存在する証拠がない。
 - **本番Hub UI source: GO**。祝日calendar、Cloud Run remote受入、PWA Gate/asset/lifecycleと回帰試験はPASS。Web公開とAndroid実機受入は未実施。
+
+## P2.2 Decision Group追記
+
+P2.1の4つの行先groupは履歴として上記に残す。P2.2では事業者・物理乗り場より利用判断を優先し、正本を`decisionGroups`へ変更した。神木本町は`登戸・向ヶ丘遊園方面`、`溝の口方面`、`梶が谷方面`の3 groupである。正確な契約、遅延表示、Legacy Gate、ローカル受入は[PALURU Bus P2.2 Hub UX](PALURU_BUS_P2_2_HUB_UX.md)を正本とする。

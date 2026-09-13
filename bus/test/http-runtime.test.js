@@ -20,7 +20,13 @@ async function fixture(t) {
     adapter: { async getRealtime() { calls++; await new Promise((r) => setTimeout(r, 5));
       if (failure) throw Error('private-upstream-detail'); return realtimeFixture(); } } });
   const env = runtimeConfig({ ODPT_ACCESS_TOKEN: 'synthetic-config-only' }).env;
-  const hubService = { async getHub(id) { return { success: true, hubId: id, generatedAt: now, providers: [], arrivals: [], groups: [] }; } };
+  const hubArrival = { id: 'kawasaki:synthetic-hub', provider: 'kawasaki', routeLabel: '登05',
+    destination: '登戸駅', scheduledDeparture: now + 300, estimatedDeparture: now + 420, etaMinutes: 7,
+    delayMinutes: 2, realtimeState: 'realtime', platform: '2番' };
+  const hubService = { async getHub(id) { return { success: true, hubId: id, hubLabel: '神木本町', generatedAt: now,
+    providers: [], arrivals: [hubArrival], decisionGroups: [{ id: 'kibukihoncho_north', hubId: id,
+      label: '登戸・向ヶ丘遊園方面', destinations: ['登戸駅', '向ヶ丘遊園駅南口'], providers: ['kawasaki', 'tokyu'],
+      recommendedArrivalId: hubArrival.id, arrivals: [hubArrival] }], groups: [] }; } };
   const server = createNodeServer({ handler: createHttpHandler(() => service,
     { health: true, hubServiceFactory: () => hubService }), env, measure: (v) => logs.push(v) });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -35,7 +41,9 @@ test('Node HTTP: health, four directions x three rows, RT fields and shared conc
   const health = await f.call('/health'); assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), { status: 'ok', service: 'paluru-bus-api' }); assert.equal(f.calls(), 0);
   const hub = await f.call('/api/bus/hub?id=kibukihoncho');
-  assert.equal(hub.status, 200); assert.equal((await hub.json()).hubId, 'kibukihoncho'); assert.equal(f.calls(), 0);
+  assert.equal(hub.status, 200); const hubData = await hub.json();
+  assert.equal(hubData.hubId, 'kibukihoncho');
+  assert.equal(hubData.decisionGroups[0].arrivals[0].delayMinutes, 2); assert.equal(f.calls(), 0);
   const responses = await Promise.all(Array.from({ length: 4 }, () => f.call()));
   assert.equal(f.calls(), 1);
   for (const r of responses) {

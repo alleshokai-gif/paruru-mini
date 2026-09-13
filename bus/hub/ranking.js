@@ -19,6 +19,12 @@ function tier(arrival, lowConfidenceThreshold) {
   return { excluded: false, value: 0, quality: 'realtime' };
 }
 
+function sortingRisk(arrival) {
+  if (arrival.recommendationTier >= 3) return 2;
+  if (arrival.recommendationTier === 1) return 1;
+  return 0;
+}
+
 export function rankHubArrivals(arrivals, generatedAt, { lowConfidenceThreshold = 0.5 } = {}) {
   if (!Array.isArray(arrivals) || !finite(generatedAt) || !finite(lowConfidenceThreshold)
     || lowConfidenceThreshold < 0 || lowConfidenceThreshold > 1) throw new Error('BUS_HUB_RANK_INPUT_INVALID');
@@ -29,8 +35,9 @@ export function rankHubArrivals(arrivals, generatedAt, { lowConfidenceThreshold 
       recommendationTier: recommendation.value, recommendationQuality: recommendation.quality,
       recommendable: !recommendation.excluded && recommendation.value < 3 };
   }).filter((arrival) => !['cancelled', 'departed'].includes(arrival.departureState))
-    .sort((a, b) => a.recommendationTier - b.recommendationTier
+    .sort((a, b) => sortingRisk(a) - sortingRisk(b)
       || a.rankingTime - b.rankingTime
+      || a.recommendationTier - b.recommendationTier
       || a.scheduledDeparture - b.scheduledDeparture
       || a.provider.localeCompare(b.provider)
       || a.id.localeCompare(b.id));

@@ -6,22 +6,27 @@ const fail = (code) => { throw new Error(code); };
 const metadataTime = (value) => Number.isFinite(value) && value >= 0 ? value : null;
 
 function validateHub(hub) {
-  if (!text(hub?.id) || !text(hub?.label) || !Array.isArray(hub.purposes) || !hub.purposes.length
+  if (!text(hub?.id) || !text(hub?.label) || !Array.isArray(hub.decisionGroups) || !hub.decisionGroups.length
     || !Array.isArray(hub.sources)) fail('BUS_HUB_CONFIG_INVALID');
-  const purposeIds = new Set();
-  for (const purpose of hub.purposes) {
-    if (!text(purpose?.id) || !text(purpose?.label) || purposeIds.has(purpose.id)) fail('BUS_HUB_CONFIG_INVALID');
-    purposeIds.add(purpose.id);
+  const decisionGroups = new Map();
+  for (const group of hub.decisionGroups) {
+    if (!text(group?.id) || group.hubId !== hub.id || !text(group?.label) || decisionGroups.has(group.id)
+      || !Array.isArray(group.destinations) || !group.destinations.length || group.destinations.some((value) => !text(value))
+      || !Array.isArray(group.providers) || !group.providers.length || group.providers.some((value) => !text(value))
+      || !Number.isInteger(group.displayLimit) || group.displayLimit < 1 || group.displayLimit > 10)
+      fail('BUS_HUB_CONFIG_INVALID');
+    decisionGroups.set(group.id, group);
   }
   const sourceKeys = new Set();
   for (const source of hub.sources) {
     const key = `${source?.provider}|${source?.sourceId}`;
-    if (!text(source?.provider) || !text(source?.sourceId) || !purposeIds.has(source?.purposeId)
+    const group = decisionGroups.get(source?.decisionGroupId);
+    if (!text(source?.provider) || !text(source?.sourceId) || !group || !group.providers.includes(source.provider)
       || source.walkMinutes != null && (!Number.isFinite(source.walkMinutes) || source.walkMinutes < 0)
       || sourceKeys.has(key)) fail('BUS_HUB_CONFIG_INVALID');
     sourceKeys.add(key);
   }
-  return { purposeIds, sourceKeys };
+  return { decisionGroups, sourceKeys };
 }
 
 function errorCode(value, fallback) {
@@ -61,17 +66,21 @@ export function aggregateHub({ hub, generatedAt, providerResults, rankingOptions
         if (arrival.provider !== provider) throw new Error('BUS_HUB_PROVIDER_MISMATCH');
         const binding = bindings.get(`${arrival.provider}|${arrival.sourceId}`);
         if (!binding) continue;
-        collected.push({ ...arrival, purposeId: binding.purposeId, walkMinutes: binding.walkMinutes });
+        collected.push({ ...arrival, decisionGroupId: binding.decisionGroupId, walkMinutes: binding.walkMinutes });
       } catch { invalidCount++; }
     }
     providers.push({ provider, state: invalidCount ? 'partial' : 'available',
       code: invalidCount ? 'ARRIVAL_INVALID' : null, invalidCount,
       retrievedAt: metadataTime(result.retrievedAt), sourceUpdatedAt: metadataTime(result.sourceUpdatedAt) });
   }
-  const groups = hub.purposes.map((purpose) => {
-    const arrivals = rankHubArrivals(collected.filter((arrival) => arrival.purposeId === purpose.id), generatedAt, rankingOptions);
-    return { id: purpose.id, label: purpose.label,
+  const decisionGroups = hub.decisionGroups.map((group) => {
+    const arrivals = rankHubArrivals(collected.filter((arrival) => arrival.decisionGroupId === group.id),
+      generatedAt, rankingOptions).slice(0, group.displayLimit);
+    return { id: group.id, hubId: hub.id, label: group.label,
+      destinations: [...group.destinations], providers: [...group.providers],
       recommendedArrivalId: arrivals.find((arrival) => arrival.recommendable)?.id ?? null, arrivals };
   });
-  return { hubId: hub.id, generatedAt, providers, arrivals: groups.flatMap((group) => group.arrivals), groups };
+  return { hubId: hub.id, hubLabel: hub.label, generatedAt, providers,
+    arrivals: decisionGroups.flatMap((group) => group.arrivals), decisionGroups,
+    groups: decisionGroups };
 }

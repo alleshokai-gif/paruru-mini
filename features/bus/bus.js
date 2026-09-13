@@ -7,6 +7,7 @@
 }(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
   const BUS_POSITION_UI_ENABLED = false;
+  const LEGACY_UI_DEFAULT_ENABLED = false;
   const POLL_MS = 30000;
   const IDS = ['home_to_noborito', 'home_to_mizonokuchi', 'noborito_to_home', 'mizonokuchi_to_home'];
   let controller, requestedActive = false;
@@ -87,6 +88,8 @@
   function install(doc, root) {
     function mount() {
       const mount = doc.querySelector('#busMount'); if (!mount || controller) return;
+      if (root.PALURU_BUS_LEGACY_UI_ENABLED !== true) { mount.hidden = true; return; }
+      mount.hidden = false;
       mount.classList.add('paluru-bus');
       const header = element(doc, 'header', 'bus-header');
       const title = element(doc, 'div'); title.append(element(doc, 'p', 'bus-eyebrow', 'いつものバス'), element(doc, 'h1', '', 'Bus'));
@@ -160,5 +163,6 @@
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();
   }
-  return { install, validate, displayRow, createController, setActive(value) { requestedActive = !!value; controller?.setActive(value); }, BUS_POSITION_UI_ENABLED, POLL_MS };
+  return { install, validate, displayRow, createController, setActive(value) { requestedActive = !!value; controller?.setActive(value); },
+    BUS_POSITION_UI_ENABLED, LEGACY_UI_DEFAULT_ENABLED, POLL_MS };
 }));

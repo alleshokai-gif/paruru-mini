@@ -23,7 +23,7 @@ const server = createServer(async (request, response) => {
     if (request.method !== 'GET') { response.writeHead(405).end(); return; }
     if (request.url === '/features/bus/config.js') {
       response.setHeader('Content-Type', 'text/javascript');
-      response.end(`globalThis.PALURU_BUS_API_URL=${JSON.stringify(apiUrl)};globalThis.PALURU_BUS_HUB_UI_ENABLED=true;`); return;
+      response.end(`globalThis.PALURU_BUS_API_URL=${JSON.stringify(apiUrl)};globalThis.PALURU_BUS_HUB_UI_ENABLED=true;globalThis.PALURU_BUS_LEGACY_UI_ENABLED=false;`); return;
     }
     if (['/fixture/fixture', '/fixture/static', '/fixture/stale', '/fixture/error'].includes(request.url)) {
       response.setHeader('Content-Type', 'application/json');
