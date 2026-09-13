@@ -55,21 +55,51 @@ test('421 seconds of internal delay are displayed as 7 minutes, never raw second
   const display = ui.displayRow(row, direction, data, 0, false);
   assert.equal(display.delay, '+7分遅れ'); assert(!display.delay.includes('421'));
 });
+test('Bus controller accepts an injected validator without changing its polling contract', async () => {
+  const timers = clock(); let calls = 0, rendered;
+  const controller = ui.createController({ timers, now: timers.now, hidden: () => false,
+    validateData(value) { calls++; return { normalized: value }; }, async fetchData() { return 'hub'; },
+    render(state) { rendered = state; } });
+  controller.setActive(true); await timers.advance(0);
+  assert.equal(calls, 1); assert.deepEqual(rendered.data, { normalized: 'hub' }); controller.destroy();
+});
 
-test('PWA Bus switching cannot interrupt another view even if the feature fails', async () => {
+test('origin departure persistence never renders an overdue trip as zero-minute or on-time', () => {
+  const data=fixture(),direction=data.directions[2],base=direction.arrivals[0];
+  const overdue={...base,realtime:false,estimatedAt:null,delayMinutes:null,delaySeconds:null,state:'departure_overdue'};
+  const waiting={...overdue,state:'departure_pending'};
+  const first=ui.displayRow(overdue,direction,data,0,false),second=ui.displayRow(waiting,direction,data,0,false);
+  assert.equal(first.live,false);assert.equal(first.eta,null);assert.equal(first.note,'遅延中・発車未確認');
+  assert.equal(second.note,'発車待ち');assert.equal(first.delay,'');assert.equal(first.timeLabel,'07:49便');
+});
+
+test('uncertain origin departure is visible but never presented as catchable or live', () => {
+  const data=fixture(),direction=data.directions[2],base=direction.arrivals[0];
+  const row={...base,realtime:false,estimatedAt:null,delayMinutes:null,delaySeconds:null,state:'departure_uncertain'};
+  const display=ui.displayRow(row,direction,data,0,false);
+  assert.equal(display.live,false);assert.equal(display.eta,null);
+  assert.equal(display.note,'発車済みの可能性あり・間に合う保証なし');assert.equal(display.timeLabel,'07:49便');
+});
+
+test('PWA Bus and Hub switching cannot interrupt another view even if either feature fails', async () => {
   const source = fs.readFileSync(require.resolve('../app.js'), 'utf8');
   const fn = source.slice(source.indexOf('async function switchView(viewName)'), source.indexOf('async function loadInbox(options = {})'));
   let loaded = false;
   const context = { normalizeAllowedView_: (v) => v, isViewAllowed_: () => true, activeView: '', views: [], navItems: [],
-    PALURUBus: { setActive() { throw Error('Bus isolated'); } }, showMessage() {}, setParuruState() {}, async loadInboxView_() { loaded = true; } };
+    PALURUBus: { setActive() { throw Error('Bus isolated'); } }, PALURUBusHub: { setActive() { throw Error('Hub isolated'); } },
+    showMessage() {}, setParuruState() {}, async loadInboxView_() { loaded = true; } };
   vm.createContext(context); vm.runInContext(fn, context); await context.switchView('inbox'); assert(loaded);
 });
-test('SW bypasses cache for Bus API; feature assets remain in existing app-shell lifecycle', async () => {
+test('SW bypasses cache for arrivals and Hub APIs; feature assets remain in existing app-shell lifecycle', async () => {
   const source = fs.readFileSync(require.resolve('../sw.js'), 'utf8'); const listeners = {}; let fetches = 0, cached = 0;
   const context = { URL, BUILD_ID: 'synthetic', importScripts() {}, console, self: { location: { origin: 'https://paluru.example', href: 'https://paluru.example/sw.js' }, addEventListener(name, fn) { listeners[name] = fn; } },
     fetch: async () => { fetches++; return {}; }, caches: { async open() { cached++; throw Error('Must not cache Bus API'); } } };
   vm.createContext(context); vm.runInContext(source, context); let result;
   listeners.fetch({ request: { method: 'GET', url: 'https://bus.example/api/bus/arrivals' }, respondWith(promise) { result = promise; } });
   await result; assert.equal(fetches, 1); assert.equal(cached, 0);
-  assert(source.includes('versioned("features/bus/bus.js")')); assert(source.includes('clients.claim()'));
+  listeners.fetch({ request: { method: 'GET', url: 'https://bus.example/api/bus/hub?id=kibukihoncho' }, respondWith(promise) { result = promise; } });
+  await result; assert.equal(fetches, 2); assert.equal(cached, 0);
+  assert(source.includes('versioned("features/bus/bus.js")'));
+  assert(source.includes('versioned("features/bus/hub.js")'));
+  assert(source.includes('clients.claim()'));
 });

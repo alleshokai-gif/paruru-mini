@@ -7,9 +7,9 @@
 
 ## 現在の状態
 
-**2026-09-10 最新：本番候補はCloud Runへ移行。Cloudflare Freeは実測CPU超過でNO-GO。** Node HTTPのローカル確認とCloud Build/deploy準備まで実施。本番deploy・PWA URL変更は未実施。
+**2026-09-13 最新：P2.1 Hub APIはCloud Run本番受入PASS、PWA source反映済み。** 川崎2方面のRealtimeと、正規ODPT Staticによる東急・向01 神木本町a→梶が谷駅 / b→向ヶ丘遊園駅南口を同じHub DTOへ統合した。東急Realtime/Positionは使わない。Hub UIのFeature Gateとassetはsourceへ反映済みで、GitHub Pages公開と実機受入は未実施。
 
-- project `paluru-bus` / region `asia-northeast1`。Docker Desktop不要でCloud Buildを使う。アカウント/API/課金はユーザー準備済みとの申告、gcloudの照合はこれから。
+- project `paluru-bus` / region `asia-northeast1`。Docker Desktop不要でCloud Buildを使う。既存P0のCloud Run運用手順はdeployment文書を参照する。
 - Node版：`bus/`で `npm run dev:run`（development、loopback8080）または `$env:PORT='8787'`を設定してUI harnessと接続。別ターミナルで`npm run dev:ui`。
 - `npm run test:run`：Nodeプロセス＋実HTTP＋実ODPTのcold/warm/cache測定。本番候補は`npm start`（runtime env必須）。ローカル起動だけがignore済み`.dev.vars`を読む。
 - 本番SecretはSecret Managerのversion固定で注入。`.gcloudignore`/`.dockerignore`はruntimeと生成Staticだけをallowlist。調査用endpoint/要約/キーはimageに入れない。
@@ -37,9 +37,9 @@
 `bus/.dev.vars` の `ODPT_ACCESS_TOKEN=` に正規キーをローカルで設定する。値をチャット、コマンド引数、Markdownへ貼らない。
 ファイルは `bus/.gitignore` で除外する。Gitへ入れるテンプレートは空値の `.dev.vars.example` だけ。
 環境変数 `ODPT_ACCESS_TOKEN` も読めるが、ファイルと異なる値が両方設定されている場合は停止する。
-本番ではWorker Secretを使用する。今回のCloudflare実アカウント設定・deployは行わない。
+本番ではCloud RunへSecret Managerから注入する。今回のP2.1では本番設定・deployを変更しない。
 
-## WorkerとUIのローカル確認
+## APIとUIのローカル確認
 
 Node.js 24環境で確認。`bus/` で依存をインストールし、2つのターミナルで起動する。
 
@@ -60,7 +60,9 @@ npm run dev
 - `npm run dev:ui`: 必要ファイルだけをallowlistで配信。Repositoryルートを汎用HTTPサーバーで公開しない。`.dev.vars`・サーバーソース・依存パッケージは配信対象外。
 - `npm run test:live`: 生成済みStaticを読み、正規ODPTのRTを1回取得＋cache参照3回。四方向・Static/RT/JOIN/responseの安全な計測要約だけ出力。
 - 共通のローカル設定は `wrangler.local.jsonc`。本番Worker名・ドメインを表す設定ではない。
-- PWAの `features/bus/config.js` は `paluru-bus-api.alle-shokai.workers.dev` を公開予定先として設定。Worker deploy結果と照合してからユーザーがPWAを公開する。キーを置かない。MiniのallowedViews追加もユーザーdeploy後に反映される。
+- PWAの接続先は `features/bus/config.js` の `PALURU_BUS_API_URL` だけで管理する。P2.1の本番Cloud Run受入後、Hubは同じBus画面内で明示的に読み込み、`PALURU_BUS_HUB_UI_ENABLED=true`で有効化する。Position UIとPublic departure predictionは引き続き無効である。
+- `npm run test:hub:live` は正規ODPTから川崎Realtimeと東急Staticを取得し、4方面、各3便、a/b標柱、品質区分、欠損分離を秘密情報なしの要約で確認する。
+- `npm run test:tokyu:calendar:live` は向01両方向について、ODPT `Weekday/Saturday/Sunday`全便と東急公式`平日/土曜/休日`列を照合する。2026〜2027年の国民の祝日は内閣府公表一覧に限定して東急Sundayへ割り当て、範囲外は表示しない。
 
 RepositoryルートからPowerShellで実行する。
 
@@ -95,7 +97,43 @@ bus/.venv/Scripts/python.exe bus/validate_odpt.py --static-date 20260828 --sampl
 位置は、sequence差に加えて状態別の区間数を検証する。2026-09-10に `STOPPED_AT(seq 9) → IN_TRANSIT_TO(seq 9)` と座標移動を観測したため、川崎データの `IN_TRANSIT_TO` から区間を断定しない。観測ツールもこの状態の `stopsAway` と前後区間をnullにする。仕様モデルでの仮の数値は `unverifiedSpecStopsAway` として区別する。
 `STOPPED_AT` / `INCOMING_AT` も観測時刻の情報であり、GPS座標と停留所イベントの同時性は未確認。GTFS停留所順と座標の整合性は別の検証事項として残す。
 
+## P1 Position Phase 2（研究用）
+
+現行川崎GTFSにshapeがないため、Position Engineは`gtfs_shape`、`odpt_region`、`observed_corridor`を注入できる共通geometry境界を持つ。shape欠損は`route_geometry_unavailable`として位置だけを抑止する。Public Position DTOとUI gateはOFF。
+
+```powershell
+cd bus
+node scripts/observe-position-p0.js --home-to-noborito-only
+npm run build:corridor:poc
+npm run analyze:position:reference
+```
+
+観測は登０５・神木本町→登戸だけを8回・31秒間隔で取得する。生成JSONはすべて`generated/*.json`のGit ignore下で、corridor builderは完全stop patternを混ぜず、既存出力を検証完了後のrenameで置換する。市バスナビ値は教師候補の比較用だけで、corridor、Engine、runtimeへ入れない。詳細とGO条件は [P1 Position Phase 2](../docs/PALURU_BUS_P1_POSITION_PHASE2.md) を参照。
+
 ## 現在の配置
+
+### Departure Confidence研究用観測
+
+始発便の`departure_overdue / departure_uncertain / departed`判定を検証する限定観測は次を使う。
+
+```powershell
+cd bus
+npm run observe:departure:confidence
+npm run analyze:departure:confidence
+```
+
+12回×31秒の固定上限で、登戸発・溝口駅南口発の前後30〜45分だけを対象にする。生vehicle IDはcapture固有saltでhash化し、RT全文とSecretを保存しない。生成物は`generated/*.json`のGit ignore下。1回の観測結果を本番閾値へ採用しない。設計・Acceptance・実測は [P1 Departure Confidence](../docs/PALURU_BUS_P1_DEPARTURE_CONFIDENCE.md) を参照。
+
+### P1 Observation Platform
+
+継続校正用の観測はRealtime APIとは別のCloud Run Job `paluru-bus-observer` で行う。既定は10 sample、32秒間隔、最大330秒で、1回取得したfeedをPositionとDepartureの両方へ渡す。Rawレスポンスと生vehicle IDは保存しない。
+
+```powershell
+cd bus
+npm run test:observation:live
+```
+
+Cloud Build用の定義、Job entry、固定Sheet schemaは `observation/` にある。Google Sheetsの日次集計は兄弟ディレクトリ `gas-bus-observation/` に分離し、Calibration候補を本番設定へ自動反映しない。Secret Manager、Spreadsheet共有、初回Job実行、実Sheet追記、GAS集計を個別に受入する。運用手順とschemaは [P1 Observation Platform](../docs/PALURU_BUS_P1_OBSERVATION_PLATFORM.md) を参照。
 
 ```text
 bus/
@@ -103,21 +141,25 @@ bus/
   config/
     favorites.json             # 検証済みの正式IDで固定4方向
   core/                        # 共通DTO・選別・並び順・鮮度
+  hub/                         # Provider非依存のHub集約・品質別ranking
   providers/
     kawasaki/                  # ODPTのGTFS/GTFS-RTをNormalize
+    tokyu/                     # P2.1 向01の正規ODPT Static Provider
+  observation/                # Cloud Run Job・Sheets writer
+  runtime/                    # Cloud Run HTTP runtime
   worker/                      # HTTP・キャッシュ・上限・エラー境界
   test/                        # 合成fixture中心のCore/Adapterテスト
 
-features/bus/                  # PWAのBus UI。位置Gate OFF
+features/bus/                  # PWA Bus/Hub UI。Hub GateはON、Position GateはOFF
+gas-bus-observation/           # 観測専用GAS日次集計
 ```
 
-`tokyu/`、`seibu/`、`iyotetsu/` は将来のAdapter追加先の候補に留める。
-P0ではフォルダも実装も増やさない。
+東急はP2.1の向01・神木本町→梶が谷駅だけをStatic-onlyで実装する。東急→溝の口、東急Realtime、Positionは未解決のまま扱い、推測で候補を作らない。`seibu/`、`iyotetsu/` は将来のProvider追加先に留める。
 
 ## 境界
 
 - 固定4方向、地図なし、DBなし、検索・編集・通知・AI予測なし。
-- UI → Worker → Core → Kawasaki Adapter → 公式データ。
+- P0はUI → Cloud Run → Bus Service/Core → Kawasaki Provider → 公式ODPTデータ。P2.1 Hubは上位のAggregatorがKawasaki/TokyuのNormalized Arrivalを統合する。
 - Miniの画面許可は既存の仕組みに従う。バスデータ取得はMini/Agent/OSを通さない。
 - 原本ZIP・全線Protobuf・ODPTトークンをPWAや公開ディレクトリに置かない。
 - 不明な停留所ID・便ID・位置・遅延を推測で補完しない。

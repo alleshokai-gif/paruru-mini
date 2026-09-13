@@ -10,6 +10,7 @@
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./features/bus/bus.css">
+  <link rel="stylesheet" href="./features/bus/hub.css">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
@@ -303,6 +304,7 @@
 
       <section id="busView" class="app-view" data-view="bus" aria-label="いつものバス" hidden>
         <div id="busMount"></div>
+        <div id="busHubMount"></div>
       </section>
 
       <p id="message" class="message" role="status" aria-live="polite"></p>
@@ -519,6 +521,7 @@
     <script src="./features/popio-health/popio-health.js" defer></script>
     <script src="./features/bus/config.js" defer></script>
     <script src="./features/bus/bus.js" defer></script>
+    <script src="./features/bus/hub.js" defer></script>
   </body>
 </html>
 

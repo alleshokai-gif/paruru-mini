@@ -15,6 +15,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/bus/config.js"),
   versioned("features/bus/bus.js"),
   versioned("features/bus/bus.css"),
+  versioned("features/bus/hub.js"),
+  versioned("features/bus/hub.css"),
   "manifest.json",
 ];
 
@@ -71,7 +73,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Bus owns freshness and explicit stale states. Never replay an API response from the PWA cache.
-  if (new URL(request.url).pathname === "/api/bus/arrivals") {
+  if (["/api/bus/arrivals", "/api/bus/hub"].includes(new URL(request.url).pathname)) {
     event.respondWith(fetch(request, { cache: "no-store" }));
     return;
   }

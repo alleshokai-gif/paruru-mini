@@ -33,16 +33,20 @@
       || (direction.dataAgeSec != null && direction.dataAgeSec + elapsedMs / 1000 > 120)
       || (row.realtime && row.dataAgeSec != null && row.dataAgeSec + elapsedMs / 1000 > 180);
     const live = row.realtime && !stale && etaMs !== null && etaMs >= 0;
-    const expired = row.realtime ? etaMs !== null && etaMs < 0 : Date.parse(row.scheduledAt) < now && row.state !== 'prediction_pending';
+    const held = ['prediction_pending', 'departure_pending', 'departure_overdue', 'departure_uncertain'].includes(row.state);
+    const expired = row.realtime ? etaMs !== null && etaMs < 0 : Date.parse(row.scheduledAt) < now && !held;
     const eta = live ? Math.ceil(etaMs / 60000) : null;
-    let note = live ? `あと${eta}分` : row.state === 'prediction_pending' || expired ? '予測更新待ち'
+    let note = live ? `あと${eta}分` : row.state === 'departure_overdue' ? '遅延中・発車未確認'
+      : row.state === 'departure_pending' ? '発車待ち'
+      : row.state === 'departure_uncertain' ? '発車済みの可能性あり・間に合う保証なし'
+      : row.state === 'prediction_pending' || expired ? '予測更新待ち'
       : stale ? '前回の情報・予測更新待ち' : 'リアルタイム予測なし';
     let delay = '';
     if (live) delay = row.delayMinutes > 0 ? `+${row.delayMinutes}分遅れ` : row.delayMinutes < 0 ? `${Math.abs(row.delayMinutes)}分早い予測` : row.delaySeconds === 0 ? '遅れなし' : '1分未満の差';
     const date = tokyo(row.scheduledAt).slice(0, 10), today = tokyo(data.generatedAt).slice(0, 10);
-    return { ...row, live, eta, note, delay, timeLabel: `${date !== today ? `${date.slice(5).replace('-', '/')} ` : ''}${row.scheduledTime}${live ? '便' : '予定'}` };
+    return { ...row, live, eta, note, delay, timeLabel: `${date !== today ? `${date.slice(5).replace('-', '/')} ` : ''}${row.scheduledTime}${live || held ? '便' : '予定'}` };
   }
-  function createController({ fetchData, render, hidden, now = () => performance.now(), timers = globalThis }) {
+  function createController({ fetchData, render, hidden, validateData = validate, now = () => performance.now(), timers = globalThis }) {
     let active = false, data = null, error = false, pending = null, generation = 0, pollTimer, paintTimer, receivedAt = 0;
     const paint = () => render({ data, error, loading: !!pending, elapsedMs: data ? Math.max(0, now() - receivedAt) : 0 });
     function stop() {
@@ -60,7 +64,7 @@
       pending = request; paint();
       const timeout = timers.setTimeout(() => request.abort(), 20000);
       try {
-        const next = validate(await fetchData(request.signal));
+        const next = validateData(await fetchData(request.signal));
         if (current !== generation) return;
         data = next; receivedAt = now(); error = false;
       } catch {
