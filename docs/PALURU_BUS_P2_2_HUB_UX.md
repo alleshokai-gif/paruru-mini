@@ -113,3 +113,11 @@ Cloud Run validation受入はGO。本番service、PWA、GitHub Pages、Android P
 - 本番API受入後の回帰はRepository 94/94、Bus 130/130、Hub/UI 15/15、Secret scan 436 files / 0 matches。Bus suiteの最初のsandbox内実行でesbuildの親directory readだけが4件拒否されたため、同一suiteを許可済み制限外で再実行して130/130を確認した。
 
 Cloud Run本番APIはGO。PWA sourceはP2.2設定済みだが、GitHub Pages公開とAndroid実機受入は未実施である。
+
+## 2026-09-13 GitHub Pages反映
+
+- P2.2 commit `ea63e1d8e4c46064587c5b715b71d41f833c2cc5`をmainへpush。GitHub Pages run `34754099294`はSUCCESS。
+- 公開`build.js`、`index.html`、`features/bus/config.js`、`features/bus/hub.js`、`features/bus/hub.css`、`sw.js`はHTTP 200で、改行差を除いてcommit内容と一致した。Buildは`v20260913-bus-p2-2-decision-hub-v1`、SWはBuild別cache、network-first、Hub API cache bypass、Hub assetsのversioned参照を維持する。
+- Chromeの既存PALURU端末では端末登録確認が失敗し、`再確認`後も30秒以上応答待ちのため認証画面を越えられなかった。認証情報の削除・端末再登録は行っていない。このため公開PWAのBus画面、30秒更新、離脱/復帰、390px実表示、Android実機は未受入である。
+
+Cloud Run本番APIとGitHub Pages配信はGO。PALURU全体の完了判定は、認証済み実ブラウザとAndroid PWA受入まで保留する。
