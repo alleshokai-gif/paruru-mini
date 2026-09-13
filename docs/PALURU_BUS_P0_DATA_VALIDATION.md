@@ -1,5 +1,11 @@
 # PALURU Bus P0 実データ検証記録
 
+## P1 Position追加検証（2026-09-11 夜）
+
+詳細は[PALURU_BUS_P1_POSITION.md](PALURU_BUS_P1_POSITION.md)。同一公式Static版を再取得し、P0対象8,856 trip・34完全stop列・180 stop座標を抽出したが、`shapes.txt`/shape_idは提供されていなかった。3窓の限定GPS/公式参照観測を保存。必要なTrip descriptorも記録した最終窓21:54〜21:58は4方向141行すべて`shape_missing`で抑止した。一致率・明確誤判定率は照合分母0のためN/A。Position UIはOFFで、P0 ETAを変更していない。
+
+Naviの同系統候補GPSとODPT GPSが別時刻に近接する例、公式図21:46の堰下〜向丘出張所アイコンを追加確認した。ただし共通trip ID/位置timestampによる同一便・同時点の照合は未確定。Navi content/sequenceをEngine入力にしない。
+
 ## 朝の位置調査再開（2026-09-11、実施前契約）
 
 07:00 JSTに保存済み資料を確認。最新観測要約は前夜23:26、朝の追加観測結果は見つからなかった。停止原因は未確認。Cloud Runのコード/ローカル受入は前夜までの状態を保持し、本ターンは位置調査を優先する。
@@ -609,3 +615,14 @@ STOPPED_AT/INCOMING_ATも「配信された停留所イベント・その観測�
 | 本番deploy / 実PWA受入 | 未実施。詳細は [実装記録](PALURU_BUS_P0_IMPLEMENTATION.md) |
 
 この追加観測を以て位置GateをONにはしていない。実装・合成テスト・ローカル実データ・本番受入を区別する。
+
+## 11. 2026-09-12 P1 Position Phase 2
+
+現行Staticにshapeがないため、別の正規route geometryを調査し、見つからない場合のObserved Route Corridor PoCを登０５・神木本町→登戸で開始した。設計・実装・閾値・区間別結果は [Phase 2設計](PALURU_BUS_P1_POSITION_PHASE2.md) に記録する。
+
+- 正規route geometry：ODPT dataset catalogにはGTFS/GTFS-JP 1 resourceのみ。ODPT RDFの川崎operator候補に対するBusroutePattern/`ug:region`実照会は0件。川崎市公式路線図はPDFで、機械利用schema/APIではない。今回の調査範囲で本番採用可能なgeometryを確認できず。
+- 追加観測：2026-09-12 07:15:04〜07:18:43、登０５・神木本町→登戸だけを8回。ODPT対象vehicleは各回4件、市バスナビmarkerは各回1件。feed timestamp差は31,31,31,31,31,0,31秒。
+- 実GPS：既存分と合わせ2運行日・14独立trip/service instance・94ユニークGPS点。4完全stop patternを分離し、主patternは2日・10便・80点。
+- Corridor入力検査後：主pattern 37点採用、43点は区間anchorを一意にできず抑止。3便以上のcoverageは19区間中2区間。区間leave-one-trip-outを通ったのは神木本町通過後の1区間だけで、到着前にsupportedを返せる区間は0/12。
+- 市バスナビ：49同時比較、研究閾値上の空間的一意候補22件。ただし共通trip IDと秒精度の同一時点を証明できず、adjudicated pair 0。公式一致率はN/A。
+- 判定：full corridor、実データleave-one-trip-out、95%一致率はいずれも未成立。Position UIはOFF、Public DTOは位置false/nullを維持。本番runtime/deployへObserved Corridorを組み込んでいない。

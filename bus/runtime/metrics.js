@@ -3,7 +3,7 @@ export const requestMetrics = new AsyncLocalStorage();
 export function recordStages(values) {
   const current = requestMetrics.getStore();
   if (!current) return;
-  for (const key of ['staticMs', 'realtimeMs', 'joinMs', 'totalMs', 'odptFetchMs', 'rtDecodeMs', 'odptFetches']) {
+  for (const key of ['staticMs', 'realtimeMs', 'positionMs', 'departureMs', 'joinMs', 'totalMs', 'odptFetchMs', 'rtDecodeMs', 'odptFetches']) {
     if (Number.isFinite(values[key])) current[key] = values[key];
   }
 }

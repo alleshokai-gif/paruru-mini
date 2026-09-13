@@ -14,6 +14,7 @@ function active(value) {
   busView.hidden = !value; busView.classList.toggle('is-active', value);
   document.querySelector('#otherView').hidden = value;
   PALURUBus.setActive(value);
+  PALURUBusHub?.setActive(value);
 }
 document.querySelector('#showBus').addEventListener('click', () => active(true));
 document.querySelector('#leaveBus').addEventListener('click', () => active(false));

@@ -12,8 +12,13 @@ COPY core ./core
 COPY config ./config
 COPY http ./http
 COPY runtime ./runtime
-COPY providers/kawasaki/adapter.js providers/kawasaki/config.js providers/kawasaki/attribution.js providers/kawasaki/context.js providers/kawasaki/position-reference.js ./providers/kawasaki/
+COPY departure ./departure
+COPY position ./position
+COPY hub ./hub
+COPY providers/kawasaki/adapter.js providers/kawasaki/config.js providers/kawasaki/attribution.js providers/kawasaki/context.js providers/kawasaki/position-reference.js providers/kawasaki/departure.js providers/kawasaki/hub.js ./providers/kawasaki/
+COPY providers/tokyu ./providers/tokyu
 COPY generated/p0-static.json ./generated/p0-static.json
+COPY generated/p1-position-static.json ./generated/p1-position-static.json
 USER node
 EXPOSE 8080
 CMD ["node", "runtime/start.js"]

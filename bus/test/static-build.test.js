@@ -16,6 +16,7 @@ test('generator retains four exact directions, stop/route/service/direction/sequ
   const row = index.directions.home_to_noborito[0]; assert.equal(row.scheduledSeconds, 28440);
   assert.equal(row.directionId, null);
   assert.equal(row.stopSequence, 1); assert.equal(row.alightSequence, 9);
+  assert.equal(row.originStopId,'184_2');assert.equal(row.originSequence,1);assert.equal(row.isOrigin,true);
   validateArtifact(index, '20260828');
 });
 test('generator rejects missing direction/stop/route/trip/service, broken sequence/time, calendar ambiguity and changed config', () => {
@@ -23,6 +24,7 @@ test('generator rejects missing direction/stop/route/trip/service, broken sequen
     (i) => { delete i.directions.home_to_noborito; }, (i) => { delete i.stops['184_2']; }, (i) => { delete i.routes['10044']; },
     (i) => { i.directions.home_to_noborito = []; }, (i) => { i.directions.home_to_noborito[0].serviceId = 'unknown'; },
     (i) => { i.directions.home_to_noborito[0].alightSequence = 1; }, (i) => { i.directions.home_to_noborito[0].scheduledSeconds = null; },
+    (i) => { i.directions.home_to_noborito[0].isOrigin=false; },(i)=>{delete i.directions.home_to_noborito[0].originStopId;},
     (i) => { i.calendar.push(i.calendar[0]); }, (i) => { i.directions.home_to_noborito[0].directionId = 'unsupported'; }
   ]) { const index = artifact(); change(index); assert.throws(() => validateP0Static(index)); }
   const index = artifact(); index.configHash = 'changed'; assert.throws(() => validateArtifact(index, '20260828'));

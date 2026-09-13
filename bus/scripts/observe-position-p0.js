@@ -9,6 +9,8 @@ import { iso, serviceActive } from '../core/arrivals.js';
 const ENDPOINT = 'https://kcbn.bus-navigation.jp/wgsys/wgp/busMarkImg.htm';
 const NAMES = { '登戸': '登戸駅（生田緑地口）', '溝の口駅南口': '溝口駅南口' };
 const SAMPLE_COUNT = 8, INTERVAL_MS = 31000, MAX_MARKERS = 24, MAX_VEHICLES = 60;
+const TARGET_FAVORITES = process.argv.slice(2).includes('--home-to-noborito-only')
+  ? FAVORITES.filter(f=>f.id==='home_to_noborito') : FAVORITES;
 // After departure the origin query loses the bus. These are reference views only;
 // ODPT selection still uses the original four P0 directions.
 const RETURN_REFERENCE = process.argv.slice(2).includes('--return-reference');
@@ -47,7 +49,7 @@ try {
   const token = readLocalToken(), index = JSON.parse(readFileSync(new URL('../generated/p0-static.json', import.meta.url), 'utf8'));
   const start = Date.now() / 1000, day = Math.floor((start + 9 * 3600) / 86400) * 86400 - 9 * 3600;
   const date = iso(start).slice(0, 10).replaceAll('-', '');
-  const directionRows = Object.fromEntries(FAVORITES.map(f => [f.id, new Map(index.directions[f.id]
+  const directionRows = Object.fromEntries(TARGET_FAVORITES.map(f => [f.id, new Map(index.directions[f.id]
     .filter(r => serviceActive(index, r.serviceId, day)).map(r => [r.tripId, r]))]));
   const captureId = iso(start).slice(0,19).replaceAll(/[-:]/g, '');
   const target = new URL(`../generated/position-p0-${captureId}.json`, import.meta.url), tmp = new URL(target.href + '.tmp');
@@ -56,10 +58,10 @@ try {
   for (let sample = 0; sample < SAMPLE_COUNT; sample++) {
     if (sample) await wait(INTERVAL_MS);
     const startedAt = iso(Date.now() / 1000);
-    const [raw, refs] = await Promise.all([fetchRealtime(token), Promise.all(FAVORITES.map(reference))]);
+    const [raw, refs] = await Promise.all([fetchRealtime(token), Promise.all(TARGET_FAVORITES.map(reference))]);
     const receivedAt = iso(Date.now() / 1000), feed = bindings.transit_realtime.FeedMessage.decode(raw);
     const vp = feed.entity.map(e => e.vehicle).filter(Boolean), tu = feed.entity.map(e => e.tripUpdate).filter(Boolean);
-    const directions = FAVORITES.map((f, i) => {
+    const directions = TARGET_FAVORITES.map((f, i) => {
       const rows = directionRows[f.id], matches = vp.filter(v => {
         const row = rows.get(v.trip?.tripId);
         return row && v.trip.startDate === date && (!v.trip.routeId || v.trip.routeId === row.routeId)
@@ -69,7 +71,9 @@ try {
       return { id: f.id, navi: refs[i], vehicleCount: matches.length, truncated: matches.length > MAX_VEHICLES,
         vehicles: matches.slice(0, MAX_VEHICLES).map(v => {
           const row = rows.get(v.trip.tripId), updates = tu.filter(u => u.trip?.tripId === v.trip.tripId && u.trip.startDate === date);
-          return { tripId: v.trip.tripId, startDate: v.trip.startDate, routeId: row.routeId, routeLabel: row.routeLabel,
+          return { tripId: v.trip.tripId, startDate: v.trip.startDate, startTime: own(v.trip, 'startTime'),
+            relationship: number(v.trip, 'scheduleRelationship'), vehicleRouteId: own(v.trip, 'routeId'),
+            routeId: row.routeId, routeLabel: row.routeLabel,
             headsign: row.headsign, scheduled: iso(day + row.scheduledSeconds), fromStopId: row.fromStopId, toStopId: row.toStopId,
             targetSequence: row.stopSequence, alightSequence: row.alightSequence,
             timestamp: number(v, 'timestamp'), lat: number(v.position, 'latitude'), lon: number(v.position, 'longitude'),

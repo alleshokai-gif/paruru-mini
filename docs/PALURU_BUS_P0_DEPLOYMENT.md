@@ -1,8 +1,50 @@
 # PALURU Bus P0 deploy準備
 
+## 2026-09-11 MiniのBus表示許可だけを反映する作業
+
+ユーザーが、既存Busメニュー表示許可差分だけのMini反映を追加承認した。新規権限や認証迂回、他メニュー/GAS機能の変更は対象外。
+
+- 問題：公開PALURUでBusメニューがhidden/disabledとなり、公開済みCloud Runへ画面から到達できない。
+- 原因確認：PWA設定の実deploymentを公式Apps Script APIで照合。公開Mini **version 144** の`ROLE_ALLOWED_VIEWS`はadmin/guardian/self_recordのいずれもbusなし。編集用HEADは公開版と完全一致（25ファイル）。この不足を公開sourceで確認した。
+- 反映方針：公開144を基準に`HomeMembershipService`内の3行へ`'bus'`だけ追加。生成差分は既存ローカル`gas/HomeMembershipService.js`と改行差を除き一致する。残る24ファイル、manifest、deploymentのURL/実行者/公開条件は維持。ローカルgas全体をpushせず、APIへ渡す全ファイル集合を公開基準版とのhash差分で検証する。
+- 反映前検査：変更1ファイル/3行、24ファイル不変、24 SERVER_JSファイルの構文PASS。公開/HEAD hashは`ef196394bca4fc67213e575fb91adaa6e9bbad520a50b628b88c917d3ef9ec89`、予定版hashは`ba1d352ce2df636b59735cdb06b405be005444c90e89f95b5def713201fd711f`。
+- 副作用：新しい不変versionを作成し、既存Mini deploymentのversionだけを切替。認証済み3ロールの画面一覧にBusが加わる。capabilities、membership判定、他メニューやデータは変更しない。Apps Script editorには触れない。
+- 保護：実行直前に公開version/HEADを再照合し、並行変更があれば停止。旧source/deploymentはGit除外の`.local/mini-bus-release/`に保存。認証値やAPI responseの個人データは出力しない。
+- rollback：異常が確認された場合、同じdeploymentをversion144へ戻す。HEADは今回の予定版と一致する場合にだけ、今回の3行差分を戻す。並行変更を上書きしない。
+- 受入項目：公開Busメニュー、本番Cloud Run接続、4方向各3便、30秒更新、他画面/背景で停止・復帰refresh、stale/fallback、Home/設定等の非破壊確認、Repository/Bus回帰、Secret scan、Android実機。実機未確認は未確認のまま報告する。
+
+### Mini version145反映後の照合・受入（2026-09-11 21:11〜21:20 JST）
+
+**Mini反映と公開Web/APIの受入はPASS。Androidを含む最終受入は途中。** 自動承認レビューはCodexによるMini更新を拒否したため、ユーザー本人が用意済みの限定反映スクリプトを実行し、`MINI_BUS_DEPLOY_PASS / previousVersion:144 / version:145`を報告した。Codexはその後、公式Apps Script APIを読み取り専用で再照合した。
+
+- 実公開version **145**。HEADと公開sourceのhashは予定版`ba1d352ce2df636b59735cdb06b405be005444c90e89f95b5def713201fd711f`と一致。変更は`HomeMembershipService`の既存3ロールへBusを加える**3行のみ**。他24ファイル、deploymentのentryPoints/URL/公開条件/実行者は不変。capabilities、認証、membership処理、Script Propertiesは変更していない。
+- 今回のローカル本体変更はなし。既存`gas/HomeMembershipService.js`のBus許可を公開版へ反映した。追記したGit対象ファイルは本書のみ。反映/照合/rollbackスクリプトとsource snapshotはGit除外の`bus/.local/`配下に限定した。
+- Webアプリは同じ公開URLでBusが利用可能になった。PWA配信済みのCloud Run設定とBuild `v20260911-bus-p1-cloud-run-v1`を維持し、今回追加のPages更新やPWAコード変更は行っていない。
+
+|受入項目|今回の証拠・結果|
+|---|---|
+|公開Busメニュー|認証済みChromeでhidden=false / disabled=false / aria-hidden=false。通常メニュー操作からBusへ遷移PASS。認可の迂回なし|
+|行き/帰り、4方向×3便|公開`busView`で行き/帰り2グループ、4カード、12行、先発/次便/次々便を確認PASS|
+|RT/欠損表示|公開画面で「あと6分」「+2分遅れ」等の分表示、予定時刻、予測なし、予測更新待ち、各のりばを確認。秒値や負ETAの表示なし|
+|30秒更新|公開画面の取得/データ時刻が自動更新。Cloud Runの要求群を21:12:17→21:12:47→21:13:17→21:13:47→21:14:18と観測。複数クライアントの要求が同時間帯にあるため、ログ全件を単一タブの回数とは扱わない|
+|別画面/復帰|21:14:22に設定へ移動し、21:15:21までBusの取得/データ時刻が不変。21:15:25のBus復帰操作直後に「更新中…」、21:15:34までに新しい取得時刻/データへ更新。公開Home・設定・Inboxへの遷移も確認。既存機能の保存/業務操作は行っていない|
+|取得停止の回数検証|既存ローカル受入画面では21:17:46〜21:18:47の別画面滞在中、API取得5回のまま。Bus復帰直後6回。公開側の画面観測と区別した補助証拠|
+|stale/通信失敗|既存ローカル実コンポーネントで実データ取得後に試験用の取得失敗へ切替。「バス情報を更新できませんでした・前回更新」、12行維持、ETA0件を確認。古いRTの合成データでもETA0件。**本番API障害や公開PWAの実通信断を起こした試験ではない**|
+|静的fallback|公開API/画面で自然発生のRT欠損を確認。ローカル合成Staticでも12行/ETA0件/「リアルタイム予測なし」を確認|
+|スマホ幅|公開Chromeの390×844 viewportで4カード/12行、document横overflowなし。実際の画面も目視確認。Android実機とは区別|
+|位置UI|公開DOMに位置表示0件。APIのpositionUiEnabled=false、各position.supported=false、lat/lon非露出を確認|
+|バックグラウンド|この接続ブラウザでは背景化操作後もdocument.hidden=false。実visibilityイベントの受入は未確認。非表示停止/復帰/旧要求破棄は自動テストPASS|
+|Android|ユーザーへ実機チェックを依頼中。初回起動/背景復帰/30秒更新/実通信断/他機能/横幅の結果は未確認|
+
+本番Cloud Run再受入は21:16:32〜21:16:58 JST、`CLOUD_RUN_HTTP_PASS`。health200、4方向各3便を5回確認。神木本町→溝口南口・溝口南口→神木本町で未来RT、神木本町→登戸・登戸→神木本町ではこのsample時点でStatic fallback。RT便の同一イベントscheduled/estimated/delay/ETAを検算し、非RT便は推測せずnull。手元API応答21.93〜61.48ms、8,074〜8,075 bytes。production Origin/CORS、read-only、秘密ファイル非公開、実ODPTキーのresponse/header非露出もPASS。Cloud Run severity ERROR以上は21:11以降の照合時点で0件。
+
+反映後のRepository **84/84 PASS**、Bus **51/51 PASS**（fail/skip 0）、Secret scan **333対象・一致0**。Bus依存graph/Secret scanの初回はsandboxの親ディレクトリ参照制限で失敗したため、同じコード・同じテストを通常権限で再実行してPASS。本体や期待値の変更はない。
+
+rollbackは未実行。旧version144とsourceを保持し、作成した限定rollback手順は公開版/HEADが今回の145と一致する場合にだけ今回差分を戻す。既存Cloud Run/PWAの接続先は変えない。Android実機と公開PWAの背景/通信断受入が未確認のため、全体の最終GO判定は保留とする。
+
 ## 2026-09-11 Cloud Run公開・受入結果
 
-**Cloud Run API公開はGO。PALURU画面・Androidを含む全体受入は途中。** 下の認証待ち/未deploy記録は作業履歴。
+**Cloud Run API公開はGO。** この節のBusメニュー未表示はMini version144時点の履歴であり、version145反映後の公開画面受入は冒頭を参照。下の認証待ち/未deploy記録も作業履歴。
 
 ### 照合・build・公開先
 

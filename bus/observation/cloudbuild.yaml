@@ -1,0 +1,25 @@
+# Build and image smoke only. Job creation/execution is a separate user operation.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '--platform=linux/amd64', '-f', 'observation/Dockerfile', '-t', '${_IMAGE}', '.']
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - --rm
+      - ${_IMAGE}
+      - node
+      - --input-type=module
+      - -e
+      - |
+        import assert from 'node:assert/strict';
+        import { OBSERVATION_HEADERS } from './observation/schema.js';
+        import { observationConfig } from './observation/config.js';
+        assert.equal(OBSERVATION_HEADERS[0], 'observation_id');
+        assert.equal(OBSERVATION_HEADERS.at(-1), 'aux_status');
+        const c=observationConfig({ODPT_ACCESS_TOKEN:'synthetic-build-only',OBSERVATION_HMAC_KEY:'x'.repeat(32),PALURU_BUS_OBSERVATION_SPREADSHEET_ID:'A'.repeat(24)});
+        assert.equal(c.sampleCount,10);assert.equal(c.intervalSec,32);
+        console.log(JSON.stringify({status:'OBSERVATION_IMAGE_SMOKE_PASS',nodeVersion:process.versions.node}));
+images: ['${_IMAGE}']
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 900s

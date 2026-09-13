@@ -21,7 +21,8 @@ test('remote image context is allowlisted; build never deploys or requests real 
   for (const name of ['.dockerignore', '.gcloudignore']) {
     const value = read(name);
     assert.match(value, /^\*\*\r?\n/); assert.ok(value.includes('!generated/p0-static.json'));
-    for (const file of ['config.js', 'attribution.js', 'context.js', 'position-reference.js']) {
+    assert.ok(value.includes('!departure/**'));assert.ok(docker.includes('COPY departure ./departure'));
+    for (const file of ['config.js', 'attribution.js', 'context.js', 'position-reference.js', 'departure.js', 'hub.js']) {
       assert.ok(value.includes(`!providers/kawasaki/${file}`));
       assert.ok(docker.includes(`providers/kawasaki/${file}`));
     }

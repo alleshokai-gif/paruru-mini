@@ -20,7 +20,9 @@ async function fixture(t) {
     adapter: { async getRealtime() { calls++; await new Promise((r) => setTimeout(r, 5));
       if (failure) throw Error('private-upstream-detail'); return realtimeFixture(); } } });
   const env = runtimeConfig({ ODPT_ACCESS_TOKEN: 'synthetic-config-only' }).env;
-  const server = createNodeServer({ handler: createHttpHandler(() => service, { health: true }), env, measure: (v) => logs.push(v) });
+  const hubService = { async getHub(id) { return { success: true, hubId: id, generatedAt: now, providers: [], arrivals: [], groups: [] }; } };
+  const server = createNodeServer({ handler: createHttpHandler(() => service,
+    { health: true, hubServiceFactory: () => hubService }), env, measure: (v) => logs.push(v) });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -32,6 +34,8 @@ test('Node HTTP: health, four directions x three rows, RT fields and shared conc
   const f = await fixture(t);
   const health = await f.call('/health'); assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), { status: 'ok', service: 'paluru-bus-api' }); assert.equal(f.calls(), 0);
+  const hub = await f.call('/api/bus/hub?id=kibukihoncho');
+  assert.equal(hub.status, 200); assert.equal((await hub.json()).hubId, 'kibukihoncho'); assert.equal(f.calls(), 0);
   const responses = await Promise.all(Array.from({ length: 4 }, () => f.call()));
   assert.equal(f.calls(), 1);
   for (const r of responses) {
@@ -48,6 +52,7 @@ test('Node HTTP: health, four directions x three rows, RT fields and shared conc
   }
   await f.call(); assert.equal(f.calls(), 1);
   assert.ok(f.logs.some((v) => Number.isFinite(v.stages.joinMs)));
+  assert.ok(f.logs.some((v) => Number.isFinite(v.stages.departureMs)));
   assert.ok(!JSON.stringify(f.logs).includes('synthetic-config-only'));
 });
 
@@ -79,6 +84,9 @@ test('Node HTTP: production CORS, read-only paths, secrets and metadata-only log
   assert.equal((await f.call(undefined, { method: 'OPTIONS', headers: { Origin: PRODUCTION_ORIGIN } })).status, 204);
   assert.equal((await f.call(undefined, { method: 'POST', body: 'synthetic-private-body' })).status, 405);
   const bad = await f.call('/api/bus/arrivals?private=synthetic-private-query'); assert.equal(bad.status, 404);
+  assert.equal((await f.call('/api/bus/hub')).status, 404);
+  assert.equal((await f.call('/api/bus/hub?id=unknown')).status, 404);
+  assert.equal((await f.call('/api/bus/hub?id=kibukihoncho&extra=1')).status, 404);
   assert.equal((await f.call('/health?extra=1')).status, 404);
   assert.equal((await f.call('/health', { method: 'POST' })).status, 405);
   const text = JSON.stringify(f.logs) + await bad.text();

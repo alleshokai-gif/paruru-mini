@@ -39,6 +39,8 @@ test('delay-only and explicit zero differ from missing event', () => {
   assert.equal(decoded.updates[0].stops[0].departure.time, null);
   assert.equal(decoded.updates[0].stops[1].departure.delay, null);
   assert.equal(decoded.vehicles[0].status, 1);
+  assert.equal(decoded.vehicles[0].vehicleId,'internal-vehicle');
+  assert.equal(decoded.updates[0].vehicleId,'internal-vehicle');
 });
 test('estimated order replaces scheduled order and keeps delayed past-scheduled trip', () => {
   const index = indexFixture(); const row = index.directions.home_to_noborito[0];

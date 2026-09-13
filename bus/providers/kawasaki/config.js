@@ -1,5 +1,5 @@
 export const PROVIDER_ID = 'kawasaki';
-export const REALTIME_SCHEMA_VERSION = 2;
+export const REALTIME_SCHEMA_VERSION = 3;
 export const API_ROOT = 'https://api.odpt.org/api/v4/';
 export const REALTIME_PATH = 'gtfs/realtime/odpt_TransportationBureau_CityOfKawasaki_AllLines_trip_update';
 // Confirmed official platform labels. Never infer a platform number from the stop ID suffix.

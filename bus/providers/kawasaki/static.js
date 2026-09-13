@@ -38,7 +38,7 @@ export function csvReader(onRow) {
   };
 }
 
-function readZip(bytes, wanted, accept) {
+export function readZip(bytes, wanted, accept) {
   const seen = new Set(); let expanded = 0;
   const unzip = new Unzip((file) => {
     const name = file.name.split('/').at(-1)?.replace(/\.txt$/, '');
@@ -100,7 +100,8 @@ export function parseStatic(bytes, fetchedAt, queries) {
     if (!Number.isInteger(seq) || seq < 0) fail('STATIC_SEQUENCE');
     const stopId = values[columns.indexOf('stop_id')];
     const start = starts.get(id);
-    if (!start || seq < start.sequence) starts.set(id, { sequence: seq, time: values[columns.indexOf('departure_time')] });
+    if (!start || seq < start.sequence) starts.set(id, { sequence: seq, stopId,
+      time: values[columns.indexOf('departure_time')] });
     if (!stopIds.has(stopId)) return;
     const row = object(columns, values);
     row.sequence = seq;
@@ -129,6 +130,8 @@ export function parseStatic(bytes, fetchedAt, queries) {
       directions[f.id].push({ tripId, routeId: trip.route_id, routeLabel: routes.get(trip.route_id).route_short_name,
         serviceId: trip.service_id, directionId: trip.direction_id || null, startTime: starts.get(tripId).time, fromStopId: from.stop_id, toStopId: to.stop_id,
         stopSequence: from.sequence, alightSequence: to.sequence, scheduledSeconds: seconds,
+        originStopId: starts.get(tripId).stopId, originSequence: starts.get(tripId).sequence,
+        isOrigin: starts.get(tripId).stopId === from.stop_id && starts.get(tripId).sequence === from.sequence,
         headsign: from.stop_headsign || trip.trip_headsign || null, platform: resolvePlatform(from.stop_id) });
     }
   }

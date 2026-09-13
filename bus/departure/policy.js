@@ -1,0 +1,39 @@
+export const DEPARTURE_POLICY=Object.freeze({
+  minGraceSec:10*60,
+  fallbackGraceSec:30*60,
+  maxGraceSec:45*60,
+  headwayMultiplier:2,
+  overdueMinSec:60,
+  overdueMaxSec:5*60,
+  overdueHeadwayRatio:0.25,
+  staleOverdueMaxSec:60,
+  freshEvidenceBonusSec:60,
+  lowFrequencyHeadwaySec:15*60,
+  lowFrequencyOverdueMaxSec:90,
+  lowFrequencyRetentionMultiplier:1.25,
+  staleRetentionRatio:0.5,
+  positionConfidence:0.9,
+  evidenceMaxAgeSec:120,
+  maxIncomingAgeSec:120,
+  minTurnaroundSamples:12,
+  maxStateEntries:512,
+  stateRetentionSec:3*60*60
+});
+
+export const ORIGIN_EVIDENCE_POLICY=Object.freeze({
+  maxAgeSec:120,
+  futureSec:5,
+  historySec:10*60,
+  maxVehicles:512,
+  maxPoints:8,
+  minSamples:3,
+  minSpanSec:20,
+  atOriginMeters:50,
+  exitMeters:110,
+  minOutsideSamples:2,
+  minExitProgressMeters:60,
+  jitterMeters:15,
+  maxSpeedMps:22,
+  jumpAllowanceMeters:20,
+  confidence:0.95
+});

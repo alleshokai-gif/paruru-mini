@@ -1,7 +1,8 @@
 import { getArrivals, prepareStatic } from './arrivals.js';
 import { LIMITS } from '../config/policy.js';
 
-export function createBusService({ index, adapter, queries, providerContext, cache = null, now = () => Date.now() / 1000, version, measure = () => {} }) {
+export function createBusService({ index, adapter, queries, providerContext, cache = null, now = () => Date.now() / 1000, version, measure = () => {},
+  positionObserver = null, departureObserver = null, originDepartureResolver = null }) {
   prepareStatic(index, queries, providerContext);
   const querySet = structuredClone(queries);
   const memory = new Map(), pending = new Map(), retryAfter = new Map();
@@ -54,9 +55,19 @@ export function createBusService({ index, adapter, queries, providerContext, cac
       try { rt = await load('realtime', LIMITS.rtCacheSec, LIMITS.feedMaxAgeSec, () => adapter.getRealtime()); }
       catch { rt = { data: null, error: true }; }
       const realtimeMs = performance.now() - rtStarted;
+      const positionStarted=performance.now();
+      // Optional research observer uses the already fetched snapshot, never the public DTO.
+      // A broken observer cannot affect P0 ETA or cause another Provider fetch.
+      try { positionObserver?.observe({ realtime: rt.data, now: now() }); } catch { /* Position is independently gated. */ }
+      const positionMs=performance.now()-positionStarted;
+      const departureStarted=performance.now();
+      try { departureObserver?.observe({realtime:rt.data,now:now()}); }
+      catch { departureObserver?.resetSnapshot?.(); }
+      const departureMs=performance.now()-departureStarted;
       const joinStarted = performance.now();
-      const data = getArrivals({ index: staticIndex, realtime: rt.data, queries: querySet, providerContext, now: now(), fetchError: rt.error });
-      measure({ staticMs, realtimeMs, joinMs: performance.now() - joinStarted, totalMs: performance.now() - started });
+      const data = getArrivals({ index: staticIndex, realtime: rt.data, queries: querySet, providerContext, now: now(), fetchError: rt.error,
+        originDepartureResolver });
+      measure({ staticMs, realtimeMs, positionMs, departureMs, joinMs: performance.now() - joinStarted, totalMs: performance.now() - started });
       return data;
     }
   };

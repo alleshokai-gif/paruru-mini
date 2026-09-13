@@ -12,6 +12,12 @@ import { prepareStatic, getArrivals } from '../core/arrivals.js';
 import { createKawasakiAdapter } from '../providers/kawasaki/adapter.js';
 import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
 import { P0_QUERIES } from '../config/queries.js';
+import { loadPosition } from './position.js';
+import { createDepartureConfidence } from '../departure/confidence.js';
+import { KIBUKIHONCHO_HUB } from '../hub/config.js';
+import { createHubService } from '../hub/service.js';
+import { normalizeKawasakiHubResult } from '../providers/kawasaki/hub.js';
+import { createTokyuStaticProvider } from '../providers/tokyu/static.js';
 
 export function start({ env = process.env, log = (v) => console.log(JSON.stringify(v)) } = {}) {
   const started = performance.now(), config = runtimeConfig(env);
@@ -21,13 +27,22 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   // Validate feed validity before advertising health. No ODPT call occurs at startup.
   getArrivals({ index, queries, providerContext, now: Date.now() / 1000 });
   const staticStartupMs = performance.now() - started;
+  const positionStarted=performance.now(),position=loadPosition({index,provider:providerContext.id});
+  const positionStartupMs=performance.now()-positionStarted;
+  const departureConfidence=createDepartureConfidence({index,positionStatic:position.staticData});
   const adapter = createKawasakiAdapter({ token: config.env.ODPT_ACCESS_TOKEN, measure: recordStages });
   // One provider instance owns its memory cache and pending fetches. No per-direction adapter construction.
-  const service = createBusService({ index, adapter, queries, providerContext, version: index.sourceHash, measure: recordStages });
-  const handler = createHttpHandler(() => service, { health: true });
+  const service = createBusService({ index, adapter, queries, providerContext, version: index.sourceHash, measure: recordStages,
+    positionObserver:position.observer,departureObserver:departureConfidence,
+    originDepartureResolver:value=>departureConfidence.evaluate(value) });
+  const tokyuProvider = createTokyuStaticProvider({ token: config.env.ODPT_ACCESS_TOKEN });
+  const hubService = createHubService({ hub: KIBUKIHONCHO_HUB, kawasakiService: service,
+    normalizeKawasaki: (value) => normalizeKawasakiHubResult(value, { index, queries }), tokyuProvider });
+  const handler = createHttpHandler(() => service, { health: true, hubServiceFactory: () => hubService });
   const server = createNodeServer({ handler, env: config.env, measure: log });
-  server.listen(config.port, config.host, () => log({ event: 'bus_startup', build: 'bus-p1-architecture-v1',
-    startupMs: performance.now() - started, staticStartupMs, rssBytes: process.memoryUsage().rss, port: config.port }));
+  server.listen(config.port, config.host, () => log({ event: 'bus_startup', build: 'bus-p2-1-hub-local-v1',
+    startupMs: performance.now() - started, staticStartupMs, positionStartupMs, positionStatus:position.status,
+    positionIndex:position.stats, rssBytes: process.memoryUsage().rss, port: config.port }));
   const shutdown = () => {
     server.close(() => process.exit(0));
     server.closeIdleConnections();

@@ -10,6 +10,16 @@
 !http/**
 !runtime
 !runtime/**
+!departure
+!departure/**
+!position
+!position/**
+!hub
+!hub/**
+!observation
+!observation/**
+observation/node_modules
+observation/node_modules/**
 !providers
 !providers/kawasaki
 !providers/kawasaki/adapter.js
@@ -17,5 +27,10 @@
 !providers/kawasaki/attribution.js
 !providers/kawasaki/context.js
 !providers/kawasaki/position-reference.js
+!providers/kawasaki/departure.js
+!providers/kawasaki/hub.js
+!providers/tokyu
+!providers/tokyu/**
 !generated
 !generated/p0-static.json
+!generated/p1-position-static.json

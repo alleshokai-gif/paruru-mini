@@ -1,0 +1,9 @@
+{
+  "name": "paluru-bus-observer",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "google-auth-library": "11.0.2",
+    "gtfs-realtime-bindings": "2.2.0"
+  }
+}

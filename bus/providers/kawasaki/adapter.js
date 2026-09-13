@@ -48,6 +48,10 @@ function coordinate(value, name, bound) {
   const n = value[name];
   return Number.isFinite(n) && Math.abs(n) <= bound ? n : null;
 }
+function vehicleId(value) {
+  const id=value?.id;
+  return typeof id==='string'&&id.length>0&&id.length<=128&&!/[\u0000-\u001f\u007f]/.test(id)?id:null;
+}
 export function parseRealtime(bytes, fetchedAt) {
   let feed; try { feed = bindings.transit_realtime.FeedMessage.decode(bytes); } catch { fail('BUS_RT_DECODE'); }
   if ((num(feed.header, 'incrementality') ?? 0) !== 0 || !epoch(feed.header, 'timestamp')) fail('BUS_RT_HEADER');
@@ -56,11 +60,11 @@ export function parseRealtime(bytes, fetchedAt) {
     if (entity.isDeleted) continue;
     const tu = entity.tripUpdate, vp = entity.vehicle;
     const trip = descriptor(tu?.trip);
-    if (trip) updates.push({ trip, timestamp: epoch(tu, 'timestamp'), stops: (tu.stopTimeUpdate || []).map((s) => ({
+    if (trip) updates.push({ trip, vehicleId:vehicleId(tu.vehicle), timestamp: epoch(tu, 'timestamp'), stops: (tu.stopTimeUpdate || []).map((s) => ({
       stopId: s.stopId || null, sequence: num(s, 'stopSequence'), relationship: num(s, 'scheduleRelationship') ?? 0,
       departure: event(s.departure) })) });
     const vehicleTrip = descriptor(vp?.trip);
-    if (vehicleTrip) vehicles.push({ trip: vehicleTrip, timestamp: epoch(vp, 'timestamp'), stopId: vp.stopId || null,
+    if (vehicleTrip) vehicles.push({ trip: vehicleTrip, vehicleId:vehicleId(vp.vehicle), timestamp: epoch(vp, 'timestamp'), stopId: vp.stopId || null,
       sequence: num(vp, 'currentStopSequence'), status: num(vp, 'currentStatus'),
       position: { lat: coordinate(vp.position, 'latitude', 90), lon: coordinate(vp.position, 'longitude', 180) } });
   }

@@ -31,9 +31,9 @@ export function realtimeFixture({ delay = 180, time = NOW + 420, timestamp = NOW
 }
 export function protoFixture() {
   const message = bindings.transit_realtime.FeedMessage.create({ header: { gtfsRealtimeVersion: '2.0', timestamp: NOW, incrementality: 0 }, entity: [
-    { id: 'synthetic-tu', tripUpdate: { trip: { tripId: 'synthetic-0', startDate: '20260910' }, timestamp: NOW,
+    { id: 'synthetic-tu', tripUpdate: { trip: { tripId: 'synthetic-0', startDate: '20260910' }, vehicle:{id:'internal-vehicle'}, timestamp: NOW,
       stopTimeUpdate: [{ stopSequence: 1, stopId: '184_2', departure: { delay: 0 } }, { stopSequence: 9, stopId: '362_1', departure: {} }] } },
-    { id: 'synthetic-vp', vehicle: { trip: { tripId: 'synthetic-0', startDate: '20260910' }, currentStopSequence: 1, currentStatus: 1, stopId: '184_2', timestamp: NOW } }
+    { id: 'synthetic-vp', vehicle: { trip: { tripId: 'synthetic-0', startDate: '20260910' }, vehicle:{id:'internal-vehicle'}, currentStopSequence: 1, currentStatus: 1, stopId: '184_2', timestamp: NOW } }
   ] });
   return bindings.transit_realtime.FeedMessage.encode(message).finish();
 }

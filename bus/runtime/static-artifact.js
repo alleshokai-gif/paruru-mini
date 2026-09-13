@@ -34,6 +34,8 @@ export function validateP0Static(index) {
       if (!f.fromStopIds.includes(row.fromStopId) || !f.toStopIds.includes(row.toStopId) || !f.routeIds.includes(row.routeId)
         || row.routeLabel !== index.routes[row.routeId].label) fail('STATIC_ROW_REFERENCE');
       if (!Number.isInteger(row.stopSequence) || row.stopSequence < 0 || !Number.isInteger(row.alightSequence) || row.alightSequence <= row.stopSequence) fail('STATIC_SEQUENCE');
+      if (!row.originStopId || !Number.isInteger(row.originSequence) || row.originSequence<0 || row.originSequence>row.stopSequence
+        || row.isOrigin !== (row.originStopId===row.fromStopId&&row.originSequence===row.stopSequence)) fail('STATIC_ORIGIN');
       if (!Number.isInteger(row.scheduledSeconds) || row.scheduledSeconds < 0 || clockSeconds(row.startTime) === null
         || clockSeconds(row.startTime) > row.scheduledSeconds) fail('STATIC_SCHEDULE_MISSING');
       if (![null, '0', '1'].includes(row.directionId)) fail('STATIC_DIRECTION_ID');

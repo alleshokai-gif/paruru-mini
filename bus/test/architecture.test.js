@@ -84,7 +84,7 @@ test('unsupported, malformed and ambiguous queries fail before source fetching',
 
 function vehicleFeed(position) {
   const vehicle = { trip: { tripId: 'synthetic-0', routeId: '10044', startDate: '20260910' }, timestamp: NOW,
-    currentStopSequence: 5, currentStatus: 2, stopId: 'synthetic-next' };
+    vehicle:{id:'internal-vehicle'},currentStopSequence: 5, currentStatus: 2, stopId: 'synthetic-next' };
   if (position !== undefined) vehicle.position = position;
   const feed = bindings.transit_realtime.FeedMessage.create({ header: { gtfsRealtimeVersion: '2.0', timestamp: NOW },
     entity: [{ id: 'synthetic-vp', vehicle }] });
@@ -96,6 +96,7 @@ test('Vehicle model preserves observed coordinates and identifiers without infer
   assert.deepEqual(v.position, { lat: 35.5, lon: 139.5 });
   assert.deepEqual(v.trip, { tripId: 'synthetic-0', routeId: '10044', startDate: '20260910', startTime: null, relationship: 0 });
   assert.equal(v.timestamp, NOW); assert.equal(v.sequence, 5); assert.equal(v.status, 2); assert.equal(v.stopId, 'synthetic-next');
+  assert.equal(v.vehicleId,'internal-vehicle');
   assert.deepEqual(vehicleFeed({ latitude: 0, longitude: 0 }).vehicles[0].position, { lat: 0, lon: 0 });
 });
 
@@ -113,7 +114,7 @@ test('Public DTO never exposes internal Vehicle/static coordinates; Position rem
   assert.equal(data.positionUiEnabled, false);
   for (const d of data.directions) for (const a of d.arrivals) assert.deepEqual(a.position,
     { supported: false, status: null, stopsAway: null, previousStop: null, nextStop: null });
-  assert.ok(!/"(?:lat|lon|latitude|longitude|vehicles|sequence|internalPosition)"/.test(JSON.stringify(data)));
+  assert.ok(!/"(?:lat|lon|latitude|longitude|vehicles|vehicleId|sequence|internalPosition)"/.test(JSON.stringify(data)));
   assert.deepEqual(rt.vehicles[0].position, { lat: 35.5, lon: 139.5 });
 });
 

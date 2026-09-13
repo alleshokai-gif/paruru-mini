@@ -13,6 +13,8 @@ const files = new Map([
   ['/browser-harness.js', ['../test/browser-harness.js', 'text/javascript']],
   ['/features/bus/bus.js', ['../../features/bus/bus.js', 'text/javascript']],
   ['/features/bus/bus.css', ['../../features/bus/bus.css', 'text/css']],
+  ['/features/bus/hub.js', ['../../features/bus/hub.js', 'text/javascript']],
+  ['/features/bus/hub.css', ['../../features/bus/hub.css', 'text/css']],
   ['/style.css', ['../../style.css', 'text/css']]
 ]);
 const server = createServer(async (request, response) => {
@@ -21,7 +23,7 @@ const server = createServer(async (request, response) => {
     if (request.method !== 'GET') { response.writeHead(405).end(); return; }
     if (request.url === '/features/bus/config.js') {
       response.setHeader('Content-Type', 'text/javascript');
-      response.end(`globalThis.PALURU_BUS_API_URL=${JSON.stringify(apiUrl)};`); return;
+      response.end(`globalThis.PALURU_BUS_API_URL=${JSON.stringify(apiUrl)};globalThis.PALURU_BUS_HUB_UI_ENABLED=true;`); return;
     }
     if (['/fixture/fixture', '/fixture/static', '/fixture/stale', '/fixture/error'].includes(request.url)) {
       response.setHeader('Content-Type', 'application/json');

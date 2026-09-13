@@ -27,7 +27,8 @@ function joins(descriptor, row, date) {
     && (!descriptor.startTime || clockSeconds(descriptor.startTime) === clockSeconds(row.startTime));
 }
 
-export function getArrivals({ index, realtime = null, queries, providerContext, now, fetchError = false, staticStale = false }) {
+export function getArrivals({ index, realtime = null, queries, providerContext, now, fetchError = false, staticStale = false,
+  originDepartureResolver = null }) {
   const resolved = prepareStatic(index, queries, providerContext);
   if (dateKey(now) > index.feedInfo.feed_end_date || dateKey(now + DAY) < index.feedInfo.feed_start_date) throw new Error('BUS_STATIC_OUT_OF_RANGE');
   const feedFresh = realtime && fresh(realtime.timestamp, now, LIMITS.feedMaxAgeSec);
@@ -50,14 +51,21 @@ export function getArrivals({ index, realtime = null, queries, providerContext, 
         const serviceKey = `${serviceId}|${date}`;
         if (!active.has(serviceKey)) active.set(serviceKey, serviceActive(index, serviceId, day));
         if (!active.get(serviceKey)) continue;
-        for (const row of rows) {
+        const orderedRows=[...rows].sort((a,b)=>a.scheduledSeconds-b.scheduledSeconds);
+        for (const [rowIndex,row] of orderedRows.entries()) {
           const scheduled = day + row.scheduledSeconds;
+          const nextRouteRow=orderedRows.slice(rowIndex+1).find(value=>value.routeId===row.routeId&&value.fromStopId===row.fromStopId);
+          const nextScheduled=nextRouteRow?day+nextRouteRow.scheduledSeconds:null;
           const key = `${row.tripId}|${date}`;
           const matched = (updates.get(key) || []).filter((u) => joins(u.trip, row, date));
           const tu = matched.length === 1 ? matched[0] : null;
           const tripFresh = tu && feedFresh && fresh(tu.timestamp, now, LIMITS.tripMaxAgeSec);
           // A cancellation is not an on-time static trip. Other unsupported RT relationships are withheld too.
-          if (feedFresh && tu && tu.trip.relationship !== 0) continue;
+          if (feedFresh && tu && tu.trip.relationship !== 0) {
+            if(tu.trip.relationship===3)originDepartureResolver?.({row,date,scheduled,estimated:null,now,nextScheduled,
+              feedFresh:true,tripActive:true,cancelled:true,tripUpdate:tu,vehicle:null});
+            continue;
+          }
           const stops = (tu?.stops || []).filter((s) => (s.stopId !== null || s.sequence !== null)
             && (s.stopId === null || s.stopId === row.fromStopId) && (s.sequence === null || s.sequence === row.stopSequence));
           const stop = stops.length === 1 ? stops[0] : null;
@@ -75,22 +83,41 @@ export function getArrivals({ index, realtime = null, queries, providerContext, 
           const atOrigin = feedFresh && vp?.status === 1 && vp.stopId === row.fromStopId
             && vp.sequence === row.stopSequence && fresh(vp.timestamp, now, LIMITS.vehicleMaxAgeSec);
           let predictionPending = false;
+          const originDecision=originDepartureResolver?.({row,date,scheduled,estimated,now,
+            nextScheduled,
+            feedFresh:!!feedFresh,tripActive:true,cancelled:false,tripUpdate:tu,vehicle:vp});
           if (estimated !== null && estimated < now) {
-            if (!atOrigin) continue;
-            estimated = null; delay = null; predictionPending = true; timingSource = 'prediction_pending';
+            if(originDecision) {
+              if(!originDecision.keep)continue;
+              estimated=null;delay=null;predictionPending=true;timingSource=originDecision.state;
+            } else {
+              if (!atOrigin) continue;
+              estimated = null; delay = null; predictionPending = true; timingSource = 'prediction_pending';
+            }
           }
-          if (estimated === null && scheduled < now && !predictionPending) continue;
+          if (estimated === null && scheduled < now && !predictionPending) {
+            if(originDecision) {
+              if(!originDecision.keep)continue;
+              predictionPending=true;timingSource=originDecision.state;
+            } else continue;
+          }
           const rt = estimated !== null;
-          const state = predictionPending ? 'prediction_pending' : rt ? 'realtime'
+          const state = predictionPending ? timingSource : rt ? 'realtime'
             : realtime && (!feedFresh || (tu && !tripFresh)) ? 'realtime_stale' : 'static_fallback';
           // Rank numeric candidates first; only the three visible trips need a formatted DTO.
-          arrivals.push({ row, date, scheduled, estimated, delay, rt, state, timingSource, tu, departure,
-            sort: predictionPending ? now : estimated ?? scheduled });
+          const ranking=originDecision?.ranking||'normal';
+          arrivals.push({ row, date, scheduled, estimated, delay, rt, state, timingSource, tu, departure,ranking,
+            rank:ranking==='front'?-1:ranking==='after_next'?1:0,
+            sort: predictionPending ? scheduled : estimated ?? scheduled });
         }
       }
     }
-    arrivals.sort((a, b) => a.sort - b.sort || a.scheduled - b.scheduled || `${a.date}:${a.row.tripId}`.localeCompare(`${b.date}:${b.row.tripId}`));
-    const selected = arrivals.slice(0, LIMITS.arrivals).map(({ row, date, scheduled, estimated, delay, rt, state, timingSource, tu, departure }) => ({
+    arrivals.sort((a, b) => a.rank-b.rank||a.sort-b.sort||a.scheduled-b.scheduled
+      ||`${a.date}:${a.row.tripId}`.localeCompare(`${b.date}:${b.row.tripId}`));
+    const primary=arrivals.filter(value=>value.rank<=0).slice(0,LIMITS.arrivals);
+    const advisory=[...arrivals.filter(value=>value.rank>0)].sort((a,b)=>b.scheduled-a.scheduled)[0];
+    const visible=advisory?[...primary.slice(0,Math.max(0,LIMITS.arrivals-1)),advisory]:primary;
+    const selected = visible.map(({ row, date, scheduled, estimated, delay, rt, state, timingSource, tu, departure }) => ({
       tripId: `${date}:${row.tripId}`, routeLabel: row.routeLabel, headsign: row.headsign, platform: providerContext.platformResolver(row.fromStopId, index),
       scheduledTime: clock(scheduled), scheduledAt: iso(scheduled),
       estimatedTime: rt ? clock(estimated) : null, estimatedAt: rt ? iso(estimated) : null,
