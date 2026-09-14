@@ -31,8 +31,12 @@ test('Journey UI stays fail-closed by default and production enables only the ve
   assert.match(config, /id:\s*'noborito-mukougaoka'[\s\S]*kind:\s*'journey'/);
   assert.match(html, /features\/bus\/journey\.css/);
   assert.match(html, /features\/bus\/journey\.js/);
+  assert(html.indexOf('features/bus/journey.js') < html.indexOf('features/bus/hub.js'),
+    'Journey controller must load before Hub mounts deferred scripts');
   assert.match(sw, /versioned\("features\/bus\/journey\.js"\)/);
   assert.match(sw, /versioned\("features\/bus\/journey\.css"\)/);
+  assert(sw.indexOf('versioned("features/bus/journey.js")') < sw.indexOf('versioned("features/bus/hub.js")'),
+    'Service Worker app shell must preserve the Journey-before-Hub dependency order');
   assert.match(sw, /"\/api\/bus\/journey"/);
   assert.match(local, /PALURU_BUS_JOURNEY_UI_ENABLED=true/);
   assert.match(local, /noborito-mukougaoka/);

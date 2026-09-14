@@ -15,10 +15,10 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/bus/config.js"),
   versioned("features/bus/bus.js"),
   versioned("features/bus/bus.css"),
-  versioned("features/bus/hub.js"),
-  versioned("features/bus/hub.css"),
   versioned("features/bus/journey.js"),
   versioned("features/bus/journey.css"),
+  versioned("features/bus/hub.js"),
+  versioned("features/bus/hub.css"),
   "manifest.json",
 ];
 

@@ -303,3 +303,14 @@ PWA差分後のRepository testは106/106、Hub / Journey等の対象testは25/25
 `bus/.local/p2-5-pwa-release.patch` はHEADのclean indexへ適用check済み。HEADのclean snapshotへこのpatchだけを
 適用し、canonical LFでRepository 101/101 PASSを確認した。現在の混在作業ツリーを一括stageせず、このpatchを
 indexへ適用することでP2.5 PWA差分だけをcommitできる。
+
+## PWA script順序の受入不具合
+
+初回公開後、Hub本文が「地点設定を読み込めませんでした」となる実ブラウザ事象を確認した。production HTMLは
+`defer`付きで `hub.js`、`journey.js` の順に読み込んでいた。defer script実行時のdocumentは既にinteractiveで、
+Hubのinstallが即mountし、後続scriptが作る `PALURUBusJourney` を参照できずJourney controller生成だけがnullに
+なっていた。configの5地点検証とCloud Run responseは正常だった。
+
+修正は依存順を `journey.js`、`hub.js` に変更し、Service Worker app shellも同じ順へ揃える。Build IDは
+`v20260914-bus-p2-5-journey-v2` とする。順序を固定するRepository testを追加し、別機能のコードやBus APIは
+変更しない。
