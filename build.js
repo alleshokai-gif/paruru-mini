@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260914-bus-p2-3-mizonokuchi-hub-v1";
+globalThis.BUILD_ID = "v20260914-bus-p2-4-hub-selector-icons-v1";

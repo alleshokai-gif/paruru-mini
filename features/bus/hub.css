@@ -1,6 +1,13 @@
 .bus-hub-root-header { margin: 4px 0 8px; }
-.bus-hub-location { min-width: 0; margin-bottom: 24px; }
-.bus-hub-location:last-child { margin-bottom: 0; }
+.bus-hub-selector { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 8px 0 14px; }
+.bus-hub-selector-button { box-sizing: border-box; min-width: 0; min-height: 48px; padding: 8px 3px; border: 1px solid #cbd7e3;
+  border-radius: 10px; background: #f7fafc; color: #42556d; font: inherit; font-size: 13px; font-weight: 750; line-height: 1.25;
+  white-space: nowrap; cursor: pointer; }
+.bus-hub-selector-button[aria-selected="true"] { border-color: #334e68; background: #334e68; color: #fff;
+  box-shadow: 0 2px 7px rgba(36, 59, 84, 0.2); }
+.bus-hub-selector-button:focus-visible { outline: 3px solid #7db5ee; outline-offset: 2px; }
+.bus-hub-location { min-width: 0; margin-bottom: 0; }
+.bus-hub-location[hidden] { display: none; }
 .bus-hub-header { margin: 4px 0; }
 .bus-hub-eyebrow { margin: 0 0 2px; color: #64748b; font-size: 12px; font-weight: 700; }
 .bus-hub-title { margin: 0; font-size: 22px; color: #243b54; }
@@ -9,16 +16,22 @@
 .bus-hub-group { border: 1px solid #dbe4ed; border-radius: 18px; background: #fff; overflow: hidden; margin-bottom: 14px; }
 .bus-hub-purpose { margin: 0; padding: 13px 16px; background: #334e68; color: #fff; font-size: 16px; }
 .bus-hub-board { list-style: none; margin: 0; padding: 0 16px; }
-.bus-hub-row { padding: 13px 0; border-top: 1px solid #e7edf3; }
-.bus-hub-row.is-recommended { margin: 0 -8px; padding: 13px 8px; border-radius: 10px; background: #f3f8ff; }
+.bus-hub-row { padding: 10px 0; border-top: 1px solid #e7edf3; }
+.bus-hub-row.is-recommended { margin: 0 -8px; padding: 10px 8px; border-radius: 10px; background: #f3f8ff; }
 .bus-hub-row:first-child { border-top: 0; }
 .bus-hub-row-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .bus-hub-provider, .bus-hub-route { font-size: 13px; font-weight: 700; }
+.bus-hub-provider { display: inline-flex; align-items: center; min-width: 0; gap: 4px; }
+.bus-hub-provider-icon { width: 17px; height: 17px; flex: 0 0 17px; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.bus-hub-provider.is-kawasaki .bus-hub-provider-icon { color: #1f6fb2; }
+.bus-hub-provider.is-tokyu .bus-hub-provider-icon { color: #c62828; }
+.bus-hub-provider.is-seibu .bus-hub-provider-icon { color: #238636; }
 .bus-hub-platform { margin-left: auto; padding: 3px 7px; border-radius: 6px; background: #eff4f8; color: #526982; font-size: 12px; }
 .bus-hub-recommendation { padding: 3px 7px; border-radius: 999px; background: #dcecff; color: #24558d; font-size: 11px; font-weight: 800; }
-.bus-hub-destination { margin: 6px 0 8px; color: #53657c; font-size: 13px; }
+.bus-hub-destination { margin: 4px 0 5px; color: #53657c; font-size: 13px; }
 .bus-hub-timing { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .bus-hub-time { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.bus-hub-time-suffix { display: inline-block; font-size: 0.6em; line-height: 1; vertical-align: baseline; }
 .bus-hub-quality { border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 700; }
 .bus-hub-delay { color: #a33a24; font-size: 13px; font-weight: 800; }
 .bus-hub-row.is-live .bus-hub-quality { background: #dff7f1; color: #126a60; }
@@ -26,6 +39,7 @@
 .bus-hub-row.is-fallback .bus-hub-quality, .bus-hub-row.is-stale .bus-hub-quality { background: #eef2f6; color: #5f6c7b; }
 .bus-hub-sources { margin: 8px 2px 0; color: #64748b; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 @media (max-width: 420px) {
+  .bus-hub-selector-button { max-width: 100%; }
   .bus-hub-location, .bus-hub-group, .bus-hub-board, .bus-hub-row { min-width: 0; max-width: 100%; }
   .bus-hub-board { padding-inline: 12px; }
   .bus-hub-row-heading, .bus-hub-timing { gap: 6px; }
