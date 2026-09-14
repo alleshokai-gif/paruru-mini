@@ -18,6 +18,11 @@ test('Hub module stays fail-closed while production config explicitly enables it
   const config = fs.readFileSync(require.resolve('../features/bus/config.js'), 'utf8');
   assert.match(config, /PALURU_BUS_HUB_UI_ENABLED\s*=\s*true/);
   assert.match(config, /PALURU_BUS_LEGACY_UI_ENABLED\s*=\s*false/);
+  assert.match(config, /mizonokuchi-minamiguchi/);
+  assert.deepEqual(hub.configuredHubs({ PALURU_BUS_HUBS: [
+    { id: 'kibukihoncho', label: '神木本町' }, { id: 'mizonokuchi-minamiguchi', label: '溝の口駅南口' }
+  ] }).map((value) => value.id), ['kibukihoncho', 'mizonokuchi-minamiguchi']);
+  assert.throws(() => hub.configuredHubs({ PALURU_BUS_HUBS: [] }), /BUS_HUB_CONFIG_INVALID/);
 });
 
 test('production shell loads the Hub mount, script and stylesheet without enabling Position UI', () => {
@@ -40,6 +45,19 @@ test('Tokyu static-only UI never presents ETA or realtime wording', () => {
   assert.throws(() => hub.validate(fixture(arrival({ etaMinutes: 5 }))), /BUS_HUB_STATIC_AS_REALTIME/);
   assert.throws(() => hub.validate(fixture(arrival({ estimatedDeparture: NOW + 360 }))), /BUS_HUB_STATIC_AS_REALTIME/);
   assert.throws(() => hub.validate(fixture(arrival({ delayMinutes: 3 }))), /BUS_HUB_STATIC_AS_REALTIME/);
+});
+
+test('Hub response identity and URL are resolved per configured location', () => {
+  const mizo = { ...fixture(arrival({ provider: 'kawasaki', routeLabel: '溝１８', destination: '神木本町',
+    realtimeState: 'realtime', platform: '3番', estimatedDeparture: NOW + 360, etaMinutes: 6, delayMinutes: 2 })),
+    hubId: 'mizonokuchi-minamiguchi', hubLabel: '溝の口駅南口' };
+  mizo.decisionGroups = mizo.decisionGroups.map((group) => ({ ...group, id: 'mizonokuchi_minamiguchi_home',
+    hubId: mizo.hubId, label: '神木本町方面', destinations: ['神木本町'], providers: ['kawasaki'] }));
+  assert.equal(hub.validate(mizo, 'mizonokuchi-minamiguchi').hubLabel, '溝の口駅南口');
+  assert.throws(() => hub.validate(mizo, 'kibukihoncho'), /BUS_HUB_RESPONSE_INVALID/);
+  assert.equal(hub.apiUrl({ PALURU_BUS_API_URL: 'https://bus.example/api/bus/arrivals',
+    location: { href: 'https://paluru.example/' } }, 'mizonokuchi-minamiguchi').href,
+  'https://bus.example/api/bus/hub?id=mizonokuchi-minamiguchi');
 });
 
 test('Hub UI exposes Tokyu static retrieval time and attribution', () => {
@@ -66,10 +84,12 @@ test('Kawasaki realtime displays P0 delay wording while stale and pending states
   assert.doesNotMatch(source, /bus-position|latitude|longitude|stopsAway/);
 });
 
-test('decision-group UI uses three groups and keeps provider, route, destination and delay DOM hooks', () => {
+test('decision-group UI supports multiple locations and keeps provider, route, destination and delay DOM hooks', () => {
   const source = fs.readFileSync(require.resolve('../features/bus/hub.js'), 'utf8');
   const css = fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8');
   assert.match(source, /data\.decisionGroups/);
+  assert.match(source, /PALURU_BUS_HUBS/);
+  assert.match(source, /bus-hub-location/);
   assert.match(source, /bus-hub-provider/);
   assert.match(source, /bus-hub-route/);
   assert.match(source, /bus-hub-destination/);

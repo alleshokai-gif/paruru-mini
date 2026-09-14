@@ -1,3 +1,6 @@
+.bus-hub-root-header { margin: 4px 0 8px; }
+.bus-hub-location { min-width: 0; margin-bottom: 24px; }
+.bus-hub-location:last-child { margin-bottom: 0; }
 .bus-hub-header { margin: 4px 0; }
 .bus-hub-eyebrow { margin: 0 0 2px; color: #64748b; font-size: 12px; font-weight: 700; }
 .bus-hub-title { margin: 0; font-size: 22px; color: #243b54; }
@@ -23,6 +26,7 @@
 .bus-hub-row.is-fallback .bus-hub-quality, .bus-hub-row.is-stale .bus-hub-quality { background: #eef2f6; color: #5f6c7b; }
 .bus-hub-sources { margin: 8px 2px 0; color: #64748b; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 @media (max-width: 420px) {
+  .bus-hub-location, .bus-hub-group, .bus-hub-board, .bus-hub-row { min-width: 0; max-width: 100%; }
   .bus-hub-board { padding-inline: 12px; }
   .bus-hub-row-heading, .bus-hub-timing { gap: 6px; }
   .bus-hub-provider, .bus-hub-route, .bus-hub-destination { overflow-wrap: anywhere; }
