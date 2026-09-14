@@ -1,0 +1,18 @@
+#busJourneyMount { margin-top: 14px; min-width: 0; }
+.bus-journey-title { margin: 0 0 4px; color: #1f2937; font-size: 20px; }
+.bus-journey-status { margin: 0 0 8px; color: #53657c; font-size: 12px; }
+.bus-journey-status.is-stale { color: #a33a24; }
+.bus-journey-children { display: grid; gap: 12px; min-width: 0; }
+.bus-journey-child { box-sizing: border-box; min-width: 0; max-width: 100%; overflow: hidden;
+  border: 1px solid #d9e2ec; border-radius: 14px; background: #fff; }
+.bus-journey-child-header { display: flex; align-items: baseline; gap: 8px; flex-wrap: nowrap;
+  padding: 13px 16px; background: #334e68; color: #fff; }
+.bus-journey-child-title { margin: 0; color: #fff; font-size: 16px; white-space: nowrap; }
+.bus-journey-child-purpose { margin: 0; color: #dbe7f1; font-size: 12px; white-space: nowrap; }
+.bus-journey-child .bus-hub-board { padding-inline: 12px; }
+.bus-journey-child-message { margin: 0; padding: 12px; color: #64748b; font-size: 13px; }
+@media (max-width: 420px) {
+  #busJourneyMount, .bus-journey-children, .bus-journey-child, .bus-journey-child .bus-hub-board,
+  .bus-journey-child .bus-hub-row { min-width: 0; max-width: 100%; }
+  .bus-journey-child .bus-hub-row.is-recommended { max-width: none; }
+}

@@ -1,5 +1,8 @@
 .bus-hub-root-header { margin: 4px 0 8px; }
 .bus-hub-selector { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 8px 0 14px; }
+.bus-hub-selector.has-five { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.bus-hub-selector.has-five > .bus-hub-selector-button { grid-column: span 2; }
+.bus-hub-selector.has-five > .bus-hub-selector-button:nth-child(n + 4) { grid-column: span 3; }
 .bus-hub-selector-button { box-sizing: border-box; min-width: 0; min-height: 48px; padding: 8px 3px; border: 1px solid #cbd7e3;
   border-radius: 10px; background: #f7fafc; color: #42556d; font: inherit; font-size: 13px; font-weight: 750; line-height: 1.25;
   white-space: nowrap; cursor: pointer; }
@@ -17,7 +20,8 @@
 .bus-hub-purpose { margin: 0; padding: 13px 16px; background: #334e68; color: #fff; font-size: 16px; }
 .bus-hub-board { list-style: none; margin: 0; padding: 0 16px; }
 .bus-hub-row { padding: 10px 0; border-top: 1px solid #e7edf3; }
-.bus-hub-row.is-recommended { margin: 0 -8px; padding: 10px 8px; border-radius: 10px; background: #f3f8ff; }
+.bus-hub-row.is-recommended { width: calc(100% + 16px); max-width: none; margin: 0 -8px; padding: 10px 8px;
+  border-radius: 10px; background: #f3f8ff; }
 .bus-hub-row:first-child { border-top: 0; }
 .bus-hub-row-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .bus-hub-provider, .bus-hub-route { font-size: 13px; font-weight: 700; }

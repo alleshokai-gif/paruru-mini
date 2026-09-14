@@ -98,7 +98,9 @@
     const ids = new Set();
     return values.map((value) => {
       if (!text(value?.id) || !text(value?.label) || ids.has(value.id)) throw Error('BUS_HUB_CONFIG_INVALID');
-      ids.add(value.id); return { id: value.id, label: value.label,
+      const kind = value.kind == null ? 'hub' : value.kind;
+      if (!['hub', 'journey'].includes(kind)) throw Error('BUS_HUB_CONFIG_INVALID');
+      ids.add(value.id); return { id: value.id, label: value.label, kind,
         selectorLabel: text(value.selectorLabel) ? value.selectorLabel : value.label };
     });
   }
@@ -149,18 +151,16 @@
     return values.length ? values.join('＋') : '運行情報を確認できません';
   }
 
-  function renderGroups(doc, groups, data) {
-    groups.replaceChildren(...data.decisionGroups.filter((group) => group.arrivals.length).map((group) => {
-      const section = element(doc, 'section', 'bus-hub-group'); section.dataset.decisionGroup = group.id;
-      section.append(element(doc, 'h3', 'bus-hub-purpose', group.label));
-      const list = element(doc, 'ol', 'bus-hub-board');
-      group.arrivals.slice(0, 3).forEach((row) => {
+  function renderArrivalList(doc, group) {
+    const list = element(doc, 'ol', 'bus-hub-board');
+    group.arrivals.slice(0, 3).forEach((row) => {
         const shown = displayArrival(row), recommended = row.id === group.recommendedArrivalId;
         const item = element(doc, 'li', `bus-hub-row is-${shown.kind}${recommended ? ' is-recommended' : ''}`);
         const heading = element(doc, 'div', 'bus-hub-row-heading');
         heading.append(providerLabel(doc, row.provider), element(doc, 'span', 'bus-hub-route', row.routeLabel));
         if (recommended) heading.append(element(doc, 'span', 'bus-hub-recommendation', '最速候補'));
-        heading.append(element(doc, 'span', 'bus-hub-platform', row.platform ? `${row.platform}のりば`
+        heading.append(element(doc, 'span', 'bus-hub-platform', row.platform
+          ? /のりば$/.test(row.platform) ? row.platform : `${row.platform}のりば`
           : text(row.originStop?.name) ? row.originStop.name : 'のりば未確認'));
         const timing = element(doc, 'div', 'bus-hub-timing');
         const departureTime = element(doc, 'time', 'bus-hub-time');
@@ -168,9 +168,16 @@
           element(doc, 'span', 'bus-hub-time-suffix', shown.timeSuffix));
         timing.append(departureTime, element(doc, 'span', 'bus-hub-quality', shown.note));
         if (shown.delay) timing.append(element(doc, 'span', 'bus-hub-delay', shown.delay));
-        item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing); list.append(item);
-      });
-      section.append(list); return section;
+      item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing); list.append(item);
+    });
+    return list;
+  }
+
+  function renderGroups(doc, groups, data) {
+    groups.replaceChildren(...data.decisionGroups.filter((group) => group.arrivals.length).map((group) => {
+      const section = element(doc, 'section', 'bus-hub-group'); section.dataset.decisionGroup = group.id;
+      section.append(element(doc, 'h3', 'bus-hub-purpose', group.label), renderArrivalList(doc, group));
+      return section;
     }));
   }
 
@@ -210,6 +217,7 @@
       }
       const rootHeading = element(doc, 'header', 'bus-hub-root-header');
       const selector = element(doc, 'div', 'bus-hub-selector');
+      selector.classList.toggle('has-five', specs.length === 5);
       selector.setAttribute('role', 'tablist'); selector.setAttribute('aria-label', '表示する地点');
       rootHeading.append(element(doc, 'p', 'bus-hub-eyebrow', 'いつもの場所'), selector);
       const locations = element(doc, 'div', 'bus-hub-locations');
@@ -240,7 +248,10 @@
         const location = element(doc, 'section', 'bus-hub-location');
         location.id = panelId; location.dataset.hubId = spec.id; location.setAttribute('role', 'tabpanel');
         location.setAttribute('aria-labelledby', tabId);
-        const instance = createHubController(doc, root, spec, location);
+        const instance = spec.kind === 'journey'
+          ? root.PALURUBusJourney?.createJourneyController?.(doc, root, spec, location)
+          : createHubController(doc, root, spec, location);
+        if (!instance) { mountPoint.textContent = '地点設定を読み込めませんでした'; return; }
         controllers.set(spec.id, instance); locationPanels.set(spec.id, location); locations.append(location);
       });
       selection = createSelection({ specs, initialHubId: readStoredHubId(root),
@@ -258,7 +269,8 @@
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();
   }
-  return { install, validate, displayArrival, sourceSummary, configuredHubs, apiUrl, resolveSelectedHubId, createSelection,
+  return { install, validate, displayArrival, sourceSummary, renderArrivalList, configuredHubs, apiUrl,
+    resolveSelectedHubId, createSelection,
     HUB_UI_DEFAULT_ENABLED, HUB_SELECTION_STORAGE_KEY,
     setActive(value) { requestedActive = !!value; selection?.setActive(value); } };
 }));

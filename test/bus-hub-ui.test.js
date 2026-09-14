@@ -131,6 +131,7 @@ test('decision-group UI supports multiple locations and keeps provider, route, d
   assert.match(source, /bus-hub-destination/);
   assert.match(source, /bus-hub-delay/);
   assert.match(source, /bus-hub-time-suffix/);
+  assert.match(source, /\/のりば\$\/\.test\(row\.platform\)/);
   assert.match(source, /seibu:\s*'西武バス'/);
   const local = fs.readFileSync(require.resolve('../bus/scripts/local-ui.js'), 'utf8');
   assert.match(local, /tachikawa-ekikitaguchi/);
@@ -154,8 +155,31 @@ test('Hub selector uses accessible tabs, session state and four non-scrolling co
   assert.doesNotMatch(css, /@media \(max-width: 420px\)[\s\S]*grid-template-columns: repeat\(2/);
   assert.doesNotMatch(css, /\.bus-hub-selector[^}]*overflow-x\s*:\s*(?:auto|scroll)/s);
   assert.match(css, /\.bus-hub-row \{[^}]*padding: 10px 0/s);
+  assert.match(css, /\.bus-hub-row\.is-recommended \{[^}]*width: calc\(100% \+ 16px\)[^}]*max-width: none[^}]*margin: 0 -8px[^}]*padding: 10px 8px/s);
   assert.match(css, /\.bus-hub-time-suffix \{[^}]*font-size: 0\.6em[^}]*vertical-align: baseline/s);
   assert.match(css, /\.bus-hub-provider\.is-kawasaki \.bus-hub-provider-icon \{ color: #1f6fb2; \}/);
   assert.match(css, /\.bus-hub-provider\.is-tokyu \.bus-hub-provider-icon \{ color: #c62828; \}/);
   assert.match(css, /\.bus-hub-provider\.is-seibu \.bus-hub-provider-icon \{ color: #238636; \}/);
+});
+
+test('local P2.5 selector integrates Journey as a fifth tab in a balanced three-plus-two grid', () => {
+  const source = fs.readFileSync(require.resolve('../features/bus/hub.js'), 'utf8');
+  const css = fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8');
+  const local = fs.readFileSync(require.resolve('../bus/scripts/local-ui.js'), 'utf8');
+  const specs = hub.configuredHubs({ PALURU_BUS_HUBS: [
+    { id: 'kibukihoncho', label: '神木本町' },
+    { id: 'mizonokuchi-minamiguchi', label: '溝の口駅南口' },
+    { id: 'tachikawa-ekikitaguchi', label: '立川駅北口' },
+    { id: 'showa-daiichi-gakuen', label: '昭和第一学園' },
+    { id: 'noborito-mukougaoka', label: '登戸・遊園', kind: 'journey' }
+  ] });
+  assert.equal(specs.length, 5);
+  assert.equal(specs[4].kind, 'journey');
+  assert.match(source, /PALURUBusJourney\?\.createJourneyController/);
+  assert.match(source, /classList\.toggle\('has-five', specs\.length === 5\)/);
+  assert.match(css, /\.bus-hub-selector\.has-five \{[^}]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/s);
+  assert.match(css, /\.bus-hub-selector\.has-five > \.bus-hub-selector-button \{ grid-column: span 2; \}/);
+  assert.match(css, /\.bus-hub-selector\.has-five > \.bus-hub-selector-button:nth-child\(n \+ 4\) \{ grid-column: span 3; \}/);
+  assert.match(local, /label:'登戸・遊園',selectorLabel:'登戸・遊園',kind:'journey'/);
+  assert.doesNotMatch(local, /登戸・遊園連合/);
 });
