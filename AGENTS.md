@@ -208,6 +208,48 @@ Phase 1は、Weather read → Calendar read → Home read → multi-tool → Hom
 
 実装後は、実際に変わった内容だけを記録する。
 
+## 8A. Git運用（全Repository共通・必須）
+
+Gitの状態確認、変更分離、commit、branch統合、push前監査までを開発タスクの一部として扱う。人間が最後にまとめてcommitする前提で未commit差分を蓄積してはならない。
+
+### 作業開始時
+
+- `git status --short --branch`でworking treeと現在branchを確認する。
+- `origin/main`との差分を確認し、remote-tracking refの鮮度が必要なら安全にfetchしてから判断する。
+- unrelatedな既存差分をstage、commit、restore、stash、resetしてはならない。
+- 変更対象と既存差分を最初に分離し、対象ファイルを明示する。
+
+### Commit
+
+- 変更テーマ単位で小さな独立commitにする。
+- 1機能、1設計変更、または変更量が増える前にcommitする。
+- 目安として10〜15ファイルを超える未commit状態を放置しない。超える場合は責務単位へ分割できない理由を記録する。
+- commit前に対象のtargeted testと、その変更に必要なfull testを実行する。
+- commit前に`git diff --check`を通す。
+- Secretや認証境界へ関係する変更ではsecret scanを必ず実行し、値や一致内容をログへ出さない。
+- commit messageは変更目的が分かる短い英語にする。
+- stage対象を明示的なpathで指定し、`git diff --cached --name-only`でunrelatedな混入がないことを確認する。
+
+### 統合・Push
+
+- PWA、API、GCP等のdeployはGit commitと別フェーズとして扱う。
+- `origin/main`とdivergeした汚れたworktree上でpullまたはrebaseしない。
+- diverge時は最新`origin/main`を基点とするclean worktreeまたはclean branchで安全に統合する。
+- mainへの直接pushは原則禁止する。
+- force pushは禁止する。
+- approval capacity等でcommit操作だけ拒否された場合、index直操作、Git plumbing、別経路で迂回しない。未commit状態を保持し、拒否された操作と理由を報告する。
+- push前にbranch差分、targeted/full test、必要なsecret scan、`git diff --check`、unrelated差分の非混入を最終確認する。
+
+### 最終報告
+
+各作業の最終報告には最低限、次を含める。
+
+- commit SHA
+- commit message
+- pushの有無と対象branch
+- branch状態と`origin/main`との関係
+- 未commit差分の有無。残っている場合は今回対象内かunrelatedか
+
 ## 9. 最重要ルール
 
 動いている機能は壊さない。修正対象外の回帰は失敗である。変更前後で対象外を含む回帰試験を行う。
