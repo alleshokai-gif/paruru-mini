@@ -262,3 +262,41 @@ P2.1の4つの行先groupは履歴として上記に残す。P2.2では事業者
 ## P2.3 溝の口駅南口Hub追記
 
 2・3・4番のりばを「神木本町方面」という1 decision groupへ統合する。正式stop/route対応、推薦条件、複数Hub UI、ローカル受入は[PALURU Bus P2.3 溝の口駅南口Hub](PALURU_BUS_P2_3_MIZONOKUCHI_HUB.md)を正本とする。
+
+## 2026-09-15 神木本町 宮前平・鷲ヶ峰方面追記
+
+### 実装前記録
+
+- 問題: 神木本町から初山・堰下・宮前平側へ進む便を、既存Hubのdecision groupでは確認できなかった。
+- 確認できた原因: P0 Staticは固定4方向だけを抽出し、神木本町3番のりば発の反対方向Queryを持たない。正規GTFSには対象便が存在するが、Hub sourceへ未接続だった。
+- 修正方針: P0固定4方向は変えず、既存の追加Kawasaki Static artifactへHub専用Queryを加える。`184_3`から共通の次停留所`469_2`へ進む正式7 routeだけを抽出し、便ごとの行先はGTFS headsignを保持する。
+- 影響範囲: Kawasaki追加Query/Static validator/platform/Hub mapper、神木本町Hub config、生成済み追加Static、検証script/test、本節。
+- 副作用: `kawasaki-p2-5-static.json`は118,285 bytesから1,625,272 bytesへ増える。Worker hot pathでのGTFS parseは増えず、Cloud Run起動時のJSON読込だけが増える。
+- ロールバック: 新QueryとHub group/sourceを外し、直前の追加Static artifactへ戻す。P0 artifact、DB、PWA設定の移行はない。
+- 実ブラウザ試験: 新groupと次3便、事業者・系統・行先・3番のりば・scheduled/ETA/delay、既存3 group、390px横overflowを確認する。
+
+### 正規Staticの抽出境界
+
+|項目|正式値|
+|---|---|
+|boarding stop|`184_3` 神木本町・3番のりば|
+|方向確認stop|`469_2` 向丘中学校下|
+|route|`10032` 溝11、`10033` 溝15、`10034` 溝16、`10035` 溝17、`10036` 溝18、`10044` 登05、`10045` 登06|
+|direction|`1`|
+|除外|`10037` 溝19。既存の登戸・向ヶ丘遊園方面を変更・重複させない|
+
+終点IDを一括の`toStopIds`へ入れると、向丘出張所のように途中停留所と終点の両方になるstopで複数pairが成立する。そこで全対象routeが同方向へ進むことを確認できる最初の共通区間`184_3 -> 469_2`をQuery境界にした。利用者へ表示するdestinationはこの確認stop名ではなく、各tripの正式GTFS headsignである。
+
+source `20260828`（feed version `20260701_20260828`）の生成結果は4,200 trip。from/to、direction、platformは全件一致し、対象7 routeがすべて存在、headsign欠損0、`10037`混入0だった。headsignは宮前平駅、宮前区役所前、鷲ヶ峰営業所前各経由、聖マリアンナ医科大学各経由、菅生車庫、向丘出張所、新百合丘駅前を便ごとに保持する。
+
+### ローカル受入結果
+
+- 追加Static生成: PASS。1,625,272 bytes、向ヶ丘遊園追加320 trip、新group 4,200 trip
+- 新group実API: PASS。次3便、3番のりば、正式route/headsign、Realtime ETA/delayを確認
+- 観測時の表示: 溝15 宮前平駅、溝18 鷲ヶ峰営業所前(平)、溝15 宮前区役所前
+- 既存神木本町3 group、溝の口駅南口Hub、P0固定4方向: PASS
+- 390px実ブラウザ: inner width 390px、document/body content width 375px、scroll width 375px。横overflowなし
+- Bus test: 170/170 PASS、Repository test: 109/109 PASS
+- P0 Static preflight: 4方向PASS。Secret scan: 511対象、matches 0
+- Position UI / Public departure prediction: OFF維持
+- commit / push / deploy: 未実施

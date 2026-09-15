@@ -14,13 +14,19 @@ export const KIBUKIHONCHO_HUB = Object.freeze({
     { id: 'kibukihoncho_mizonokuchi', hubId: 'kibukihoncho', label: '溝の口方面',
       destinations: ['溝口駅南口'], providers: ['kawasaki'], displayLimit: 3 },
     { id: 'kibukihoncho_kajigaya', hubId: 'kibukihoncho', label: '梶が谷方面',
-      destinations: ['梶が谷駅'], providers: ['tokyu'], displayLimit: 3 }
+      destinations: ['梶が谷駅'], providers: ['tokyu'], displayLimit: 3 },
+    { id: 'kibukihoncho_miyamae_washigamine', hubId: 'kibukihoncho', label: '宮前平・鷲ヶ峰方面',
+      destinations: ['宮前平駅', '宮前区役所前', '鷲ヶ峰営業所前', '新百合丘駅前',
+        '聖マリアンナ医科大学', '菅生車庫', '向丘出張所'],
+      providers: ['kawasaki'], displayLimit: 3 }
   ]),
   sources: freezeList([
     { provider: 'kawasaki', sourceId: 'home_to_noborito', decisionGroupId: 'kibukihoncho_north', walkMinutes: null },
     { provider: 'tokyu', sourceId: 'kibukihoncho_to_mukougaoka', decisionGroupId: 'kibukihoncho_north', walkMinutes: null },
     { provider: 'kawasaki', sourceId: 'home_to_mizonokuchi', decisionGroupId: 'kibukihoncho_mizonokuchi', walkMinutes: null },
-    { provider: 'tokyu', sourceId: 'kibukihoncho_to_kajigaya', decisionGroupId: 'kibukihoncho_kajigaya', walkMinutes: null }
+    { provider: 'tokyu', sourceId: 'kibukihoncho_to_kajigaya', decisionGroupId: 'kibukihoncho_kajigaya', walkMinutes: null },
+    { provider: 'kawasaki', sourceId: 'kibukihoncho_to_miyamae_washigamine',
+      decisionGroupId: 'kibukihoncho_miyamae_washigamine', walkMinutes: null }
   ]),
   unresolved: freezeList([])
 });

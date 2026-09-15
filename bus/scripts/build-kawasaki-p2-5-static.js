@@ -12,7 +12,8 @@ try {
   const published = publishP2_5KawasakiStatic(artifact,
     fileURLToPath(new URL('../generated/kawasaki-p2-5-static.json', import.meta.url)));
   console.log(JSON.stringify({ status: 'P2_5_KAWASAKI_STATIC_BUILD_PASS', sourceDate: source.sourceDate,
-    sourceVersion: artifact.sourceVersion, trips: artifact.directions.mukougaoka_to_kibukihoncho.length,
+    sourceVersion: artifact.sourceVersion,
+    trips: Object.fromEntries(Object.entries(artifact.directions).map(([id, rows]) => [id, rows.length])),
     ...published, fetchMs: Math.round(fetched - started), buildMs: Math.round(performance.now() - fetched) }));
 } catch (error) {
   console.log(JSON.stringify({ error: /^BUS_[A-Z0-9_]+$/.test(error?.message || '') ? error.message : 'P2_5_STATIC_BUILD_FAILED' }));
