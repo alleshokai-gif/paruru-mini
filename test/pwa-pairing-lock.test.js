@@ -84,6 +84,7 @@ function createHarness(options = {}) {
     BUILD_VERSION: 'test',
     HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY: 'pairing-token',
     HOME_CONTROL_PENDING_STORAGE_KEY: 'pairing-pending',
+    HOME_CONTROL_APPROVAL_ATTEMPT_STORAGE_KEY: 'approval-attempt',
     MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY: 'membership-pending',
     HOME_CONTROL_POLL_MILLISECONDS: 5000,
     homeControlPollTimer: null,
@@ -298,12 +299,14 @@ async function startup(options) {
   preserve.context.localStorage.setItem('pairing-token', 'credential');
   preserve.context.localStorage.setItem('pairing-pending', 'pairing-data');
   preserve.context.localStorage.setItem('membership-pending', 'membership-data');
+  preserve.context.localStorage.setItem('approval-attempt', 'approval-data');
   await preserve.context.initializeAuthenticatedPwa();
   await preserve.context.authLockReRegisterButton.click();
   assert.strictEqual(preserve.state(), 'unpaired', 're-registration must return to the unpaired screen');
   assert.strictEqual(preserve.context.localStorage.getItem('pairing-token'), null);
   assert.strictEqual(preserve.context.localStorage.getItem('pairing-pending'), null);
   assert.strictEqual(preserve.context.localStorage.getItem('membership-pending'), null);
+  assert.strictEqual(preserve.context.localStorage.getItem('approval-attempt'), null);
   assert.strictEqual(preserve.context.localStorage.getItem('profile'), 'profile-data');
   assert.strictEqual(preserve.context.localStorage.getItem('inbox'), 'inbox-data');
   assert.strictEqual(preserve.context.localStorage.getItem('agent-session'), 'session-data');
@@ -338,10 +341,11 @@ async function startup(options) {
 
   const expired = createHarness({ token: 'credential' });
   expired.savePending({ requestId: 'request-a', requestSecret: 'secret', token: 'credential', code: '123456', expiresAt: new Date(Date.now() - 1000).toISOString(), requestExpiresAt: Date.now() + 60000 });
+  expired.setResponse((payload) => payload.action === 'devicePairingStatus' ? { status: 'pending', registrationState: 'DEVICE_PROVISIONING_PENDING' } : ({}));
   await expired.context.pollHomeControlPairing();
-  assert.strictEqual(expired.hasPending(), false);
-  assert.strictEqual(expired.requests.length, 0, 'expired requests must not call the API');
-  assert.strictEqual(expired.state(), 'unpaired');
+  assert.strictEqual(expired.hasPending(), true, 'local code expiry must not discard a server-recoverable request');
+  assert.strictEqual(expired.requests[0].action, 'devicePairingStatus', 'server owns the final recovery expiry decision');
+  assert.strictEqual(expired.timers.length, 1, 'server-pending recovery must continue polling');
 
   const paired = createHarness({ token: '' });
   paired.savePending({ requestId: 'request-a', requestSecret: 'secret', token: 'credential', code: '123456', expiresAt: new Date(Date.now() + 60000).toISOString(), requestExpiresAt: Date.now() + 60000 });
