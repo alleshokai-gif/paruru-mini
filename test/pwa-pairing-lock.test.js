@@ -142,6 +142,9 @@ function createHarness(options = {}) {
     isUuid: () => true,
     loadUserProfile: () => ({ deviceId: 'device-a', displayName: '端末A' }),
     getHomeAgentPairingToken: () => options.token || storage.get('pairing-token') || '',
+    callAuthenticatedKazOsProgress_: async () => ({}),
+    callAuthenticatedKazOsProjects_: async () => ({}),
+    callAuthenticatedKazOsInbox_: async () => ({}),
     callHomeControlApi: async (payload) => {
       requests.push(payload);
       return response(payload);
@@ -225,11 +228,13 @@ async function startup(options) {
   assert.strictEqual(active.context.normalInitializations, 1);
   assert.strictEqual(active.context.notificationLoads, 1);
   assert.deepStrictEqual(active.requests.map((request) => request.action), ['membership.context.get']);
-  assert.strictEqual(active.events.length, 1);
-  assert(!Object.hasOwn(active.events[0].detail, 'pairingToken'), 'authentication event exposes a token');
-  assert(!Object.hasOwn(active.events[0].detail.context, 'pairingToken'), 'authentication context exposes a token');
-  assert.strictEqual(typeof active.events[0].detail.healthApi, 'function');
-  await active.events[0].detail.healthApi('health.daily.get', {
+  const authenticatedEvents = active.events.filter((event) => event.type === "paruru:authenticated");
+  assert.strictEqual(authenticatedEvents.length, 1);
+  assert(active.events.some((event) => event.type === "kaz-os:locked"), "boot must invalidate Kaz Progress");
+  assert(!Object.hasOwn(authenticatedEvents[0].detail, 'pairingToken'), 'authentication event exposes a token');
+  assert(!Object.hasOwn(authenticatedEvents[0].detail.context, 'pairingToken'), 'authentication context exposes a token');
+  assert.strictEqual(typeof authenticatedEvents[0].detail.healthApi, 'function');
+  await authenticatedEvents[0].detail.healthApi('health.daily.get', {
     deviceId: 'spoofed-device',
     pairingToken: 'spoofed-token',
     targetMemberUserId: 'father',
@@ -241,7 +246,7 @@ async function startup(options) {
     targetMemberUserId: 'father',
   }, 'facade must inject credentials internally and override spoofed values');
   await assert.rejects(
-    () => active.events[0].detail.healthApi('homeAgent', {}),
+    () => authenticatedEvents[0].detail.healthApi('homeAgent', {}),
     (error) => error.code === 'HEALTH_ACTION_NOT_ALLOWED',
   );
   assert.strictEqual(active.requests.length, 2, 'health facade must reject non-Health actions before transport');

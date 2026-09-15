@@ -774,6 +774,7 @@ function showAuthenticationState(message, state = "locked") {
     try { globalThis.PALURUBus?.setActive(false); } catch { /* Bus lifecycle must not block authentication. */ }
     try { globalThis.PALURUBusHub?.setActive(false); } catch { /* Hub lifecycle must not block authentication. */ }
     activeMembershipContext = null;
+    if (typeof CustomEvent === "function" && typeof document.dispatchEvent === "function") document.dispatchEvent(new CustomEvent("kaz-os:locked", { detail: {} }));
     if (typeof pendingHomeAgentActionCandidate !== "undefined") pendingHomeAgentActionCandidate = null;
   }
   splash?.classList.remove("is-hidden");
@@ -954,12 +955,16 @@ const activateMembershipContext_ = function(membershipContext) {
         capabilities: membershipContext.capabilities,
         allowedViews: membershipContext.allowedViews,
       },
+      kazOsProgressApi: callAuthenticatedKazOsProgress_,
+      kazOsProjectsApi: callAuthenticatedKazOsProjects_,
+      kazOsInboxApi: callAuthenticatedKazOsInbox_,
       healthApi: callAuthenticatedHealth_,
       nurseOkanCommentApi: callNurseOkanComment_,
       petHealthApi: callAuthenticatedPetHealth_,
       petHealthDashboardCache: petHealthDashboardCacheFacade_(),
     },
   }));
+  if (/^#kaz-os(?:\/|$)/.test(globalThis.location?.hash || "")) activeView = "kaz-os";
   const restoredView = consumeViewAfterControllerChange_();
   if (restoredView) activeView = restoredView;
   void switchView(activeView);
@@ -1636,6 +1641,11 @@ async function switchView(viewName) {
   navItems.forEach((item) => item.classList.toggle("is-active", item.dataset.targetView === resolvedView));
   showMessage("", "");
 
+  if (resolvedView === "kaz-os") {
+    document.dispatchEvent(new CustomEvent("kaz-os:opened"));
+    return;
+  }
+
   if (resolvedView === "inbox") {
     await loadInboxView_();
     return;
@@ -2213,6 +2223,11 @@ async function cancelAgentActionConfirmation(candidate) {
     }),
   });
   return parseApiResponse(response);
+}
+
+async function callAuthenticatedKazOsProgress_() {
+  if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  return callHomeControlApi(buildMemoCredentialPayload("kazOs.progress.get"));
 }
 
 async function callHomeControlApi(payload) {
@@ -5527,6 +5542,16 @@ function applyAllowedViews_() {
     item.setAttribute("aria-hidden", String(!allowed));
   });
   views.forEach((view) => { view.hidden = !isViewAllowed_(view.dataset.view); });
+}
+
+async function callAuthenticatedKazOsProjects_() {
+  if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  return callHomeControlApi(buildMemoCredentialPayload("kazOs.projects.get"));
+}
+
+async function callAuthenticatedKazOsInbox_() {
+  if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  return callHomeControlApi(buildMemoCredentialPayload("kazOs.inbox.get"));
 }
 
 function applyMembershipCapabilityVisibility_() {
