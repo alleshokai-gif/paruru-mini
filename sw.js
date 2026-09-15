@@ -20,6 +20,13 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/bus/journey.css"),
   versioned("features/bus/hub.js"),
   versioned("features/bus/hub.css"),
+  versioned("features/kaz-os/progress.js"),
+  versioned("features/kaz-os/progress.css"),
+  versioned("features/kaz-os/inbox.js"),
+  versioned("features/kaz-os/today.js"),
+  versioned("features/kaz-os/personal.js"),
+  versioned("features/kaz-os/personal.css"),
+  versioned("features/kaz-os/navigation.js"),
   "manifest.json",
 ];
 
@@ -76,7 +83,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Bus owns freshness and explicit stale states. Never replay an API response from the PWA cache.
-  if (["/api/bus/arrivals", "/api/bus/hub", "/api/bus/journey"].includes(new URL(request.url).pathname)) {
+  if (["/api/bus/arrivals", "/api/bus/hub", "/api/bus/journey", "/v1/progress", "/api/kaz-os/progress"].includes(new URL(request.url).pathname)) {
     event.respondWith(fetch(request, { cache: "no-store" }));
     return;
   }
