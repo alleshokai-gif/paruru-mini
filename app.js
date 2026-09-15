@@ -5509,6 +5509,7 @@ function saveUserProfileFromForm() {
 }
 
 function isViewAllowed_(viewName) {
+  if (viewName === "kaz-os" && activeMembershipContext?.role !== "admin") return false;
   return appAuthenticationState === "active_member"
     && Array.isArray(activeMembershipContext?.allowedViews)
     && activeMembershipContext.allowedViews.includes(String(viewName || ""));
