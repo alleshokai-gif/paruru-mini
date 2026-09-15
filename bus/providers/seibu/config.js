@@ -46,5 +46,3 @@ export const DIRECTIONS = Object.freeze([
   Object.freeze({ id: SCHOOL_TO_TACHIKAWA_SOURCE, fromName: '昭和第一学園',
     targetNames: Object.freeze(['立川駅北口']) })
 ]);
-
-\n
