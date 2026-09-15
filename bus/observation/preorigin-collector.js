@@ -70,7 +70,7 @@ export function createPreoriginObservationCollector({ index, positionStatic, has
         seconds_before_scheduled: evidence?.seconds_before_scheduled ?? null,
         arrival_to_origin: jstIso(evidence?.arrival_to_origin),
         departure_positive_evidence: evidence?.departure_positive_evidence || null,
-        evidence_level: evidence?.level || 'undetermined', censored: evidence?.level !== 'A'
+        evidence_level: 'undetermined', censored: true
       };
       rows.push(finalizePreoriginObservation({ ...base, preorigin_observation_id: null,
         record_kind: 'target_snapshot', vehicle_classification: 'none', vehicle_hash: null,

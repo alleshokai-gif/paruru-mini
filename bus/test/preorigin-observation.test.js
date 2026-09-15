@@ -36,28 +36,32 @@ test('preorigin automatic config is bounded to the weekday morning observation w
     PALURU_BUS_OBSERVATION_SPREADSHEET_ID: 'A'.repeat(24), PREORIGIN_SAMPLE_COUNT: '11' }), /SAMPLE_COUNT/);
 });
 
-test('preorigin schema is deterministic, HMAC-only and never assigns Level C automatically', () => {
+test('preorigin schema is deterministic, HMAC-only and leaves every Level decision to postprocess', () => {
   const first = baseRow(), second = baseRow();
   assert.equal(first.preorigin_observation_id, second.preorigin_observation_id);
   assert.equal(PREORIGIN_HEADERS.length, preoriginObservationValues(first).length);
   assert.equal(PREORIGIN_HEADERS.includes('preorigin_distance_to_origin'), true);
   assert.equal(JSON.stringify(first).includes('raw-vehicle'), false);
+  assert.throws(() => baseRow({ evidence_level: 'A' }), /ROW_INVALID/);
+  assert.throws(() => baseRow({ evidence_level: 'B' }), /ROW_INVALID/);
   assert.throws(() => baseRow({ evidence_level: 'C' }), /ROW_INVALID/);
 });
 
-test('collector limits itself to the 12 verified trips and records Level A only after same-vehicle assignment', () => {
+test('collector limits itself to 12 trips and stores evidence without assigning A/B/C', () => {
   const collector = createPreoriginObservationCollector({ index, positionStatic, hashKey: HASH });
   assert.equal(collector.targetCount(NOW), 12); assert.equal(PREORIGIN_EXPECTED_START_TIMES.length, 12);
   const first = collector.collect({ bytes: bytes([vehicle()]), now: NOW, runId: 'run-1', sampleIndex: 0 });
   assert.equal(first.rows.filter((row) => row.record_kind === 'target_snapshot').length, 1);
-  assert.ok(first.rows.some((row) => row.vehicle_classification === 'unassigned_candidate' && row.evidence_level === 'B'));
+  assert.ok(first.rows.some((row) => row.vehicle_classification === 'unassigned_candidate'
+    && row.evidence_level === 'undetermined'));
   const tripId = index.directions.home_to_mizonokuchi.find((row) => row.startTime === '06:50:00'
     && row.isOrigin && row.routeId === '10035').tripId;
   const next = NOW + 32;
   const assigned = collector.collect({ bytes: bytes([vehicle({ timestamp: next, trip: {
     tripId, routeId: '10035', startDate: '20260914' } })], next), now: next, runId: 'run-1', sampleIndex: 1 });
   const transition = assigned.rows.find((row) => row.record_kind === 'assignment_transition');
-  assert.ok(transition); assert.equal(transition.evidence_level, 'A'); assert.equal(transition.seconds_before_scheduled, 568);
+  assert.ok(transition); assert.equal(transition.evidence_level, 'undetermined');
+  assert.equal(transition.censored, true); assert.equal(transition.seconds_before_scheduled, 568);
   assert.equal(JSON.stringify(assigned.rows).includes('raw-vehicle'), false);
 });
 
@@ -84,6 +88,17 @@ test('preorigin runner fetches one raw feed per sample and stops outside the tar
       : { inserted: 0, duplicates: 1 }; } }, clock: () => current, sleep: async (seconds) => { current += seconds; } });
   assert.deepEqual({ fetches, writes, samples: result.samples, inserted: result.inserted, duplicates: result.duplicates },
     { fetches: 2, writes: 2, samples: 2, inserted: 1, duplicates: 1 });
+
+  fetches = 0; writes = 0;
+  const outside = await runPreoriginObservation({ config: { runId: 'run-outside', sampleCount: 10, intervalSec: 32,
+    maxRunSec: 310, timeBands: [{ start: 395, end: 536 }] }, fetchRaw: async () => { fetches++; return new Uint8Array([1]); },
+    collector: { targetCount: () => { throw Error('must not prepare targets'); }, activeTargetCount: () => 0,
+      collect: () => { throw Error('must not collect'); } },
+    store: { append: async () => { writes++; } }, clock: () => Date.parse('2026-09-14T09:00:00+09:00') / 1000,
+    sleep: async () => { throw Error('must not sleep'); } });
+  assert.deepEqual(outside, { status: 'skipped', reason: 'outside_time_band', samples: 0, fetched: 0,
+    rows: 0, inserted: 0, duplicates: 0 });
+  assert.equal(fetches, 0); assert.equal(writes, 0);
 });
 
 test('preorigin image is isolated from the public API and its Cloud Build never deploys or receives secrets', () => {
