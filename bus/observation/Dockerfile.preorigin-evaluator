@@ -1,0 +1,16 @@
+FROM node:24-bookworm-slim AS dependencies
+WORKDIR /app
+COPY observation/package.json observation/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+FROM node:24-bookworm-slim
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY observation/package.json observation/package-lock.json ./
+COPY observation/preorigin-schema.js observation/preorigin-scheduler.js ./observation/
+COPY observation/preorigin-evaluator-config.js ./observation/
+COPY observation/preorigin-evaluator-schema.js observation/preorigin-evaluator.js ./observation/
+COPY observation/preorigin-evaluator-sheets.js observation/preorigin-evaluator-job.js ./observation/
+USER node
+CMD ["node", "observation/preorigin-evaluator-job.js"]

@@ -13,7 +13,9 @@ export const PREORIGIN_HEADERS = Object.freeze([
 
 const KINDS = new Set(['target_snapshot', 'vehicle_observation', 'assignment_transition']);
 const CLASSIFICATIONS = new Set(['none', 'assigned', 'unassigned_candidate', 'partial_assignment']);
-const LEVELS = new Set(['A', 'B', 'undetermined']);
+// Raw observations never decide A/B/C. Those labels are derived later from
+// multiple executions and days; the writer persists evidence only.
+const LEVELS = new Set(['undetermined']);
 const identifier = (value) => typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,160}$/.test(value);
 const iso = (value) => typeof value === 'string'
   && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?\+09:00$/.test(value)

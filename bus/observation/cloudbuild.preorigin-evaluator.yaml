@@ -1,0 +1,25 @@
+# Build and image smoke only. Job, IAM, Scheduler, and public services are not deployed here.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '--platform=linux/amd64', '-f', 'observation/Dockerfile.preorigin-evaluator', '-t', '${_IMAGE}', '.']
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - --rm
+      - ${_IMAGE}
+      - node
+      - --input-type=module
+      - -e
+      - |
+        import assert from 'node:assert/strict';
+        import { PREORIGIN_EVALUATOR_SCHEDULE, PREORIGIN_DAILY_SHEET } from './observation/preorigin-evaluator-schema.js';
+        import { preoriginEvaluatorConfig } from './observation/preorigin-evaluator-config.js';
+        assert.equal(PREORIGIN_DAILY_SHEET, 'Bus_Preorigin_Daily');
+        assert.equal(PREORIGIN_EVALUATOR_SCHEDULE.cron, '10 9 * * 1-5');
+        const config=preoriginEvaluatorConfig({PALURU_BUS_OBSERVATION_SPREADSHEET_ID:'A'.repeat(24)});
+        assert.equal(config.sourceJob, 'paluru-bus-preorigin-observer');
+        console.log(JSON.stringify({status:'PREORIGIN_EVALUATOR_IMAGE_SMOKE_PASS',nodeVersion:process.versions.node}));
+images: ['${_IMAGE}']
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 900s
