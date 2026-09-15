@@ -94,7 +94,7 @@ function loadNurseOkanCommentFacts_(healthContext, localDate) {
 function buildNurseOkanCommentAgentInput_(request, actor, commentContext) {
   return {
     clientRequestId: request.clientRequestId,
-    responsePolicyId: (actor.role === 'guardian' || actor.role === 'self_record') ? 'concise' : 'normal',
+    responsePolicyId: (!actor.role || actor.role === 'guardian' || actor.role === 'self_record') ? 'concise' : 'normal',
     actor: {
       memberUserId: String(actor.memberUserId || '').trim().slice(0, 100),
       displayName: String(actor.displayName || '').trim().slice(0, 100),

@@ -83,6 +83,10 @@ function setup(options = {}) {
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMemberPolicy.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMembershipService.js'), 'utf8'), context);
+  context.provisionMembershipFromApprovalTemplateWithinRegistryLock_ = function(actor, deviceId, templateName, operationId, now, diagnostics, approvalContext) {
+    const policy = context.getHomeMemberPolicyByApprovalTemplate_(templateName);
+    return context.provisionMembershipIdentityWithinRegistryLock_(actor, deviceId, policy.memberUserId, policy.displayName, operationId, now, diagnostics, approvalContext);
+  };
   return { spreadsheet, registry, api: context };
 }
 
@@ -105,7 +109,7 @@ function pairingApprovalContext(deviceId, requestId) {
   api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(actor, 'son-phone', 'second_son_initial', 'op-son', '2026-07-26T12:00:00+09:00', { userId: 'spoofed', role: 'admin', homeId: 'spoofed', capabilities: ['home.control'] });
   const son = find(spreadsheet.sheets.Home_Members, homeHeaders, 'memberUserId', 'second_son')[0];
   const device = find(spreadsheet.sheets.Device_Memberships, deviceHeaders, 'deviceId', 'son-phone')[0];
-  assert.deepStrictEqual({ homeId: son.homeId, role: son.role, deviceHomeId: device.homeId, memberUserId: device.memberUserId }, { homeId: 'home-a', role: 'self_record', deviceHomeId: 'home-a', memberUserId: 'second_son' });
+  assert.deepStrictEqual({ homeId: son.homeId, role: son.role, deviceHomeId: device.homeId, memberUserId: device.memberUserId }, { homeId: 'home-a', role: '', deviceHomeId: 'home-a', memberUserId: 'second_son' });
 }
 
 {
@@ -113,8 +117,8 @@ function pairingApprovalContext(deviceId, requestId) {
   const result = api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'daughter-phone', 'eldest_daughter_initial', 'op-daughter', '2026-09-14T12:00:00+09:00');
   const daughter = find(spreadsheet.sheets.Home_Members, homeHeaders, 'memberUserId', 'eldest_daughter')[0];
   const device = find(spreadsheet.sheets.Device_Memberships, deviceHeaders, 'deviceId', 'daughter-phone')[0];
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(result)), { memberUserId: 'eldest_daughter', role: 'self_record', deviceId: 'daughter-phone', status: 'active' });
-  assert.deepStrictEqual({ displayName: daughter.displayName, role: daughter.role, deviceHomeId: device.homeId, memberUserId: device.memberUserId, status: device.status }, { displayName: '長女', role: 'self_record', deviceHomeId: 'home-a', memberUserId: 'eldest_daughter', status: 'active' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(result)), { memberUserId: 'eldest_daughter', role: '', deviceId: 'daughter-phone', status: 'active' });
+  assert.deepStrictEqual({ displayName: daughter.displayName, role: daughter.role, deviceHomeId: device.homeId, memberUserId: device.memberUserId, status: device.status }, { displayName: '長女', role: '', deviceHomeId: 'home-a', memberUserId: 'eldest_daughter', status: 'active' });
 }
 
 expectCode(() => { const { registry, api } = setup({ adminRole: 'self_record' }); adminActor(api, registry); }, 'FORBIDDEN');
@@ -264,9 +268,18 @@ expectCode(() => {
   ), 'MEMBERSHIP_ROLLBACK_PENDING');
 }
 
-expectCode(() => { const { registry, api } = setup({ existingSecondSon: true, secondSonStatus: 'disabled' }); api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son_initial', 'op-son', '2026-07-26T12:00:00+09:00'); }, 'MEMBERSHIP_CONFLICT');
+{
+  const { spreadsheet, registry, api } = setup({ existingSecondSon: true, secondSonStatus: 'disabled' });
+  api.provisionMembershipIdentityWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son', '次男', 'op-son', '2026-07-26T12:00:00+09:00');
+  const son = find(spreadsheet.sheets.Home_Members, homeHeaders, 'memberUserId', 'second_son')[0];
+  assert.deepStrictEqual({ status: son.status, role: son.role }, { status: 'active', role: 'self_record' }, 'registration must preserve role while reactivating identity');
+}
 expectCode(() => { const { registry, api } = setup({ existingSecondSon: true, duplicateSecondSon: true }); api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son_initial', 'op-son', '2026-07-26T12:00:00+09:00'); }, 'MEMBERSHIP_NOT_FOUND');
-expectCode(() => { const { registry, api } = setup({ existingSecondSon: true, secondSonRole: 'admin' }); api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son_initial', 'op-son', '2026-07-26T12:00:00+09:00'); }, 'MEMBERSHIP_CONFLICT');
+{
+  const { spreadsheet, registry, api } = setup({ existingSecondSon: true, secondSonRole: 'admin' });
+  api.provisionMembershipIdentityWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son', '次男', 'op-son', '2026-07-26T12:00:00+09:00');
+  assert.strictEqual(find(spreadsheet.sheets.Home_Members, homeHeaders, 'memberUserId', 'second_son')[0].role, 'admin', 'registration overwrote an existing privileged role');
+}
 expectCode(() => { const { registry, api } = setup({ existingSecondSon: true, targetDeviceMember: 'father' }); api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son_initial', 'op-son', '2026-07-26T12:00:00+09:00'); }, 'MEMBERSHIP_CONFLICT');
 expectCode(() => { const { registry, api } = setup({ duplicateTargetDevice: true }); api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'target-device', 'father_add_device', 'op-father', '2026-07-26T12:00:00+09:00'); }, 'MEMBERSHIP_NOT_FOUND');
 expectCode(() => { const { registry, api } = setup({ adminDeviceHome: 'home-b' }); adminActor(api, registry); }, 'FORBIDDEN');
@@ -330,4 +343,33 @@ for (const failurePoint of [1, 2, 3]) {
   assert.strictEqual(api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'son-phone', 'second_son_initial', 'op-rollback', '2026-07-26T12:00:00+09:00').status, 'active');
 }
 
-console.log('PASS membership approval provisioning templates, operation-bound retry, fail-closed conflicts, and rollback recovery');
+for (const identity of [
+  ['father', '父'], ['mother', '母'], ['eldest_son', '長男'],
+  ['eldest_daughter', '長女'], ['second_son', '次男'], ['youngest_daughter', '次女'],
+]) {
+  const { spreadsheet, registry, api } = setup();
+  const result = api.provisionMembershipIdentityWithinRegistryLock_(
+    adminActor(api, registry), `device-${identity[0]}`, identity[0], identity[1], `op-${identity[0]}`, '2026-09-15T12:00:00+09:00'
+  );
+  const member = find(spreadsheet.sheets.Home_Members, homeHeaders, 'memberUserId', identity[0])[0];
+  assert.strictEqual(result.status, 'active');
+  assert.strictEqual(member.role, identity[0] === 'father' ? 'admin' : '', `${identity[0]} received a roster role during registration`);
+}
+
+for (const identity of [['unknown', '不明'], ['mother', '父']]) {
+  expectCode(() => {
+    const { registry, api } = setup();
+    api.provisionMembershipIdentityWithinRegistryLock_(adminActor(api, registry), 'invalid-device', identity[0], identity[1], 'op-invalid', '2026-09-15T12:00:00+09:00');
+  }, 'INVALID_MEMBER_IDENTITY');
+}
+
+{
+  const { api } = setup();
+  const capabilities = JSON.parse(JSON.stringify(api.getEffectiveMemberCapabilities_('youngest_daughter', '')));
+  const views = JSON.parse(JSON.stringify(api.getEffectiveMemberAllowedViews_('youngest_daughter', '')));
+  assert(capabilities.includes('home.read') && capabilities.includes('health.self.record'));
+  assert(!capabilities.includes('home.control') && !capabilities.includes('health.supervision.read') && !capabilities.includes('family.inbox.review'));
+  assert.deepStrictEqual(views, ['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']);
+}
+
+console.log('PASS identity-only membership provisioning, role preservation, operation-bound retry, fail-closed conflicts, and rollback recovery');

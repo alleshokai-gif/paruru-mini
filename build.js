@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260915-device-registration-recovery-v1";
+globalThis.BUILD_ID = "v20260915-simple-user-registration-v1";

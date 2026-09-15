@@ -53,11 +53,13 @@ function createHarness() {
       if (adminMode !== 'admin') throw Object.assign(new Error('FORBIDDEN'), { code: 'FORBIDDEN' });
       return { homeId: 'home-a', memberUserId: 'father', role: 'admin', deviceId };
     },
-    provisionMembershipFromApprovalTemplateWithinRegistryLock_(actor, targetDeviceId, template, operationId, _now, _diagnostics, approvalContext) {
+    provisionMembershipIdentityWithinRegistryLock_(actor, targetDeviceId, memberUserId, displayName, operationId, _now, _diagnostics, approvalContext) {
       provisionCalls.push({
         actor: Object.assign({}, actor),
         targetDeviceId,
-        template,
+        memberUserId,
+        displayName,
+        template: memberUserId === 'father' ? 'father_add_device' : memberUserId === 'eldest_daughter' ? 'eldest_daughter_initial' : 'second_son_initial',
         operationId,
         approvalContext: Object.assign({}, approvalContext),
       });
@@ -65,7 +67,7 @@ function createHarness() {
       const existing = memberships[targetDeviceId];
       const assignment = `pairing_approval:${operationId}`;
       if (existing && existing.assignedBy !== assignment) throw Object.assign(new Error('MEMBERSHIP_CONFLICT'), { code: 'MEMBERSHIP_CONFLICT' });
-      memberships[targetDeviceId] = { deviceId: targetDeviceId, homeId: actor.homeId, memberUserId: template === 'father_add_device' ? 'father' : template === 'eldest_daughter_initial' ? 'eldest_daughter' : 'second_son', status: 'active', assignedBy: assignment };
+      memberships[targetDeviceId] = { deviceId: targetDeviceId, homeId: actor.homeId, memberUserId, status: 'active', assignedBy: assignment };
       return { status: 'active' };
     },
     getDeviceMembership_: (deviceId) => memberships[deviceId] || null,
@@ -102,7 +104,14 @@ function createHarness() {
   function membershipStatus(started) {
     return context.membershipRegistrationStatus_({ deviceId: membershipDeviceId, pairingToken: membershipToken, requestId: started.data.requestId, requestSecret: started.data.requestSecret });
   }
-  function approve(code, template, extra) { return context.devicePairingApprove_(Object.assign({ deviceId: parentId, pairingToken: parentToken, code, membershipTemplate: template }, extra || {})); }
+  function approve(code, identityKey, extra) {
+    const identities = {
+      father_add_device: { memberUserId: 'father', displayName: '父' },
+      eldest_daughter_initial: { memberUserId: 'eldest_daughter', displayName: '長女' },
+      second_son_initial: { memberUserId: 'second_son', displayName: '次男' },
+    };
+    return context.devicePairingApprove_(Object.assign({ deviceId: parentId, pairingToken: parentToken, code }, identities[identityKey] || {}, extra || {}));
+  }
   function resume(requestId) { return context.devicePairingResume_({ deviceId: parentId, pairingToken: parentToken, requestId }); }
   function approvalStatus(clientRequestId) { return context.devicePairingApprovalStatus_({ deviceId: parentId, pairingToken: parentToken, clientRequestId }); }
   function registry() { return JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1); }
@@ -207,6 +216,23 @@ test('unknown request kinds cannot be approved through either pairing or members
   expectCode(h.approve(started.data.code, 'father_add_device'), 'INVALID_PAIRING_CODE');
   assert.strictEqual(h.provisionCalls.length, 0);
   assert.strictEqual(h.registry().requests[started.data.requestId].status, 'pending');
+});
+
+test('fixed roster validates identity only and rejects a mismatched display name before consuming the code', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin();
+  expectCode(h.approve(started.data.code, 'eldest_daughter_initial', { displayName: '次男' }), 'INVALID_MEMBER_IDENTITY');
+  const request = h.registry().requests[started.data.requestId];
+  assert.strictEqual(request.status, 'pending');
+  assert(request.codeHash, 'identity validation consumed the pairing code');
+  assert.strictEqual(h.provisionCalls.length, 0);
+});
+
+test('client role and legacy template fields cannot change the selected registration identity', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin();
+  const approved = h.approve(started.data.code, 'eldest_daughter_initial', { role: 'admin', membershipTemplate: 'father_add_device' });
+  assert(approved.success);
+  assert.strictEqual(h.provisionCalls[0].memberUserId, 'eldest_daughter');
+  assert.strictEqual(h.provisionCalls[0].displayName, '長女');
 });
 
 test('non-admin and client spoofed identity values cannot alter approval', () => {

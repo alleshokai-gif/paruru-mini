@@ -4,21 +4,17 @@ const HOME_MEMBERS_HEADERS = ['homeId', 'memberUserId', 'displayName', 'role', '
 const DEVICE_MEMBERSHIPS_HEADERS = ['deviceId', 'homeId', 'memberUserId', 'status', 'assignedBy', 'assignedAt', 'updatedAt'];
 const HOME_MEMBER_ROLES = Object.freeze({ admin: true, guardian: true, self_record: true });
 const HOME_MEMBER_STATUS = Object.freeze({ active: true, disabled: true });
+const BASELINE_CAPABILITIES = Object.freeze(['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit']);
 const ROLE_CAPABILITIES = Object.freeze({
   admin: Object.freeze(['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit', 'family.inbox.review']),
   guardian: Object.freeze(['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit', 'family.inbox.review']),
-  self_record: Object.freeze(['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit']),
+  self_record: BASELINE_CAPABILITIES,
 });
+const BASELINE_ALLOWED_VIEWS = Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']);
 const ROLE_ALLOWED_VIEWS = Object.freeze({
   admin: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus', 'settings']),
-  guardian: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']),
-  self_record: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']),
-});
-const MEMBER_ACCESS_POLICIES = Object.freeze({
-  eldest_daughter: Object.freeze({
-    capabilities: Object.freeze(['memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'pet.health.read', 'pet.health.record']),
-    allowedViews: Object.freeze(['home', 'inbox', 'popio-health', 'bus']),
-  }),
+  guardian: BASELINE_ALLOWED_VIEWS,
+  self_record: BASELINE_ALLOWED_VIEWS,
 });
 const HEALTH_OPERATION_CAPABILITIES = Object.freeze({
   'health.context.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
@@ -46,7 +42,7 @@ function resolveAuthenticatedActor_(deviceId, pairingToken) {
     const row = findUniqueHomeMembershipRow_(sheet, 'deviceId', deviceId);
     if (!row || row.status !== 'active') throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
     const member = getHomeMember_(row.homeId, row.memberUserId);
-    if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member) || !HOME_MEMBER_ROLES[member.role]) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+    if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member) || !isHomeMemberAccessRole_(member.role)) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
     return { homeId: row.homeId, memberUserId: row.memberUserId, role: member.role, deviceId: String(deviceId) };
   } catch (error) {
     throw homeMembershipError_(error && error.code || 'UNAUTHORIZED_DEVICE');
@@ -158,11 +154,11 @@ function sameDeviceMembershipRowValues_(left, right) {
 function authorizeTargetOperation_(actor, targetUserId, operation) {
   const target = String(targetUserId || '').trim();
   const policy = HEALTH_OPERATION_CAPABILITIES[operation];
-  if (!actor || !actor.homeId || !actor.memberUserId || !HOME_MEMBER_ROLES[actor.role] || !policy) throw homeMembershipError_('FORBIDDEN');
+  if (!actor || !actor.homeId || !actor.memberUserId || !isHomeMemberAccessRole_(actor.role) || !policy) throw homeMembershipError_('FORBIDDEN');
   const targetMember = getHomeMember_(actor.homeId, target);
   if (!targetMember || targetMember.status !== 'active' || !isHomeMemberPolicyMatch_(targetMember)) throw homeMembershipError_('FORBIDDEN');
   if (target === actor.memberUserId) return authorizeCapability_(actor, policy.self);
-  if (targetMember.role !== 'self_record') throw homeMembershipError_('FORBIDDEN');
+  if (String(targetMember.role || '') !== '' && targetMember.role !== 'self_record') throw homeMembershipError_('FORBIDDEN');
   return authorizeCapability_(actor, policy.supervision);
 }
 
@@ -172,29 +168,26 @@ function authorizeCapability_(actor, capability) {
 }
 
 function hasRoleCapability_(actor, capability) {
-  return Boolean(actor && actor.homeId && actor.memberUserId && HOME_MEMBER_ROLES[actor.role] && getEffectiveMemberCapabilities_(actor.memberUserId, actor.role).indexOf(String(capability || '')) >= 0);
+  return Boolean(actor && actor.homeId && actor.memberUserId && isHomeMemberAccessRole_(actor.role) && getEffectiveMemberCapabilities_(actor.memberUserId, actor.role).indexOf(String(capability || '')) >= 0);
 }
 
 function getEffectiveMemberCapabilities_(memberUserId, role) {
-  const roleCapabilities = ROLE_CAPABILITIES[String(role || '')];
-  if (!roleCapabilities) return [];
-  const memberPolicy = MEMBER_ACCESS_POLICIES[String(memberUserId || '').trim()];
-  if (!memberPolicy) return roleCapabilities.slice();
-  if (memberPolicy.capabilities.some(function(capability) { return roleCapabilities.indexOf(capability) < 0; })) {
-    throw homeMembershipError_('CONFIGURATION_ERROR');
-  }
-  return memberPolicy.capabilities.slice();
+  const normalizedRole = String(role || '');
+  if (!normalizedRole) return BASELINE_CAPABILITIES.slice();
+  const roleCapabilities = ROLE_CAPABILITIES[normalizedRole];
+  return roleCapabilities ? roleCapabilities.slice() : [];
 }
 
 function getEffectiveMemberAllowedViews_(memberUserId, role) {
-  const roleViews = ROLE_ALLOWED_VIEWS[String(role || '')];
-  if (!roleViews) return [];
-  const memberPolicy = MEMBER_ACCESS_POLICIES[String(memberUserId || '').trim()];
-  if (!memberPolicy) return roleViews.slice();
-  if (memberPolicy.allowedViews.some(function(view) { return roleViews.indexOf(view) < 0; })) {
-    throw homeMembershipError_('CONFIGURATION_ERROR');
-  }
-  return memberPolicy.allowedViews.slice();
+  const normalizedRole = String(role || '');
+  if (!normalizedRole) return BASELINE_ALLOWED_VIEWS.slice();
+  const roleViews = ROLE_ALLOWED_VIEWS[normalizedRole];
+  return roleViews ? roleViews.slice() : [];
+}
+
+function isHomeMemberAccessRole_(role) {
+  const normalizedRole = String(role || '');
+  return !normalizedRole || Boolean(HOME_MEMBER_ROLES[normalizedRole]);
 }
 
 function resolveHomeAgentReadActor_(body) {
@@ -233,7 +226,7 @@ function getMembershipContext_(body) {
   const input = body || {};
   const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
   const member = getHomeMember_(actor.homeId, actor.memberUserId);
-  if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member) || !HOME_MEMBER_ROLES[member.role]) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+  if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member) || !isHomeMemberAccessRole_(member.role)) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
   const policy = getHomeMemberPolicy_(member.memberUserId);
   return { memberUserId: member.memberUserId, displayName: member.displayName, role: member.role, calendarSuffix: policy.calendarSuffix, addressTerms: getHomeMemberAddressTerms_(member.memberUserId), capabilities: getEffectiveMemberCapabilities_(member.memberUserId, member.role), allowedViews: getEffectiveMemberAllowedViews_(member.memberUserId, member.role) };
 }
@@ -244,7 +237,8 @@ function getActiveSelfRecordMembers_(homeId) {
   const headers = values[0].map(String);
   const map = headers.reduce(function(out, header, index) { out[header] = index; return out; }, {});
   return values.slice(1).filter(function(row) {
-    return String(row[map.homeId] || '') === String(homeId) && String(row[map.status] || '') === 'active' && isHomeMemberPolicyMatch_({ memberUserId: row[map.memberUserId], displayName: row[map.displayName], role: row[map.role] }) && String(row[map.role] || '') === 'self_record';
+    const role = String(row[map.role] || '');
+    return String(row[map.homeId] || '') === String(homeId) && String(row[map.status] || '') === 'active' && isHomeMemberPolicyMatch_({ memberUserId: row[map.memberUserId], displayName: row[map.displayName] }) && (role === '' || role === 'self_record');
   }).map(function(row) {
     const policy = getHomeMemberPolicy_(row[map.memberUserId]);
     return { userId: policy.memberUserId, displayName: policy.displayName };
@@ -263,32 +257,15 @@ function resolveMembershipApprovalAdminWithinRegistryLock_(deviceId, pairingToke
   return { homeId: member.homeId, memberUserId: member.memberUserId, role: member.role, deviceId: String(deviceId) };
 }
 
-function getMembershipApprovalTemplate_(templateName) {
-  const policy = getHomeMemberPolicyByApprovalTemplate_(templateName);
-  if (!policy) throw homeMembershipError_('INVALID_MEMBERSHIP_TEMPLATE');
-  const allowsInitialMember = policy.registrationMode === HOME_MEMBER_REGISTRATION_MODES.INITIAL_MEMBER_ONLY ||
-    policy.registrationMode === HOME_MEMBER_REGISTRATION_MODES.INITIAL_OR_EXISTING_MEMBER;
-  const allowsExistingMember = policy.registrationMode === HOME_MEMBER_REGISTRATION_MODES.EXISTING_MEMBER_ONLY ||
-    policy.registrationMode === HOME_MEMBER_REGISTRATION_MODES.INITIAL_OR_EXISTING_MEMBER;
-  return {
-    memberUserId: policy.memberUserId,
-    displayName: policy.displayName,
-    role: policy.role,
-    allowsInitialMember: allowsInitialMember,
-    allowsExistingMember: allowsExistingMember,
-    requiresExistingMember: !allowsInitialMember,
-  };
-}
-
 function getMembershipApprovalAssignment_(serverOperationId) {
   const operationId = String(serverOperationId || '').trim();
   if (!/^[A-Za-z0-9_-]{1,200}$/.test(operationId)) throw homeMembershipError_('INVALID_MEMBERSHIP_OPERATION');
   return 'pairing_approval:' + operationId;
 }
 
-function getMembershipApprovalDeviceState_(device, homeId, template, assignment, approvalContext) {
+function getMembershipApprovalDeviceState_(device, homeId, identity, assignment, approvalContext) {
   if (!device) return 'missing';
-  if (device.homeId !== homeId || device.memberUserId !== template.memberUserId) {
+  if (device.homeId !== homeId || device.memberUserId !== identity.memberUserId) {
     throw homeMembershipError_('MEMBERSHIP_CONFLICT');
   }
   if (device.status === 'active') {
@@ -312,21 +289,22 @@ function isLegitimateDeviceReRegistration_(device, approvalContext) {
   );
 }
 
-function assertExistingMembershipApprovalMember_(member, template) {
-  if (!member || !isHomeMemberPolicyMatch_(member) || member.role !== template.role || (member.status !== 'active' && member.status !== 'disabled')) {
+function assertExistingMembershipApprovalMember_(member, identity) {
+  if (!member || member.memberUserId !== identity.memberUserId || member.displayName !== identity.displayName ||
+      !isHomeMemberAccessRole_(member.role) || (member.status !== 'active' && member.status !== 'disabled')) {
     throw homeMembershipError_('MEMBERSHIP_CONFLICT');
   }
 }
 
 // This helper intentionally accepts only a server-resolved admin actor, a target device,
-// a fixed template, a server-resolved Registry request id, and a Registry-derived approval
-// context. Client userId, role, homeId, capability values, and operation ids are not inputs.
-function provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, targetDeviceId, templateName, serverOperationId, now, diagnostics, approvalContext) {
+// a roster-validated identity, a server-resolved Registry request id, and a
+// Registry-derived approval context. Client role, homeId, capability values, and
+// operation ids are not inputs; registration never assigns or overwrites role.
+function provisionMembershipIdentityWithinRegistryLock_(adminActor, targetDeviceId, memberUserId, displayName, serverOperationId, now, diagnostics, approvalContext) {
   if (!adminActor || adminActor.role !== 'admin' || !adminActor.homeId || !adminActor.memberUserId) throw homeMembershipError_('FORBIDDEN');
   const deviceId = String(targetDeviceId || '').trim();
   if (!deviceId) throw homeMembershipError_('INVALID_MEMBERSHIP_TARGET');
-  const template = getMembershipApprovalTemplate_(templateName);
-  if (templateName === 'second_son_initial') recordDevicePairingApprovalStage_(diagnostics, 'secondSonPolicy', 'matched');
+  const identity = getRegistrationMemberIdentity_(memberUserId, displayName);
   const assignment = getMembershipApprovalAssignment_(serverOperationId);
   const homeId = String(adminActor.homeId);
   const serverApprovalContext = Object.assign({}, approvalContext || {}, { serverOperationId: String(serverOperationId || '') });
@@ -335,60 +313,52 @@ function provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, 
   let reRegistrationSnapshot = null;
 
   try {
+    const deviceMembershipSheet = getRequiredHomeMembershipSheet_(DEVICE_MEMBERSHIPS_SHEET_NAME, DEVICE_MEMBERSHIPS_HEADERS);
+    const operationDevice = findUniqueHomeMembershipRow_(deviceMembershipSheet, 'assignedBy', assignment);
+    if (operationDevice && operationDevice.deviceId !== deviceId) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
     const existingDevice = getDeviceMembership_(deviceId);
-    const deviceState = getMembershipApprovalDeviceState_(existingDevice, homeId, template, assignment, serverApprovalContext);
-    const existingMember = getHomeMember_(homeId, template.memberUserId);
-    let resumesInitialMemberProvision = false;
+    const deviceState = getMembershipApprovalDeviceState_(existingDevice, homeId, identity, assignment, serverApprovalContext);
+    const existingMember = getHomeMember_(homeId, identity.memberUserId);
     if (existingMember) {
-      assertExistingMembershipApprovalMember_(existingMember, template);
-      if (existingMember.status === 'active') {
-        if (deviceState === 'missing' && !template.allowsExistingMember) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
-      } else {
-        if (deviceState === 'disabled_reregistration') throw homeMembershipError_('MEMBERSHIP_CONFLICT');
-        resumesInitialMemberProvision = template.allowsInitialMember && deviceState === 'disabled';
-        if (!resumesInitialMemberProvision) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
-      }
-    } else if (!template.allowsInitialMember) {
-      throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
+      assertExistingMembershipApprovalMember_(existingMember, identity);
+      if (existingMember.status === 'disabled' && deviceState === 'disabled_reregistration') throw homeMembershipError_('MEMBERSHIP_CONFLICT');
     }
     recordDevicePairingApprovalStage_(diagnostics, 'conflict', 'clear');
 
     if (deviceState === 'active') {
       if (!existingMember || existingMember.status !== 'active') throw homeMembershipError_('MEMBERSHIP_CONFLICT');
       recordDevicePairingApprovalStage_(diagnostics, 'deviceMemberships', 'active');
-      return { memberUserId: template.memberUserId, role: template.role, deviceId: deviceId, status: 'active' };
+      return { memberUserId: identity.memberUserId, role: existingMember.role, deviceId: deviceId, status: 'active' };
     }
 
     if (deviceState === 'missing') {
       provisioningStarted = true;
-      upsertDeviceMembership_(deviceId, homeId, template.memberUserId, 'disabled', assignment, now);
+      upsertDeviceMembership_(deviceId, homeId, identity.memberUserId, 'disabled', assignment, now);
     } else if (deviceState === 'disabled_reregistration') {
-      reRegistrationSnapshot = snapshotDisabledDeviceMembershipForReRegistration_(deviceId, homeId, template.memberUserId);
+      reRegistrationSnapshot = snapshotDisabledDeviceMembershipForReRegistration_(deviceId, homeId, identity.memberUserId);
     }
 
     const pendingDevice = getDeviceMembership_(deviceId);
-    const pendingDeviceState = getMembershipApprovalDeviceState_(pendingDevice, homeId, template, assignment, serverApprovalContext);
+    const pendingDeviceState = getMembershipApprovalDeviceState_(pendingDevice, homeId, identity, assignment, serverApprovalContext);
     if (pendingDeviceState !== 'disabled' && pendingDeviceState !== 'disabled_reregistration') {
       throw homeMembershipError_('MEMBERSHIP_CONFLICT');
     }
 
-    let confirmedMember = getHomeMember_(homeId, template.memberUserId);
+    let confirmedMember = getHomeMember_(homeId, identity.memberUserId);
     if (!confirmedMember) {
-      if (!template.allowsInitialMember) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
       provisioningStarted = true;
-      upsertHomeMember_(homeId, template.memberUserId, template.displayName, template.role, 'active', now);
+      upsertHomeMember_(homeId, identity.memberUserId, identity.displayName, '', 'active', now);
       recordDevicePairingApprovalStage_(diagnostics, 'homeMembers', 'created');
       createdHomeMember = true;
-      confirmedMember = getHomeMember_(homeId, template.memberUserId);
+      confirmedMember = getHomeMember_(homeId, identity.memberUserId);
     } else if (confirmedMember.status === 'disabled') {
-      if (!resumesInitialMemberProvision) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
-      assertExistingMembershipApprovalMember_(confirmedMember, template);
+      assertExistingMembershipApprovalMember_(confirmedMember, identity);
       provisioningStarted = true;
-      upsertHomeMember_(homeId, template.memberUserId, confirmedMember.displayName, template.role, 'active', now);
+      upsertHomeMember_(homeId, identity.memberUserId, confirmedMember.displayName, confirmedMember.role, 'active', now);
       recordDevicePairingApprovalStage_(diagnostics, 'homeMembers', 'active');
-      confirmedMember = getHomeMember_(homeId, template.memberUserId);
+      confirmedMember = getHomeMember_(homeId, identity.memberUserId);
     }
-    if (!confirmedMember || confirmedMember.status !== 'active' || !isHomeMemberPolicyMatch_(confirmedMember) || confirmedMember.role !== template.role) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
+    if (!confirmedMember || confirmedMember.status !== 'active' || !isHomeMemberPolicyMatch_(confirmedMember) || !isHomeMemberAccessRole_(confirmedMember.role)) throw homeMembershipError_('MEMBERSHIP_CONFLICT');
 
     provisioningStarted = true;
     if (reRegistrationSnapshot) {
@@ -399,15 +369,15 @@ function provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, 
         approvalContext.activatedAt = now;
       }
     } else {
-      upsertDeviceMembership_(deviceId, homeId, template.memberUserId, 'active', assignment, now);
+      upsertDeviceMembership_(deviceId, homeId, identity.memberUserId, 'active', assignment, now);
     }
     recordDevicePairingApprovalStage_(diagnostics, 'deviceMemberships', 'active');
-    return { memberUserId: template.memberUserId, role: template.role, deviceId: deviceId, status: 'active' };
+    return { memberUserId: identity.memberUserId, role: confirmedMember.role, deviceId: deviceId, status: 'active' };
   } catch (error) {
     if (diagnostics && diagnostics.stages && diagnostics.stages.conflict === 'not_checked' && String(error && error.code || '') === 'MEMBERSHIP_CONFLICT') diagnostics.stages.conflict = 'detected';
     if (!provisioningStarted) throw error;
     try {
-      rollbackMembershipApprovalProvision_(homeId, template, deviceId, assignment, createdHomeMember, now, reRegistrationSnapshot);
+      rollbackMembershipApprovalProvision_(homeId, identity, deviceId, assignment, createdHomeMember, now, reRegistrationSnapshot);
     } catch (rollbackError) {
       throw homeMembershipError_('MEMBERSHIP_ROLLBACK_PENDING');
     }
@@ -415,19 +385,19 @@ function provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor, 
   }
 }
 
-function rollbackMembershipApprovalProvision_(homeId, template, deviceId, assignment, createdHomeMember, now, reRegistrationSnapshot) {
+function rollbackMembershipApprovalProvision_(homeId, identity, deviceId, assignment, createdHomeMember, now, reRegistrationSnapshot) {
   if (reRegistrationSnapshot) {
     restoreDeviceMembershipAfterReRegistrationFailure_(reRegistrationSnapshot);
   } else {
     const device = getDeviceMembership_(deviceId);
-    if (device && device.homeId === homeId && device.memberUserId === template.memberUserId && device.assignedBy === assignment && device.status === 'active') {
-      upsertDeviceMembership_(deviceId, homeId, template.memberUserId, 'disabled', assignment, now);
+    if (device && device.homeId === homeId && device.memberUserId === identity.memberUserId && device.assignedBy === assignment && device.status === 'active') {
+      upsertDeviceMembership_(deviceId, homeId, identity.memberUserId, 'disabled', assignment, now);
     }
   }
   if (createdHomeMember) {
-    const member = getHomeMember_(homeId, template.memberUserId);
-    if (member && member.status === 'active' && member.role === template.role) {
-      upsertHomeMember_(homeId, template.memberUserId, member.displayName, template.role, 'disabled', now);
+    const member = getHomeMember_(homeId, identity.memberUserId);
+    if (member && member.status === 'active' && member.role === '') {
+      upsertHomeMember_(homeId, identity.memberUserId, member.displayName, '', 'disabled', now);
     }
   }
 }

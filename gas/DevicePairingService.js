@@ -55,7 +55,8 @@ function devicePairingBegin_(body) {
         approvedByDeviceId: null,
         registrationState: DEVICE_REGISTRATION_STATES.PAIRING_PENDING,
         approvalClientRequestId: null,
-        membershipTemplate: null,
+        memberUserId: null,
+        memberDisplayName: null,
         failureCode: null,
         lastAttemptAt: null,
         recoveryExpiresAt: null,
@@ -97,7 +98,7 @@ function devicePairingApprove_(body) {
         : null;
       if (replayRequest) {
         assertDevicePairingApprovalReplay_(replayRequest, input, adminActor);
-        return continueDevicePairingApproval_(registry, deps, adminActor, replayRequest, input.membershipTemplate, now, diagnostics, true);
+        return continueDevicePairingApproval_(registry, deps, adminActor, replayRequest, input.memberUserId, input.displayName, now, diagnostics, true);
       }
       const rate = registry.approveAttempts[input.deviceId] || { count: 0, startedAt: now.getTime() };
       if (!Number.isFinite(rate.startedAt) || now.getTime() - rate.startedAt >= HOME_CONTROL_APPROVE_RATE_WINDOW_MILLISECONDS) {
@@ -131,13 +132,14 @@ function devicePairingApprove_(body) {
         throw homeControlPairingError_(String(request.failureCode || 'PAIRING_RECOVERY_NOT_ALLOWED'));
       }
       request.approvalClientRequestId = input.clientRequestId || null;
-      request.membershipTemplate = input.membershipTemplate;
+      request.memberUserId = input.memberUserId;
+      request.memberDisplayName = input.displayName;
       request.approvedByDeviceId = input.deviceId;
       request.registrationState = DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING;
       request.lastAttemptAt = homeControlIso_(now);
       request.recoveryExpiresAt = homeControlIso_(new Date(now.getTime() + HOME_CONTROL_RECOVERY_TTL_MILLISECONDS));
       request.failureCode = null;
-      return continueDevicePairingApproval_(registry, deps, adminActor, request, input.membershipTemplate, now, diagnostics, false);
+      return continueDevicePairingApproval_(registry, deps, adminActor, request, input.memberUserId, input.displayName, now, diagnostics, false);
     });
     return json_({ success: true, data: result, warnings: [], diagnostics: diagnostics });
   } catch (error) {
@@ -165,7 +167,7 @@ function devicePairingResume_(body) {
       if ([DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED, DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING, DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE].indexOf(recovery.registrationState) < 0) {
         throw homeControlPairingError_('PAIRING_RECOVERY_NOT_ALLOWED');
       }
-      return continueDevicePairingApproval_(registry, deps, adminActor, request, recovery.membershipTemplate, now, diagnostics, true);
+      return continueDevicePairingApproval_(registry, deps, adminActor, request, recovery.memberUserId, recovery.displayName, now, diagnostics, true);
     });
     return json_({ success: true, data: result, warnings: [], diagnostics: diagnostics });
   } catch (error) {
@@ -194,15 +196,34 @@ function devicePairingApprovalStatus_(body) {
   }
 }
 
-function continueDevicePairingApproval_(registry, deps, adminActor, request, membershipTemplate, now, diagnostics, replayed) {
+function resolveDevicePairingApprovalIdentity_(request, memberUserId, displayName) {
+  const requestedMemberUserId = String(memberUserId || '').trim();
+  const requestedDisplayName = String(displayName || '').trim();
+  if (requestedMemberUserId || requestedDisplayName) {
+    return getRegistrationMemberIdentity_(requestedMemberUserId, requestedDisplayName);
+  }
+  const storedMemberUserId = String(request && request.memberUserId || '').trim();
+  const storedDisplayName = String(request && request.memberDisplayName || '').trim();
+  if (storedMemberUserId || storedDisplayName) {
+    return getRegistrationMemberIdentity_(storedMemberUserId, storedDisplayName);
+  }
+  // Compatibility is limited to resuming records written by the previous
+  // recovery implementation. New approvals never accept or write a template.
+  const legacyPolicy = getHomeMemberPolicyByApprovalTemplate_(request && request.membershipTemplate);
+  if (legacyPolicy) return { memberUserId: legacyPolicy.memberUserId, displayName: legacyPolicy.displayName };
+  throw homeControlPairingError_('INVALID_MEMBER_IDENTITY');
+}
+
+function continueDevicePairingApproval_(registry, deps, adminActor, request, memberUserId, displayName, now, diagnostics, replayed) {
   const targetDevice = request && registry.devices[String(request.deviceId || '')];
   const requestKind = normalizeDevicePairingRequestKind_(request);
   if (!targetDevice || !requestKind) throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
   if (requestKind === 'pairing' && targetDevice.status !== 'pending' && targetDevice.status !== 'active') throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
   if (requestKind === 'membership' && targetDevice.status !== 'active') throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
-  const template = String(membershipTemplate || request.membershipTemplate || '');
-  if (!isHomeMemberApprovalTemplate_(template)) throw homeControlPairingError_('INVALID_MEMBERSHIP_TEMPLATE');
-  if (request.membershipTemplate && request.membershipTemplate !== template) throw homeControlPairingError_('IDEMPOTENCY_CONFLICT');
+  const identity = resolveDevicePairingApprovalIdentity_(request, memberUserId, displayName);
+  setDevicePairingApprovalStage_(diagnostics, 'memberIdentity', 'matched');
+  if ((request.memberUserId && request.memberUserId !== identity.memberUserId) ||
+      (request.memberDisplayName && request.memberDisplayName !== identity.displayName)) throw homeControlPairingError_('IDEMPOTENCY_CONFLICT');
   if (request.approvedByDeviceId && request.approvedByDeviceId !== adminActor.deviceId) throw homeControlPairingError_('FORBIDDEN');
 
   const stateBefore = resolveDeviceRegistrationState_(request, registry);
@@ -210,7 +231,8 @@ function continueDevicePairingApproval_(registry, deps, adminActor, request, mem
   if (stateBefore === DEVICE_REGISTRATION_STATES.FAILED_TERMINAL) throw homeControlPairingError_(String(request.failureCode || 'PAIRING_RECOVERY_NOT_ALLOWED'));
 
   const registryBeforeApprovalCommit = cloneHomeControlRegistryValue_(registry);
-  request.membershipTemplate = template;
+  request.memberUserId = identity.memberUserId;
+  request.memberDisplayName = identity.displayName;
   request.approvedByDeviceId = adminActor.deviceId;
   request.registrationState = DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING;
   request.lastAttemptAt = homeControlIso_(now);
@@ -223,10 +245,11 @@ function continueDevicePairingApproval_(registry, deps, adminActor, request, mem
     requestId: String(request.requestId || ''),
   };
   try {
-    provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+    provisionMembershipIdentityWithinRegistryLock_(
       adminActor,
       targetDevice.deviceId,
-      template,
+      identity.memberUserId,
+      identity.displayName,
       request.requestId,
       homeControlIso_(now),
       diagnostics,
@@ -285,8 +308,10 @@ function createDevicePairingApprovalResult_(request, registry, replayed) {
 }
 
 function assertDevicePairingApprovalReplay_(request, input, adminActor) {
+  const storedIdentity = resolveDevicePairingApprovalIdentity_(request);
   if (String(request.approvalClientRequestId || '') !== input.clientRequestId ||
-      String(request.membershipTemplate || '') !== input.membershipTemplate) {
+      storedIdentity.memberUserId !== input.memberUserId ||
+      storedIdentity.displayName !== input.displayName) {
     throw homeControlPairingError_('IDEMPOTENCY_CONFLICT');
   }
   if (String(request.approvedByDeviceId || '') !== String(adminActor.deviceId || '')) throw homeControlPairingError_('FORBIDDEN');
@@ -304,7 +329,7 @@ function findDevicePairingRequestByClientRequestId_(registry, clientRequestId) {
 
 function isRetryableDevicePairingApprovalFailure_(code) {
   return [
-    'FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'INVALID_PAIRING_CODE', 'INVALID_MEMBERSHIP_TEMPLATE',
+    'FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'INVALID_PAIRING_CODE', 'INVALID_MEMBER_IDENTITY', 'INVALID_MEMBERSHIP_TEMPLATE',
     'MEMBERSHIP_CONFLICT', 'MEMBERSHIP_NOT_FOUND', 'PAIRING_REQUEST_INVALID', 'IDEMPOTENCY_CONFLICT',
     'PAIRING_RECOVERY_NOT_ALLOWED', 'PAIRING_RECOVERY_NOT_FOUND', 'DEVICE_LIMIT_REACHED', 'MEMBERSHIP_ROLLBACK_PENDING',
   ].indexOf(String(code || '')) < 0;
@@ -315,7 +340,7 @@ function createDevicePairingApprovalDiagnostics_() {
     operation: 'devicePairingApprove',
     stages: {
       pendingRequest: 'not_started', registryDevice: 'not_started', registryActivation: 'not_started',
-      secondSonPolicy: 'not_started', homeMembers: 'not_started', deviceMemberships: 'not_started', conflict: 'not_checked',
+      memberIdentity: 'not_started', homeMembers: 'not_started', deviceMemberships: 'not_started', conflict: 'not_checked',
     },
   };
 }
@@ -380,7 +405,8 @@ function membershipRegistrationBegin_(body) {
         approvedByDeviceId: null,
         registrationState: DEVICE_REGISTRATION_STATES.PAIRING_PENDING,
         approvalClientRequestId: null,
-        membershipTemplate: null,
+        memberUserId: null,
+        memberDisplayName: null,
         failureCode: null,
         lastAttemptAt: null,
         recoveryExpiresAt: null,
@@ -790,17 +816,21 @@ function getDevicePairingRecovery_(request, registry, adminActor) {
   if (!request || !adminActor || !adminActor.homeId) return null;
   const membershipState = inspectDevicePairingMembership_(request);
   if (membershipState.membership && String(membershipState.membership.homeId || '') !== String(adminActor.homeId || '')) return null;
-  const storedTemplate = String(request.membershipTemplate || '');
-  let membershipTemplate = storedTemplate;
-  if (!membershipTemplate && membershipState.membership) {
-    const policy = findHomeMemberPolicy_(membershipState.membership.memberUserId);
-    membershipTemplate = String(policy && policy.approvalTemplateId || '');
+  let identity = null;
+  try {
+    identity = resolveDevicePairingApprovalIdentity_(request);
+  } catch (error) {
+    const membership = membershipState.membership;
+    const policy = membership && findHomeMemberPolicy_(membership.memberUserId);
+    if (policy) identity = { memberUserId: policy.memberUserId, displayName: policy.displayName };
   }
+  if (!identity) return null;
   const registrationState = resolveDeviceRegistrationState_(request, registry, membershipState);
   return {
     requestId: String(request.requestId || ''),
     deviceName: String(request.displayName || ''),
-    membershipTemplate: membershipTemplate,
+    memberUserId: identity.memberUserId,
+    displayName: identity.displayName,
     registrationState: registrationState,
     retryable: [DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED, DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING, DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE].indexOf(registrationState) >= 0,
     failureCode: registrationState === DEVICE_REGISTRATION_STATES.FAILED_TERMINAL ? String(request.failureCode || membershipState.errorCode || 'PAIRING_RECOVERY_NOT_ALLOWED') : '',
@@ -931,12 +961,13 @@ function validateDevicePairingBeginInput_(body) {
 function validateDevicePairingApproveInput_(body) {
   const auth = validateHomeControlAuthenticatedInput_(body);
   const code = String(body.code || '').trim();
-  const membershipTemplate = String(body.membershipTemplate || '').trim();
+  const memberUserId = String(body.memberUserId || '').trim();
+  const displayName = String(body.displayName || '').trim();
   const clientRequestId = String(body.clientRequestId || '').trim();
   if (!/^\d{6}$/.test(code)) throw homeControlPairingError_('INVALID_PAIRING_CODE');
-  if (!isHomeMemberApprovalTemplate_(membershipTemplate)) throw homeControlPairingError_('INVALID_MEMBERSHIP_TEMPLATE');
+  const identity = getRegistrationMemberIdentity_(memberUserId, displayName);
   if (clientRequestId && !isHomeControlUuid_(clientRequestId)) throw homeControlPairingError_('INVALID_PAIRING_INPUT');
-  return { deviceId: auth.deviceId, pairingToken: auth.pairingToken, code: code, membershipTemplate: membershipTemplate, clientRequestId: clientRequestId };
+  return { deviceId: auth.deviceId, pairingToken: auth.pairingToken, code: code, memberUserId: identity.memberUserId, displayName: identity.displayName, clientRequestId: clientRequestId };
 }
 
 function validateDevicePairingResumeInput_(body) {

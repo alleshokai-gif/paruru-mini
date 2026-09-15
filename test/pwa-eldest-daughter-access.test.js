@@ -17,8 +17,8 @@ function classList() { const values = new Set(); return { toggle(name, enabled) 
 function nav(name) { return { dataset: { targetView: name }, hidden: false, disabled: false, attrs: {}, setAttribute(key, value) { this.attrs[key] = value; }, classList: classList() }; }
 function view(name) { return { dataset: { view: name }, hidden: false, classList: classList() }; }
 
-const allowedViews = ['home', 'inbox', 'popio-health', 'bus'];
-const capabilities = ['memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'pet.health.read', 'pet.health.record'];
+const allowedViews = ['home', 'inbox', 'nurse-okan', 'popio-health', 'bus'];
+const capabilities = ['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit'];
 const viewNames = ['home', 'inbox', 'nurse-okan', 'popio-health', 'bus', 'settings', 'kaz-os'];
 const views = viewNames.map(view);
 const navigation = viewNames.map(nav);
@@ -49,19 +49,19 @@ for (const name of allowedViews) {
   assert.strictEqual(views.find((item) => item.dataset.view === name).hidden, false, `${name} view hidden`);
   assert.strictEqual(navigation.find((item) => item.dataset.targetView === name).hidden, false, `${name} navigation hidden`);
 }
-for (const name of ['nurse-okan', 'settings', 'kaz-os']) {
+for (const name of ['settings', 'kaz-os']) {
   assert.strictEqual(views.find((item) => item.dataset.view === name).hidden, true, `${name} view visible`);
   assert.strictEqual(navigation.find((item) => item.dataset.targetView === name).disabled, true, `${name} navigation enabled`);
 }
-assert.strictEqual(context.todayParuru.hidden, true, 'Today/Calendar surface remained visible');
-assert.strictEqual(consultOption.hidden, true, 'Home Agent consult surface remained visible');
-assert.strictEqual(context.familyInboxForm.hidden, true, 'Family Inbox surface remained visible');
+assert.strictEqual(context.todayParuru.hidden, false, 'Today/Calendar surface was hidden from baseline access');
+assert.strictEqual(consultOption.hidden, false, 'Home Agent consult surface was hidden from baseline access');
+assert.strictEqual(context.familyInboxForm.hidden, false, 'Family Inbox submit surface was hidden from baseline access');
 assert.strictEqual(context.familyInboxReviewSection.hidden, true, 'Family Inbox review surface remained visible');
-assert.deepStrictEqual(hiddenPanels.sort(), ['detail', 'home']);
+assert.deepStrictEqual(hiddenPanels, []);
 assert.strictEqual(context.canUseHomeControl_(), false, 'home control became available');
 assert.strictEqual(context.hasMembershipCapability_('memo.self.create'), true, 'memo capability missing');
 assert.strictEqual(context.hasMembershipCapability_('pet.health.record'), true, 'Popio capability missing');
-assert(html.includes('<option value="eldest_daughter_initial">長女の端末</option>'), 'fixed eldest daughter approval template is missing');
+assert(html.includes('<option value="eldest_daughter">長女の端末</option>'), 'fixed eldest daughter identity is missing');
 assert(source.includes('if (!hasMembershipCapability_(requiredCapability))'), 'Calendar candidate capability gate is missing');
 
-console.log('PASS eldest daughter PWA views and in-view capability visibility');
+console.log('PASS eldest daughter PWA baseline views and privileged capability visibility');
