@@ -97,5 +97,3 @@ export async function fetchSeibuRealtime(token, fetcher = fetch, now = () => Dat
   ]);
   return parseSeibuRealtime({ tripUpdatesBytes, vehicleBytes, fetchedAt: now() });
 }
-
-\n

@@ -21,5 +21,3 @@ export async function fetchSeibuStatic(token, fetcher = fetch) {
     fail('BUS_SEIBU_STATIC_FETCH');
   } finally { clearTimeout(timer); }
 }
-
-\n

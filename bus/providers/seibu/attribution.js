@@ -3,5 +3,3 @@ export const ATTRIBUTION = Object.freeze({
   distributor: '公共交通オープンデータセンター',
   url: 'https://www.odpt.org/'
 });
-
-\n
