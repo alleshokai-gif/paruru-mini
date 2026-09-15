@@ -1,6 +1,6 @@
 # PALURU Bus P1 神木本町始発・回送車追跡PoC
 
-最終更新: 2026-09-13 Asia/Tokyo
+最終更新: 2026-09-15 Asia/Tokyo
 
 ## 目的と境界
 
@@ -83,9 +83,9 @@ departure_positive_evidence
 
 このsnapshotで「回送中VehiclePositionは配信されない」とは判断できない。現在の判定は **未判定** であり、Level Cではない。
 
-## 次の観測
+## 次の観測（履歴・現在は自動観測へ移行）
 
-研究script `npm run probe:preorigin:poc` は1〜40 sample、30〜35秒間隔に制限される。平日朝に `PREORIGIN_SAMPLE_COUNT=40` を設定し、各runを対象便の15分前までに開始する。06:35〜09:00を複数runで覆い、日を分けて次を集計する。
+以下の手動probe案は初期PoCの履歴であり、P3.1では運用しない。時間依存データはCloud Schedulerから既存Cloud Run Jobを自動起動して収集する。現在の正本は`PALURU_BUS_P3_1_PREORIGIN_MORNING_CANARY.md`である。
 
 - tripなし / routeなし / descriptorなしVehiclePosition件数
 - 神木本町4km圏、80m圏の連続GPS
@@ -133,7 +133,8 @@ Realtime Bus API、PWA、`Bus_Observation_Raw`、`Bus_Observation_Daily`、GAS�
 
 - Job: `paluru-bus-preorigin-observer`
 - image: Realtime APIおよび既存Observation Jobと分離
-- service account候補: 既存`paluru-bus-observer@paluru-bus.iam.gserviceaccount.com`
+- execution service account: 既存`paluru-bus-observer@paluru-bus.iam.gserviceaccount.com`
+- Scheduler専用service account: `paluru-bus-scheduler@paluru-bus.iam.gserviceaccount.com`
 - Spreadsheet権限: 共有済みの対象1ファイルだけ
 - sample: 10回
 - interval: 32秒
@@ -143,14 +144,14 @@ Realtime Bus API、PWA、`Bus_Observation_Raw`、`Bus_Observation_Daily`、GAS�
 
 10 sampleは最初と最後の間が288秒で、5分Scheduler間隔より短い。Cloud Run Job executionの重複を避け、Sheetのduplicate ID確認を逐次にする。各rowのIDはservice date、target trip、record kind、HMAC vehicle、vehicle/feed timestamp等からHMAC生成し、同じfeedの再実行を抑止する。
 
-Scheduler候補はtimezone `Asia/Tokyo`を明示する。
+Schedulerはtimezone `Asia/Tokyo`を明示し、次の2本を有効化した。
 
 |name|cron|対象|
 |---|---|---|
 |`paluru-bus-preorigin-0635`|`35-55/5 6 * * 1-5`|平日06:35〜06:55|
 |`paluru-bus-preorigin-0700`|`*/5 7,8 * * 1-5`|平日07:00〜08:55|
 
-08:55 executionはJob内time guardにより08:56以降のsampleを取得しない。祝日等で正規Static上の対象serviceが0件ならODPTへ接続せず`no_target_service`で正常skipする。対象が1〜11件または13件以上なら静的データ不整合としてfail closedする。
+08:55 executionはJob内のsample単位time guardにより08:56以降のsampleを取得しない。祝日等で正規Static上の対象serviceが0件ならODPTへ接続せず`no_target_service`で正常skipする。対象が1〜11件または13件以上なら静的データ不整合としてfail closedする。
 
 ### 専用Sheet schema
 
@@ -169,11 +170,13 @@ Level Aは、同じ日付scopeの同一HMAC vehicleがunassigned/partial candida
 |日付scope HMAC / 生ID非露出|合成test PASS|
 |専用tab header / duplicate抑止|mock Sheets test PASS|
 |bounded runner / 32秒|合成test PASS|
-|Cloud Build|PASS: `e03d158c-aaf0-45b0-831d-d8cb6bd2e487`|
-|Cloud Run Job / Sheet実追記 / Scheduler|未実施。ユーザー本人deploy後にremote受入|
+|Cloud Build / Job image|PASS: build `02ba4646-db09-4efe-b88f-c55a9319e97d`、Job generation 2|
+|Cloud Run Job|PASS: image/env/Secret参照をread-back。自然観測は未実施|
+|Scheduler|PASS: 2本`ENABLED`、設定完全一致、手動force-runなし|
+|Sheet実追記 / remote dedupe|未確認。最初の自然execution後に確認|
 |複数日Level判定|未実施。`undetermined`維持|
 
-生成imageは`asia-northeast1-docker.pkg.dev/paluru-bus/paluru-bus/paluru-bus-preorigin-observer@sha256:fede82b604ebe48e6843f1ead82c2384828581c52cbac2ae3b323da017db4279`。Cloud Build smokeはNode 24、既定10 sample / 32秒 / 310秒、専用Sheet名を確認し、BuildへSecretは渡していない。
+Scheduler有効化時のJob imageは`asia-northeast1-docker.pkg.dev/paluru-bus/paluru-bus/paluru-bus-preorigin-observer@sha256:d00b095185a1cf22c56357b942cff8f3ecaaf8e693c734e26827b5f5f3af9ed6`。Cloud Build smokeはNode 24、既定10 sample / 32秒 / 310秒、専用Sheet名を確認し、BuildへSecretは渡していない。
 
 ### 初回remote execution
 
@@ -181,6 +184,15 @@ Level Aは、同じ日付scopeの同一HMAC vehicleがunassigned/partial candida
 
 executionは2026-09-14 09:40 JST頃で、設定した`06:35-08:56`より後だったため`outside_time_band`で正常skipした。ODPT fetchとSheets appendは0件であり、Google Sheets実画面にも`Bus_Preorigin_Raw` tabはまだ存在しなかった。したがって、実Sheet追記、実データ分類、remote duplicate抑止は未確認である。これは時間帯guardのPASSであって観測AcceptanceのPASSではない。
 
-次の平日06:35〜08:55 JSTにcanaryを1回実行し、専用tab/header、追記行、ID一意性、HMAC形式、raw vehicle/entity/token非保存を確認するまでScheduler作成はNO-GOとする。Level Cは引き続き生成・判定しない。
+手動canaryを待つ方針は廃止した。2026-09-15に自動Scheduler 2本を有効化し、最初の自然executionをcanaryとして扱う。翌営業日以降、execution、専用tab/header、追記行、ID一意性、HMAC形式、raw vehicle/entity/token非保存を読み取りscriptで確認する。Level Cは引き続き自動生成・判定しない。
 
-remote受入後の最終回帰はRepository 95/95、Bus 144/144、Secret scan 452 files / matches 0。Realtime Bus API、PWA、Position UI、Public departure predictionは変更・deployしていない。
+### Scheduler-first automatic canary実体
+
+- Scheduler SAは既存`paluru-bus-scheduler@paluru-bus.iam.gserviceaccount.com`を再利用した。observer Jobのexecution SAとは分離している。
+- Scheduler SAへは`paluru-bus-preorigin-observer`リソース単位の`roles/run.invoker`だけを付与した。project-wide role、`ODPT_ACCESS_TOKEN`、`OBSERVATION_HMAC_KEY`へのSecret IAM bindingは0件だった。
+- 2本ともCloud Run v2 Jobs `:run` endpointへのOAuth認証付きPOST、timezone `Asia/Tokyo`、Scheduler retry 0、attempt deadline 60秒である。
+- Job task側の既存`maxRetries=1`は変更していない。再試行時も決定的observation IDでdedupeし、conflictはfail closedする。
+- 有効化前後でJob generation 2、image digest、execution SA、env/Secret参照は一致した。公開APIはrevision `paluru-bus-api-00008-7zk`のままで、PWAファイルも変更していない。
+- 人間が観測時刻に操作する手順と、確認目的のmanual force-runは採用しない。
+
+Scheduler有効化後の回帰はRepository 109/109、Bus 170/170、Secret scan 511 files / matches 0。Realtime Bus API、PWA、Position UI、Public departure predictionは変更・deployしていない。
