@@ -181,7 +181,7 @@ function createHarness() {
   };
   vm.createContext(context);
   new vm.Script(appSource, { filename: 'app.js' }).runInContext(context);
-  vm.runInContext('appAuthenticationState = "active_member"; activeMembershipContext = { capabilities: ["home.control"] };', context);
+  vm.runInContext('appAuthenticationState = "active_member"; activeMembershipContext = { capabilities: ["home.read", "home.control", "health.self.read"] };', context);
   return {
     context,
     elements,
@@ -1167,7 +1167,7 @@ test('agentChat logs API_ERROR and FETCH_FAILED with the same request context', 
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260914-bus-p2-5-journey-v2';
+  const expected = 'v20260914-eldest-daughter-access-v1';
   const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
   assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID must have one definition');
   assert(appSource.includes('Build: ${globalThis.BUILD_ID}') && !/const\s+(?:ASSET_VERSION|BUILD_VERSION|BUILD_ID)\s*=/.test(appSource), 'app does not use BUILD_ID as the only Build display source');

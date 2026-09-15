@@ -611,7 +611,10 @@ async function run() {
   assert(htmlSource.includes('id="popioHealthView"') && htmlSource.includes('id="popioHealthMount"'), 'Pet Health view/mount missing');
   assert(htmlSource.includes('data-target-view="popio-health"'), 'Pet Health drawer navigation missing');
   assert(htmlSource.includes('features/popio-health/popio-health.js'), 'Pet Health feature script missing');
-  assert(membershipSource.match(/popio-health/g)?.length === 3, 'Pet Health view is not allowed for all three roles');
+  assert(
+    ['admin', 'guardian', 'self_record'].every((role) => new RegExp(`${role}: Object\\.freeze\\(\\[[^\\]]*'popio-health'`).test(membershipSource)),
+    'Pet Health view is not allowed for all three roles',
+  );
   assert(swSource.includes('versioned("features/popio-health/popio-health.js")'), 'Pet Health feature missing from PWA app shell');
   assert(featureSource.includes('data-event-type="water_bottle"') && featureSource.includes('data-popio-water-bottle-previous'), 'water-bottle form missing');
   assert(featureSource.includes('id="popioReminderList"') && featureSource.includes('id="popioHistoryList"'), 'Reminder/History UI mount missing');

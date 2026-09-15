@@ -79,6 +79,17 @@ PWA: deviceId + pairing credential + action + payload
 
 メニューもcapabilityから組み立てる。PWAは未許可のメニュー項目・ボタン・deep linkを表示しない。一方、Agent ToolはPWA経由かどうかに関係なく同じcapabilityをMini GASで検査し、Tool定義やLLMの判断を認可根拠にしない。
 
+### 長女のユーザー別許可
+
+長女は固定家族名簿の `eldest_daughter` と既存role `self_record` を使う。role共通契約は変更せず、Mini GASがserver-resolved `memberUserId` に対してユーザー別の有効capabilityを導出する。許可する製品機能は本人メモ、ぽぴお、Busだけである。
+
+- capability: `memo.self.read/create/update/delete`、`pet.health.read/record`
+- view: `home`、`inbox`、`popio-health`、`bus`
+- `home` と `inbox` は本人メモの入力・一覧を構成する内部viewであり、製品機能としては「メモ」1件として扱う。
+- `home.read`、`home.control`、Calendar、Health、Family Inboxは許可しない。
+- Home内に同居する今日の予定、相談Agent、Calendar連携と、Inbox内の家族書類入口はcapabilityに基づいて非表示にする。
+- ナースおかん、設定、Kaz OSは許可viewに含めない。GASの直接呼出しも同じ有効capabilityで拒否する。
+
 ## データモデル方針
 
 | 領域 | 所有者/可視性 | サーバー記録項目 | 備考 |

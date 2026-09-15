@@ -19,6 +19,7 @@ assert(/id="homeControlApproveCode"[^>]*inputmode="numeric"[^>]*pattern="\[0-9\]
 assert(style.includes('.home-control-approve-panel') && style.includes('gap: 20px'), 'approval panel spacing is missing');
 assert(style.includes('.home-control-approve-code') && style.includes('min-height: 56px') && style.includes('font-size: 28px') && style.includes('letter-spacing: 0.22em'), 'approval code input mobile sizing is missing');
 assert(style.includes('.home-control-approve-code:focus') && style.includes('box-shadow:'), 'approval code focus indicator is missing');
+assert(html.includes('<option value="eldest_daughter_initial">長女の端末</option>'), 'eldest daughter approval option is missing');
 
 function element(value = '') { return { value, hidden: false, disabled: false, textContent: '', className: '' }; }
 function createHarness(options = {}) {
@@ -55,7 +56,7 @@ function createHarness(options = {}) {
 }
 
 (async () => {
-  for (const template of ['father_add_device', 'second_son_initial']) {
+  for (const template of ['father_add_device', 'eldest_daughter_initial', 'second_son_initial']) {
     const h = createHarness({ template });
     await h.context.approveHomeControlPairing();
     const payload = h.requests.find((request) => request.action === 'devicePairingApprove');

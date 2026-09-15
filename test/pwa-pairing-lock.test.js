@@ -148,6 +148,7 @@ function createHarness(options = {}) {
     },
     renderProfileForm() { context.normalInitializations += 1; },
     applyAllowedViews_() {},
+    applyMembershipCapabilityVisibility_() {},
     switchView: async () => {},
     setParuruState() {},
     loadNotificationCandidates() { context.notificationLoads += 1; },

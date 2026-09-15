@@ -457,6 +457,7 @@ async function fetchNextHealthTask_() {
     || !normalPwaInitialized
     || activeMembershipContext?.role !== "self_record"
     || !activeMembershipContext?.memberUserId
+    || !hasMembershipCapability_("health.self.read")
   ) {
     return null;
   }
@@ -550,9 +551,13 @@ let appAuthenticationState = "booting";
 let normalPwaInitialized = false;
 
 function canUseHomeControl_() {
+  return hasMembershipCapability_("home.control");
+}
+
+function hasMembershipCapability_(capability) {
   return appAuthenticationState === "active_member"
     && Array.isArray(activeMembershipContext?.capabilities)
-    && activeMembershipContext.capabilities.includes("home.control");
+    && activeMembershipContext.capabilities.includes(String(capability || ""));
 }
 const NURSE_OKAN_HEALTH_ACTIONS = new Set([
   "health.context.get",
@@ -937,6 +942,7 @@ const activateMembershipContext_ = function(membershipContext) {
   appAuthenticationState = "active_member";
   initializeNormalPwaOnce();
   applyAllowedViews_();
+  applyMembershipCapabilityVisibility_();
   document.dispatchEvent(new CustomEvent("paruru:authenticated", {
     detail: {
       context: {
@@ -2488,7 +2494,7 @@ async function approveHomeControlPairing() {
     return;
   }
   const membershipTemplate = String(homeControlMembershipTemplate?.value || "").trim();
-  if (!["father_add_device", "second_son_initial"].includes(membershipTemplate)) {
+  if (!["father_add_device", "eldest_daughter_initial", "second_son_initial"].includes(membershipTemplate)) {
     setHomeControlMessage("登録する家族を選んでな。", "error");
     return;
   }
@@ -2943,6 +2949,7 @@ async function fetchInboxItems() {
 }
 
 async function loadNotificationCandidates(options = {}) {
+  if (!hasMembershipCapability_("home.read")) return [];
   const now = Date.now();
   if (!options.force && notificationCandidatesState.inFlight) {
     return notificationCandidatesState.inFlight;
@@ -4901,6 +4908,11 @@ function renderCalendarSyncPanel(target, item) {
   }
 
   const mode = getCalendarSyncMode(item);
+  const requiredCapability = mode === "update" ? "calendar.family.edit_own" : "calendar.family.create";
+  if (!hasMembershipCapability_(requiredCapability)) {
+    hideCalendarSyncPanel(target);
+    return;
+  }
   const defaults = buildCalendarDefaults(item);
   if (target === "home") {
     setParuruSpeech("calendarPrompt");
@@ -5514,6 +5526,20 @@ function applyAllowedViews_() {
     item.setAttribute("aria-hidden", String(!allowed));
   });
   views.forEach((view) => { view.hidden = !isViewAllowed_(view.dataset.view); });
+}
+
+function applyMembershipCapabilityVisibility_() {
+  const canReadHome = hasMembershipCapability_("home.read");
+  const canSubmitFamilyInbox = hasMembershipCapability_("family.inbox.submit");
+  if (todayParuru) todayParuru.hidden = !canReadHome;
+  const consultOption = askPaluruButton && typeof askPaluruButton.closest === "function"
+    ? askPaluruButton.closest(".paluru-action-option")
+    : null;
+  if (consultOption) consultOption.hidden = !canReadHome;
+  if (familyInboxForm) familyInboxForm.hidden = !canSubmitFamilyInbox;
+  if (familyInboxReviewSection) familyInboxReviewSection.hidden = !hasMembershipCapability_("family.inbox.review");
+  if (!hasMembershipCapability_("calendar.family.create")) hideCalendarSyncPanel("home");
+  if (!hasMembershipCapability_("calendar.family.edit_own")) hideCalendarSyncPanel("detail");
 }
 
 function getHomeAgentPairingToken() {

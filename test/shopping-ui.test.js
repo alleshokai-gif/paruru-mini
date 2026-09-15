@@ -56,6 +56,7 @@ const context = {
 };
 vm.createContext(context);
 new vm.Script(source, { filename: 'app.js' }).runInContext(context);
+vm.runInContext('appAuthenticationState = \"active_member\"; activeMembershipContext = { capabilities: [\"home.read\"] };', context);
 
 function run(expression) { return vm.runInContext(expression, context); }
 function assert(value, message) { if (!value) throw new Error(message); }

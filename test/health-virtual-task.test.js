@@ -20,6 +20,7 @@ const context = {
   appAuthenticationState: 'active_member',
   normalPwaInitialized: true,
   activeMembershipContext: null,
+  hasMembershipCapability_: (capability) => capability === 'health.self.read',
   callAuthenticatedHealth_: async (_action, payload) => {
     requests.push(payload);
     return { slots: {} };
@@ -31,7 +32,7 @@ vm.runInContext(appSource.slice(start, end), context);
 
 async function nextFor(role, slots) {
   requests = [];
-  context.activeMembershipContext = { memberUserId: 'member-1', role };
+  context.activeMembershipContext = { memberUserId: 'member-1', role, capabilities: role === 'self_record' ? ['health.self.read'] : [] };
   context.callAuthenticatedHealth_ = async (_action, payload) => {
     requests.push(payload);
     return { slots };

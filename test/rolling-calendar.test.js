@@ -76,6 +76,7 @@ const context = {
 };
 vm.createContext(context);
 new vm.Script(appSource, { filename: 'app.js' }).runInContext(context);
+vm.runInContext('appAuthenticationState = \"active_member\"; activeMembershipContext = { capabilities: [\"home.read\", \"health.self.read\"] };', context);
 
 function at(value) { return Date.parse(value); }
 function call(name, ...args) { return context[name](...args); }
