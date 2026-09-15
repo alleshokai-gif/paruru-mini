@@ -134,6 +134,14 @@ function doPost(e) {
       return devicePairingApprove_(body);
     }
 
+    if (action === 'devicePairingResume') {
+      return devicePairingResume_(body);
+    }
+
+    if (action === 'devicePairingApprovalStatus') {
+      return devicePairingApprovalStatus_(body);
+    }
+
     if (action === 'devicePairingStatus') {
       return devicePairingStatus_(body);
     }

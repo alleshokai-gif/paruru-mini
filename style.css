@@ -1683,6 +1683,26 @@ button:disabled {
   gap: 8px;
 }
 
+.home-control-recovery-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.home-control-recovery-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #d97706;
+  border-radius: 8px;
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.home-control-recovery-row button {
+  min-height: 48px;
+  font-size: 16px;
+}
+
 .home-control-device-row {
   display: flex;
   align-items: center;
