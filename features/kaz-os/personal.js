@@ -1,0 +1,187 @@
+/* Read-only presentation functions. No transport, persistence, planner or mutation. */
+(function (root, factory) {
+  const view = factory(typeof module === 'object' && module.exports ? require('./today') : root.KazTodayView, typeof module === 'object' && module.exports ? require('./inbox') : root.KazInboxView);
+  if (typeof module === 'object' && module.exports) module.exports = view;
+  else root.KazPersonalView = view;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (todayView, inboxView) {
+  'use strict';
+  const PROJECT_STATES = ['ACTIVE', 'REVIEW', 'BLOCKED', 'BACKLOG', 'DONE'];
+  const INBOX_KINDS = { human_review: 'Human Review', acceptance: 'Acceptance', blocked: 'Blocked解除', idea: 'Idea', context_candidate: 'Context candidate' };
+  const laneLimits = { now: 1, next: 2, quick_wins: 2, waiting_preview: 2 };
+  const stamp = value => Date.parse(value);
+  const list = value => Array.isArray(value) && value.every(v => v && typeof v.id === 'string' && v.id) && new Set(value.map(v => v.id)).size === value.length ? value : null;
+  function health(source, now = Date.now()) {
+    if (!source) return 'not_connected';
+    if (['failed', 'not_connected', 'stale'].includes(source.status)) return source.status;
+    if (!['ok', 'partial'].includes(source.status)) return 'failed';
+    if (!Number.isFinite(stamp(source.fetched_at)) || !Number.isFinite(stamp(source.valid_until)) || stamp(source.fetched_at) > now || stamp(source.valid_until) <= now) return 'stale';
+    if (!source.source_revision || !source.scope) return 'partial';
+    return source.status === 'ok' && source.complete === true ? 'ok' : 'partial';
+  }
+  function milestones(project, evidence, trustworthy) {
+    if (!trustworthy) return { label: '進捗は確認待ち', known: false };
+    if (Object.hasOwn(project, 'milestones_done') || Object.hasOwn(project, 'milestones_total')) {
+      const done = project.milestones_done, total = project.milestones_total;
+      if (done === null && total === null) return { label: 'milestone未定義', known: false };
+      if (!Number.isInteger(done) || !Number.isInteger(total) || done < 0 || done > total || total <= 0 || !project.source_revision) return { label: 'milestone定義を確認できません', known: false };
+      return { label: `Notion定義 ${done} / ${total} milestones`, known: true, accepted: done, total };
+    }
+    if (project.milestones === null || Array.isArray(project.milestones) && !project.milestones.length) return { label: 'milestone未定義', known: false };
+    const values = list(project.milestones);
+    if (!values || project.milestones_complete !== true) return { label: 'milestone定義を確認できません', known: false };
+    let accepted = 0;
+    for (const m of values) {
+      if (m.accepted === false) continue;
+      const proof = evidence?.[m.evidence_ref];
+      if (m.accepted !== true || !proof || proof.project_id !== project.id || proof.milestone_id !== m.id || proof.decision !== 'ACCEPTED') return { label: 'Acceptance Evidence確認待ち', known: false };
+      accepted++;
+    }
+    return { label: `${accepted} / ${values.length} milestones`, known: true, accepted, total: values.length };
+  }
+  function weekStart(now) {
+    const day = new Date(now + 9 * 3600000);
+    day.setUTCHours(0, 0, 0, 0);
+    day.setUTCDate(day.getUTCDate() - (day.getUTCDay() + 6) % 7);
+    return day.getTime() - 9 * 3600000;
+  }
+  function projectSummary(data, now = Date.now()) {
+    const projects = list(data?.projects);
+    if (!projects || health(data?.sources?.projects, now) !== 'ok' || projects.some(p => !PROJECT_STATES.includes(p.status))) return null;
+    const result = Object.fromEntries(['ACTIVE', 'REVIEW', 'BLOCKED'].map(state => [state, projects.filter(p => p.status === state).length]));
+    const history = data.project_history, ids = new Set(projects.map(p => p.id)), start = weekStart(now);
+    if (health(history?.source, now) === 'ok' && stamp(history.coverage_from) <= start && Array.isArray(history.events)) {
+      result.MOVED = new Set(history.events.filter(e => ids.has(e.project_id) && stamp(e.occurred_at) >= start && stamp(e.occurred_at) <= now &&
+        (e.kind === 'milestone_acceptance' || e.kind === 'state_transition' && e.from_state !== e.to_state)).map(e => e.project_id)).size;
+    }
+    return result;
+  }
+  function route(hash) {
+    const match = /^#kaz-os(?:\/(today|projects|inbox|diagnostics)(?:\/([^/]+))?)?$/.exec(hash || '');
+    if (!match) return { page: 'today', id: null };
+    let id = null;
+    try { if (match[2]) id = decodeURIComponent(match[2]); } catch { /* Invalid URL is not an entity ID. */ }
+    return { page: match[1] || 'today', id };
+  }
+  function render(host, selection, data, now = Date.now(), options = {}) {
+    todayView?.dispose(host);
+    inboxView?.dispose(host);
+    host.replaceChildren();
+    const doc = host.ownerDocument;
+    const el = (tag, text = '', cls = '') => { const n = doc.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
+    const add = (tag, text, cls, parent = host) => { const n = el(tag, text, cls); parent.append(n); return n; };
+    const part = title => { const s = add('section', '', 'kp-section'); add('h2', title, '', s); return s; };
+    const link = (text, page, id, cls = '') => { const a = el('a', text, cls); a.href = `#kaz-os/${page}${id ? '/' + encodeURIComponent(id) : ''}`; return a; };
+    const fold = (text, parent = host) => { const d = add('details', '', 'kp-detail', parent); add('summary', text, '', d); return d; };
+    const fmt = value => Number.isFinite(stamp(value)) ? new Date(value).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) : '時刻未確認';
+    const estimate = value => Number.isFinite(value) && value >= 0 ? `${value}m` : '時間未確認';
+    const state = value => PROJECT_STATES.includes(value) ? value : 'STATUS未確認';
+    const badge = value => el('span', value, 'kp-badge kp-' + (PROJECT_STATES.includes(value) ? value.toLowerCase() : 'unknown'));
+    const sourceState = name => health(data?.sources?.[name], now);
+    function notice(name, parent = host) {
+      const status = sourceState(name);
+      if (status !== 'ok') add('p', `${status.toUpperCase().replace('_', ' ')} · ${status === 'partial' ? '一部情報を取得できていません。表示は取得済み範囲です。' : status === 'not_connected' ? '実データsourceは未接続です。0件ではありません。' : status === 'stale' ? '情報が古いため現況を確定できません。' : name === 'projects' ? 'Projectsを取得できません。0件ではありません。' : '取得できませんでした。0件ではありません。'}`, 'kp-notice', parent);
+      return status;
+    }
+    const projects = list(data?.projects), work = list(data?.work_items);
+    const project = id => projects?.find(p => p.id === id);
+    const wi = id => work?.find(w => w.id === id);
+    function workDetail(w, parent) {
+      const d = fold(`${w.title} · ${w.state} · ${estimate(w.estimate_min)}`, parent);
+      d.dataset.workItem = w.id;
+      add('p', `担当 ${w.next_actor || '未確認'} · ${w.action_instruction || w.title}`, '', d);
+      add('p', `Dependency: ${Array.isArray(w.dependencies) ? w.dependencies.length ? w.dependencies.join(' / ') : 'なし（取得範囲内）' : '未確認'}`, 'kp-muted', d);
+      add('p', `Blocker: ${w.blocker || (w.state === 'BLOCKED' ? '理由の確認が必要' : '未記載')}`, 'kp-muted', d);
+      const evidence = fold('Run / tests / Evidence', d), proof = data?.evidence?.[w.evidence_ref];
+      add('p', `Work Item ${w.id} · revision ${w.revision ?? '未確認'}`, 'kp-muted', evidence);
+      add('p', w.evidence_ref ? `Evidence ref: ${w.evidence_ref}` : 'Evidenceは未取得', 'kp-muted', evidence);
+      if (proof) for (const key of ['run_id', 'execution_status', 'tests_summary', 'human_review_status', 'acceptance_status', 'git_diff_ref']) if (proof[key] != null) add('p', `${key}: ${proof[key]}`, 'kp-muted', evidence);
+      const runs = sourceState('runs') === 'ok' && list(data?.active_runs);
+      if (runs) for (const run of runs.filter(r => r.work_item_id === w.id)) add('p', `Run ${run.id} · ${run.execution_status} · Human Review ${run.human_review_status}`, 'kp-muted', evidence);
+      add('p', '閲覧のみ。Human ReviewとAcceptanceは別の判断です。', 'kp-muted', d);
+      return d;
+    }
+    function progressRow(p, parent, trusted, compact = false) {
+      const notion = data?.origin === 'notion_official_api';
+      const metric = milestones(p, data?.evidence, trusted && sourceState(notion ? 'projects' : 'milestones') === 'ok');
+      const row = add('div', '', 'kp-milestones', parent);
+      if (metric.known) { const bar = el('progress'); bar.max = metric.total; bar.value = metric.accepted; bar.setAttribute('aria-label', `${p.title} ${notion ? 'Notion定義' : 'accepted'} milestones ${metric.accepted} / ${metric.total}`); row.append(bar); }
+      row.append(el('span', compact && metric.known ? `${metric.accepted}/${metric.total}` : metric.label));
+      row.title = metric.label;
+    }
+    if (!['projects','inbox'].includes(selection.page)) {
+      if (todayView) todayView.render(host, data, now, { ...options, health });
+      else host.textContent = 'TODAYの表示moduleを再取得してください。';
+      return;
+    }
+    if (data?.fixture_only === true) add('p', '検証用fixture · 全件架空・実データではありません', 'kp-fixture');
+    if (selection.page === 'projects') {
+      const head = part(selection.id ? 'PROJECT DETAIL' : 'PROJECTS');
+      add('p', 'Kazの全活動を眺める', 'kp-subtitle', head);
+      const healthState = notice('projects', head);
+      if (data?.origin === 'notion_official_api') {
+        const source = data.sources.projects;
+        const fetched = Number.isFinite(stamp(source.fetched_at)) ? new Date(source.fetched_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST' : '取得時刻未確認';
+        add('p', `実データ · Notion / READ-ONLY · ${source.fetch_status} · ${fetched}`, 'kp-muted', head);
+        head.dataset.snapshotRef = source.snapshot_ref || '';
+      }
+      if (!['ok', 'partial'].includes(healthState)) return;
+      if (!projects) { add('p', 'Project一覧を確認できません。重複・欠落を解消してください。', 'kp-notice'); return; }
+      const current = healthState === 'ok';
+      if (selection.id) {
+        head.prepend(link('← PROJECTS', 'projects', null, 'kp-back'));
+        const p = project(selection.id);
+        if (!p) { add('p', 'この取得範囲にProjectが見つかりません。'); return; }
+        add('h3', p.title, 'kp-project-title'); host.append(badge(state(p.status)));
+        add('p', `FOCUS ${p.current_focus || '未設定'}`);
+        progressRow(p, host, current);
+        add('p', `NEXT ${p.next_action || '未設定'}`);
+        if (p.blocker || p.status === 'BLOCKED') add('p', `BLOCKER ${p.blocker || '未確認'}`);
+        const proof = fold('Milestoneの定義とAcceptance');
+        if (Array.isArray(p.milestones)) p.milestones.forEach(m => add('p', `${m.id} · ${m.accepted ? 'Acceptance参照 ' + (m.evidence_ref || '未取得') : '未完了'}`, 'kp-muted', proof));
+        else add('p', p.milestones_done != null ? 'NotionのDone / Total集計値。個別MilestoneのAcceptance Evidenceは未取得。' : 'milestone未定義', 'kp-muted', proof);
+        if (data?.origin === 'notion_official_api') {
+          const reference = fold('取得元 / snapshot参照');
+          add('p', `Notion Project ${p.id} · revision ${p.source_revision}`, 'kp-muted', reference);
+          add('p', data.sources.projects.snapshot_ref || '参照未取得', 'kp-muted', reference);
+        }
+        const items = part('Work Items'); const h = notice('tasks', items);
+        if (!work || !['ok', 'partial'].includes(h)) return;
+        const members = work.filter(w => w.project_id === p.id);
+        add('p', `${members.length}件 · 取得範囲内`, 'kp-muted', items);
+        const terminal = members.filter(w => ['DONE', 'CANCELLED'].includes(w.state));
+        members.filter(w => !terminal.includes(w)).forEach(w => workDetail(w, items));
+        if (terminal.length) { const closed = fold(`終了した項目 ${terminal.length}件`, items); terminal.forEach(w => workDetail(w, closed)); }
+        return;
+      }
+      const summary = projectSummary(data, now);
+      if (summary) {
+        const kpis = add('div', '', 'kp-kpis', head);
+        Object.entries(summary).forEach(([key, count]) => { const n = add('div', '', '', kpis); n.dataset.projectKpi = key; add('strong', String(count), '', n); add('span', key === 'MOVED' ? 'moved this week' : key, '', n); });
+      }
+      add('p', `${projects.length} Projects · ${current ? data.sources.projects.scope : '部分取得'}`, 'kp-muted', head);
+      if (!projects.length) { add('p', 'この取得範囲のProjectは0件です。'); return; }
+      const rows = add('div', '', 'kp-projects');
+      projects.forEach(p => {
+        const row = link('', 'projects', p.id, 'kp-project-row'); row.dataset.projectId = p.id;
+        const title = el('div', '', 'kp-project-head'); title.append(el('strong', p.title), badge(state(p.status))); title.title = p.title; row.append(title);
+        const focus = add('div', p.current_focus || '未設定', 'kp-focus', row); focus.title = p.current_focus || '未設定';
+        const footer = add('div', '', 'kp-project-footer', row);
+        progressRow(p, footer, current, true);
+        const blocked = p.status === 'BLOCKED' || Boolean(p.blocker);
+        const action = blocked ? p.blocker || '理由は未確認' : p.next_action || '未設定';
+        const next = add('div', '', blocked ? 'kp-blocker' : 'kp-next', footer);
+        next.title = `${blocked ? 'Blocker' : '次の行動'}: ${action}`; next.setAttribute('aria-label', next.title);
+        const icon = el('span', blocked ? '⚠' : '⏭'); icon.setAttribute('aria-hidden', 'true');
+        next.append(icon, el('span', action, 'kp-project-action-text'));
+        rows.append(row);
+      });
+      return;
+    }
+    if (selection.page === 'inbox') {
+      if (inboxView) inboxView.render(host, selection, data, now, { ...options, health, workDetail });
+      else host.textContent = 'INBOXの表示moduleを再取得してください。';
+      return;
+    }
+  }
+  return { render, health, milestones, projectSummary, route, weekStart };
+});

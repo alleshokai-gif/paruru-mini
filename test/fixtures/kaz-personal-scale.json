@@ -1,0 +1,2248 @@
+{
+  "fixture_only": true,
+  "production_schema": false,
+  "as_of": "2026-09-14T09:30:00+09:00",
+  "timezone": "Asia/Tokyo",
+  "note": "All identities, tasks, events, approvals, classifications and evidence are synthetic. No external data was fetched.",
+  "projects": [
+    {
+      "id": "fx-p01",
+      "title": "会社A・配送品質",
+      "domain": "company_a",
+      "current_focus": "修正の受入",
+      "next_action": "Human Review 5m",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": [
+        {
+          "id": "fx-m1-1",
+          "accepted": true,
+          "evidence_ref": "fixture:milestone-1-1"
+        },
+        {
+          "id": "fx-m1-2",
+          "accepted": true,
+          "evidence_ref": "fixture:milestone-1-2"
+        },
+        {
+          "id": "fx-m1-3",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m1-4",
+          "accepted": false,
+          "evidence_ref": null
+        }
+      ],
+      "work_item_count": 10,
+      "blocked_count": 0,
+      "status": "進行"
+    },
+    {
+      "id": "fx-p02",
+      "title": "会社A・在庫改善",
+      "domain": "company_a",
+      "current_focus": "棚卸し手順",
+      "next_action": "要点整理 15m",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": [
+        {
+          "id": "fx-m2-1",
+          "accepted": true,
+          "evidence_ref": "fixture:milestone-2-1"
+        },
+        {
+          "id": "fx-m2-2",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m2-3",
+          "accepted": false,
+          "evidence_ref": null
+        }
+      ],
+      "work_item_count": 10,
+      "blocked_count": 0,
+      "status": "進行"
+    },
+    {
+      "id": "fx-p03",
+      "title": "会社B・受注基盤",
+      "domain": "company_b",
+      "current_focus": "見積の比較",
+      "next_action": "比較確認 30m",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": null,
+      "work_item_count": 10,
+      "blocked_count": 0,
+      "status": "進行"
+    },
+    {
+      "id": "fx-p04",
+      "title": "個人・写真整理",
+      "domain": "personal",
+      "current_focus": "重複写真の確認",
+      "next_action": "Human Review 5m",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": [
+        {
+          "id": "fx-m4-1",
+          "accepted": true,
+          "evidence_ref": "fixture:milestone-4-1"
+        },
+        {
+          "id": "fx-m4-2",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m4-3",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m4-4",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m4-5",
+          "accepted": false,
+          "evidence_ref": null
+        }
+      ],
+      "work_item_count": 10,
+      "blocked_count": 0,
+      "status": "進行"
+    },
+    {
+      "id": "fx-p05",
+      "title": "家庭・住環境",
+      "domain": "family",
+      "current_focus": "修繕の段取り",
+      "next_action": "質問を整理 10m",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": [
+        {
+          "id": "fx-m5-1",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m5-2",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m5-3",
+          "accepted": false,
+          "evidence_ref": null
+        }
+      ],
+      "work_item_count": 10,
+      "blocked_count": 0,
+      "status": "進行"
+    },
+    {
+      "id": "fx-p06",
+      "title": "個人・読書記録",
+      "domain": "personal",
+      "current_focus": "自動整理の検証",
+      "next_action": "AI結果の確認待ち",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": null,
+      "work_item_count": 10,
+      "blocked_count": 1,
+      "status": "進行"
+    },
+    {
+      "id": "fx-p07",
+      "title": "会社B・月次集計",
+      "domain": "company_b",
+      "current_focus": "必要データの回収",
+      "next_action": "担当者の回答待ち",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": [
+        {
+          "id": "fx-m7-1",
+          "accepted": true,
+          "evidence_ref": "fixture:milestone-7-1"
+        },
+        {
+          "id": "fx-m7-2",
+          "accepted": true,
+          "evidence_ref": "fixture:milestone-7-2"
+        },
+        {
+          "id": "fx-m7-3",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m7-4",
+          "accepted": false,
+          "evidence_ref": null
+        }
+      ],
+      "work_item_count": 10,
+      "blocked_count": 0,
+      "status": "進行"
+    },
+    {
+      "id": "fx-p08",
+      "title": "個人・Kaz OS",
+      "domain": "personal",
+      "current_focus": "日常動線の検証",
+      "next_action": "Acceptance 10m",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": [
+        {
+          "id": "fx-m8-1",
+          "accepted": true,
+          "evidence_ref": "fixture:milestone-8-1"
+        },
+        {
+          "id": "fx-m8-2",
+          "accepted": true,
+          "evidence_ref": "fixture:milestone-8-2"
+        },
+        {
+          "id": "fx-m8-3",
+          "accepted": true,
+          "evidence_ref": "fixture:milestone-8-3"
+        },
+        {
+          "id": "fx-m8-4",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m8-5",
+          "accepted": false,
+          "evidence_ref": null
+        }
+      ],
+      "work_item_count": 10,
+      "blocked_count": 0,
+      "status": "進行"
+    },
+    {
+      "id": "fx-p09",
+      "title": "家庭・学校予定",
+      "domain": "family",
+      "current_focus": "共有予定の分類",
+      "next_action": "本人関与を確認 5m",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": [
+        {
+          "id": "fx-m9-1",
+          "accepted": false,
+          "evidence_ref": null
+        },
+        {
+          "id": "fx-m9-2",
+          "accepted": false,
+          "evidence_ref": null
+        }
+      ],
+      "work_item_count": 10,
+      "blocked_count": 1,
+      "status": "要判断"
+    },
+    {
+      "id": "fx-p10",
+      "title": "個人・健康習慣",
+      "domain": "personal",
+      "current_focus": "生活時間の確認",
+      "next_action": "本人関与を確認 10m",
+      "configuration_origin": "synthetic_design_fixture",
+      "milestones": null,
+      "work_item_count": 10,
+      "blocked_count": 1,
+      "status": "要判断"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "fx-w001",
+      "project_id": "fx-p01",
+      "title": "配送ルール修正を確認",
+      "state": "HUMAN_REVIEW",
+      "next_actor": "kaz",
+      "estimate_min": 5,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "human_review",
+      "evidence_ref": "fixture:evidence-fx-w001"
+    },
+    {
+      "id": "fx-w002",
+      "project_id": "fx-p02",
+      "title": "監査メモの要点を整理",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w003",
+      "project_id": "fx-p03",
+      "title": "見積の比較を確認",
+      "state": "SCHEDULED",
+      "next_actor": "kaz",
+      "estimate_min": 30,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work",
+      "scheduled_start": "2026-09-14T10:30:00+09:00",
+      "scheduled_end": "2026-09-14T11:00:00+09:00"
+    },
+    {
+      "id": "fx-w004",
+      "project_id": "fx-p04",
+      "title": "写真整理の結果を確認",
+      "state": "HUMAN_REVIEW",
+      "next_actor": "kaz",
+      "estimate_min": 5,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "human_review",
+      "evidence_ref": "fixture:evidence-fx-w004"
+    },
+    {
+      "id": "fx-w005",
+      "project_id": "fx-p05",
+      "title": "修理業者への質問を整理",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 10,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w006",
+      "project_id": "fx-p06",
+      "title": "読書メモを更新",
+      "state": "CODEX_RUNNING",
+      "next_actor": "other",
+      "estimate_min": 30,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "await_ai"
+    },
+    {
+      "id": "fx-w007",
+      "project_id": "fx-p07",
+      "title": "月次データの回答待ち",
+      "state": "WAITING",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "await_external"
+    },
+    {
+      "id": "fx-w008",
+      "project_id": "fx-p08",
+      "title": "終了条件を確認",
+      "state": "ACCEPTANCE",
+      "next_actor": "kaz",
+      "estimate_min": 10,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "acceptance",
+      "evidence_ref": "fixture:evidence-fx-w008"
+    },
+    {
+      "id": "fx-w009",
+      "project_id": "fx-p09",
+      "title": "09:50予定への本人関与を確認",
+      "state": "BLOCKED",
+      "next_actor": "kaz",
+      "estimate_min": 5,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "unblock",
+      "resume_to": "READY",
+      "calendar_event_ref": "fx-e04"
+    },
+    {
+      "id": "fx-w010",
+      "project_id": "fx-p10",
+      "title": "16:00予定への本人関与を確認",
+      "state": "BLOCKED",
+      "next_actor": "kaz",
+      "estimate_min": 10,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "unblock",
+      "resume_to": "READY",
+      "calendar_event_ref": "fx-e10"
+    },
+    {
+      "id": "fx-w011",
+      "project_id": "fx-p01",
+      "title": "配送手順書を整理",
+      "state": "SCHEDULED",
+      "next_actor": "kaz",
+      "estimate_min": 40,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work",
+      "scheduled_start": "2026-09-14T13:30:00+09:00",
+      "scheduled_end": "2026-09-14T14:10:00+09:00"
+    },
+    {
+      "id": "fx-w012",
+      "project_id": "fx-p02",
+      "title": "棚卸し手順・作業012",
+      "state": "DOING",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [
+        "fx-w006"
+      ],
+      "filter_reason": "dependency_not_done",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w013",
+      "project_id": "fx-p03",
+      "title": "見積の比較・作業013",
+      "state": "CODEX_RUNNING",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "await_ai"
+    },
+    {
+      "id": "fx-w014",
+      "project_id": "fx-p04",
+      "title": "重複写真の確認・作業014",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w015",
+      "project_id": "fx-p05",
+      "title": "修繕の段取り・作業015",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w016",
+      "project_id": "fx-p06",
+      "title": "自動整理の検証・作業016",
+      "state": "WAITING",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "await_external"
+    },
+    {
+      "id": "fx-w017",
+      "project_id": "fx-p07",
+      "title": "必要データの回収・作業017",
+      "state": "HUMAN_REVIEW",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "human_review"
+    },
+    {
+      "id": "fx-w018",
+      "project_id": "fx-p08",
+      "title": "日常動線の検証・作業018",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w019",
+      "project_id": "fx-p09",
+      "title": "共有予定の分類・作業019",
+      "state": "WAITING",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "await_external"
+    },
+    {
+      "id": "fx-w020",
+      "project_id": "fx-p10",
+      "title": "生活時間の確認・作業020",
+      "state": "ACCEPTANCE",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "acceptance"
+    },
+    {
+      "id": "fx-w021",
+      "project_id": "fx-p01",
+      "title": "修正の受入・作業021",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w022",
+      "project_id": "fx-p02",
+      "title": "棚卸し手順・作業022",
+      "state": "CODEX_RUNNING",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "await_ai"
+    },
+    {
+      "id": "fx-w023",
+      "project_id": "fx-p03",
+      "title": "見積の比較・作業023",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w024",
+      "project_id": "fx-p04",
+      "title": "重複写真の確認・作業024",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w025",
+      "project_id": "fx-p05",
+      "title": "修繕の段取り・作業025",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w026",
+      "project_id": "fx-p06",
+      "title": "自動整理の検証・作業026",
+      "state": "BLOCKED",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "unblock",
+      "resume_to": "READY"
+    },
+    {
+      "id": "fx-w027",
+      "project_id": "fx-p07",
+      "title": "必要データの回収・作業027",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w028",
+      "project_id": "fx-p08",
+      "title": "日常動線の検証・作業028",
+      "state": "HUMAN_REVIEW",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "human_review"
+    },
+    {
+      "id": "fx-w029",
+      "project_id": "fx-p09",
+      "title": "共有予定の分類・作業029",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w030",
+      "project_id": "fx-p10",
+      "title": "生活時間の確認・作業030",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w031",
+      "project_id": "fx-p01",
+      "title": "修正の受入・作業031",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w032",
+      "project_id": "fx-p02",
+      "title": "棚卸し手順・作業032",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w033",
+      "project_id": "fx-p03",
+      "title": "受注テストの確認",
+      "state": "SCHEDULED",
+      "next_actor": "kaz",
+      "estimate_min": 45,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work",
+      "scheduled_start": "2026-09-14T15:00:00+09:00",
+      "scheduled_end": "2026-09-14T15:45:00+09:00"
+    },
+    {
+      "id": "fx-w034",
+      "project_id": "fx-p04",
+      "title": "重複写真の確認・作業034",
+      "state": "DOING",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [
+        "fx-w006"
+      ],
+      "filter_reason": "dependency_not_done",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w035",
+      "project_id": "fx-p05",
+      "title": "修繕の段取り・作業035",
+      "state": "WAITING",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "await_external"
+    },
+    {
+      "id": "fx-w036",
+      "project_id": "fx-p06",
+      "title": "自動整理の検証・作業036",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w037",
+      "project_id": "fx-p07",
+      "title": "必要データの回収・作業037",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w038",
+      "project_id": "fx-p08",
+      "title": "日常動線の検証・作業038",
+      "state": "CODEX_RUNNING",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "await_ai"
+    },
+    {
+      "id": "fx-w039",
+      "project_id": "fx-p09",
+      "title": "共有予定の分類・作業039",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w040",
+      "project_id": "fx-p10",
+      "title": "生活時間の確認・作業040",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w041",
+      "project_id": "fx-p01",
+      "title": "修正の受入・作業041",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w042",
+      "project_id": "fx-p02",
+      "title": "棚卸し手順・作業042",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w043",
+      "project_id": "fx-p03",
+      "title": "見積の比較・作業043",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w044",
+      "project_id": "fx-p04",
+      "title": "写真フォルダを整理",
+      "state": "SCHEDULED",
+      "next_actor": "kaz",
+      "estimate_min": 30,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work",
+      "scheduled_start": "2026-09-14T18:30:00+09:00",
+      "scheduled_end": "2026-09-14T19:00:00+09:00"
+    },
+    {
+      "id": "fx-w045",
+      "project_id": "fx-p05",
+      "title": "修繕の段取り・作業045",
+      "state": "CODEX_RUNNING",
+      "next_actor": "other",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "await_ai"
+    },
+    {
+      "id": "fx-w046",
+      "project_id": "fx-p06",
+      "title": "自動整理の検証・作業046",
+      "state": "DONE",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w047",
+      "project_id": "fx-p07",
+      "title": "必要データの回収・作業047",
+      "state": "CANCELLED",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w048",
+      "project_id": "fx-p08",
+      "title": "日常動線の検証・作業048",
+      "state": "CANCELLED",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w049",
+      "project_id": "fx-p09",
+      "title": "共有予定の分類・作業049",
+      "state": "CANCELLED",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w050",
+      "project_id": "fx-p10",
+      "title": "生活時間の確認・作業050",
+      "state": "CANCELLED",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w051",
+      "project_id": "fx-p01",
+      "title": "修正の受入・作業051",
+      "state": "CANCELLED",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w052",
+      "project_id": "fx-p02",
+      "title": "棚卸し手順・作業052",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w053",
+      "project_id": "fx-p03",
+      "title": "見積の比較・作業053",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w054",
+      "project_id": "fx-p04",
+      "title": "重複写真の確認・作業054",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w055",
+      "project_id": "fx-p05",
+      "title": "修繕の段取り・作業055",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w056",
+      "project_id": "fx-p06",
+      "title": "自動整理の検証・作業056",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w057",
+      "project_id": "fx-p07",
+      "title": "必要データの回収・作業057",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w058",
+      "project_id": "fx-p08",
+      "title": "日常動線の検証・作業058",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w059",
+      "project_id": "fx-p09",
+      "title": "共有予定の分類・作業059",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w060",
+      "project_id": "fx-p10",
+      "title": "生活時間の確認・作業060",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w061",
+      "project_id": "fx-p01",
+      "title": "修正の受入・作業061",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w062",
+      "project_id": "fx-p02",
+      "title": "棚卸し手順・作業062",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w063",
+      "project_id": "fx-p03",
+      "title": "見積の比較・作業063",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w064",
+      "project_id": "fx-p04",
+      "title": "重複写真の確認・作業064",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w065",
+      "project_id": "fx-p05",
+      "title": "修繕内容の確認",
+      "state": "SCHEDULED",
+      "next_actor": "kaz",
+      "estimate_min": 20,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "not_before_tomorrow",
+      "action_kind": "work",
+      "not_before": "2026-09-15T10:30:00+09:00"
+    },
+    {
+      "id": "fx-w066",
+      "project_id": "fx-p06",
+      "title": "自動整理の検証・作業066",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w067",
+      "project_id": "fx-p07",
+      "title": "必要データの回収・作業067",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w068",
+      "project_id": "fx-p08",
+      "title": "日常動線の検証・作業068",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w069",
+      "project_id": "fx-p09",
+      "title": "共有予定の分類・作業069",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w070",
+      "project_id": "fx-p10",
+      "title": "生活時間の確認・作業070",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w071",
+      "project_id": "fx-p01",
+      "title": "修正の受入・作業071",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w072",
+      "project_id": "fx-p02",
+      "title": "棚卸し手順・作業072",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w073",
+      "project_id": "fx-p03",
+      "title": "見積の比較・作業073",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w074",
+      "project_id": "fx-p04",
+      "title": "重複写真の確認・作業074",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w075",
+      "project_id": "fx-p05",
+      "title": "修繕の段取り・作業075",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w076",
+      "project_id": "fx-p06",
+      "title": "自動整理の検証・作業076",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w077",
+      "project_id": "fx-p07",
+      "title": "必要データの回収・作業077",
+      "state": "BACKLOG",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w078",
+      "project_id": "fx-p08",
+      "title": "日常動線の検証・作業078",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [
+        "fx-w006"
+      ],
+      "filter_reason": "dependency_not_done",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w079",
+      "project_id": "fx-p09",
+      "title": "共有予定の分類・作業079",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [
+        "fx-w006"
+      ],
+      "filter_reason": "dependency_not_done",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w080",
+      "project_id": "fx-p10",
+      "title": "生活時間の確認・作業080",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [
+        "fx-w006"
+      ],
+      "filter_reason": "dependency_not_done",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w081",
+      "project_id": "fx-p01",
+      "title": "修正の受入・作業081",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [
+        "fx-w006"
+      ],
+      "filter_reason": "dependency_not_done",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w082",
+      "project_id": "fx-p02",
+      "title": "棚卸し手順・作業082",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [
+        "fx-w006"
+      ],
+      "filter_reason": "dependency_not_done",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w083",
+      "project_id": "fx-p03",
+      "title": "見積の比較・作業083",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "not_before_tomorrow",
+      "action_kind": "work",
+      "not_before": "2026-09-15T09:00:00+09:00"
+    },
+    {
+      "id": "fx-w084",
+      "project_id": "fx-p04",
+      "title": "重複写真の確認・作業084",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "not_before_tomorrow",
+      "action_kind": "work",
+      "not_before": "2026-09-15T09:00:00+09:00"
+    },
+    {
+      "id": "fx-w085",
+      "project_id": "fx-p05",
+      "title": "修繕の段取り・作業085",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "not_before_tomorrow",
+      "action_kind": "work",
+      "not_before": "2026-09-15T09:00:00+09:00"
+    },
+    {
+      "id": "fx-w086",
+      "project_id": "fx-p06",
+      "title": "自動整理の検証・作業086",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "not_before_tomorrow",
+      "action_kind": "work",
+      "not_before": "2026-09-15T09:00:00+09:00"
+    },
+    {
+      "id": "fx-w087",
+      "project_id": "fx-p07",
+      "title": "必要データの回収・作業087",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "context_unavailable",
+      "action_kind": "work",
+      "required_context": "unavailable_secure_workstation"
+    },
+    {
+      "id": "fx-w088",
+      "project_id": "fx-p08",
+      "title": "日常動線の検証・作業088",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "context_unavailable",
+      "action_kind": "work",
+      "required_context": "unavailable_secure_workstation"
+    },
+    {
+      "id": "fx-w089",
+      "project_id": "fx-p09",
+      "title": "共有予定の分類・作業089",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "context_unavailable",
+      "action_kind": "work",
+      "required_context": "unavailable_secure_workstation"
+    },
+    {
+      "id": "fx-w090",
+      "project_id": "fx-p10",
+      "title": "生活時間の確認・作業090",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "context_unavailable",
+      "action_kind": "work",
+      "required_context": "unavailable_secure_workstation"
+    },
+    {
+      "id": "fx-w091",
+      "project_id": "fx-p01",
+      "title": "修正の受入・作業091",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 180,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "no_fitting_window",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w092",
+      "project_id": "fx-p02",
+      "title": "棚卸し手順・作業092",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 180,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "no_fitting_window",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w093",
+      "project_id": "fx-p03",
+      "title": "見積の比較・作業093",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 180,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": "no_fitting_window",
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w094",
+      "project_id": "fx-p04",
+      "title": "重複写真の確認・作業094",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w095",
+      "project_id": "fx-p05",
+      "title": "修繕の段取り・作業095",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w096",
+      "project_id": "fx-p06",
+      "title": "自動整理の検証・作業096",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w097",
+      "project_id": "fx-p07",
+      "title": "必要データの回収・作業097",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w098",
+      "project_id": "fx-p08",
+      "title": "日常動線の検証・作業098",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w099",
+      "project_id": "fx-p09",
+      "title": "共有予定の分類・作業099",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    },
+    {
+      "id": "fx-w100",
+      "project_id": "fx-p10",
+      "title": "生活時間の確認・作業100",
+      "state": "READY",
+      "next_actor": "kaz",
+      "estimate_min": 15,
+      "synthetic": true,
+      "revision": 1,
+      "source_ref": "fixture:work-items-v1",
+      "dependencies": [],
+      "filter_reason": null,
+      "action_kind": "work"
+    }
+  ],
+  "calendar_events": [
+    {
+      "id": "fx-e01",
+      "title": "朝の食事",
+      "start": "2026-09-14T07:00:00+09:00",
+      "end": "2026-09-14T07:30:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e02",
+      "title": "移動",
+      "start": "2026-09-14T08:00:00+09:00",
+      "end": "2026-09-14T08:30:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e03",
+      "title": "家族の活動",
+      "start": "2026-09-14T08:45:00+09:00",
+      "end": "2026-09-14T09:00:00+09:00",
+      "impact_on_kaz": "informational",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e04",
+      "title": "共有予定A",
+      "start": "2026-09-14T09:50:00+09:00",
+      "end": "2026-09-14T10:00:00+09:00",
+      "impact_on_kaz": "unknown",
+      "classification_source": "unknown",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e05",
+      "title": "会社Aの打合せ",
+      "start": "2026-09-14T10:00:00+09:00",
+      "end": "2026-09-14T10:30:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e06",
+      "title": "会社Bの打合せ",
+      "start": "2026-09-14T11:30:00+09:00",
+      "end": "2026-09-14T12:00:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e07",
+      "title": "昼休み",
+      "start": "2026-09-14T12:00:00+09:00",
+      "end": "2026-09-14T13:00:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e08",
+      "title": "移動",
+      "start": "2026-09-14T13:00:00+09:00",
+      "end": "2026-09-14T13:30:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e09",
+      "title": "会社Aの打合せ",
+      "start": "2026-09-14T14:30:00+09:00",
+      "end": "2026-09-14T15:00:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e10",
+      "title": "共有予定B",
+      "start": "2026-09-14T16:00:00+09:00",
+      "end": "2026-09-14T16:15:00+09:00",
+      "impact_on_kaz": "unknown",
+      "classification_source": "unknown",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e11",
+      "title": "家族の送迎",
+      "start": "2026-09-14T17:30:00+09:00",
+      "end": "2026-09-14T18:00:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e12",
+      "title": "夕食",
+      "start": "2026-09-14T19:00:00+09:00",
+      "end": "2026-09-14T19:30:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e13",
+      "title": "家族の活動",
+      "start": "2026-09-14T20:00:00+09:00",
+      "end": "2026-09-14T20:30:00+09:00",
+      "impact_on_kaz": "informational",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e14",
+      "title": "翌日の準備",
+      "start": "2026-09-14T21:00:00+09:00",
+      "end": "2026-09-14T21:15:00+09:00",
+      "impact_on_kaz": "soft_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    },
+    {
+      "id": "fx-e15",
+      "title": "翌朝の起床",
+      "start": "2026-09-15T07:00:00+09:00",
+      "end": "2026-09-15T07:15:00+09:00",
+      "impact_on_kaz": "hard_constraint",
+      "classification_source": "fixture_user_confirmation",
+      "synthetic": true
+    }
+  ],
+  "inbox_items": [
+    {
+      "id": "fx-i01",
+      "kind": "human_review",
+      "entity_ref": "fx-w001",
+      "estimate_min": 5,
+      "urgent_today": true,
+      "owner": "kaz",
+      "synthetic": true,
+      "decision_requested": true
+    },
+    {
+      "id": "fx-i02",
+      "kind": "human_review",
+      "entity_ref": "fx-w004",
+      "estimate_min": 5,
+      "urgent_today": false,
+      "owner": "kaz",
+      "synthetic": true,
+      "decision_requested": true
+    },
+    {
+      "id": "fx-i03",
+      "kind": "acceptance",
+      "entity_ref": "fx-w008",
+      "estimate_min": 10,
+      "urgent_today": true,
+      "owner": "kaz",
+      "synthetic": true,
+      "decision_requested": true
+    },
+    {
+      "id": "fx-i04",
+      "kind": "blocked",
+      "entity_ref": "fx-w009",
+      "estimate_min": 5,
+      "urgent_today": true,
+      "owner": "kaz",
+      "synthetic": true,
+      "decision_requested": true
+    },
+    {
+      "id": "fx-i05",
+      "kind": "blocked",
+      "entity_ref": "fx-w010",
+      "estimate_min": 10,
+      "urgent_today": false,
+      "owner": "kaz",
+      "synthetic": true,
+      "decision_requested": true
+    },
+    {
+      "id": "fx-i06",
+      "kind": "idea",
+      "entity_ref": "fx-idea01",
+      "estimate_min": 2,
+      "urgent_today": false,
+      "owner": "kaz",
+      "synthetic": true,
+      "decision_requested": true
+    },
+    {
+      "id": "fx-i07",
+      "kind": "idea",
+      "entity_ref": "fx-idea02",
+      "estimate_min": 3,
+      "urgent_today": false,
+      "owner": "kaz",
+      "synthetic": true,
+      "decision_requested": true
+    },
+    {
+      "id": "fx-i08",
+      "kind": "context_candidate",
+      "entity_ref": "fx-candidate01",
+      "estimate_min": 5,
+      "urgent_today": false,
+      "owner": "kaz",
+      "synthetic": true,
+      "decision_requested": true
+    }
+  ],
+  "active_runs": [
+    {
+      "id": "fx-run01",
+      "work_item_id": "fx-w006",
+      "execution_status": "running",
+      "human_review_status": "not_started",
+      "synthetic": true
+    },
+    {
+      "id": "fx-run02",
+      "work_item_id": "fx-w013",
+      "execution_status": "running",
+      "human_review_status": "not_started",
+      "synthetic": true
+    },
+    {
+      "id": "fx-run03",
+      "work_item_id": "fx-w022",
+      "execution_status": "running",
+      "human_review_status": "not_started",
+      "synthetic": true
+    },
+    {
+      "id": "fx-run04",
+      "work_item_id": "fx-w038",
+      "execution_status": "running",
+      "human_review_status": "not_started",
+      "synthetic": true
+    },
+    {
+      "id": "fx-run05",
+      "work_item_id": "fx-w045",
+      "execution_status": "running",
+      "human_review_status": "not_started",
+      "synthetic": true
+    }
+  ],
+  "ideas": [
+    {
+      "id": "fx-idea01",
+      "project_id": "fx-p05",
+      "title": "休日の片付け案"
+    },
+    {
+      "id": "fx-idea02",
+      "project_id": "fx-p06",
+      "title": "読書メモ整理の案"
+    }
+  ],
+  "context_candidates": [
+    {
+      "id": "fx-candidate01",
+      "project_id": "fx-p01",
+      "title": "手順変更の判断を候補化",
+      "curated": false
+    }
+  ],
+  "availability": {
+    "origin": "fixture_user_confirmation",
+    "windows": [
+      [
+        "09:30",
+        "09:50"
+      ],
+      [
+        "10:30",
+        "11:00"
+      ],
+      [
+        "13:30",
+        "14:10"
+      ],
+      [
+        "15:00",
+        "15:45"
+      ],
+      [
+        "18:30",
+        "19:00"
+      ]
+    ]
+  },
+  "sleep": {
+    "wake": "07:00",
+    "development_stop": "22:00",
+    "sleep_target": "23:00",
+    "next_wake": "07:00",
+    "sleep_duration_min": 480,
+    "origin": "fixture_user_confirmation"
+  },
+  "energy": {
+    "value": "medium",
+    "source": "fixture_user_confirmation",
+    "valid_from": "2026-09-14T07:00:00+09:00",
+    "valid_until": "2026-09-14T22:00:00+09:00"
+  },
+  "today": {
+    "plan": [
+      {
+        "work_item_id": "fx-w001",
+        "start": "09:30",
+        "end": "09:35",
+        "origin": "proposal"
+      },
+      {
+        "work_item_id": "fx-w002",
+        "start": "09:35",
+        "end": "09:50",
+        "origin": "proposal"
+      },
+      {
+        "work_item_id": "fx-w003",
+        "start": "10:30",
+        "end": "11:00",
+        "origin": "fixed_fixture_plan"
+      },
+      {
+        "work_item_id": "fx-w011",
+        "start": "13:30",
+        "end": "14:10",
+        "origin": "fixed_fixture_plan"
+      },
+      {
+        "work_item_id": "fx-w033",
+        "start": "15:00",
+        "end": "15:45",
+        "origin": "fixed_fixture_plan"
+      },
+      {
+        "work_item_id": "fx-w044",
+        "start": "18:30",
+        "end": "19:00",
+        "origin": "fixed_fixture_plan"
+      }
+    ],
+    "now": [
+      "fx-w001"
+    ],
+    "next": [
+      "fx-w002",
+      "fx-w003"
+    ],
+    "quick_wins": [
+      "fx-w004",
+      "fx-w005"
+    ],
+    "waiting_preview": [
+      "fx-w006",
+      "fx-w007"
+    ],
+    "quick_wins_are_alternatives": true,
+    "candidates": [
+      "fx-w001",
+      "fx-w002",
+      "fx-w003",
+      "fx-w004",
+      "fx-w005",
+      "fx-w008",
+      "fx-w009",
+      "fx-w010",
+      "fx-w011",
+      "fx-w033",
+      "fx-w044",
+      "fx-w094",
+      "fx-w095",
+      "fx-w096",
+      "fx-w097",
+      "fx-w098",
+      "fx-w099",
+      "fx-w100"
+    ]
+  },
+  "input_sources": {
+    "tasks": {
+      "status": "ok",
+      "complete": true,
+      "fetched_at": "2026-09-14T09:30:00+09:00",
+      "source_revision": "fixture:r1",
+      "scope": "explicit synthetic authorized scope"
+    },
+    "runs": {
+      "status": "ok",
+      "complete": true,
+      "fetched_at": "2026-09-14T09:30:00+09:00",
+      "source_revision": "fixture:r1",
+      "scope": "explicit synthetic authorized scope"
+    },
+    "calendar": {
+      "status": "ok",
+      "complete": true,
+      "fetched_at": "2026-09-14T09:30:00+09:00",
+      "source_revision": "fixture:r1",
+      "scope": "explicit synthetic authorized scope"
+    },
+    "constraints": {
+      "status": "ok",
+      "complete": true,
+      "fetched_at": "2026-09-14T09:30:00+09:00",
+      "source_revision": "fixture:r1",
+      "scope": "explicit synthetic authorized scope"
+    },
+    "project_context": {
+      "status": "ok",
+      "complete": true,
+      "fetched_at": "2026-09-14T09:30:00+09:00",
+      "source_revision": "fixture:r1",
+      "scope": "explicit synthetic authorized scope"
+    }
+  },
+  "evidence": {
+    "fixture:milestone-1-1": {
+      "kind": "milestone_acceptance",
+      "milestone_id": "fx-m1-1",
+      "project_id": "fx-p01",
+      "decision": "ACCEPTED",
+      "authority": "synthetic_design_fixture",
+      "not_real_user_approval": true
+    },
+    "fixture:milestone-1-2": {
+      "kind": "milestone_acceptance",
+      "milestone_id": "fx-m1-2",
+      "project_id": "fx-p01",
+      "decision": "ACCEPTED",
+      "authority": "synthetic_design_fixture",
+      "not_real_user_approval": true
+    },
+    "fixture:milestone-2-1": {
+      "kind": "milestone_acceptance",
+      "milestone_id": "fx-m2-1",
+      "project_id": "fx-p02",
+      "decision": "ACCEPTED",
+      "authority": "synthetic_design_fixture",
+      "not_real_user_approval": true
+    },
+    "fixture:milestone-4-1": {
+      "kind": "milestone_acceptance",
+      "milestone_id": "fx-m4-1",
+      "project_id": "fx-p04",
+      "decision": "ACCEPTED",
+      "authority": "synthetic_design_fixture",
+      "not_real_user_approval": true
+    },
+    "fixture:milestone-7-1": {
+      "kind": "milestone_acceptance",
+      "milestone_id": "fx-m7-1",
+      "project_id": "fx-p07",
+      "decision": "ACCEPTED",
+      "authority": "synthetic_design_fixture",
+      "not_real_user_approval": true
+    },
+    "fixture:milestone-7-2": {
+      "kind": "milestone_acceptance",
+      "milestone_id": "fx-m7-2",
+      "project_id": "fx-p07",
+      "decision": "ACCEPTED",
+      "authority": "synthetic_design_fixture",
+      "not_real_user_approval": true
+    },
+    "fixture:milestone-8-1": {
+      "kind": "milestone_acceptance",
+      "milestone_id": "fx-m8-1",
+      "project_id": "fx-p08",
+      "decision": "ACCEPTED",
+      "authority": "synthetic_design_fixture",
+      "not_real_user_approval": true
+    },
+    "fixture:milestone-8-2": {
+      "kind": "milestone_acceptance",
+      "milestone_id": "fx-m8-2",
+      "project_id": "fx-p08",
+      "decision": "ACCEPTED",
+      "authority": "synthetic_design_fixture",
+      "not_real_user_approval": true
+    },
+    "fixture:milestone-8-3": {
+      "kind": "milestone_acceptance",
+      "milestone_id": "fx-m8-3",
+      "project_id": "fx-p08",
+      "decision": "ACCEPTED",
+      "authority": "synthetic_design_fixture",
+      "not_real_user_approval": true
+    },
+    "fixture:evidence-fx-w001": {
+      "kind": "historical_run_evidence",
+      "work_item_id": "fx-w001",
+      "execution_status": "completed",
+      "capture_status": "complete",
+      "human_review_status": "pending",
+      "tests": {
+        "passed": 2,
+        "total": 2
+      },
+      "authority": "synthetic_design_fixture",
+      "not_real_execution": true
+    },
+    "fixture:evidence-fx-w004": {
+      "kind": "historical_run_evidence",
+      "work_item_id": "fx-w004",
+      "execution_status": "completed",
+      "capture_status": "complete",
+      "human_review_status": "pending",
+      "tests": {
+        "passed": 3,
+        "total": 3
+      },
+      "authority": "synthetic_design_fixture",
+      "not_real_execution": true
+    },
+    "fixture:evidence-fx-w008": {
+      "kind": "historical_run_evidence",
+      "work_item_id": "fx-w008",
+      "execution_status": "completed",
+      "capture_status": "complete",
+      "human_review_status": "ACCEPTED",
+      "tests": {
+        "passed": 4,
+        "total": 4
+      },
+      "authority": "synthetic_design_fixture",
+      "not_real_execution": true
+    }
+  }
+}

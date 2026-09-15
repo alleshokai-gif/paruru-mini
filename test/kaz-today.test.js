@@ -1,0 +1,62 @@
+'use strict';
+const assert=require('node:assert/strict');
+const today=require('../features/kaz-os/today');
+const {health}=require('../features/kaz-os/personal');
+const {fixture}=require('./fixtures/kaz-personal-view');
+const at=Date.parse('2026-09-14T09:30:00+09:00');
+const project=(data,now=at)=>today.derive(data,now,health);
+const tests=[];function test(name,run){run();tests.push(name);}
+test('scale fixture and bounded visible lanes',()=>{
+  const d=fixture(),v=project(d);
+  assert.deepEqual([d.work_items.length,d.projects.length,d.calendar_events.length,d.inbox_items.length,d.active_runs.length],[100,10,15,8,5]);
+  assert.deepEqual([v.now_items.length,v.next_items.length,v.quick_items.length,v.waiting_items.length],[1,2,2,2]);
+  d.today.now=d.work_items.map(w=>w.id);d.today.next=d.work_items.map(w=>w.id);d.today.quick_wins=d.work_items.map(w=>w.id);
+  const many=project(d);assert(many.now_items.length<=1&&many.next_items.length<=2&&many.quick_items.length<=2&&many.waiting_items.length<=2);
+});
+test('next fixed 10:00 but only 20 confirmed minutes',()=>{const v=project(fixture());assert.equal(v.context.next_fixed.start,Date.parse('2026-09-14T10:00:00+09:00'));assert.equal(v.context.available_min,20);assert.equal(v.context.unknown_count,2);});
+test('sleep stop and wake are explicit constraints',()=>{const v=project(fixture());assert.equal(v.context.stop,Date.parse('2026-09-14T22:00:00+09:00'));assert.equal(v.context.bed,Date.parse('2026-09-14T23:00:00+09:00'));assert.equal(v.context.next_wake,Date.parse('2026-09-15T07:00:00+09:00'));});
+test('missing or inferred sleep is not supplied',()=>{for(const kind of ['missing','inferred']){const d=fixture();if(kind==='missing')delete d.day_context;else d.day_context.origin='inferred';const v=project(d);assert.equal(v.context.stop,null);assert.equal(v.now_items.length,0);assert(v.needs_input);}});
+test('next time certainty is distinct',()=>assert.deepEqual(project(fixture()).next_items.map(x=>x.block.certainty),['proposal','scheduled']));
+test('false adoption cannot become a fixed schedule',()=>{const d=fixture();d.today.plan[2].adoption_ref=null;const v=project(d);assert(!v.next_items.some(x=>x.work.id==='fx-w003'));});
+test('scheduled source and plan time mismatch suppressed',()=>{const d=fixture();d.work_items.find(w=>w.id==='fx-w003').scheduled_start='2026-09-14T12:00:00+09:00';assert(!project(d).next_items.some(x=>x.work.id==='fx-w003'));});
+test('quick wins require leverage and evidence',()=>{const d=fixture();delete d.today.recommendations['fx-w004'];delete d.evidence['fixture:unlock-w005'];assert.equal(project(d).quick_items.length,0);});
+test('tiny Task with no leverage is not chosen',()=>{const d=fixture();d.today.quick_wins=['fx-w002'];d.work_items[1].estimate_min=1;assert.equal(project(d).quick_items.length,0);});
+test('active Run cannot appear as personal Action',()=>{const d=fixture();d.active_runs.push({id:'extra-run',work_item_id:'fx-w001',execution_status:'running'});assert.equal(project(d).now_items.length,0);});
+test('dependency must be DONE',()=>{const d=fixture();d.work_items[0].dependencies=['fx-w002'];assert.equal(project(d).now_items.length,0);});
+test('BLOCKED unblock Action can be a leveraged quick win without completing task',()=>{
+  const d=fixture(),w=d.work_items.find(w=>w.id==='fx-w009');w.action_kind='unblock';w.action_instruction='予定の本人関与を確認';w.dependencies=[];
+  d.today.quick_wins=['fx-w009'];d.today.recommendations[w.id]={kind:'dependency_unlock',reason:'分類確認で候補枠が増える',evidence_ref:'fixture:unblock'};d.evidence['fixture:unblock']={work_item_id:w.id};
+  assert.equal(project(d).quick_items[0].work.id,w.id);assert.equal(w.state,'BLOCKED');
+});
+test('waiting has total and does not duplicate action lanes',()=>{const v=project(fixture());assert.equal(v.waiting_count,18);const selected=new Set([...v.now_items,...v.next_items,...v.quick_items].map(x=>x.work.id));assert(v.waiting_items.every(x=>!selected.has(x.work.id)));});
+test('missing Run source cannot be represented as zero waiting',()=>{const d=fixture();d.sources.runs.status='failed';const v=project(d);assert.equal(v.waiting_count,null);assert.equal(v.now_items.length,0);});
+test('confirmed capacity union and buffer',()=>assert.deepEqual(project(fixture()).capacity,{available:165,planned:165,buffer:0,fixed:240,bounded_unknown:true}));
+test('duplicate available intervals are not double counted',()=>{const d=fixture();d.window_gate.usable_windows.push({...d.window_gate.usable_windows[0]});assert.equal(project(d).capacity.available,165);});
+test('incomplete Calendar suppresses all capacity totals',()=>{const d=fixture();d.sources.calendar.complete=false;const v=project(d);assert.equal(v.capacity,null);assert.equal(v.context.available_min,null);assert(v.needs_input);});
+test('failed source and empty task list stay distinct',()=>{
+  const d=fixture();d.work_items=[];d.active_runs=[];d.today={plan:[],now:[],next:[],quick_wins:[],waiting_preview:[]};const empty=project(d);assert.equal(empty.waiting_count,0);assert.equal(empty.capacity.planned,0);
+  d.sources.tasks.status='failed';assert.equal(project(d).waiting_count,null);assert.equal(project(d).capacity,null);
+});
+test('source stale clears recommendations and capacity',()=>{const v=project(fixture(),at+16*60000);assert(v.needs_input);assert.equal(v.now_items.length,0);assert.equal(v.capacity,null);});
+test('expired energy is never carried forward',()=>{const d=fixture();d.energy.valid_until=d.as_of;const v=project(d);assert(v.needs_input);assert.equal(v.now_items.length,0);});
+test('unbounded unknown never shrinks to raw event timestamps',()=>{const d=fixture();d.window_gate.unknown_windows=[{start:'2026-09-14T00:00:00+09:00',end:'2026-09-15T12:00:00+09:00',source_event_id:'fx-e04',reason:'IMPACT_TIME_UNBOUNDED',evidence:null}];d.window_gate.usable_windows=[];d.window_gate.state='needs_input';const v=project(d);assert(v.needs_input);assert.equal(v.context.available_min,null);assert.equal(v.now_items.length,0);});
+test('invalid usable window overlapping unknown is rejected',()=>{const d=fixture();d.window_gate.usable_windows[0].end='2026-09-14T10:00:00+09:00';d.window_gate.confirmed_available_windows[0].end='2026-09-14T10:00:00+09:00';assert(project(d).needs_input);});
+test('gate calendar revision must match',()=>{const d=fixture();d.window_gate.calendar_revision='old';assert(project(d).needs_input);assert.equal(project(d).context.available_min,null);});
+test('expired or other-owner classification evidence cannot authorize a window',()=>{for(const key of ['expiry','owner']){const d=fixture();const e=d.window_gate.confirmed_hard_constraints[0].evidence;if(key==='expiry')e.valid_until=d.as_of;else e.confirmed_by='other';assert(project(d).needs_input);}});
+test('coverage gap cannot imply a free afternoon',()=>{const d=fixture();d.sources.calendar.coverage.end='2026-09-14T10:00:00+09:00';assert.equal(project(d).capacity,null);});
+test('overlapping plans are not double booked as available recommendations',()=>{const d=fixture();d.today.plan[1].start='09:31';const v=project(d);assert.equal(v.capacity,null);assert.equal(v.now_items.length,0);});
+test('current time crossing NOW slot requests confirmation without completing Task',()=>{const d=fixture();const v=project(d,at+6*60000);assert.equal(v.now_items.length,0);assert.equal(v.needs_input,true);assert.equal(d.work_items[0].state,'HUMAN_REVIEW');});
+test('INBOX today filter explicit and not all Inbox',()=>{const d=fixture();assert.equal(today.todayInbox(d,at).length,3);assert.deepEqual(project(d).inbox,{count:3,minutes:20});assert.equal(today.todayInbox(d,at+24*60*60000).length,0);});
+test('unknown review estimate does not become zero',()=>{const d=fixture();d.inbox_items[0].estimate_min=null;assert.equal(project(d).inbox.minutes,null);});
+test('timeline separates four time categories and unknown',()=>{const v=project(fixture()),kinds=new Set(v.timeline.map(t=>t.kind));for(const k of ['fixed','available','proposed','protected','unknown','scheduled'])assert(kinds.has(k));assert.equal(v.timeline.filter(t=>t.kind==='unknown').length,2);assert(v.timeline[v.timeline.length-1].label.includes('翌朝'));});
+test('pure projection never mutates input or evidence',()=>{const d=fixture(),before=JSON.stringify(d);project(d);assert.equal(JSON.stringify(d),before);});
+test('origin is explicit; synthetic records cannot masquerade as all-real',()=>{const d=fixture();assert.equal(project(d).origin.kind,'fixture');d.fixture_only=false;d.origin='real';assert.equal(project(d).origin.kind,'mixed');});
+test('successful empty Calendar means no fixed event; failure does not',()=>{const d=fixture();d.calendar_events=[];d.window_gate.confirmed_hard_constraints=[];d.window_gate.confirmed_soft_constraints=[];d.window_gate.unknown_windows=[];const v=project(d);assert.equal(v.context.next_fixed,null);assert.equal(v.context.fixed_known,true);d.sources.calendar.status='failed';assert.equal(project(d).context.fixed_known,false);});
+test('shutdown with refreshed complete inputs stops proposals without marking Tasks DONE',()=>{
+  const d=fixture(),late=Date.parse('2026-09-14T22:00:00+09:00');
+  Object.values(d.sources).forEach(s=>{s.fetched_at='2026-09-14T22:00:00+09:00';s.valid_until='2026-09-14T22:15:00+09:00';});
+  for(const a of [...d.window_gate.confirmed_hard_constraints,...d.window_gate.confirmed_soft_constraints,...d.window_gate.unknown_windows])a.evidence.valid_until='2026-09-14T22:15:00+09:00';
+  d.window_gate.availability_evidence.forEach(a=>a.confirmation.valid_until='2026-09-14T22:15:00+09:00');
+  const v=project(d,late);assert(v.stopped);assert.equal(v.now_items.length,0);assert.equal(v.needs_input,false);assert.equal(d.work_items[0].state,'HUMAN_REVIEW');
+});
+console.log(`kaz-today: ${tests.length}/${tests.length} PASS`);
