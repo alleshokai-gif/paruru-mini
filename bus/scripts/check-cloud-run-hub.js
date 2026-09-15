@@ -55,7 +55,8 @@ function validateP0(value) {
 function validateKibukihoncho(value) {
   assert.equal(value.success, true); assert.equal(value.hubId, 'kibukihoncho'); assert.equal(value.hubLabel, '神木本町');
   const groups = Object.fromEntries(value.decisionGroups.map((group) => [group.id, group]));
-  for (const id of ['kibukihoncho_north', 'kibukihoncho_mizonokuchi', 'kibukihoncho_kajigaya']) {
+  for (const id of ['kibukihoncho_north', 'kibukihoncho_mizonokuchi', 'kibukihoncho_kajigaya',
+    'kibukihoncho_miyamae_washigamine']) {
     assert.ok(groups[id]); assert.equal(groups[id].arrivals.length, 3);
   }
   assert.deepEqual(groups.kibukihoncho_north.providers, ['kawasaki', 'tokyu']);
@@ -65,6 +66,11 @@ function validateKibukihoncho(value) {
     && row.estimatedDeparture === null && row.etaMinutes === null && row.delayMinutes === null
     && row.position.supported === false));
   assert.ok(groups.kibukihoncho_kajigaya.arrivals.every((row) => row.provider === 'tokyu' && row.platform === 'a'));
+  const westboundRoutes = new Set(['10032', '10033', '10034', '10035', '10036', '10044', '10045']);
+  assert.ok(groups.kibukihoncho_miyamae_washigamine.arrivals.every((row) => row.provider === 'kawasaki'
+    && row.sourceId === 'kibukihoncho_to_miyamae_washigamine' && row.platform === '3番'
+    && westboundRoutes.has(row.routeId) && typeof row.destination === 'string' && row.destination.length > 0));
+  assert.ok(!groups.kibukihoncho_miyamae_washigamine.arrivals.some((row) => row.routeId === '10037'));
   assert.ok(!value.arrivals.some((row) => row.provider === 'tokyu'
     && row.decisionGroupId === 'kibukihoncho_mizonokuchi'));
   assert.ok(value.arrivals.filter((row) => row.provider === 'kawasaki')
@@ -201,7 +207,7 @@ try {
   await validateCorsDeny('/api/bus/journey?id=noborito-mukougaoka');
   const journeyChildren = Object.fromEntries(journey.children.map((child) => [child.id, child]));
   console.log(JSON.stringify({ status: 'P2_5_REMOTE_PASS', origin: PRODUCTION_ORIGIN,
-    p0: { directions: 4, arrivalsEach: 3 }, hubs: { kibukihonchoGroups: 3, mizonokuchiGroups: 1,
+    p0: { directions: 4, arrivalsEach: 3 }, hubs: { kibukihonchoGroups: 4, mizonokuchiGroups: 1,
       tachikawaGroups: 1, showaDaiichiGakuenGroups: 1, arrivalsEach: 3 },
     seibu: { tachikawaPlatforms: [...new Set(tachikawa.arrivals.map((row) => row.platform))].sort(),
       schoolOriginStops: [...new Set(school.arrivals.map((row) => row.originStop.id))].sort(),

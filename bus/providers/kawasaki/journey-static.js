@@ -13,15 +13,23 @@ export function validateKawasakiJourneyArtifact(index, expectedSourceDate = null
     || index.queryHash !== queryHash() || !Number.isFinite(Date.parse(index.generatedAt || '')))
     fail('BUS_KAWASAKI_JOURNEY_ARTIFACT_INVALID');
   const resolved = resolveQuerySet(index, KAWASAKI_JOURNEY_QUERIES, KAWASAKI_CONTEXT);
-  if (resolved.length !== 1) fail('BUS_KAWASAKI_JOURNEY_ARTIFACT_INVALID');
+  if (resolved.length !== KAWASAKI_JOURNEY_QUERIES.length) fail('BUS_KAWASAKI_JOURNEY_ARTIFACT_INVALID');
   const rows = index.directions?.mukougaoka_to_kibukihoncho;
   if (!Array.isArray(rows) || !rows.length || rows.some((row) => row.routeId !== '10037'
     || row.routeLabel !== '溝１９' || row.directionId !== '0' || row.fromStopId !== '474_5'
     || row.toStopId !== '184_1' || row.stopSequence >= row.alightSequence
     || row.platform !== '5番' || row.headsign !== '溝口駅南口(おし沼)'))
     fail('BUS_KAWASAKI_JOURNEY_ROUTE_INVALID');
+  const westbound = index.directions?.kibukihoncho_to_miyamae_washigamine;
+  const expectedRoutes = ['10032', '10033', '10034', '10035', '10036', '10044', '10045'];
+  if (!Array.isArray(westbound) || !westbound.length || westbound.some((row) => !expectedRoutes.includes(row.routeId)
+    || row.directionId !== '1' || row.fromStopId !== '184_3' || row.toStopId !== '469_2'
+    || row.stopSequence >= row.alightSequence || row.platform !== '3番'
+    || typeof row.headsign !== 'string' || !row.headsign.trim())
+    || JSON.stringify([...new Set(westbound.map((row) => row.routeId))].sort()) !== JSON.stringify(expectedRoutes))
+    fail('BUS_KAWASAKI_JOURNEY_ROUTE_INVALID');
   const serviceIds = new Set([...(index.calendar || []), ...(index.calendarDates || [])].map((row) => row.service_id));
-  if (rows.some((row) => !serviceIds.has(row.serviceId))) fail('BUS_KAWASAKI_JOURNEY_SERVICE_INVALID');
+  if ([...rows, ...westbound].some((row) => !serviceIds.has(row.serviceId))) fail('BUS_KAWASAKI_JOURNEY_SERVICE_INVALID');
   return index;
 }
 

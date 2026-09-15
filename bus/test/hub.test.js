@@ -27,7 +27,8 @@ const arrival = (changes = {}) => ({
 
 test('Kibukihoncho config groups by travel decision instead of Provider or platform', () => {
   assert.deepEqual(KIBUKIHONCHO_HUB.decisionGroups.map(({ id }) => id),
-    ['kibukihoncho_north', 'kibukihoncho_mizonokuchi', 'kibukihoncho_kajigaya']);
+    ['kibukihoncho_north', 'kibukihoncho_mizonokuchi', 'kibukihoncho_kajigaya',
+      'kibukihoncho_miyamae_washigamine']);
   const north = KIBUKIHONCHO_HUB.decisionGroups[0];
   assert.deepEqual(north.providers, ['kawasaki', 'tokyu']);
   assert.deepEqual(north.destinations, ['登戸駅', '向ヶ丘遊園駅南口']);
@@ -36,8 +37,41 @@ test('Kibukihoncho config groups by travel decision instead of Provider or platf
   assert.ok(KIBUKIHONCHO_HUB.sources.some((row) => row.provider === 'tokyu' && row.sourceId === 'kibukihoncho_to_mukougaoka'));
   assert.ok(!KIBUKIHONCHO_HUB.sources.some((row) => row.provider === 'tokyu'
     && row.decisionGroupId === 'kibukihoncho_mizonokuchi'));
+  const westbound = KIBUKIHONCHO_HUB.decisionGroups.at(-1);
+  assert.equal(westbound.label, '宮前平・鷲ヶ峰方面');
+  assert.deepEqual(westbound.providers, ['kawasaki']);
+  assert.ok(westbound.destinations.includes('宮前平駅'));
+  assert.ok(westbound.destinations.includes('鷲ヶ峰営業所前'));
+  assert.ok(KIBUKIHONCHO_HUB.sources.some((row) => row.provider === 'kawasaki'
+    && row.sourceId === 'kibukihoncho_to_miyamae_washigamine'
+    && row.decisionGroupId === westbound.id));
   assert.ok(KIBUKIHONCHO_HUB.sources.every((row) => !Object.hasOwn(row, 'purposeId')));
   assert.deepEqual(KIBUKIHONCHO_HUB.unresolved, []);
+});
+
+test('Kibukihoncho westbound decision group ranks mixed destinations together and keeps each headsign', () => {
+  const sourceId = 'kibukihoncho_to_miyamae_washigamine';
+  const hub = aggregateHub({ hub: KIBUKIHONCHO_HUB, generatedAt: NOW, providerResults: [{
+    provider: 'kawasaki', arrivals: [
+      arrival({ id: 'washigamine', sourceId, routeId: '10034', routeLabel: '溝１６',
+        destination: '鷲ヶ峰営業所前(犬蔵)', platform: '3番', scheduledDeparture: NOW + 360,
+        estimatedDeparture: NOW + 420, etaMinutes: 7 }),
+      arrival({ id: 'miyamaedaira', sourceId, routeId: '10033', routeLabel: '溝１５',
+        destination: '宮前平駅', platform: '3番', scheduledDeparture: NOW + 120,
+        estimatedDeparture: NOW + 180, etaMinutes: 3 }),
+      arrival({ id: 'sugaosoko', sourceId, routeId: '10035', routeLabel: '溝１７',
+        destination: '菅生車庫(蔵敷)', platform: '3番', scheduledDeparture: NOW + 240,
+        estimatedDeparture: NOW + 300, etaMinutes: 5 }),
+      arrival({ id: 'fourth', sourceId, routeId: '10044', routeLabel: '登０５',
+        destination: '向丘出張所', platform: '3番', scheduledDeparture: NOW + 480,
+        estimatedDeparture: NOW + 540, etaMinutes: 9 })
+    ]
+  }] });
+  const group = hub.decisionGroups.find((row) => row.id === 'kibukihoncho_miyamae_washigamine');
+  assert.deepEqual(group.arrivals.map((row) => row.id), ['miyamaedaira', 'sugaosoko', 'washigamine']);
+  assert.deepEqual(group.arrivals.map((row) => row.destination),
+    ['宮前平駅', '菅生車庫(蔵敷)', '鷲ヶ峰営業所前(犬蔵)']);
+  assert.ok(group.arrivals.every((row) => row.platform === '3番'));
 });
 
 test('Mizonokuchi south exit config combines the three verified platforms into one decision group', () => {
@@ -268,6 +302,22 @@ test('Kawasaki Hub normalization accepts only the injected Mukougaoka journey qu
   assert.equal(result.arrivals[0].destination, '溝口駅南口(おし沼)');
 });
 
+test('Kawasaki Hub normalization preserves the westbound route, destination and platform', () => {
+  const query = KAWASAKI_JOURNEY_QUERIES[1];
+  const index = { ...indexFixture(), stops: { ...indexFixture().stops,
+    '184_3': { stopId: '184_3', name: '神木本町' }, '469_2': { stopId: '469_2', name: '向丘中学校下' } },
+    routes: { ...indexFixture().routes, '10033': { routeId: '10033', label: '溝１５' } } };
+  const response = { success: true, fetchError: false, directions: [{ id: query.id, to: query.to,
+    state: 'realtime', arrivals: [{ tripId: '20260915:westbound-trip', routeLabel: '溝１５', headsign: '宮前平駅',
+      platform: '3番', scheduledAt: '2026-09-15T07:00:00+09:00', estimatedAt: '2026-09-15T07:02:00+09:00',
+      etaMinutes: 2, delayMinutes: 2, realtime: true, state: 'realtime', position: { supported: false } }] }] };
+  const result = normalizeKawasakiHubResult(response, { index, queries: KAWASAKI_JOURNEY_QUERIES });
+  assert.equal(result.arrivals.length, 1);
+  assert.deepEqual([result.arrivals[0].sourceId, result.arrivals[0].originStop.id, result.arrivals[0].routeId,
+    result.arrivals[0].platform, result.arrivals[0].destination],
+  ['kibukihoncho_to_miyamae_washigamine', '184_3', '10033', '3番', '宮前平駅']);
+});
+
 test('Hub service selects providers per Hub and isolates Provider failures', async () => {
   const tok = arrival({ id: 'tokyu-static-a', sourceId: 'kibukihoncho_to_kajigaya', provider: 'tokyu',
     routeId: 'odpt.Busroute:TokyuBus.Kou01', routeLabel: '向０１', destination: '梶が谷駅',
@@ -280,22 +330,26 @@ test('Hub service selects providers per Hub and isolates Provider failures', asy
     hubs: HUBS, now: () => NOW, providerLoaders: {
       async kawasaki() { kawasakiCalls++; if (kawasakiFails) throw Error(); return { provider: 'kawasaki', arrivals: [
         arrival({ sourceId: 'home_to_noborito' }), arrival(), arrival({ id: 'mizo-home',
-          sourceId: 'mizonokuchi_to_home', destination: '神木本町', platform: '3番' })] }; },
+          sourceId: 'mizonokuchi_to_home', destination: '神木本町', platform: '3番' }),
+        arrival({ id: 'westbound', sourceId: 'kibukihoncho_to_miyamae_washigamine', routeId: '10033',
+          routeLabel: '溝１５', destination: '宮前平駅', platform: '3番' })] }; },
       async tokyu() { tokyuCalls++; if (tokyuFails) throw Error(); return { provider: 'tokyu', arrivals: [tok, tokReverse] }; }
     }
   });
   const both = await create().getHub('kibukihoncho');
-  assert.equal(both.success, true); assert.equal(both.decisionGroups.length, 3);
+  assert.equal(both.success, true); assert.equal(both.decisionGroups.length, 4);
   const north = both.decisionGroups.find((group) => group.id === 'kibukihoncho_north');
   assert.deepEqual([...new Set(north.arrivals.map((row) => row.provider))].sort(), ['kawasaki', 'tokyu']);
   assert.ok(north.arrivals.some((row) => row.destination === '向ヶ丘遊園駅南口' && row.platform === 'b'));
   assert.equal(both.decisionGroups.find((group) => group.id === 'kibukihoncho_kajigaya').arrivals[0].realtimeState,
     'static_only');
+  assert.equal(both.decisionGroups.find((group) => group.id === 'kibukihoncho_miyamae_washigamine')
+    .arrivals[0].destination, '宮前平駅');
   assert.ok(!both.arrivals.some((row) => row.provider === 'tokyu'
     && row.decisionGroupId === 'kibukihoncho_mizonokuchi'));
   assert.equal(both.arrivals.find((row) => row.provider === 'kawasaki').delayMinutes, 1);
   const noTokyu = await create({ tokyuFails: true }).getHub('kibukihoncho');
-  assert.equal(noTokyu.arrivals.filter((row) => row.provider === 'kawasaki').length, 2);
+  assert.equal(noTokyu.arrivals.filter((row) => row.provider === 'kawasaki').length, 3);
   const noKawasaki = await create({ kawasakiFails: true }).getHub('kibukihoncho');
   assert.equal(noKawasaki.arrivals.filter((row) => row.provider === 'tokyu').length, 2);
   assert.equal(noKawasaki.providers.find((row) => row.provider === 'kawasaki').state, 'unavailable');

@@ -38,12 +38,13 @@ try {
   assert.equal(p0.directions.length, 4); assert.ok(p0.directions.every((direction) => direction.arrivals.length === 3));
   phase = 'hub'; const hub = await request('/api/bus/hub?id=kibukihoncho');
   phase = 'hub_identity'; assert.equal(hub.success, true); assert.equal(hub.hubId, 'kibukihoncho');
-  assert.equal(hub.hubLabel, '神木本町'); assert.equal(hub.decisionGroups.length, 3);
+  assert.equal(hub.hubLabel, '神木本町'); assert.equal(hub.decisionGroups.length, 4);
   const byGroup = Object.fromEntries(hub.decisionGroups.map((group) => [group.id, group]));
   diagnostic = { groups: hub.decisionGroups.map((group) => ({ id: group.id, count: group.arrivals.length,
     providers: [...new Set(group.arrivals.map((row) => row.provider))] })),
   providers: hub.providers.map((row) => ({ provider: row.provider, state: row.state, code: row.code })) };
-  const groupIds = ['kibukihoncho_north', 'kibukihoncho_mizonokuchi', 'kibukihoncho_kajigaya'];
+  const groupIds = ['kibukihoncho_north', 'kibukihoncho_mizonokuchi', 'kibukihoncho_kajigaya',
+    'kibukihoncho_miyamae_washigamine'];
   phase = 'hub_group_presence'; for (const id of groupIds) assert.ok(byGroup[id]);
   phase = 'hub_group_counts'; for (const id of groupIds) assert.equal(byGroup[id].arrivals.length, 3);
   phase = 'north_contract';
@@ -55,6 +56,11 @@ try {
     && row.estimatedDeparture === null && row.etaMinutes === null && row.delayMinutes === null
     && row.position.supported === false));
   assert.ok(byGroup.kibukihoncho_kajigaya.arrivals.every((row) => row.provider === 'tokyu' && row.platform === 'a'));
+  const westboundRoutes = new Set(['10032', '10033', '10034', '10035', '10036', '10044', '10045']);
+  assert.ok(byGroup.kibukihoncho_miyamae_washigamine.arrivals.every((row) => row.provider === 'kawasaki'
+    && row.sourceId === 'kibukihoncho_to_miyamae_washigamine' && row.platform === '3番'
+    && westboundRoutes.has(row.routeId) && typeof row.destination === 'string' && row.destination.length > 0));
+  assert.ok(!byGroup.kibukihoncho_miyamae_washigamine.arrivals.some((row) => row.routeId === '10037'));
   phase = 'tokyu_mizonokuchi_absent'; assert.ok(!hub.arrivals.some((row) => row.provider === 'tokyu'
     && row.decisionGroupId === 'kibukihoncho_mizonokuchi'));
   phase = 'delay_contract'; assert.ok(hub.arrivals.filter((row) => row.provider === 'kawasaki')

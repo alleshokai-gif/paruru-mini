@@ -9,19 +9,35 @@ const csv = (rows) => strToU8(rows.map((row) => row.map((value) => `"${String(va
   .join('\r\n'));
 
 function journeyZip() {
+  const westbound = [
+    ['10032', '溝１１', '新百合丘駅前(田園調布学園大学前)'],
+    ['10033', '溝１５', '宮前平駅'],
+    ['10034', '溝１６', '鷲ヶ峰営業所前(犬蔵)'],
+    ['10035', '溝１７', '菅生車庫(蔵敷)'],
+    ['10036', '溝１８', '聖マリアンナ医科大学(鷲ヶ峰営業所前)'],
+    ['10044', '登０５', '向丘出張所'],
+    ['10045', '登０６', '鷲ヶ峰営業所前']
+  ];
   return zipSync({
     'agency.txt': csv([['agency_timezone'], ['Asia/Tokyo']]),
     'stops.txt': csv([['stop_id', 'stop_name', 'location_type'], ['474_5', '向丘遊園駅南口', 0],
-      ['184_1', '神木本町', 0], ['999_1', '対象外', 0]]),
-    'routes.txt': csv([['route_id', 'route_short_name'], ['10037', '溝１９']]),
+      ['184_1', '神木本町', 0], ['184_3', '神木本町', 0], ['469_2', '向丘中学校下', 0],
+      ['999_1', '対象外', 0]]),
+    'routes.txt': csv([['route_id', 'route_short_name'], ['10037', '溝１９'],
+      ...westbound.map(([routeId, routeLabel]) => [routeId, routeLabel])]),
     'trips.txt': csv([['trip_id', 'route_id', 'service_id', 'trip_headsign', 'direction_id'],
       ['through-kibuki', '10037', 'weekday', '溝口駅南口(おし沼)', 0],
-      ['not-through-kibuki', '10037', 'weekday', '対象外', 0]]),
+      ['not-through-kibuki', '10037', 'weekday', '対象外', 0],
+      ...westbound.map(([routeId, , headsign]) => [`west-${routeId}`, routeId, 'weekday', headsign, 1])]),
     'stop_times.txt': csv([['trip_id', 'stop_sequence', 'stop_id', 'departure_time', 'pickup_type', 'drop_off_type', 'stop_headsign'],
       ['through-kibuki', 1, '474_5', '07:00:00', 0, 0, '溝口駅南口(おし沼)'],
       ['through-kibuki', 12, '184_1', '07:20:00', 0, 0, '溝口駅南口(おし沼)'],
       ['not-through-kibuki', 1, '474_5', '07:10:00', 0, 0, '対象外'],
-      ['not-through-kibuki', 2, '999_1', '07:15:00', 0, 0, '対象外']]),
+      ['not-through-kibuki', 2, '999_1', '07:15:00', 0, 0, '対象外'],
+      ...westbound.flatMap(([routeId, , headsign], index) => [
+        [`west-${routeId}`, 10, '184_3', `08:${String(index).padStart(2, '0')}:00`, 0, 0, headsign],
+        [`west-${routeId}`, 11, '469_2', `08:${String(index + 1).padStart(2, '0')}:00`, 0, 0, headsign]
+      ])]),
     'calendar.txt': csv([['service_id', 'start_date', 'end_date', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
       ['weekday', '20260101', '20261231', 1, 1, 1, 1, 1, 0, 0]]),
     'calendar_dates.txt': csv([['service_id', 'date', 'exception_type']]),
@@ -38,6 +54,18 @@ test('P2.5 Kawasaki builder retains only 474_5 to 184_1 trips with the verified 
     ['474_5', '184_1', '10037', '5番']);
   assert.equal(rows[0].directionId, '0'); assert.equal(rows[0].headsign, '溝口駅南口(おし沼)');
   assert.ok(!JSON.stringify(artifact).includes('not-through-kibuki'));
+});
+
+test('supplemental Kawasaki builder retains the verified 184_3 westbound routes and per-trip destinations', () => {
+  const artifact = buildP2_5KawasakiStatic(journeyZip(), { now: NOW, sourceDate: '20260828' });
+  const rows = artifact.directions.kibukihoncho_to_miyamae_washigamine;
+  assert.deepEqual([...new Set(rows.map((row) => row.routeId))].sort(),
+    ['10032', '10033', '10034', '10035', '10036', '10044', '10045']);
+  assert.ok(rows.every((row) => row.fromStopId === '184_3' && row.toStopId === '469_2'
+    && row.directionId === '1' && row.platform === '3番'));
+  assert.ok(rows.some((row) => row.headsign === '宮前平駅'));
+  assert.ok(rows.some((row) => row.headsign === '鷲ヶ峰営業所前'));
+  assert.ok(!rows.some((row) => row.routeId === '10037'));
 });
 
 test('P0 and P2.5 Static merge requires the exact same feed and preserves P0 directions', () => {

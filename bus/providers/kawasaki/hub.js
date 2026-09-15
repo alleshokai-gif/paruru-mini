@@ -2,7 +2,7 @@ import { ATTRIBUTION } from './attribution.js';
 import { resolvePlatform } from './config.js';
 
 const INCLUDED_SOURCES = new Set(['home_to_noborito', 'home_to_mizonokuchi', 'mizonokuchi_to_home',
-  'noborito_to_home', 'mukougaoka_to_kibukihoncho']);
+  'noborito_to_home', 'mukougaoka_to_kibukihoncho', 'kibukihoncho_to_miyamae_washigamine']);
 const DEPARTURE_STATES = new Set(['departure_pending', 'departure_overdue', 'departure_uncertain']);
 const fail = (code) => { throw new Error(code); };
 

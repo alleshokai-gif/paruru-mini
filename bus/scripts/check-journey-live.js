@@ -36,7 +36,7 @@ try {
   phase = 'p0'; const p0 = await request('/api/bus/arrivals');
   assert.equal(p0.directions.length, 4); assert.ok(p0.directions.every((row) => row.arrivals.length === 3));
   phase = 'existing_hubs';
-  for (const [id, count] of [['kibukihoncho', 3], ['mizonokuchi-minamiguchi', 1],
+  for (const [id, count] of [['kibukihoncho', 4], ['mizonokuchi-minamiguchi', 1],
     ['tachikawa-ekikitaguchi', 1], ['showa-daiichi-gakuen', 1]]) {
     const hub = await request(`/api/bus/hub?id=${id}`); assert.equal(hub.decisionGroups.length, count);
   }
