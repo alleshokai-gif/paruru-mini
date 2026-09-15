@@ -35,9 +35,28 @@ export const KIBUKIHONCHO_TO_MUKOUGAOKA = Object.freeze({
   destinationName: '向ヶ丘遊園駅南口'
 });
 
+export const MUKOUGAOKA_TO_KIBUKIHONCHO = Object.freeze({
+  sourceId: 'mukougaoka_to_kibukihoncho',
+  operatorId: 'odpt.Operator:TokyuBus',
+  routeId: 'odpt.Busroute:TokyuBus.Kou01',
+  routeLabel: '向０１',
+  routePatternId: 'odpt.BusroutePattern:TokyuBus.Kou01.0004600073',
+  directionId: 'odpt.BusDirection:TokyuBus.Kajigayaeki',
+  fromStopId: 'odpt.BusstopPole:TokyuBus.MukougaokayuuenEkiminamiguchi.00240650.6',
+  fromStopName: '向ヶ丘遊園駅南口',
+  fromStopIndex: 1,
+  platform: '6',
+  targetStopId: 'odpt.BusstopPole:TokyuBus.Shibokuhonchou.00240751.a',
+  targetStopName: '神木本町',
+  targetStopIndex: 10,
+  destinationStopId: 'odpt.BusstopPole:TokyuBus.Kajigayaeki.00240688.',
+  destinationName: '梶が谷駅'
+});
+
 export const TOKYU_HUB_DIRECTIONS = Object.freeze([
   KIBUKIHONCHO_TO_KAJIGAYA,
-  KIBUKIHONCHO_TO_MUKOUGAOKA
+  KIBUKIHONCHO_TO_MUKOUGAOKA,
+  MUKOUGAOKA_TO_KIBUKIHONCHO
 ]);
 
 export const CALENDARS = Object.freeze({

@@ -24,3 +24,79 @@ export const KIBUKIHONCHO_HUB = Object.freeze({
   ]),
   unresolved: freezeList([])
 });
+
+export const MIZONOKUCHI_MINAMIGUCHI_HUB = Object.freeze({
+  id: 'mizonokuchi-minamiguchi',
+  label: '溝の口駅南口',
+  decisionGroups: freezeDecisionGroups([
+    { id: 'mizonokuchi_minamiguchi_home', hubId: 'mizonokuchi-minamiguchi', label: '神木本町方面',
+      destinations: ['神木本町'], providers: ['kawasaki'], displayLimit: 3 }
+  ]),
+  sources: freezeList([
+    { provider: 'kawasaki', sourceId: 'mizonokuchi_to_home',
+      decisionGroupId: 'mizonokuchi_minamiguchi_home', walkMinutes: null }
+  ]),
+  unresolved: freezeList([])
+});
+
+export const TACHIKAWA_EKIKITAGUCHI_HUB = Object.freeze({
+  id: 'tachikawa-ekikitaguchi',
+  label: '立川駅北口',
+  decisionGroups: freezeDecisionGroups([
+    { id: 'tachikawa_showa_daiichi_gakuen', hubId: 'tachikawa-ekikitaguchi', label: '昭和第一学園方面',
+      destinations: ['昭和第一学園', '昭和第一学園西門'], providers: ['seibu'], displayLimit: 3 }
+  ]),
+  sources: freezeList([
+    { provider: 'seibu', sourceId: 'tachikawa_to_showa_daiichi_gakuen',
+      decisionGroupId: 'tachikawa_showa_daiichi_gakuen', walkMinutes: null }
+  ]),
+  unresolved: freezeList([])
+});
+
+export const SHOWA_DAIICHI_GAKUEN_HUB = Object.freeze({
+  id: 'showa-daiichi-gakuen',
+  label: '昭和第一学園',
+  decisionGroups: freezeDecisionGroups([
+    { id: 'showa_daiichi_gakuen_tachikawa', hubId: 'showa-daiichi-gakuen', label: '立川駅方面',
+      destinations: ['立川駅北口'], providers: ['seibu'], displayLimit: 3 }
+  ]),
+  sources: freezeList([
+    { provider: 'seibu', sourceId: 'showa_daiichi_gakuen_to_tachikawa',
+      decisionGroupId: 'showa_daiichi_gakuen_tachikawa', walkMinutes: null }
+  ]),
+  unresolved: freezeList([])
+});
+
+export const NOBORITO_EKI_HUB = Object.freeze({
+  id: 'noborito-eki',
+  label: '登戸駅',
+  decisionGroups: freezeDecisionGroups([
+    { id: 'noborito_kibukihoncho', hubId: 'noborito-eki', label: '神木本町方面',
+      destinations: ['神木本町経由'], providers: ['kawasaki'], displayLimit: 3 }
+  ]),
+  sources: freezeList([
+    { provider: 'kawasaki', sourceId: 'noborito_to_home',
+      decisionGroupId: 'noborito_kibukihoncho', walkMinutes: null }
+  ]),
+  unresolved: freezeList([])
+});
+
+export const MUKOUGAOKA_YUEN_MINAMIGUCHI_HUB = Object.freeze({
+  id: 'mukougaoka-yuen-minamiguchi',
+  label: '向ヶ丘遊園駅南口',
+  decisionGroups: freezeDecisionGroups([
+    { id: 'mukougaoka_kibukihoncho', hubId: 'mukougaoka-yuen-minamiguchi', label: '神木本町方面',
+      destinations: ['神木本町経由'], providers: ['kawasaki', 'tokyu'], displayLimit: 3 }
+  ]),
+  sources: freezeList([
+    { provider: 'kawasaki', sourceId: 'mukougaoka_to_kibukihoncho',
+      decisionGroupId: 'mukougaoka_kibukihoncho', walkMinutes: null },
+    { provider: 'tokyu', sourceId: 'mukougaoka_to_kibukihoncho',
+      decisionGroupId: 'mukougaoka_kibukihoncho', walkMinutes: null }
+  ]),
+  unresolved: freezeList([])
+});
+
+export const HUBS = Object.freeze([KIBUKIHONCHO_HUB, MIZONOKUCHI_MINAMIGUCHI_HUB,
+  TACHIKAWA_EKIKITAGUCHI_HUB, SHOWA_DAIICHI_GAKUEN_HUB, NOBORITO_EKI_HUB,
+  MUKOUGAOKA_YUEN_MINAMIGUCHI_HUB]);

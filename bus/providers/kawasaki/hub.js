@@ -1,6 +1,8 @@
 import { ATTRIBUTION } from './attribution.js';
+import { resolvePlatform } from './config.js';
 
-const INCLUDED_SOURCES = new Set(['home_to_noborito', 'home_to_mizonokuchi']);
+const INCLUDED_SOURCES = new Set(['home_to_noborito', 'home_to_mizonokuchi', 'mizonokuchi_to_home',
+  'noborito_to_home', 'mukougaoka_to_kibukihoncho']);
 const DEPARTURE_STATES = new Set(['departure_pending', 'departure_overdue', 'departure_uncertain']);
 const fail = (code) => { throw new Error(code); };
 
@@ -8,6 +10,13 @@ function routeIdFor(row, query, index) {
   const matches = query.routeIds.filter((id) => index.routes[id]?.label === row.routeLabel);
   if (matches.length !== 1) fail('BUS_KAWASAKI_HUB_ROUTE_INVALID');
   return matches[0];
+}
+
+function stopIdFor(row, query) {
+  const candidates = query.fromStopIds.filter((stopId) => resolvePlatform(stopId) === row.platform);
+  if (candidates.length === 1) return candidates[0];
+  if (query.fromStopIds.length === 1) return query.fromStopIds[0];
+  fail('BUS_KAWASAKI_HUB_PLATFORM_INVALID');
 }
 
 function epoch(value) {
@@ -35,9 +44,10 @@ export function normalizeKawasakiHubResult(response, { index, queries }) {
   for (const direction of response.directions) {
     const query = queryMap.get(direction.id);
     if (!query) continue;
-    const stopId = query.fromStopIds[0], stop = index.stops[stopId];
-    if (!stop || !Array.isArray(direction.arrivals)) fail('BUS_KAWASAKI_HUB_INVALID');
+    if (!Array.isArray(direction.arrivals)) fail('BUS_KAWASAKI_HUB_INVALID');
     for (const row of direction.arrivals) {
+      const stopId = stopIdFor(row, query), stop = index.stops[stopId];
+      if (!stop) fail('BUS_KAWASAKI_HUB_INVALID');
       const scheduledDeparture = epoch(row.scheduledAt);
       const estimatedDeparture = row.realtime ? epoch(row.estimatedAt) : null;
       arrivals.push({

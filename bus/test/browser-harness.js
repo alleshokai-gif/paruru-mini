@@ -2,10 +2,12 @@
 const originalFetch = window.fetch.bind(window);
 let requests = 0;
 window.fetch = function (url, options) {
-  if (String(url).endsWith('/api/bus/arrivals')) {
+  if (String(url).endsWith('/api/bus/arrivals') || String(url).includes('/api/bus/hub?')
+    || String(url).includes('/api/bus/journey?')) {
     document.querySelector('#requestCount').textContent = `API取得 ${++requests}回`;
     const scenario = document.querySelector('#scenario').value;
-    if (scenario !== 'live') return originalFetch(`/fixture/${scenario}`, options);
+    if (String(url).endsWith('/api/bus/arrivals') && scenario !== 'live') return originalFetch(`/fixture/${scenario}`, options);
+    if (String(url).includes('/api/bus/journey?') && scenario === 'fixture') return originalFetch('/fixture/journey', options);
   }
   return originalFetch(url, options);
 };
@@ -15,6 +17,7 @@ function active(value) {
   document.querySelector('#otherView').hidden = value;
   PALURUBus.setActive(value);
   PALURUBusHub?.setActive(value);
+  PALURUBusJourney?.setActive(value);
 }
 document.querySelector('#showBus').addEventListener('click', () => active(true));
 document.querySelector('#leaveBus').addEventListener('click', () => active(false));

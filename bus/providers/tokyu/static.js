@@ -84,6 +84,8 @@ export function normalizeTokyuStatic({ query = KIBUKIHONCHO_TO_KAJIGAYA, stops, 
   const order = pattern['odpt:busstopPoleOrder'];
   if (!Array.isArray(order) || order.find((row) => row?.['odpt:index'] === q.fromStopIndex)?.['odpt:busstopPole'] !== q.fromStopId
     || order.at(-1)?.['odpt:busstopPole'] !== q.destinationStopId) fail('BUS_TOKYU_ROUTE_INVALID');
+  if (q.targetStopId && (order.find((row) => row?.['odpt:index'] === q.targetStopIndex)?.['odpt:busstopPole'] !== q.targetStopId
+    || q.targetStopIndex <= q.fromStopIndex)) fail('BUS_TOKYU_ROUTE_INVALID');
 
   const expectedCalendars = new Set(Object.values(CALENDARS)), calendars = {};
   for (const timetable of timetables) {
@@ -105,6 +107,17 @@ export function normalizeTokyuStatic({ query = KIBUKIHONCHO_TO_KAJIGAYA, stops, 
   if (expectedCalendars.size) fail('BUS_TOKYU_TIMETABLE_INVALID');
   return Object.freeze({ schemaVersion: STATIC_SCHEMA_VERSION, provider: PROVIDER_ID, query: q, fetchedAt,
     sourceUpdatedAt: sourceTimestamp([stop, pattern, ...timetables]), calendars: Object.freeze(calendars) });
+}
+
+export function selectTokyuTimetables(rows, query) {
+  if (!Array.isArray(rows)) fail('BUS_TOKYU_TIMETABLE_INVALID');
+  const selected = rows.filter((row) => row?.['odpt:operator'] === query.operatorId
+    && row?.['odpt:busstopPole'] === query.fromStopId
+    && exactArray(row?.['odpt:busroute'], query.routeId)
+    && exactArray(row?.['odpt:busDirection'], query.directionId)
+    && Object.values(CALENDARS).includes(row?.['odpt:calendar']));
+  if (selected.length !== 3) fail('BUS_TOKYU_TIMETABLE_INVALID');
+  return selected;
 }
 
 function dayStart(epoch) {
@@ -134,7 +147,7 @@ export function buildTokyuArrivals(staticData, now, limit = 3, calendarResolver 
         sourceId: q.sourceId, provider: PROVIDER_ID, routeId: q.routeId, routeLabel: q.routeLabel,
         destination: q.destinationName,
         originStop: { id: q.fromStopId, name: q.fromStopName },
-        targetStop: { id: q.fromStopId, name: q.fromStopName },
+        targetStop: { id: q.targetStopId || q.fromStopId, name: q.targetStopName || q.fromStopName },
         scheduledDeparture, estimatedDeparture: null, effectiveDeparture: null,
         etaMinutes: null, delayMinutes: null, platform: q.platform,
         realtimeState: 'static_only', departureState: 'scheduled', actionability: null, confidence: null,
@@ -157,14 +170,21 @@ export function createTokyuStaticProvider({ token, fetcher = fetch, now = () => 
     if (pending) return pending;
     pending = (async () => {
       const fetchedAt = now();
+      const requests = new Map();
+      const exact = (type, parameters) => {
+        const key = `${type}|${JSON.stringify(parameters)}`;
+        if (!requests.has(key)) requests.set(key, fetchOdptStatic(type, parameters, token, fetcher));
+        return requests.get(key);
+      };
       const directions = await Promise.all(TOKYU_HUB_DIRECTIONS.map(async (q) => {
         const [stops, patterns, timetables] = await Promise.all([
-          fetchOdptStatic('odpt:BusstopPole', { 'owl:sameAs': q.fromStopId }, token, fetcher),
-          fetchOdptStatic('odpt:BusroutePattern', { 'owl:sameAs': q.routePatternId }, token, fetcher),
-          fetchOdptStatic('odpt:BusstopPoleTimetable', { 'odpt:operator': q.operatorId,
-            'odpt:busstopPole': q.fromStopId }, token, fetcher)
+          exact('odpt:BusstopPole', { 'owl:sameAs': q.fromStopId }),
+          exact('odpt:BusroutePattern', { 'owl:sameAs': q.routePatternId }),
+          exact('odpt:BusstopPoleTimetable', { 'odpt:operator': q.operatorId,
+            'odpt:busstopPole': q.fromStopId })
         ]);
-        return normalizeTokyuStatic({ query: q, stops, patterns, timetables, fetchedAt });
+        return normalizeTokyuStatic({ query: q, stops, patterns,
+          timetables: selectTokyuTimetables(timetables, q), fetchedAt });
       }));
       cached = Object.freeze({ fetchedAt, directions: Object.freeze(directions),
         sourceUpdatedAt: Math.max(...directions.map((value) => value.sourceUpdatedAt)) });

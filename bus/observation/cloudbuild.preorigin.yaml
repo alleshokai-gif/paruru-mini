@@ -1,0 +1,25 @@
+# Build and image smoke only. Job and Scheduler deployment remain separate user operations.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '--platform=linux/amd64', '-f', 'observation/Dockerfile.preorigin', '-t', '${_IMAGE}', '.']
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - --rm
+      - ${_IMAGE}
+      - node
+      - --input-type=module
+      - -e
+      - |
+        import assert from 'node:assert/strict';
+        import { PREORIGIN_HEADERS, PREORIGIN_RAW_SHEET } from './observation/preorigin-schema.js';
+        import { preoriginObservationConfig } from './observation/preorigin-config.js';
+        assert.equal(PREORIGIN_RAW_SHEET, 'Bus_Preorigin_Raw');
+        assert.equal(PREORIGIN_HEADERS[0], 'preorigin_observation_id');
+        const c=preoriginObservationConfig({ODPT_ACCESS_TOKEN:'synthetic-build-only',OBSERVATION_HMAC_KEY:'x'.repeat(32),PALURU_BUS_OBSERVATION_SPREADSHEET_ID:'A'.repeat(24)});
+        assert.equal(c.sampleCount,10);assert.equal(c.intervalSec,32);assert.equal(c.maxRunSec,310);
+        console.log(JSON.stringify({status:'PREORIGIN_IMAGE_SMOKE_PASS',nodeVersion:process.versions.node}));
+images: ['${_IMAGE}']
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 900s

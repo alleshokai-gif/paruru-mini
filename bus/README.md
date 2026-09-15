@@ -135,6 +135,14 @@ npm run test:observation:live
 
 Cloud Build用の定義、Job entry、固定Sheet schemaは `observation/` にある。Google Sheetsの日次集計は兄弟ディレクトリ `gas-bus-observation/` に分離し、Calibration候補を本番設定へ自動反映しない。Secret Manager、Spreadsheet共有、初回Job実行、実Sheet追記、GAS集計を個別に受入する。運用手順とschemaは [P1 Observation Platform](../docs/PALURU_BUS_P1_OBSERVATION_PLATFORM.md) を参照。
 
+神木本町始発の回送候補はproduction Adapterへ混ぜず、`research/preorigin.js` と `scripts/probe-preorigin-vehicles.js` でraw VehiclePositionをHMAC分類する。対象便、保存境界、Level判定は [P1 神木本町始発・回送車追跡PoC](../docs/PALURU_BUS_P1_PREORIGIN_DEADHEAD_POC.md) を参照。
+
+### P2.3 溝の口駅南口Hub
+
+`GET /api/bus/hub?id=mizonokuchi-minamiguchi` は、2・3・4番のりばを「神木本町方面」1 decision groupへ統合する。PWAは `PALURU_BUS_HUBS` の2Hubを同じ表示・polling契約で扱う。正式mappingと受入結果は [P2.3 溝の口駅南口Hub](../docs/PALURU_BUS_P2_3_MIZONOKUCHI_HUB.md) を参照。
+
+神木本町始発の回送候補は、Realtime APIと既存Observation Jobから分離した`paluru-bus-preorigin-observer`で観測する。production parser前のVehiclePositionを分類し、同じSpreadsheet内の専用`Bus_Preorigin_Raw`へHMAC済みの必要最小限だけを保存する。PWA/Public APIへは公開しない。設計は [Preorigin回送車追跡PoC](../docs/PALURU_BUS_P1_PREORIGIN_DEADHEAD_POC.md) を参照。
+
 ```text
 bus/
   README.md

@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { buildTokyuArrivals, createTokyuStaticProvider, normalizeTokyuStatic } from '../providers/tokyu/static.js';
+import { buildTokyuArrivals, createTokyuStaticProvider, normalizeTokyuStatic,
+  selectTokyuTimetables } from '../providers/tokyu/static.js';
 import { CALENDARS, KIBUKIHONCHO_TO_KAJIGAYA, KIBUKIHONCHO_TO_MUKOUGAOKA,
-  TOKYU_HUB_DIRECTIONS } from '../providers/tokyu/config.js';
+  MUKOUGAOKA_TO_KIBUKIHONCHO, TOKYU_HUB_DIRECTIONS } from '../providers/tokyu/config.js';
 import { HOLIDAY_SOURCE, resolveTokyuServiceCalendar, VERIFIED_HOLIDAY_DATES } from '../providers/tokyu/calendar.js';
 
 const NOW = Date.parse('2026-09-13T07:00:00+09:00') / 1000;
@@ -16,10 +17,16 @@ const times = {
 function records(query) {
   const stop = { 'owl:sameAs': query.fromStopId, 'odpt:operator': [query.operatorId], 'dc:title': query.fromStopName,
     'dc:date': '2026-09-01T15:11:05+09:00', 'odpt:busstopPoleNumber': query.platform };
-  const stopCount = query === KIBUKIHONCHO_TO_KAJIGAYA ? 18 : 16;
+  const stopCount = query.routePatternId === KIBUKIHONCHO_TO_KAJIGAYA.routePatternId ? 18 : 16;
+  const sharedKajigayaPattern = query.routePatternId === KIBUKIHONCHO_TO_KAJIGAYA.routePatternId;
   const order = Array.from({ length: stopCount }, (_, index) => ({ 'odpt:index': index + 1,
-    'odpt:busstopPole': index + 1 === query.fromStopIndex ? query.fromStopId
-      : index + 1 === stopCount ? query.destinationStopId : `synthetic:${query.sourceId}:${index + 1}` }));
+    'odpt:busstopPole': sharedKajigayaPattern && index + 1 === MUKOUGAOKA_TO_KIBUKIHONCHO.fromStopIndex
+      ? MUKOUGAOKA_TO_KIBUKIHONCHO.fromStopId
+      : sharedKajigayaPattern && index + 1 === KIBUKIHONCHO_TO_KAJIGAYA.fromStopIndex
+        ? KIBUKIHONCHO_TO_KAJIGAYA.fromStopId
+        : index + 1 === query.fromStopIndex ? query.fromStopId
+          : index + 1 === query.targetStopIndex ? query.targetStopId
+            : index + 1 === stopCount ? query.destinationStopId : `synthetic:${query.routePatternId}:${index + 1}` }));
   const pattern = { 'owl:sameAs': query.routePatternId, 'odpt:operator': query.operatorId, 'odpt:busroute': query.routeId,
     'dc:title': query.routeLabel, 'dc:date': '2026-09-01T15:11:05+09:00', 'odpt:busstopPoleOrder': order };
   const timetables = Object.entries(times).map(([calendar, values], index) => ({
@@ -48,6 +55,7 @@ test('Tokyu exact ODPT records normalize both platform directions to schedule-on
       assert.equal(row.sourceId, query.sourceId); assert.equal(row.provider, 'tokyu');
       assert.equal(row.routeId, query.routeId); assert.equal(row.routeLabel, '向０１');
       assert.equal(row.platform, query.platform); assert.equal(row.destination, query.destinationName);
+      assert.equal(row.targetStop.id, query.targetStopId || query.fromStopId);
       assert.equal(row.realtimeState, 'static_only'); assert.equal(row.estimatedDeparture, null);
       assert.equal(row.etaMinutes, null); assert.equal(row.delayMinutes, null); assert.equal(row.position.supported, false);
     }
@@ -75,7 +83,7 @@ test('Tokyu calendar resolves weekday, Saturday, Sunday and a Cabinet Office hol
   assert.equal(resolveTokyuServiceCalendar(Date.parse('2028-01-03T06:00:00+09:00') / 1000), null);
 });
 
-test('Tokyu Provider uses six exact static requests, one single-flight cache, and never creates Mizonokuchi', async () => {
+test('Tokyu Provider deduplicates eight exact static requests, caches them, and never creates Mizonokuchi', async () => {
   const fixtures = new Map(TOKYU_HUB_DIRECTIONS.map((query) => [query.sourceId, records(query)]));
   let calls = 0;
   const fetcher = async (input) => {
@@ -102,11 +110,22 @@ test('Tokyu Provider uses six exact static requests, one single-flight cache, an
   };
   const provider = createTokyuStaticProvider({ token: 'synthetic-token', fetcher, now: () => NOW });
   const [first, second] = await Promise.all([provider.getArrivals(), provider.getArrivals()]);
-  assert.equal(calls, 6); assert.equal(first.arrivals.length, 6); assert.deepEqual(first, second);
+  assert.equal(calls, 8); assert.equal(first.arrivals.length, 9); assert.deepEqual(first, second);
   assert.equal(first.retrievedAt, NOW); assert.ok(Number.isFinite(first.sourceUpdatedAt));
-  assert.deepEqual([...new Set(first.arrivals.map((row) => row.platform))].sort(), ['a', 'b']);
+  assert.deepEqual([...new Set(first.arrivals.map((row) => row.platform))].sort(), ['6', 'a', 'b']);
+  const fromYuen = first.arrivals.filter((row) => row.sourceId === MUKOUGAOKA_TO_KIBUKIHONCHO.sourceId);
+  assert.equal(fromYuen.length, 3); assert.ok(fromYuen.every((row) => row.targetStop.name === '神木本町'));
   assert.doesNotMatch(JSON.stringify(first), /Mizonokuchi|溝の口|realtime[^S]/i);
-  await provider.getArrivals(); assert.equal(calls, 6);
+  await provider.getArrivals(); assert.equal(calls, 8);
+});
+
+test('Tokyu timetable selection removes unrelated platform services before strict normalization', () => {
+  const query = MUKOUGAOKA_TO_KIBUKIHONCHO;
+  const source = records(query).timetables;
+  const unrelated = { ...structuredClone(source[0]), 'owl:sameAs': 'synthetic:unrelated',
+    'odpt:busroute': ['odpt.Busroute:TokyuBus.Unrelated'] };
+  assert.deepEqual(selectTokyuTimetables([...source, unrelated], query), source);
+  assert.throws(() => selectTokyuTimetables(source.slice(0, 2), query), /BUS_TOKYU_TIMETABLE_INVALID/);
 });
 
 test('Tokyu Provider rejects direction-specific route, stop, timetable, and oversized response contradictions', async () => {

@@ -22,7 +22,11 @@ test('remote image context is allowlisted; build never deploys or requests real 
     const value = read(name);
     assert.match(value, /^\*\*\r?\n/); assert.ok(value.includes('!generated/p0-static.json'));
     assert.ok(value.includes('!departure/**'));assert.ok(docker.includes('COPY departure ./departure'));
-    for (const file of ['config.js', 'attribution.js', 'context.js', 'position-reference.js', 'departure.js', 'hub.js']) {
+    assert.ok(value.includes('!journey/**')); assert.ok(docker.includes('COPY journey ./journey'));
+    assert.ok(value.includes('!generated/kawasaki-p2-5-static.json'));
+    assert.ok(docker.includes('COPY generated/kawasaki-p2-5-static.json'));
+    for (const file of ['config.js', 'attribution.js', 'context.js', 'position-reference.js', 'departure.js', 'hub.js',
+      'journey-config.js', 'journey-static.js']) {
       assert.ok(value.includes(`!providers/kawasaki/${file}`));
       assert.ok(docker.includes(`providers/kawasaki/${file}`));
     }

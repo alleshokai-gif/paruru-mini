@@ -8,7 +8,9 @@ const OFFICIAL_TIMETABLES = Object.freeze({
   kibukihoncho_to_kajigaya:
     'https://transfer.navitime.biz/tokyubus/pc/diagram/BusDiagram?course=0004600073&orvCode=00240751&stopNo=10',
   kibukihoncho_to_mukougaoka:
-    'https://transfer.navitime.biz/tokyubus/pc/diagram/BusDiagram?course=0004600232&orvCode=00240751&stopNo=8'
+    'https://transfer.navitime.biz/tokyubus/pc/diagram/BusDiagram?course=0004600232&orvCode=00240751&stopNo=8',
+  mukougaoka_to_kibukihoncho:
+    'https://transfer.navitime.biz/tokyubus/pc/diagram/BusDiagram?course=0004600073&orvCode=00240650&stopNo=1'
 });
 const COLUMN = Object.freeze({
   [CALENDARS.weekday]: 'wkd',

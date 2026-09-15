@@ -59,14 +59,35 @@ try {
     && row.decisionGroupId === 'kibukihoncho_mizonokuchi'));
   phase = 'delay_contract'; assert.ok(hub.arrivals.filter((row) => row.provider === 'kawasaki')
     .every((row) => Object.hasOwn(row, 'delayMinutes')));
+  phase = 'mizonokuchi_hub'; const mizonokuchi = await request('/api/bus/hub?id=mizonokuchi-minamiguchi');
+  assert.equal(mizonokuchi.success, true); assert.equal(mizonokuchi.hubLabel, '溝の口駅南口');
+  assert.equal(mizonokuchi.decisionGroups.length, 1);
+  const home = mizonokuchi.decisionGroups[0];
+  assert.equal(home.id, 'mizonokuchi_minamiguchi_home'); assert.equal(home.label, '神木本町方面');
+  assert.equal(home.arrivals.length, 3);
+  const platformStops = { '2番': '434_2', '3番': '434_3', '4番': '434_4' };
+  const platformRoutes = { '2番': ['10033', '10034'], '3番': ['10036'], '4番': ['10032', '10035', '10037'] };
+  for (const row of home.arrivals) {
+    assert.equal(row.provider, 'kawasaki'); assert.ok(typeof row.destination === 'string' && row.destination.length > 0);
+    assert.equal(row.originStop.id, platformStops[row.platform]);
+    assert.ok(platformRoutes[row.platform].includes(row.routeId));
+    assert.ok(Number.isFinite(row.scheduledDeparture)); assert.ok(Object.hasOwn(row, 'etaMinutes'));
+    assert.ok(Object.hasOwn(row, 'delayMinutes')); assert.ok(row.realtimeState); assert.ok(row.departureState);
+  }
+  if (home.recommendedArrivalId) {
+    const recommended = home.arrivals.find((row) => row.id === home.recommendedArrivalId);
+    assert.ok(recommended?.recommendable); assert.notEqual(recommended.recommendationQuality, 'unsafe');
+  }
   assert.equal(unsafe, false);
-  console.log(JSON.stringify({ status: 'P2_2_HUB_LIVE_PASS', p0Directions: p0.directions.length,
+  console.log(JSON.stringify({ status: 'P2_3_HUB_LIVE_PASS', p0Directions: p0.directions.length,
     groups: hub.decisionGroups.map((group) => ({ id: group.id, count: group.arrivals.length,
       providers: [...new Set(group.arrivals.map((row) => row.provider))],
       quality: [...new Set(group.arrivals.map((row) => row.realtimeState))] })),
+    mizonokuchi: { groupCount: mizonokuchi.decisionGroups.length, arrivals: home.arrivals.length,
+      platforms: [...new Set(home.arrivals.map((row) => row.platform))], recommendedArrivalId: home.recommendedArrivalId },
     delayFieldPreserved: true, tokyuRealtimeFieldsNull: true, tokyuMizonokuchiAbsent: true, positionUiEnabled: p0.positionUiEnabled,
     secretLeak: false }));
 } catch (error) {
   const code = /^[A-Z0-9_]+$/.test(error?.message || '') ? error.message : error?.name === 'AssertionError' ? 'ASSERTION_FAILED' : 'UNKNOWN';
-  console.log(JSON.stringify({ status: 'P2_2_HUB_LIVE_FAILED', phase, code, diagnostic })); process.exitCode = 1;
+  console.log(JSON.stringify({ status: 'P2_3_HUB_LIVE_FAILED', phase, code, diagnostic })); process.exitCode = 1;
 } finally { child?.kill(); }

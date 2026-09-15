@@ -258,3 +258,7 @@ P2.1 imageはユーザー操作でCloud Run validationとproductionへdeployし�
 ## P2.2 Decision Group追記
 
 P2.1の4つの行先groupは履歴として上記に残す。P2.2では事業者・物理乗り場より利用判断を優先し、正本を`decisionGroups`へ変更した。神木本町は`登戸・向ヶ丘遊園方面`、`溝の口方面`、`梶が谷方面`の3 groupである。正確な契約、遅延表示、Legacy Gate、ローカル受入は[PALURU Bus P2.2 Hub UX](PALURU_BUS_P2_2_HUB_UX.md)を正本とする。
+
+## P2.3 溝の口駅南口Hub追記
+
+2・3・4番のりばを「神木本町方面」という1 decision groupへ統合する。正式stop/route対応、推薦条件、複数Hub UI、ローカル受入は[PALURU Bus P2.3 溝の口駅南口Hub](PALURU_BUS_P2_3_MIZONOKUCHI_HUB.md)を正本とする。

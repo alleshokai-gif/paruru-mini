@@ -33,7 +33,7 @@ export function rankHubArrivals(arrivals, generatedAt, { lowConfidenceThreshold 
     const timing = rankingTime(arrival, generatedAt);
     return { ...arrival, rankingBasis: timing.basis, rankingTime: timing.time,
       recommendationTier: recommendation.value, recommendationQuality: recommendation.quality,
-      recommendable: !recommendation.excluded && recommendation.value < 3 };
+      recommendable: !recommendation.excluded && recommendation.value !== 1 && recommendation.value < 3 };
   }).filter((arrival) => !['cancelled', 'departed'].includes(arrival.departureState))
     .sort((a, b) => sortingRisk(a) - sortingRisk(b)
       || a.rankingTime - b.rankingTime

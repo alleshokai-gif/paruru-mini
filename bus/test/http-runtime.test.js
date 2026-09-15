@@ -23,12 +23,24 @@ async function fixture(t) {
   const hubArrival = { id: 'kawasaki:synthetic-hub', provider: 'kawasaki', routeLabel: '登05',
     destination: '登戸駅', scheduledDeparture: now + 300, estimatedDeparture: now + 420, etaMinutes: 7,
     delayMinutes: 2, realtimeState: 'realtime', platform: '2番' };
-  const hubService = { async getHub(id) { return { success: true, hubId: id, hubLabel: '神木本町', generatedAt: now,
+  const hubService = { hasHub(id) { return ['kibukihoncho', 'mizonokuchi-minamiguchi'].includes(id); },
+    async getHub(id) { const mizo = id === 'mizonokuchi-minamiguchi'; return { success: true, hubId: id,
+    hubLabel: mizo ? '溝の口駅南口' : '神木本町', generatedAt: now,
     providers: [], arrivals: [hubArrival], decisionGroups: [{ id: 'kibukihoncho_north', hubId: id,
-      label: '登戸・向ヶ丘遊園方面', destinations: ['登戸駅', '向ヶ丘遊園駅南口'], providers: ['kawasaki', 'tokyu'],
+      label: mizo ? '神木本町方面' : '登戸・向ヶ丘遊園方面', destinations: mizo ? ['神木本町'] : ['登戸駅', '向ヶ丘遊園駅南口'],
+      providers: mizo ? ['kawasaki'] : ['kawasaki', 'tokyu'],
       recommendedArrivalId: hubArrival.id, arrivals: [hubArrival] }], groups: [] }; } };
+  const journeyService = { hasJourney(id) { return id === 'noborito-mukougaoka'; },
+    async getJourney(id) { return { success: true, journeyGroupId: id, journeyGroupLabel: '登戸・遊園',
+      generatedAt: now, children: [{ id: 'noborito', hubId: 'noborito-eki', label: '登戸駅',
+        purposeLabel: '神木本町方面', state: 'available', providers: [], decisionGroup: { id: 'noborito_kibukihoncho',
+          recommendedArrivalId: hubArrival.id, arrivals: [hubArrival] } }, { id: 'mukougaoka',
+        hubId: 'mukougaoka-yuen-minamiguchi', label: '向ヶ丘遊園駅南口', purposeLabel: '神木本町方面',
+        state: 'available', providers: [], decisionGroup: { id: 'mukougaoka_kibukihoncho',
+          recommendedArrivalId: hubArrival.id, arrivals: [hubArrival] } }], attributions: [] }; } };
   const server = createNodeServer({ handler: createHttpHandler(() => service,
-    { health: true, hubServiceFactory: () => hubService }), env, measure: (v) => logs.push(v) });
+    { health: true, hubServiceFactory: () => hubService, journeyServiceFactory: () => journeyService }),
+    env, measure: (v) => logs.push(v) });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -44,6 +56,11 @@ test('Node HTTP: health, four directions x three rows, RT fields and shared conc
   assert.equal(hub.status, 200); const hubData = await hub.json();
   assert.equal(hubData.hubId, 'kibukihoncho');
   assert.equal(hubData.decisionGroups[0].arrivals[0].delayMinutes, 2); assert.equal(f.calls(), 0);
+  const mizonokuchi = await f.call('/api/bus/hub?id=mizonokuchi-minamiguchi');
+  assert.equal(mizonokuchi.status, 200); assert.equal((await mizonokuchi.json()).hubLabel, '溝の口駅南口');
+  const journey = await f.call('/api/bus/journey?id=noborito-mukougaoka');
+  assert.equal(journey.status, 200); const journeyData = await journey.json();
+  assert.equal(journeyData.journeyGroupLabel, '登戸・遊園'); assert.equal(journeyData.children.length, 2);
   const responses = await Promise.all(Array.from({ length: 4 }, () => f.call()));
   assert.equal(f.calls(), 1);
   for (const r of responses) {
@@ -95,6 +112,9 @@ test('Node HTTP: production CORS, read-only paths, secrets and metadata-only log
   assert.equal((await f.call('/api/bus/hub')).status, 404);
   assert.equal((await f.call('/api/bus/hub?id=unknown')).status, 404);
   assert.equal((await f.call('/api/bus/hub?id=kibukihoncho&extra=1')).status, 404);
+  assert.equal((await f.call('/api/bus/journey')).status, 404);
+  assert.equal((await f.call('/api/bus/journey?id=unknown')).status, 404);
+  assert.equal((await f.call('/api/bus/journey?id=noborito-mukougaoka&extra=1')).status, 404);
   assert.equal((await f.call('/health?extra=1')).status, 404);
   assert.equal((await f.call('/health', { method: 'POST' })).status, 405);
   const text = JSON.stringify(f.logs) + await bad.text();

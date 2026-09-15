@@ -15,10 +15,14 @@ COPY runtime ./runtime
 COPY departure ./departure
 COPY position ./position
 COPY hub ./hub
-COPY providers/kawasaki/adapter.js providers/kawasaki/config.js providers/kawasaki/attribution.js providers/kawasaki/context.js providers/kawasaki/position-reference.js providers/kawasaki/departure.js providers/kawasaki/hub.js ./providers/kawasaki/
+COPY journey ./journey
+COPY providers/kawasaki/adapter.js providers/kawasaki/config.js providers/kawasaki/attribution.js providers/kawasaki/context.js providers/kawasaki/position-reference.js providers/kawasaki/departure.js providers/kawasaki/hub.js providers/kawasaki/journey-config.js providers/kawasaki/journey-static.js ./providers/kawasaki/
 COPY providers/tokyu ./providers/tokyu
+COPY providers/seibu ./providers/seibu
 COPY generated/p0-static.json ./generated/p0-static.json
 COPY generated/p1-position-static.json ./generated/p1-position-static.json
+COPY generated/seibu-p2-4-static.json ./generated/seibu-p2-4-static.json
+COPY generated/kawasaki-p2-5-static.json ./generated/kawasaki-p2-5-static.json
 USER node
 EXPOSE 8080
 CMD ["node", "runtime/start.js"]
