@@ -25,9 +25,10 @@ function createHarness() {
   let locked = false;
   let saveFailures = 0;
   let adminMode = 'admin';
-  let provisionFailure = false;
+  let provisionFailure = '';
   let revokeMembershipStatus = 'active';
   const provisionCalls = [];
+  const memberships = {};
   const context = {
     Date, JSON, Math, Number, Object, Array, String, RegExp, Error, parseInt,
     json_: (value) => value,
@@ -60,10 +61,14 @@ function createHarness() {
         operationId,
         approvalContext: Object.assign({}, approvalContext),
       });
-      if (provisionFailure) throw Object.assign(new Error('MEMBERSHIP_CONFLICT'), { code: 'MEMBERSHIP_CONFLICT' });
+      if (provisionFailure) throw Object.assign(new Error(provisionFailure), { code: provisionFailure });
+      const existing = memberships[targetDeviceId];
+      const assignment = `pairing_approval:${operationId}`;
+      if (existing && existing.assignedBy !== assignment) throw Object.assign(new Error('MEMBERSHIP_CONFLICT'), { code: 'MEMBERSHIP_CONFLICT' });
+      memberships[targetDeviceId] = { deviceId: targetDeviceId, homeId: actor.homeId, memberUserId: template === 'father_add_device' ? 'father' : template === 'eldest_daughter_initial' ? 'eldest_daughter' : 'second_son', status: 'active', assignedBy: assignment };
       return { status: 'active' };
     },
-    getDeviceMembership_: () => null,
+    getDeviceMembership_: (deviceId) => memberships[deviceId] || null,
     snapshotActiveDeviceMembershipForRevoke_(deviceId, homeId) {
       if (deviceId !== membershipDeviceId || homeId !== 'home-a' || revokeMembershipStatus !== 'active') throw Object.assign(new Error('MEMBERSHIP_NOT_FOUND'), { code: 'MEMBERSHIP_NOT_FOUND' });
       return { deviceId, homeId, memberUserId: 'second_son', status: 'active' };
@@ -98,19 +103,24 @@ function createHarness() {
     return context.membershipRegistrationStatus_({ deviceId: membershipDeviceId, pairingToken: membershipToken, requestId: started.data.requestId, requestSecret: started.data.requestSecret });
   }
   function approve(code, template, extra) { return context.devicePairingApprove_(Object.assign({ deviceId: parentId, pairingToken: parentToken, code, membershipTemplate: template }, extra || {})); }
+  function resume(requestId) { return context.devicePairingResume_({ deviceId: parentId, pairingToken: parentToken, requestId }); }
+  function approvalStatus(clientRequestId) { return context.devicePairingApprovalStatus_({ deviceId: parentId, pairingToken: parentToken, clientRequestId }); }
   function registry() { return JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1); }
   return {
-    begin, membershipBegin, membershipStatus, approve,
+    begin, membershipBegin, membershipStatus, approve, resume, approvalStatus,
     list: () => context.devicePairingList_({ deviceId: parentId, pairingToken: parentToken }),
     revoke: (targetDeviceId) => context.devicePairingRevoke_({ deviceId: parentId, pairingToken: parentToken, targetDeviceId }),
     context, provisionCalls, registry, seedParent, seedActiveMembershipDevice,
+    setRegistry: (value) => { properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(value); },
+    seedMembership: (deviceId, value) => { memberships[deviceId] = Object.assign({}, value); },
+    membership: (deviceId) => memberships[deviceId] && Object.assign({}, memberships[deviceId]),
     revokeMembershipStatus: () => revokeMembershipStatus,
     setParentDeviceStatus: (status) => {
       const saved = registry();
       saved.devices[parentId].status = status;
       properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(saved);
     },
-    setAdminMode: (value) => { adminMode = value; }, setProvisionFailure: (value) => { provisionFailure = value; }, setSaveFailures: (value) => { saveFailures = value; },
+    setAdminMode: (value) => { adminMode = value; }, setProvisionFailure: (value) => { provisionFailure = value === true ? 'MEMBERSHIP_CONFLICT' : String(value || ''); }, setSaveFailures: (value) => { saveFailures = value; },
     setNow: (value) => { nowMs = Date.parse(value); }, now: () => new Date(nowMs),
   };
 }
@@ -281,12 +291,13 @@ test('only one concurrent approval consumes a code', () => {
   assert.strictEqual(h.provisionCalls.length, 1);
 });
 
-test('provisioning failure leaves request and pairing pending for same request retry', () => {
-  const h = createHarness(); h.seedParent(); const started = h.begin(); h.setProvisionFailure(true);
-  expectCode(h.approve(started.data.code, 'second_son_initial'), 'MEMBERSHIP_CONFLICT');
+test('retryable provisioning failure leaves request and pairing pending for same request retry', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin(); h.setProvisionFailure('MEMBERSHIP_TEMPORARY_FAILURE');
+  expectCode(h.approve(started.data.code, 'second_son_initial'), 'MEMBERSHIP_TEMPORARY_FAILURE');
   let saved = h.registry();
   assert.strictEqual(saved.devices[childId].status, 'pending');
   assert.notStrictEqual(saved.requests[started.data.requestId].codeHash, '');
+  assert.strictEqual(saved.requests[started.data.requestId].registrationState, 'FAILED_RETRYABLE');
   h.setProvisionFailure(false);
   assert(h.approve(started.data.code, 'second_son_initial').success);
   saved = h.registry();
@@ -328,9 +339,9 @@ test('revoked membership target and ambiguous matching codes fail closed', () =>
   assert.strictEqual(saved.requests[secondId].status, 'pending');
 });
 
-test('membership approval retries the same operation after provisioning or registry save failure', () => {
-  const h = createHarness(); h.seedParent(); h.seedActiveMembershipDevice(); const started = h.membershipBegin(); h.setProvisionFailure(true);
-  expectCode(h.approve(started.data.code, 'second_son_initial'), 'MEMBERSHIP_CONFLICT');
+test('membership approval retries the same operation after transient provisioning or registry save failure', () => {
+  const h = createHarness(); h.seedParent(); h.seedActiveMembershipDevice(); const started = h.membershipBegin(); h.setProvisionFailure('MEMBERSHIP_TEMPORARY_FAILURE');
+  expectCode(h.approve(started.data.code, 'second_son_initial'), 'MEMBERSHIP_TEMPORARY_FAILURE');
   assert.strictEqual(h.registry().requests[started.data.requestId].status, 'pending');
   h.setProvisionFailure(false);
   assert(h.approve(started.data.code, 'second_son_initial').success);
@@ -342,6 +353,91 @@ test('membership approval retries the same operation after provisioning or regis
   retry.setSaveFailures(0);
   assert(retry.approve(retried.data.code, 'father_add_device').success);
   assert.strictEqual(retry.provisionCalls[0].operationId, retry.provisionCalls[1].operationId);
+});
+
+test('response timeout replay uses the client idempotency key without provisioning twice', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin();
+  const clientRequestId = '11111111-1111-4111-8111-111111111111';
+  const first = h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId });
+  assert(first.success && first.data.registrationState === 'READY');
+  assert.strictEqual(h.approvalStatus(clientRequestId).data.registrationState, 'READY', 'committed approval was not discoverable after a lost response');
+  const replay = h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId });
+  assert(replay.success && replay.data.replayed === true, 'same approval did not replay');
+  assert.strictEqual(h.provisionCalls.length, 1, 'response retry provisioned membership twice');
+  expectCode(h.approve(started.data.code, 'father_add_device', { clientRequestId }), 'IDEMPOTENCY_CONFLICT');
+});
+
+test('retryable provisioning failure survives reload and resume is idempotent', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin();
+  const clientRequestId = '22222222-2222-4222-8222-222222222222';
+  h.setProvisionFailure('MEMBERSHIP_TEMPORARY_FAILURE');
+  expectCode(h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId }), 'MEMBERSHIP_TEMPORARY_FAILURE');
+  let saved = h.registry();
+  assert.strictEqual(saved.requests[started.data.requestId].registrationState, 'FAILED_RETRYABLE');
+  assert.strictEqual(h.approvalStatus(clientRequestId).data.retryable, true);
+  const recoveries = h.list().data.recoveries;
+  assert.strictEqual(recoveries.length, 1, 'reload list did not expose the recovery');
+  assert.strictEqual(recoveries[0].requestId, started.data.requestId);
+
+  h.setProvisionFailure(false);
+  assert(h.resume(started.data.requestId).success, 'resume failed');
+  assert.strictEqual(h.registry().requests[started.data.requestId].registrationState, 'READY');
+  assert(h.resume(started.data.requestId).success, 'second resume was not idempotent');
+  assert.strictEqual(h.provisionCalls.length, 2, 'READY resume repeated provisioning');
+});
+
+test('consumed code with membership committed resumes only the missing device activation', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin();
+  assert(h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId: '33333333-3333-4333-8333-333333333333' }).success);
+  const saved = h.registry();
+  saved.devices[childId].status = 'pending';
+  saved.devices[childId].registeredAt = null;
+  saved.requests[started.data.requestId].status = 'pending';
+  saved.requests[started.data.requestId].registrationState = 'MEMBERSHIP_APPROVED';
+  saved.requests[started.data.requestId].codeHash = '';
+  saved.requests[started.data.requestId].codeExpiresAt = null;
+  h.setRegistry(saved);
+
+  const beforeMembership = h.membership(childId);
+  assert.strictEqual(h.list().data.recoveries[0].registrationState, 'MEMBERSHIP_APPROVED');
+  assert(h.resume(started.data.requestId).success);
+  assert.deepStrictEqual(h.membership(childId), beforeMembership, 'resume overwrote the existing device membership');
+  assert.strictEqual(h.registry().devices[childId].status, 'active');
+});
+
+test('expired pairing request is retained when its membership write committed', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin();
+  h.setSaveFailures(2);
+  assert(!h.approve(started.data.code, 'eldest_daughter_initial').success, 'simulated response uncertainty must fail');
+  h.setSaveFailures(0);
+  h.setNow('2026-07-20T10:20:00+09:00');
+  const listed = h.list();
+  assert.strictEqual(listed.data.recoveries.length, 1, 'expired partial request was pruned');
+  assert.strictEqual(listed.data.recoveries[0].registrationState, 'MEMBERSHIP_APPROVED');
+  assert(h.resume(started.data.requestId).success, 'expired partial request did not resume');
+});
+
+test('committed membership recovery is not pruned after the ordinary recovery window', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin();
+  h.setSaveFailures(2);
+  assert(!h.approve(started.data.code, 'eldest_daughter_initial').success);
+  h.setSaveFailures(0);
+  h.setNow('2026-07-29T10:00:00+09:00');
+  const listed = h.list();
+  assert.strictEqual(listed.data.recoveries[0].registrationState, 'MEMBERSHIP_APPROVED');
+  assert(h.resume(started.data.requestId).success, 'committed membership became unrecoverable after time elapsed');
+});
+
+test('existing membership owned by another approval is never overwritten', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin();
+  const existing = { deviceId: childId, homeId: 'home-a', memberUserId: 'eldest_daughter', status: 'active', assignedBy: 'pairing_approval:another-request' };
+  h.seedMembership(childId, existing);
+  expectCode(h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId: '44444444-4444-4444-8444-444444444444' }), 'MEMBERSHIP_CONFLICT');
+  assert.deepStrictEqual(h.membership(childId), existing);
+  assert.strictEqual(h.registry().requests[started.data.requestId].registrationState, 'FAILED_TERMINAL');
+  expectCode(h.resume(started.data.requestId), 'MEMBERSHIP_CONFLICT');
+  expectCode(h.approve(started.data.code, 'eldest_daughter_initial'), 'MEMBERSHIP_CONFLICT');
+  assert.strictEqual(h.provisionCalls.length, 1, 'terminal retry called provisioning again');
 });
 
 if (!process.exitCode) console.log('PASS all membership-aware device pairing approval tests');

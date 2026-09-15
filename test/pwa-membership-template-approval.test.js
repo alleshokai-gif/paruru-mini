@@ -21,38 +21,55 @@ assert(style.includes('.home-control-approve-code') && style.includes('min-heigh
 assert(style.includes('.home-control-approve-code:focus') && style.includes('box-shadow:'), 'approval code focus indicator is missing');
 assert(html.includes('<option value="eldest_daughter_initial">長女の端末</option>'), 'eldest daughter approval option is missing');
 
-function element(value = '') { return { value, hidden: false, disabled: false, textContent: '', className: '' }; }
+function element(value = '') {
+  return {
+    value, hidden: false, disabled: false, textContent: '', className: '', innerHTML: '',
+    replaceChildren() { this.innerHTML = ''; },
+  };
+}
 function createHarness(options = {}) {
   const requests = [];
   const messages = [];
   const logs = [];
+  let approvalAttempt = options.approvalAttempt || null;
   const context = {
-    String, Array, Object, Promise, Boolean,
+    String, Array, Object, Promise, Boolean, Date,
+    BUILD_ID: 'test-build',
     console: { info: (...args) => logs.push({ level: 'info', args }), error: (...args) => logs.push({ level: 'error', args }) },
     homeControlApproveCode: element(options.code || '123456'),
     homeControlMembershipTemplate: element(options.template || ''),
     homeControlApproveButton: element(),
     homeControlApprovePanel: element(),
     homeControlUnregistered: element(), homeControlPending: element(), homeControlRegistered: element(),
-    homeControlPendingCode: element(), homeControlPendingExpiry: element(), homeControlStatus: element(), homeControlDeviceName: element(), homeControlRegisteredLabel: element(), homeControlDeviceList: Object.assign(element(), { replaceChildren() {} }),
+    homeControlPendingCode: element(), homeControlPendingExpiry: element(), homeControlStatus: element(), homeControlDeviceName: element(), homeControlRegisteredLabel: element(), homeControlDeviceList: element(), homeControlRecoveryList: element(),
     getCurrentProfile: () => ({ deviceId: 'test-device', displayName: '父' }),
     getHomeAgentPairingToken: () => 'test-credential',
     getHomeControlPending: () => null,
     formatHomeControlExpiry: () => '', scheduleHomeControlPoll() {},
     escapeHtml: (value) => String(value),
     renderHomeControlDeviceList() {},
+    createUuid: () => '11111111-1111-4111-8111-111111111111',
+    isUuid: (value) => /^[0-9a-f-]{36}$/i.test(String(value || '')),
+    getHomeControlApprovalAttempt_: () => approvalAttempt,
+    saveHomeControlApprovalAttempt_: (value) => { approvalAttempt = { ...value }; },
+    clearHomeControlApprovalAttempt_: () => { approvalAttempt = null; },
     setHomeControlMessage(message, type) { messages.push({ message, type }); },
     getHomeControlPublicMessage: (code) => String(code || ''),
     callHomeControlApi: async (payload) => {
       requests.push(payload);
+      if (typeof options.api === 'function') return options.api(payload);
       if (payload.action === 'devicePairingApprove' && options.approvalError) throw options.approvalError;
-      return payload.action === 'devicePairingList' ? { devices: [] } : { diagnostics: { stages: {} } };
+      if (payload.action === 'devicePairingList') return { devices: [], recoveries: [] };
+      if (payload.action === 'devicePairingApprovalStatus') {
+        const error = new Error('not found'); error.code = 'PAIRING_APPROVAL_NOT_FOUND'; throw error;
+      }
+      return { registrationState: 'READY', diagnostics: { stages: {} } };
     },
     renderHomeControlSettings: async () => {},
   };
   vm.createContext(context);
   vm.runInContext(`let appAuthenticationState = ${JSON.stringify(options.state || 'active_member')}; let activeMembershipContext = ${JSON.stringify({ role: options.role || 'admin' })}; ${approveSource}\n${revokeSource}\n${renderSource}\n${deviceListSource}\nglobalThis.setRole_ = (role) => { activeMembershipContext = { role }; };`, context);
-  return { context, requests, messages, logs };
+  return { context, requests, messages, logs, approvalAttempt: () => approvalAttempt };
 }
 
 (async () => {
@@ -61,13 +78,15 @@ function createHarness(options = {}) {
     await h.context.approveHomeControlPairing();
     const payload = h.requests.find((request) => request.action === 'devicePairingApprove');
     assert(payload, 'approval request was not sent');
-    assert.deepStrictEqual(Object.keys(payload).sort(), ['action', 'code', 'deviceId', 'membershipTemplate', 'pairingToken'].sort());
+    assert.deepStrictEqual(Object.keys(payload).sort(), ['action', 'clientRequestId', 'code', 'deviceId', 'membershipTemplate', 'pairingToken'].sort());
+    assert.strictEqual(payload.clientRequestId, '11111111-1111-4111-8111-111111111111');
     assert.strictEqual(payload.membershipTemplate, template);
     assert(!Object.hasOwn(payload, 'userId') && !Object.hasOwn(payload, 'role') && !Object.hasOwn(payload, 'homeId') && !Object.hasOwn(payload, 'capability'));
     const log = h.logs.find((entry) => entry.args[0] === '[Paruru] devicePairingApprove');
     assert(log && log.level === 'info', 'successful approval must be logged');
-    assert.deepStrictEqual(Object.keys(log.args[1]).sort(), ['action', 'deviceId', 'errorCode', 'membershipTemplate', 'message', 'response', 'success'].sort());
+    assert.deepStrictEqual(Object.keys(log.args[1]).sort(), ['action', 'buildId', 'deviceIdSuffix', 'errorCode', 'membershipTemplate', 'registrationState', 'replayed', 'stages', 'success'].sort());
     assert(!JSON.stringify(log.args).includes('123456'), 'raw pairing code must not be logged');
+    assert(!JSON.stringify(log.args).includes('test-device'), 'full device id must not be logged');
     assert.strictEqual(log.args[1].membershipTemplate, template);
   }
 
@@ -82,8 +101,8 @@ function createHarness(options = {}) {
   const errorLog = rejected.logs.find((entry) => entry.args[0] === '[Paruru] devicePairingApprove');
   assert(errorLog && errorLog.level === 'error', 'failed approval must be logged');
   assert.strictEqual(errorLog.args[1].errorCode, 'MEMBERSHIP_CONFLICT');
-  assert.strictEqual(errorLog.args[1].message, 'membership conflict');
-  assert.deepStrictEqual(errorLog.args[1].response.diagnostics.stages, { conflict: 'detected' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(errorLog.args[1].stages)), { conflict: 'detected' });
+  assert(!Object.hasOwn(errorLog.args[1], 'response') && !Object.hasOwn(errorLog.args[1], 'message'), 'raw response or message reached approval diagnostics');
 
   const blank = createHarness();
   await blank.context.approveHomeControlPairing();
@@ -112,5 +131,38 @@ function createHarness(options = {}) {
   assert(!admin.context.homeControlDeviceList.innerHTML.includes('data-home-control-revoke="test-device"'), 'current device must not have a revoke button');
   assert(admin.context.homeControlDeviceList.innerHTML.includes('data-home-control-revoke="other-device"'), 'other active device must remain revocable');
 
-  console.log('PASS PWA membership template approval payload, validation, and admin-only visibility');
+  const responseTimeout = createHarness({
+    template: 'eldest_daughter_initial',
+    api: async (payload) => {
+      if (payload.action === 'devicePairingApprove') {
+        const error = new Error('timeout'); error.code = 'HOME_CONTROL_UNAVAILABLE'; throw error;
+      }
+      if (payload.action === 'devicePairingApprovalStatus') return { registrationState: 'READY', retryable: false };
+      if (payload.action === 'devicePairingList') return { devices: [], recoveries: [] };
+      return {};
+    },
+  });
+  await responseTimeout.context.approveHomeControlPairing();
+  assert.deepStrictEqual(responseTimeout.requests.map((request) => request.action), ['devicePairingApprove', 'devicePairingApprovalStatus', 'devicePairingList']);
+  assert.strictEqual(responseTimeout.approvalAttempt(), null, 'confirmed READY must clear the client approval attempt');
+  assert.strictEqual(responseTimeout.context.homeControlApproveCode.value, '', 'confirmed READY must clear the consumed code');
+  assert(responseTimeout.messages.some((item) => item.message === '端末登録の成功を確認したで。' && item.type === 'success'));
+
+  const retryableReload = createHarness({
+    template: 'eldest_daughter_initial',
+    approvalAttempt: { clientRequestId: '11111111-1111-4111-8111-111111111111', membershipTemplate: 'eldest_daughter_initial' },
+    api: async (payload) => {
+      if (payload.action === 'devicePairingList') return { devices: [], recoveries: [{ requestId: '22222222-2222-4222-8222-222222222222', deviceName: '長女の端末', retryable: true }] };
+      if (payload.action === 'devicePairingApprovalStatus') return { registrationState: 'FAILED_RETRYABLE', retryable: true };
+      if (payload.action === 'devicePairingResume') return { registrationState: 'READY' };
+      return {};
+    },
+  });
+  await retryableReload.context.renderHomeControlSettings();
+  assert(retryableReload.context.homeControlRecoveryList.innerHTML.includes('登録処理を再開'), 'reload must render the resumable registration action');
+  assert.strictEqual(retryableReload.context.homeControlApproveButton.textContent, '再試行');
+  await retryableReload.context.resumeHomeControlPairing('22222222-2222-4222-8222-222222222222');
+  assert(retryableReload.requests.some((request) => request.action === 'devicePairingResume'), 'resume endpoint was not called');
+
+  console.log('PASS PWA membership template approval, idempotent retry, reload recovery, and admin-only visibility');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -117,6 +117,8 @@ test('pairing and membership request kinds cannot be used through the other stat
 test('Code routes membership registration actions explicitly', () => {
   assert(codeSource.includes("action === 'membershipRegistrationBegin'"));
   assert(codeSource.includes("action === 'membershipRegistrationStatus'"));
+  assert(codeSource.includes("action === 'devicePairingResume'"));
+  assert(codeSource.includes("action === 'devicePairingApprovalStatus'"));
 });
 
 if (!process.exitCode) console.log('PASS membership registration begin/status tests');

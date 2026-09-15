@@ -15,6 +15,7 @@ let uuidCounter = 1;
 let randomUuidCounter = 1;
 let locked = false;
 const membershipStatuses = {};
+const membershipAssignments = {};
 
 function hash(value) { return crypto.createHash('sha256').update(String(value)).digest('hex'); }
 function uuid() { return `aaaaaaaa-aaaa-4aaa-8aaa-${String(uuidCounter++).padStart(12, '0')}`; }
@@ -27,6 +28,7 @@ function reset() {
   uuidCounter = 1;
   randomUuidCounter = 1;
   Object.keys(membershipStatuses).forEach((key) => delete membershipStatuses[key]);
+  Object.keys(membershipAssignments).forEach((key) => delete membershipAssignments[key]);
 }
 
 const context = {
@@ -46,10 +48,18 @@ const context = {
     }
     return { homeId: 'test-home', memberUserId: 'father', role: 'admin', deviceId };
   },
-  provisionMembershipFromApprovalTemplateWithinRegistryLock_: (_actor, targetDeviceId) => {
+  provisionMembershipFromApprovalTemplateWithinRegistryLock_: (_actor, targetDeviceId, _template, requestId) => {
     membershipStatuses[targetDeviceId] = 'active';
+    membershipAssignments[targetDeviceId] = `pairing_approval:${requestId}`;
     return { status: 'active' };
   },
+  getDeviceMembership_: (deviceId) => membershipStatuses[deviceId] ? {
+    deviceId,
+    homeId: 'test-home',
+    memberUserId: 'father',
+    status: membershipStatuses[deviceId],
+    assignedBy: membershipAssignments[deviceId] || '',
+  } : null,
   snapshotActiveDeviceMembershipForRevoke_: (deviceId, homeId) => {
     if (homeId !== 'test-home' || membershipStatuses[deviceId] !== 'active') throw Object.assign(new Error('MEMBERSHIP_NOT_FOUND'), { code: 'MEMBERSHIP_NOT_FOUND' });
     return { deviceId, homeId, memberUserId: 'father', status: 'active' };
