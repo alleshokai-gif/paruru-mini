@@ -6,13 +6,14 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.join(__dirname, '..');
+const readSource = (file) => fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
 const featurePath = path.join(root, 'features', 'popio-health', 'popio-health.js');
-const featureSource = fs.readFileSync(featurePath, 'utf8');
-const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
-const htmlSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-const cssSource = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
-const membershipSource = fs.readFileSync(path.join(root, 'gas', 'HomeMembershipService.js'), 'utf8');
-const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+const featureSource = readSource(featurePath);
+const appSource = readSource(path.join(root, 'app.js'));
+const htmlSource = readSource(path.join(root, 'index.html'));
+const cssSource = readSource(path.join(root, 'style.css'));
+const membershipSource = readSource(path.join(root, 'gas', 'HomeMembershipService.js'));
+const swSource = readSource(path.join(root, 'sw.js'));
 const api = require(featurePath);
 
 function plain(value) { return JSON.parse(JSON.stringify(value)); }
