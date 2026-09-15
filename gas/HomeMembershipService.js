@@ -14,6 +14,12 @@ const ROLE_ALLOWED_VIEWS = Object.freeze({
   guardian: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']),
   self_record: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']),
 });
+const MEMBER_ACCESS_POLICIES = Object.freeze({
+  eldest_daughter: Object.freeze({
+    capabilities: Object.freeze(['memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'pet.health.read', 'pet.health.record']),
+    allowedViews: Object.freeze(['home', 'inbox', 'popio-health', 'bus']),
+  }),
+});
 const HEALTH_OPERATION_CAPABILITIES = Object.freeze({
   'health.context.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
   'health.daily.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
@@ -166,7 +172,29 @@ function authorizeCapability_(actor, capability) {
 }
 
 function hasRoleCapability_(actor, capability) {
-  return Boolean(actor && actor.homeId && actor.memberUserId && HOME_MEMBER_ROLES[actor.role] && ROLE_CAPABILITIES[actor.role].indexOf(String(capability || '')) >= 0);
+  return Boolean(actor && actor.homeId && actor.memberUserId && HOME_MEMBER_ROLES[actor.role] && getEffectiveMemberCapabilities_(actor.memberUserId, actor.role).indexOf(String(capability || '')) >= 0);
+}
+
+function getEffectiveMemberCapabilities_(memberUserId, role) {
+  const roleCapabilities = ROLE_CAPABILITIES[String(role || '')];
+  if (!roleCapabilities) return [];
+  const memberPolicy = MEMBER_ACCESS_POLICIES[String(memberUserId || '').trim()];
+  if (!memberPolicy) return roleCapabilities.slice();
+  if (memberPolicy.capabilities.some(function(capability) { return roleCapabilities.indexOf(capability) < 0; })) {
+    throw homeMembershipError_('CONFIGURATION_ERROR');
+  }
+  return memberPolicy.capabilities.slice();
+}
+
+function getEffectiveMemberAllowedViews_(memberUserId, role) {
+  const roleViews = ROLE_ALLOWED_VIEWS[String(role || '')];
+  if (!roleViews) return [];
+  const memberPolicy = MEMBER_ACCESS_POLICIES[String(memberUserId || '').trim()];
+  if (!memberPolicy) return roleViews.slice();
+  if (memberPolicy.allowedViews.some(function(view) { return roleViews.indexOf(view) < 0; })) {
+    throw homeMembershipError_('CONFIGURATION_ERROR');
+  }
+  return memberPolicy.allowedViews.slice();
 }
 
 function resolveHomeAgentReadActor_(body) {
@@ -180,7 +208,7 @@ function resolveHomeAgentReadActor_(body) {
     memberUserId: actor.memberUserId,
     displayName: member.displayName,
     role: actor.role,
-    capabilities: ROLE_CAPABILITIES[actor.role].slice(),
+    capabilities: getEffectiveMemberCapabilities_(actor.memberUserId, actor.role),
     deviceId: actor.deviceId,
   };
 }
@@ -196,7 +224,7 @@ function resolveHomeAgentControlActor_(body) {
     memberUserId: actor.memberUserId,
     displayName: member.displayName,
     role: actor.role,
-    capabilities: ROLE_CAPABILITIES[actor.role].slice(),
+    capabilities: getEffectiveMemberCapabilities_(actor.memberUserId, actor.role),
     deviceId: actor.deviceId,
   };
 }
@@ -207,7 +235,7 @@ function getMembershipContext_(body) {
   const member = getHomeMember_(actor.homeId, actor.memberUserId);
   if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member) || !HOME_MEMBER_ROLES[member.role]) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
   const policy = getHomeMemberPolicy_(member.memberUserId);
-  return { memberUserId: member.memberUserId, displayName: member.displayName, role: member.role, calendarSuffix: policy.calendarSuffix, addressTerms: getHomeMemberAddressTerms_(member.memberUserId), capabilities: ROLE_CAPABILITIES[member.role].slice(), allowedViews: ROLE_ALLOWED_VIEWS[member.role].slice() };
+  return { memberUserId: member.memberUserId, displayName: member.displayName, role: member.role, calendarSuffix: policy.calendarSuffix, addressTerms: getHomeMemberAddressTerms_(member.memberUserId), capabilities: getEffectiveMemberCapabilities_(member.memberUserId, member.role), allowedViews: getEffectiveMemberAllowedViews_(member.memberUserId, member.role) };
 }
 
 function getActiveSelfRecordMembers_(homeId) {

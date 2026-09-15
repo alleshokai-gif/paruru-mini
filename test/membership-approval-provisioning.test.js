@@ -108,6 +108,15 @@ function pairingApprovalContext(deviceId, requestId) {
   assert.deepStrictEqual({ homeId: son.homeId, role: son.role, deviceHomeId: device.homeId, memberUserId: device.memberUserId }, { homeId: 'home-a', role: 'self_record', deviceHomeId: 'home-a', memberUserId: 'second_son' });
 }
 
+{
+  const { spreadsheet, registry, api } = setup();
+  const result = api.provisionMembershipFromApprovalTemplateWithinRegistryLock_(adminActor(api, registry), 'daughter-phone', 'eldest_daughter_initial', 'op-daughter', '2026-09-14T12:00:00+09:00');
+  const daughter = find(spreadsheet.sheets.Home_Members, homeHeaders, 'memberUserId', 'eldest_daughter')[0];
+  const device = find(spreadsheet.sheets.Device_Memberships, deviceHeaders, 'deviceId', 'daughter-phone')[0];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(result)), { memberUserId: 'eldest_daughter', role: 'self_record', deviceId: 'daughter-phone', status: 'active' });
+  assert.deepStrictEqual({ displayName: daughter.displayName, role: daughter.role, deviceHomeId: device.homeId, memberUserId: device.memberUserId, status: device.status }, { displayName: '長女', role: 'self_record', deviceHomeId: 'home-a', memberUserId: 'eldest_daughter', status: 'active' });
+}
+
 expectCode(() => { const { registry, api } = setup({ adminRole: 'self_record' }); adminActor(api, registry); }, 'FORBIDDEN');
 {
   const { spreadsheet, registry, api } = setup({ existingSecondSon: true, existingSecondSonDevice: true });
