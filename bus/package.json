@@ -30,6 +30,7 @@
     "probe:preorigin:poc": "node scripts/probe-preorigin-vehicles.js",
     "probe:seibu:position": "node scripts/probe-seibu-position.js",
     "observe:preorigin:job": "node observation/preorigin-job.js",
+    "check:preorigin:remote": "node observation/check-preorigin-remote.js",
     "test:observation:live": "node scripts/check-observation-live.js",
     "check:static": "node scripts/check-static.js",
     "check:bundle": "node scripts/check-bundle.js",

@@ -2,6 +2,9 @@
   "name": "paluru-bus-observer",
   "private": true,
   "type": "module",
+  "scripts": {
+    "check:preorigin": "node check-preorigin-remote.js"
+  },
   "dependencies": {
     "google-auth-library": "11.0.2",
     "gtfs-realtime-bindings": "2.2.0"
