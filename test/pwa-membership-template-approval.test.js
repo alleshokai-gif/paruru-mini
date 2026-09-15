@@ -19,7 +19,9 @@ assert(/id="homeControlApproveCode"[^>]*inputmode="numeric"[^>]*pattern="\[0-9\]
 assert(style.includes('.home-control-approve-panel') && style.includes('gap: 20px'), 'approval panel spacing is missing');
 assert(style.includes('.home-control-approve-code') && style.includes('min-height: 56px') && style.includes('font-size: 28px') && style.includes('letter-spacing: 0.22em'), 'approval code input mobile sizing is missing');
 assert(style.includes('.home-control-approve-code:focus') && style.includes('box-shadow:'), 'approval code focus indicator is missing');
-assert(html.includes('<option value="eldest_daughter_initial">長女の端末</option>'), 'eldest daughter approval option is missing');
+for (const option of ['father', 'mother', 'eldest_son', 'eldest_daughter', 'second_son', 'youngest_daughter']) {
+  assert(html.includes(`<option value="${option}">`), `${option} approval option is missing`);
+}
 
 function element(value = '') {
   return {
@@ -35,9 +37,10 @@ function createHarness(options = {}) {
   const context = {
     String, Array, Object, Promise, Boolean, Date,
     BUILD_ID: 'test-build',
+    HOME_CONTROL_REGISTRATION_IDENTITIES: { father: '父', mother: '母', eldest_son: '長男', eldest_daughter: '長女', second_son: '次男', youngest_daughter: '次女' },
     console: { info: (...args) => logs.push({ level: 'info', args }), error: (...args) => logs.push({ level: 'error', args }) },
     homeControlApproveCode: element(options.code || '123456'),
-    homeControlMembershipTemplate: element(options.template || ''),
+    homeControlMemberUserId: element(options.memberUserId || ''),
     homeControlApproveButton: element(),
     homeControlApprovePanel: element(),
     homeControlUnregistered: element(), homeControlPending: element(), homeControlRegistered: element(),
@@ -73,25 +76,26 @@ function createHarness(options = {}) {
 }
 
 (async () => {
-  for (const template of ['father_add_device', 'eldest_daughter_initial', 'second_son_initial']) {
-    const h = createHarness({ template });
+  for (const identity of [['father', '父'], ['mother', '母'], ['eldest_son', '長男'], ['eldest_daughter', '長女'], ['second_son', '次男'], ['youngest_daughter', '次女']]) {
+    const h = createHarness({ memberUserId: identity[0] });
     await h.context.approveHomeControlPairing();
     const payload = h.requests.find((request) => request.action === 'devicePairingApprove');
     assert(payload, 'approval request was not sent');
-    assert.deepStrictEqual(Object.keys(payload).sort(), ['action', 'clientRequestId', 'code', 'deviceId', 'membershipTemplate', 'pairingToken'].sort());
+    assert.deepStrictEqual(Object.keys(payload).sort(), ['action', 'clientRequestId', 'code', 'deviceId', 'memberUserId', 'displayName', 'pairingToken'].sort());
     assert.strictEqual(payload.clientRequestId, '11111111-1111-4111-8111-111111111111');
-    assert.strictEqual(payload.membershipTemplate, template);
-    assert(!Object.hasOwn(payload, 'userId') && !Object.hasOwn(payload, 'role') && !Object.hasOwn(payload, 'homeId') && !Object.hasOwn(payload, 'capability'));
+    assert.strictEqual(payload.memberUserId, identity[0]);
+    assert.strictEqual(payload.displayName, identity[1]);
+    assert(!Object.hasOwn(payload, 'membershipTemplate') && !Object.hasOwn(payload, 'userId') && !Object.hasOwn(payload, 'role') && !Object.hasOwn(payload, 'homeId') && !Object.hasOwn(payload, 'capability'));
     const log = h.logs.find((entry) => entry.args[0] === '[Paruru] devicePairingApprove');
     assert(log && log.level === 'info', 'successful approval must be logged');
-    assert.deepStrictEqual(Object.keys(log.args[1]).sort(), ['action', 'buildId', 'deviceIdSuffix', 'errorCode', 'membershipTemplate', 'registrationState', 'replayed', 'stages', 'success'].sort());
+    assert.deepStrictEqual(Object.keys(log.args[1]).sort(), ['action', 'buildId', 'deviceIdSuffix', 'errorCode', 'memberUserId', 'registrationState', 'replayed', 'stages', 'success'].sort());
     assert(!JSON.stringify(log.args).includes('123456'), 'raw pairing code must not be logged');
     assert(!JSON.stringify(log.args).includes('test-device'), 'full device id must not be logged');
-    assert.strictEqual(log.args[1].membershipTemplate, template);
+    assert.strictEqual(log.args[1].memberUserId, identity[0]);
   }
 
   const rejected = createHarness({
-    template: 'second_son_initial',
+    memberUserId: 'second_son',
     approvalError: Object.assign(new Error('server rejected'), {
       code: 'HOME_CONTROL_FAILED',
       response: { error: { code: 'MEMBERSHIP_CONFLICT' }, message: 'membership conflict', diagnostics: { stages: { conflict: 'detected' } } },
@@ -106,10 +110,10 @@ function createHarness(options = {}) {
 
   const blank = createHarness();
   await blank.context.approveHomeControlPairing();
-  assert.strictEqual(blank.requests.length, 0, 'blank template must not call the API');
+  assert.strictEqual(blank.requests.length, 0, 'blank identity must not call the API');
   assert.strictEqual(blank.messages[0].type, 'error');
 
-  const nonAdmin = createHarness({ template: 'father_add_device', role: 'self_record' });
+  const nonAdmin = createHarness({ memberUserId: 'father', role: 'self_record' });
   await nonAdmin.context.renderHomeControlSettings();
   assert.strictEqual(nonAdmin.context.homeControlApprovePanel.hidden, true, 'non-admin must not see approval controls');
   assert.strictEqual(nonAdmin.context.homeControlDeviceList.hidden, true, 'non-admin must not see device list');
@@ -118,7 +122,7 @@ function createHarness(options = {}) {
   await nonAdmin.context.revokeHomeControlDevice('another-device');
   assert.strictEqual(nonAdmin.requests.length, 0, 'non-admin must not send approval or revoke requests');
 
-  const admin = createHarness({ template: 'father_add_device' });
+  const admin = createHarness({ memberUserId: 'father' });
   await admin.context.renderHomeControlSettings();
   assert.strictEqual(admin.context.homeControlApprovePanel.hidden, false, 'admin must see approval controls after active membership');
   assert.strictEqual(admin.context.homeControlDeviceList.hidden, false, 'admin must see device list');
@@ -132,7 +136,7 @@ function createHarness(options = {}) {
   assert(admin.context.homeControlDeviceList.innerHTML.includes('data-home-control-revoke="other-device"'), 'other active device must remain revocable');
 
   const responseTimeout = createHarness({
-    template: 'eldest_daughter_initial',
+    memberUserId: 'eldest_daughter',
     api: async (payload) => {
       if (payload.action === 'devicePairingApprove') {
         const error = new Error('timeout'); error.code = 'HOME_CONTROL_UNAVAILABLE'; throw error;
@@ -149,8 +153,8 @@ function createHarness(options = {}) {
   assert(responseTimeout.messages.some((item) => item.message === '端末登録の成功を確認したで。' && item.type === 'success'));
 
   const retryableReload = createHarness({
-    template: 'eldest_daughter_initial',
-    approvalAttempt: { clientRequestId: '11111111-1111-4111-8111-111111111111', membershipTemplate: 'eldest_daughter_initial' },
+    memberUserId: 'eldest_daughter',
+    approvalAttempt: { clientRequestId: '11111111-1111-4111-8111-111111111111', memberUserId: 'eldest_daughter', displayName: '長女' },
     api: async (payload) => {
       if (payload.action === 'devicePairingList') return { devices: [], recoveries: [{ requestId: '22222222-2222-4222-8222-222222222222', deviceName: '長女の端末', retryable: true }] };
       if (payload.action === 'devicePairingApprovalStatus') return { registrationState: 'FAILED_RETRYABLE', retryable: true };
@@ -164,5 +168,5 @@ function createHarness(options = {}) {
   await retryableReload.context.resumeHomeControlPairing('22222222-2222-4222-8222-222222222222');
   assert(retryableReload.requests.some((request) => request.action === 'devicePairingResume'), 'resume endpoint was not called');
 
-  console.log('PASS PWA membership template approval, idempotent retry, reload recovery, and admin-only visibility');
+  console.log('PASS PWA identity-only approval, idempotent retry, reload recovery, and admin-only visibility');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

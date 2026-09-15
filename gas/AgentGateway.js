@@ -164,7 +164,7 @@ function validateAgentChatInput_(body, actor) {
 
 function resolveAgentResponsePolicyId_(actor) {
   const role = String(actor && actor.role || '').trim();
-  if (role === 'guardian' || role === 'self_record') return 'concise';
+  if (!role || role === 'guardian' || role === 'self_record') return 'concise';
   // normal is the backwards-compatible safe presentation default. This does
   // not expand authorization or infer a role from any client-provided value.
   return 'normal';
@@ -775,7 +775,7 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
-const PALURU_MINI_BUILD_ID = 'mini-20260914-eldest-daughter-access-v1';
+const PALURU_MINI_BUILD_ID = 'mini-20260915-simple-user-registration-v1';
 
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};

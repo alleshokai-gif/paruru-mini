@@ -63,6 +63,14 @@ assert.strictEqual(api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairi
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_('son-edge', 'pairing'))), { homeId: 'home-a', memberUserId: 'second_son', role: 'self_record', deviceId: 'son-edge' });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ deviceId: 'mother-phone', pairingToken: 'pairing' }))), { homeId: 'home-a', memberUserId: 'mother', displayName: '母', role: 'guardian', capabilities: ['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit', 'family.inbox.review'], deviceId: 'mother-phone' });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.getMembershipContext_({ deviceId: 'mother-phone', pairingToken: 'pairing' }))), { memberUserId: 'mother', displayName: '母', role: 'guardian', calendarSuffix: '（母）', addressTerms: { paruru: '', nurseOkan: '' }, capabilities: ['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit', 'family.inbox.review'], allowedViews: ['home', 'inbox', 'nurse-okan', 'popio-health', 'bus'] });
+const memberRoleColumn = homeHeaders.indexOf('role');
+spreadsheet.sheets.Home_Members.values[3][memberRoleColumn] = '';
+const baselineContext = JSON.parse(JSON.stringify(api.getMembershipContext_({ deviceId: 'son-phone', pairingToken: 'pairing' })));
+assert.strictEqual(baselineContext.role, '');
+assert(baselineContext.capabilities.includes('home.read') && baselineContext.capabilities.includes('health.self.record'));
+assert(!baselineContext.capabilities.includes('home.control') && !baselineContext.capabilities.includes('health.supervision.read') && !baselineContext.capabilities.includes('family.inbox.review'));
+assert.deepStrictEqual(baselineContext.allowedViews, ['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']);
+spreadsheet.sheets.Home_Members.values[3][memberRoleColumn] = 'self_record';
 expectCode(() => api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: '' }), 'UNAUTHORIZED_DEVICE');
 assert.strictEqual(api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }).memberUserId, 'father');
 expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'son-phone', pairingToken: 'pairing' }), 'FORBIDDEN');
@@ -81,7 +89,8 @@ expectCode(() => api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'MEM
 spreadsheet.sheets.Home_Members.values[1][fatherDisplayNameColumn] = '父';
 const fatherRoleColumn = homeHeaders.indexOf('role');
 spreadsheet.sheets.Home_Members.values[1][fatherRoleColumn] = 'self_record';
-expectCode(() => api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
+assert.strictEqual(api.resolveAuthenticatedActor_('father-phone', 'pairing').role, 'self_record', 'fixed roster role must not be an identity constraint');
+expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing' }), 'FORBIDDEN');
 spreadsheet.sheets.Home_Members.values[1][fatherRoleColumn] = 'admin';
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'second_son', 'health.profile.get'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'second_son', 'health.profile.update'), true);
@@ -98,7 +107,7 @@ assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_(
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'second_son', 'health.profile.get'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'second_son', 'health.profile.update'), true);
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('mother-phone', 'pairing'), 'father', 'health.weight.record'), 'FORBIDDEN');
-expectCode(() => api.getMembershipApprovalTemplate_('mother_initial'), 'INVALID_MEMBERSHIP_TEMPLATE');
+expectCode(() => api.getRegistrationMemberIdentity_('mother', '父'), 'INVALID_MEMBER_IDENTITY');
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.weight.record'), 'FORBIDDEN');
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.weight.correct'), 'FORBIDDEN');
 expectCode(() => api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('son-phone', 'pairing'), 'father', 'health.daily.list'), 'FORBIDDEN');

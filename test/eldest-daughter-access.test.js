@@ -45,23 +45,20 @@ assert.deepStrictEqual(membership, {
   role: 'self_record',
   calendarSuffix: '（は）',
   addressTerms: { paruru: '', nurseOkan: '' },
-  capabilities: ['memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'pet.health.read', 'pet.health.record'],
-  allowedViews: ['home', 'inbox', 'popio-health', 'bus'],
+  capabilities: ['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit'],
+  allowedViews: ['home', 'inbox', 'nurse-okan', 'popio-health', 'bus'],
 });
 
 const actor = context.resolveAuthenticatedActor_('daughter-phone', 'credential');
 for (const capability of membership.capabilities) assert.strictEqual(context.authorizeCapability_(actor, capability), true, capability);
-for (const capability of ['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'health.self.read', 'health.self.record', 'family.inbox.read', 'family.inbox.submit']) {
+for (const capability of ['home.control', 'health.supervision.read', 'health.supervision.record', 'family.inbox.review']) {
   assert.throws(() => context.authorizeCapability_(actor, capability), (error) => error && error.code === 'FORBIDDEN', capability);
 }
-assert.throws(() => context.resolveHomeAgentReadActor_({ deviceId: 'daughter-phone', pairingToken: 'credential' }), (error) => error && error.code === 'FORBIDDEN');
+assert.strictEqual(context.resolveHomeAgentReadActor_({ deviceId: 'daughter-phone', pairingToken: 'credential' }).memberUserId, 'eldest_daughter');
 assert.throws(() => context.resolveHomeAgentControlActor_({ deviceId: 'daughter-phone', pairingToken: 'credential' }), (error) => error && error.code === 'FORBIDDEN');
-assert.throws(() => context.authorizeTargetOperation_(actor, 'eldest_daughter', 'health.daily.get'), (error) => error && error.code === 'FORBIDDEN');
+assert.strictEqual(context.authorizeTargetOperation_(actor, 'eldest_daughter', 'health.daily.get'), true);
 
-const registration = JSON.parse(JSON.stringify(context.getMembershipApprovalTemplate_('eldest_daughter_initial')));
-assert.deepStrictEqual(registration, {
-  memberUserId: 'eldest_daughter', displayName: '長女', role: 'self_record',
-  allowsInitialMember: true, allowsExistingMember: true, requiresExistingMember: false,
-});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(context.getRegistrationMemberIdentity_('eldest_daughter', '長女'))), { memberUserId: 'eldest_daughter', displayName: '長女' });
+assert.throws(() => context.getRegistrationMemberIdentity_('eldest_daughter', '次男'), (error) => error && error.code === 'INVALID_MEMBER_IDENTITY');
 
-console.log('PASS eldest daughter server-resolved access, forbidden domains, and fixed registration policy');
+console.log('PASS eldest daughter baseline access, forbidden privileges, and identity-only registration policy');
