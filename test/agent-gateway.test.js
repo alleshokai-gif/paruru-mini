@@ -836,7 +836,7 @@ test('Mini persists one request deployment chain using suffixes and null version
   assert(agentRow[headers.indexOf('miniDeploymentSuffix')] === 't-96', 'Mini deployment suffix did not stamp Agent trace');
   assert(agentRow[headers.indexOf('agentDeploymentSuffix')] === 'ag48', 'Agent deployment suffix was dropped');
   assert(agentRow[headers.indexOf('osDeploymentSuffix')] === 'os34', 'OS deployment suffix was dropped');
-  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260914-eldest-daughter-access-v1', 'Mini build ID was not stamped');
+  assert(agentRow[headers.indexOf('miniBuildId')] === 'mini-20260915-simple-user-registration-v1', 'Mini build ID was not stamped');
   assert(agentRow[headers.indexOf('agentBuildId')] === 'agent-20260809-prepared-contract-v1', 'Agent build ID was dropped');
   assert(agentRow[headers.indexOf('osBuildId')] === 'os-20260809-build-chain-v1', 'OS build ID was dropped');
   assert(agentRow[headers.indexOf('miniVersion')] === null && agentRow[headers.indexOf('agentVersion')] === null && agentRow[headers.indexOf('osVersion')] === null, 'unverifiable versions were not null');
@@ -1098,6 +1098,10 @@ test('RPOL-04 client response-policy and role spoofing are ignored', () => {
 
 test('RPOL-05 unknown server role uses backward-compatible normal policy', () => {
   assertServerResolvedResponsePolicy_('unknown_role', 'normal');
+});
+
+test('RPOL-06 role-free baseline member receives concise policy', () => {
+  assertServerResolvedResponsePolicy_('', 'concise');
 });
 
 test('climate service response is sanitized', () => {

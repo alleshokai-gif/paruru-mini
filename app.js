@@ -10,6 +10,10 @@ const AGENT_CHAT_SESSION_STORAGE_KEY = "paruru-mini-agent-chat-session-v1";
 const HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY = "paruru-mini-home-agent-pairing-v1";
 const HOME_CONTROL_PENDING_STORAGE_KEY = "paruru-mini-home-control-pending-v1";
 const HOME_CONTROL_APPROVAL_ATTEMPT_STORAGE_KEY = "paruru-mini-home-control-approval-attempt-v1";
+const HOME_CONTROL_REGISTRATION_IDENTITIES = Object.freeze({
+  father: "父", mother: "母", eldest_son: "長男", eldest_daughter: "長女",
+  second_son: "次男", youngest_daughter: "次女",
+});
 const MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY = "paruru-mini-membership-registration-pending-v1";
 const PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY = "paruru-mini-pet-health-dashboard-popio-v1";
 const PET_HEALTH_DASHBOARD_CACHE_SCHEMA_VERSION = "pet-health-1.0";
@@ -424,7 +428,7 @@ const homeControlPendingExpiry = document.querySelector("#homeControlPendingExpi
 const homeControlRegistered = document.querySelector("#homeControlRegistered");
 const homeControlRegisteredLabel = document.querySelector("#homeControlRegisteredLabel");
 const homeControlApprovePanel = document.querySelector("#homeControlApprovePanel");
-const homeControlMembershipTemplate = document.querySelector("#homeControlMembershipTemplate");
+const homeControlMemberUserId = document.querySelector("#homeControlMemberUserId");
 const homeControlApproveCode = document.querySelector("#homeControlApproveCode");
 const homeControlApproveButton = document.querySelector("#homeControlApproveButton");
 const homeControlRecoveryList = document.querySelector("#homeControlRecoveryList");
@@ -2288,7 +2292,7 @@ function clearHomeControlPending() {
 function getHomeControlApprovalAttempt_() {
   try {
     const value = JSON.parse(localStorage.getItem(HOME_CONTROL_APPROVAL_ATTEMPT_STORAGE_KEY) || "");
-    return value && isUuid(value.clientRequestId) && typeof value.membershipTemplate === "string"
+    return value && isUuid(value.clientRequestId) && typeof value.memberUserId === "string" && typeof value.displayName === "string"
       ? value
       : null;
   } catch (error) {
@@ -2299,7 +2303,8 @@ function getHomeControlApprovalAttempt_() {
 function saveHomeControlApprovalAttempt_(value) {
   localStorage.setItem(HOME_CONTROL_APPROVAL_ATTEMPT_STORAGE_KEY, JSON.stringify({
     clientRequestId: String(value?.clientRequestId || ""),
-    membershipTemplate: String(value?.membershipTemplate || ""),
+    memberUserId: String(value?.memberUserId || ""),
+    displayName: String(value?.displayName || ""),
     createdAt: String(value?.createdAt || new Date().toISOString()),
   }));
 }
@@ -2536,8 +2541,9 @@ async function approveHomeControlPairing() {
     setHomeControlMessage("この端末では新しい端末を承認できません。", "error");
     return;
   }
-  const membershipTemplate = String(homeControlMembershipTemplate?.value || "").trim();
-  if (!["father_add_device", "eldest_daughter_initial", "second_son_initial"].includes(membershipTemplate)) {
+  const memberUserId = String(homeControlMemberUserId?.value || "").trim();
+  const displayName = String(HOME_CONTROL_REGISTRATION_IDENTITIES[memberUserId] || "");
+  if (!memberUserId || !displayName) {
     setHomeControlMessage("登録する家族を選んでな。", "error");
     return;
   }
@@ -2548,23 +2554,23 @@ async function approveHomeControlPairing() {
     return;
   }
   let approvalAttempt = getHomeControlApprovalAttempt_();
-  if (!approvalAttempt || approvalAttempt.membershipTemplate !== membershipTemplate) {
-    approvalAttempt = { clientRequestId: createUuid(), membershipTemplate, createdAt: new Date().toISOString() };
+  if (!approvalAttempt || approvalAttempt.memberUserId !== memberUserId || approvalAttempt.displayName !== displayName) {
+    approvalAttempt = { clientRequestId: createUuid(), memberUserId, displayName, createdAt: new Date().toISOString() };
     saveHomeControlApprovalAttempt_(approvalAttempt);
   }
   if (homeControlApproveButton) homeControlApproveButton.disabled = true;
   try {
     const response = await callHomeControlApi({
       action: "devicePairingApprove", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(),
-      code, membershipTemplate, clientRequestId: approvalAttempt.clientRequestId,
+      code, memberUserId, displayName, clientRequestId: approvalAttempt.clientRequestId,
     });
-    logDevicePairingApprovalResult_({ action: "devicePairingApprove", membershipTemplate, deviceId: profile.deviceId, success: true, errorCode: "", message: "", response });
+    logDevicePairingApprovalResult_({ action: "devicePairingApprove", memberUserId, deviceId: profile.deviceId, success: true, errorCode: "", message: "", response });
     await completeHomeControlApprovalUi_("新しい端末を承認したで。", true);
   } catch (error) {
-    logDevicePairingApprovalResult_({ action: "devicePairingApprove", membershipTemplate, deviceId: profile.deviceId, success: false, errorCode: String(error?.response?.error?.code || error?.code || ""), message: String(error?.response?.message || error?.message || ""), response: error?.response || null });
+    logDevicePairingApprovalResult_({ action: "devicePairingApprove", memberUserId, deviceId: profile.deviceId, success: false, errorCode: String(error?.response?.error?.code || error?.code || ""), message: String(error?.response?.message || error?.message || ""), response: error?.response || null });
     const reconciled = await reconcileHomeControlApprovalAttempt_(approvalAttempt, true);
     if (!reconciled) {
-      if (["INVALID_PAIRING_CODE", "INVALID_MEMBERSHIP_TEMPLATE", "IDEMPOTENCY_CONFLICT", "FORBIDDEN", "UNAUTHORIZED_DEVICE"].includes(error?.code)) {
+      if (["INVALID_PAIRING_CODE", "INVALID_MEMBER_IDENTITY", "IDEMPOTENCY_CONFLICT", "FORBIDDEN", "UNAUTHORIZED_DEVICE"].includes(error?.code)) {
         clearHomeControlApprovalAttempt_();
         setHomeControlApprovalRetryState_(false);
         setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
@@ -2638,7 +2644,7 @@ async function resumeHomeControlPairing(requestId) {
 }
 
 function logDevicePairingApprovalResult_(details) {
-  const stageNames = ["pendingRequest", "registryDevice", "registryActivation", "secondSonPolicy", "homeMembers", "deviceMemberships", "conflict"];
+  const stageNames = ["pendingRequest", "registryDevice", "registryActivation", "memberIdentity", "homeMembers", "deviceMemberships", "conflict"];
   const sourceStages = details?.response?.diagnostics?.stages;
   const stages = sourceStages && typeof sourceStages === "object"
     ? stageNames.reduce((result, name) => {
@@ -2648,7 +2654,7 @@ function logDevicePairingApprovalResult_(details) {
     : {};
   const entry = {
     action: String(details?.action || "devicePairingApprove"),
-    membershipTemplate: String(details?.membershipTemplate || ""),
+    memberUserId: String(details?.memberUserId || ""),
     deviceIdSuffix: String(details?.deviceId || "").slice(-8),
     success: Boolean(details?.success),
     errorCode: String(details?.errorCode || ""),
