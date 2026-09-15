@@ -1,0 +1,40 @@
+'use strict';
+// Synthetic identity only. Production auth functions run unchanged against in-memory I/O.
+const fs = require('fs'), path = require('path'), vm = require('vm'), crypto = require('crypto');
+function createHarness(options = {}) {
+  const root = options.root || path.resolve(__dirname, '../..');
+  const source = name => fs.readFileSync(path.join(fs.existsSync(path.join(root, name)) ? root : options.baseRoot, name), 'utf8');
+  const header = ['homeId','memberUserId','displayName','role','status','createdAt','updatedAt'];
+  const dh = ['deviceId','homeId','memberUserId','status','assignedBy','assignedAt','updatedAt'];
+  const rows = { Home_Members: [header, ['local-home','father','父','admin','active','',''],['local-home','second_son','次男','self_record','active','',''], ['local-home','mother','母','guardian','active','',''], ['other-home','father','父','admin','active','','']],
+    Device_Memberships: [dh,['admin-local','local-home','father','active','','',''],['child-local','local-home','second_son','active','','',''],['guardian-local','local-home','mother','active','','',''],['other-local','other-home','father','active','','','']] };
+  const credentials = Object.fromEntries(['admin-local','child-local','guardian-local','other-local'].map(id => [id, crypto.randomBytes(32).toString('hex')]));
+  const registry = {version:1,devices:{},requests:{},approveAttempts:{}};
+  Object.entries(credentials).forEach(([id, token]) => { registry.devices[id] = {deviceId:id,status:'active',tokenHash:crypto.createHash('sha256').update(token).digest('hex'),lastUsedAt:null}; });
+  const props = {'PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1':JSON.stringify(registry),'KAZ_OS_LIVE_ENABLED':'true','KAZ_OS_PROGRESS_OWNER_HOME_ID':'local-home','KAZ_OS_PROGRESS_OWNER_MEMBER_ID':'father'};
+  let writes = 0, reads = 0;
+  const sheet = name => {
+    const values = rows[name]; if (!values) return null;
+    return {getLastColumn:()=>values[0].length,getLastRow:()=>values.length,
+      getDataRange:()=>({getValues:()=>structuredClone(values)}),
+      getRange:(row,col,count,width)=>({getValues:()=>Array.from({length:count},(_,r)=>Array.from({length:width},(_,c)=>values[row-1+r]?.[col-1+c]??'')),setValues:()=>{throw Error('SHEET_WRITE_FORBIDDEN');}})};
+  };
+  const ctx = {console, JSON, Date, Number, String, Boolean, Object, Array, Error, Math,
+    PropertiesService:{getScriptProperties:()=>({getProperty:k=>props[k]||'',setProperty:(k,v)=>{writes++; props[k]=v;}})},
+    SpreadsheetApp:{getActiveSpreadsheet:()=>({getSheetByName:sheet})},
+    LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
+    Utilities:{DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},computeDigest:(_,v)=>Array.from(crypto.createHash('sha256').update(v).digest()),
+      formatDate:d=>d.toISOString(), getUuid:()=>crypto.randomUUID()},
+    UrlFetchApp:{fetch(){throw Error('EXTERNAL_FETCH_FORBIDDEN');}},
+    ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},
+  };
+  vm.createContext(ctx);
+  ['gas/HomeMemberPolicy.js','gas/HomeMembershipService.js','gas/DevicePairingService.js','gas/Code.js','gas/KazOsProgress.js','gas/KazOsProjects.js','gas/KazOsInbox.js'].forEach(f=>vm.runInContext(source(f),ctx,{filename:f}));
+  ctx.readKazOsProgress_ = () => {reads++; return options.provider();};
+  ctx.readKazOsProjects_ = () => {reads++; if (!options.projectsProvider) throw Error('PROJECTS_NOT_CONFIGURED'); return options.projectsProvider();};
+  ctx.readKazOsInbox_ = () => {reads++; if (!options.inboxProvider) throw Error('INBOX_NOT_CONFIGURED'); return options.inboxProvider();};
+  return {ctx, props, rows, credentials, stats:()=>({writes,reads}), resetStats:()=>{writes=0;reads=0;},
+    body:(device='admin-local', extra={})=>({action:'kazOs.progress.get',deviceId:device,pairingToken:credentials[device],...extra}),
+    call:body=>ctx.doPost({postData:{contents:JSON.stringify(body)}})};
+}
+module.exports = { createHarness };

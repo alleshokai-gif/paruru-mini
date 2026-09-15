@@ -10,7 +10,7 @@ const ROLE_CAPABILITIES = Object.freeze({
   self_record: Object.freeze(['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit']),
 });
 const ROLE_ALLOWED_VIEWS = Object.freeze({
-  admin: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus', 'settings']),
+  admin: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus', 'settings', 'kaz-os']),
   guardian: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']),
   self_record: Object.freeze(['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']),
 });
@@ -20,6 +20,15 @@ const MEMBER_ACCESS_POLICIES = Object.freeze({
     allowedViews: Object.freeze(['home', 'inbox', 'popio-health', 'bus']),
   }),
 });
+
+function isKazOsLiveEnabled_() {
+  try {
+    return String(PropertiesService.getScriptProperties().getProperty('KAZ_OS_LIVE_ENABLED') || '').toLowerCase() === 'true';
+  } catch (error) {
+    // Configuration/read failures must fail closed for the private surface.
+    return false;
+  }
+}
 const HEALTH_OPERATION_CAPABILITIES = Object.freeze({
   'health.context.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
   'health.daily.get': Object.freeze({ self: 'health.self.read', supervision: 'health.supervision.read' }),
@@ -38,9 +47,11 @@ function ensureMembershipSheets_() {
   ensureMembershipSheet_(spreadsheet, DEVICE_MEMBERSHIPS_SHEET_NAME, DEVICE_MEMBERSHIPS_HEADERS);
 }
 
-function resolveAuthenticatedActor_(deviceId, pairingToken) {
+function resolveAuthenticatedActor_(deviceId, pairingToken, readOnly) {
   try {
-    const pairing = verifyHomeControlDevicePairing_(deviceId, pairingToken);
+    const pairing = readOnly === true
+      ? verifyHomeControlDevicePairingReadOnly_(deviceId, pairingToken)
+      : verifyHomeControlDevicePairing_(deviceId, pairingToken);
     if (!pairing || pairing.handled !== true || pairing.authorized !== true) throw homeMembershipError_('UNAUTHORIZED_DEVICE');
     const sheet = getRequiredHomeMembershipSheet_(DEVICE_MEMBERSHIPS_SHEET_NAME, DEVICE_MEMBERSHIPS_HEADERS);
     const row = findUniqueHomeMembershipRow_(sheet, 'deviceId', deviceId);
@@ -190,11 +201,13 @@ function getEffectiveMemberAllowedViews_(memberUserId, role) {
   const roleViews = ROLE_ALLOWED_VIEWS[String(role || '')];
   if (!roleViews) return [];
   const memberPolicy = MEMBER_ACCESS_POLICIES[String(memberUserId || '').trim()];
-  if (!memberPolicy) return roleViews.slice();
-  if (memberPolicy.allowedViews.some(function(view) { return roleViews.indexOf(view) < 0; })) {
+  const effectiveViews = memberPolicy ? memberPolicy.allowedViews.slice() : roleViews.slice();
+  if (effectiveViews.some(function(view) { return roleViews.indexOf(view) < 0; })) {
     throw homeMembershipError_('CONFIGURATION_ERROR');
   }
-  return memberPolicy.allowedViews.slice();
+  return isKazOsLiveEnabled_()
+    ? effectiveViews
+    : effectiveViews.filter(function(view) { return view !== 'kaz-os'; });
 }
 
 function resolveHomeAgentReadActor_(body) {

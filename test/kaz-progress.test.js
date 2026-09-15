@@ -1,0 +1,54 @@
+'use strict';
+const assert = require('assert'), fs = require('fs'), path = require('path');
+const {createHarness} = require('./fixtures/kaz-progress-harness');
+const root = process.env.PALURU_TEST_ROOT || path.resolve(__dirname,'..');
+const baseRoot = process.env.PALURU_BASE_ROOT;
+const snapshot = () => ({schema_version:'kaz-progress-0.1',generated_at:new Date().toISOString(),mode:'read_only',origin:'observed_managed_run',scope_label:'synthetic API test',
+  source:{status:'ok',complete:true,fetched_at:new Date().toISOString(),source_revision:'test-revision',scope:'test'},
+  system_status:[{id:'lifecycle',label:'Task Lifecycle',state:'PoC',basis:'test'}],recent_wins:[],recent_runs:[],waiting_for_review:[],next:{status:'NEXT UNDEFINED',milestones:[]},source_health:[]});
+let data = snapshot();
+const h=createHarness({root,baseRoot,provider:()=>data});
+assert.equal(h.call(h.body()).success,true);
+assert.equal(h.stats().writes,0,'progress authentication wrote registry');
+for (const id of ['child-local','guardian-local','other-local']) {
+  const before=h.stats().reads;
+  const denied=h.call(h.body(id,{role:'admin',homeId:'local-home',userId:'father',_authenticatedActor:{role:'admin'}}));
+  assert.equal(denied.error.code,'FORBIDDEN'); assert.equal(denied.data,null); assert.equal(h.stats().reads,before);
+}
+assert.equal(h.call(h.body('admin-local',{pairingToken:'wrong'})).error.code,'UNAUTHORIZED_DEVICE');
+assert.equal(h.call(h.body('admin-local',{action:'kazOs.acceptance'})).error.code,'KAZ_READ_ONLY');
+h.rows.Device_Memberships.push(h.rows.Device_Memberships[1].slice());
+assert.equal(h.call(h.body()).error.code,'MEMBERSHIP_NOT_FOUND'); h.rows.Device_Memberships.pop();
+const saved=h.props.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1, reg=JSON.parse(saved); reg.devices['admin-local'].status='revoked';
+h.props.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1=JSON.stringify(reg);
+assert.equal(h.call(h.body()).error.code,'UNAUTHORIZED_DEVICE'); h.props.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1=saved;
+delete h.props.KAZ_OS_PROGRESS_OWNER_HOME_ID;
+assert.equal(h.call(h.body()).error.code,'KAZ_NOT_CONNECTED'); h.props.KAZ_OS_PROGRESS_OWNER_HOME_ID='local-home';
+data.raw_conversation='PRIVATE RAW'; data.instruction='PRIVATE INSTRUCTION'; data.evidence={payload:'SECRET'};
+assert(!JSON.stringify(h.call(h.body())).includes('PRIVATE')); assert(!JSON.stringify(h.call(h.body())).includes('SECRET'));
+data=snapshot(); data.source.fetched_at='2020-01-01T00:00:00Z'; data.system_status[0].state='GO';
+let result=h.call(h.body()); assert.equal(result.data.source.status,'stale'); assert.equal(result.data.system_status[0].state,'PoC');
+data=snapshot(); data.source.status='failed'; data.source.complete=false;
+result=h.call(h.body()); assert.equal(result.data.recent_wins,null);
+data=snapshot(); result=h.call(h.body()); assert.deepEqual(result.data.recent_wins,[]);
+data=snapshot(); data.source.status='partial'; data.source.complete=false; data.system_status[0].state='GO';
+result=h.call(h.body()); assert.equal(result.data.waiting_for_review,null); assert.equal(result.data.system_status[0].state,'PoC');
+data=snapshot(); data.source.fetched_at='invalid'; assert.equal(h.call(h.body()).error.code,'KAZ_SOURCE_FAILED');
+assert.equal(h.stats().writes,0);
+data=snapshot();
+data.overview={stage:'Phase 3E',scope:'local only',source_ref:'config:overview',raw:'PRIVATE'};
+data.roadmap={status:'draft',source:'user',source_ref:'user:ux-correction',lanes:[{phase:'NOW',items:['Lifecycle']},{phase:'NEXT',items:['Notion','Obsidian']},{phase:'LATER',items:['Real Tasks']}]};
+data.achievements=[{id:'done',label:'TaskをDONEまで通した',occurred_at:new Date().toISOString(),evidence_ref:'work-item:test@revision:5',target_kind:'work_item',target_id:'test',raw:'PRIVATE'}];
+data.system_status=Array.from({length:9},(_,i)=>({id:String(i),label:'component',state:'PoC',basis:'config'}));
+result=h.call(h.body()); assert.equal(result.success,true); assert.equal(result.data.system_status.length,9);
+assert.equal(result.data.roadmap.status,'draft'); assert.equal(result.data.next.status,'NEXT UNDEFINED');
+assert.equal(result.data.achievements[0].evidence_ref,'work-item:test@revision:5'); assert(!JSON.stringify(result).includes('PRIVATE'));
+data.source.fetched_at='2020-01-01T00:00:00Z'; result=h.call(h.body()); assert.equal(result.data.achievements,null); assert.equal(result.data.roadmap.status,'draft');
+data.source.fetched_at=new Date().toISOString(); data.roadmap.status='approved'; assert.equal(h.call(h.body()).error.code,'KAZ_SOURCE_FAILED');
+data.roadmap.status='draft'; data.roadmap.source='ai'; assert.equal(h.call(h.body()).error.code,'KAZ_SOURCE_FAILED');
+assert.equal(h.stats().writes,0);
+const app=fs.readFileSync(path.join(root,'app.js'),'utf8'), feature=fs.readFileSync(path.join(root,'features/kaz-os/progress.js'),'utf8');
+assert(app.includes('activeMembershipContext?.role !== "admin"'));
+assert(feature.includes('textContent = text') && !feature.includes('innerHTML'));
+assert(!feature.includes('localStorage') && !feature.includes('sessionStorage'));
+console.log('PASS Kaz Progress: real resolver, read-only auth, admin/home scope, spoof/revoke/duplicate rejection, privacy, stale/partial/failed/empty');

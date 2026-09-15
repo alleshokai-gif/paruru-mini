@@ -158,6 +158,10 @@ function doPost(e) {
       return json_({ success: true, data: getMembershipContext_(body), message: 'membership context loaded' });
     }
 
+    if (String(action).indexOf('kazOs.') === 0) {
+      return kazOsProgress_(body);
+    }
+
     if (String(action).indexOf('familyInbox.') === 0) {
       return familyInboxGateway_(body);
     }
