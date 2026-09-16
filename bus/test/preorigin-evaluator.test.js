@@ -90,6 +90,8 @@ test('healthy first-day evidence is HOLD only for classification fields absent f
   assert.equal(result.decision, 'HOLD');
   assert.deepEqual(JSON.parse(result.reason_codes), ['CLASSIFICATION_DETAIL_UNAVAILABLE']);
   assert.equal(result.expected_runs, 29); assert.equal(result.actual_runs, 29);
+  assert.equal(result.expected_observation_runs, 28); assert.equal(result.actual_observation_runs, 28);
+  assert.equal(result.skipped_runs, 1);
   assert.equal(result.expected_samples, 280); assert.equal(result.actual_samples, 280);
   assert.equal(result.target_trips_observed, 12); assert.equal(result.target_trip_coverage, 1);
   assert.equal(result.level_a_count, 0); assert.equal(result.unusable_count, null);

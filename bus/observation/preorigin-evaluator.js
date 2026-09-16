@@ -133,7 +133,11 @@ function runLogSummary(entries, targetDate) {
         || Number(values[index].sampleIndex) !== Number(values[index - 1].sampleIndex) + 1) intervalAnomalies++;
     }
   }
+  const skippedRunIds = new Set(skipped.keys());
+  for (const [runId, value] of completions) if (Number(value.samples || 0) === 0
+    && value.status === 'bounded' && value.reason === 'no_active_target') skippedRunIds.add(runId);
   return Object.freeze({ starts, samples, completions, skipped, failures, intervalAnomalies,
+    observationRuns: byRun.size, skippedRuns: skippedRunIds.size,
     outside: [...skipped.values()].filter((item) => item.reason === 'outside_time_band').length,
     noTarget: [...skipped.values()].filter((item) => item.reason === 'no_target_service').length,
     staticMismatch: failures.filter((code) => code === 'PREORIGIN_TARGET_SET_INVALID').length });
@@ -231,6 +235,7 @@ export function evaluatePreoriginCanary({ targetDate, evaluatedAt = new Date().t
   if (logs.outside) reasons.add('OUTSIDE_TIME_BAND_EXECUTION');
   if (logs.noTarget) reasons.add('NO_TARGET_SERVICE');
   if (logs.staticMismatch) reasons.add('STATIC_MISMATCH_FAILURE');
+  if (logs.observationRuns !== 28) reasons.add('OBSERVATION_RUN_COUNT_MISMATCH');
   if (!raw.headerMatch) reasons.add('RAW_HEADER_MISMATCH');
   if (raw.unexpectedColumns) reasons.add('RAW_UNEXPECTED_COLUMNS');
   if (raw.invalidRows) reasons.add('RAW_ROW_INVALID');
@@ -255,10 +260,10 @@ export function evaluatePreoriginCanary({ targetDate, evaluatedAt = new Date().t
   return finalizePreoriginDaily({
     service_date: targetDate, evaluated_at: evaluatedAt, expected_runs: scheduler.expected,
     actual_runs: execution.count, success_runs: execution.succeeded, failed_runs: execution.failed,
-    skipped_runs: logs.skipped.size, duplicate_execution_count: Math.max(0,
+    skipped_runs: logs.skippedRuns, duplicate_execution_count: Math.max(0,
       execution.count - execution.unique, execution.count - scheduler.expected),
     latest_completion_at: execution.latestCompletion, expected_observation_runs: 28,
-    actual_observation_runs: Math.max(0, logs.starts.size - logs.skipped.size), expected_samples: 280,
+    actual_observation_runs: logs.observationRuns, expected_samples: 280,
     actual_samples: Math.max(logs.samples.size, raw.sampleKeys.size),
     missing_sample_count: Math.max(0, 280 - Math.min(logs.samples.size, raw.sampleKeys.size)),
     sample_interval_anomaly_count: logs.intervalAnomalies, run_overlap_count: execution.overlaps,
