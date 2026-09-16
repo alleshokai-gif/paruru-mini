@@ -1,0 +1,34 @@
+# Build and image smoke only. Job, IAM, Scheduler, and public services are not deployed here.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '--platform=linux/amd64', '-f', 'observation/Dockerfile.position-evaluator', '-t', '${_IMAGE}', '.']
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - --rm
+      - ${_IMAGE}
+      - node
+      - --input-type=module
+      - -e
+      - |
+        import assert from 'node:assert/strict';
+        import { readFileSync } from 'node:fs';
+        import { POSITION_EVALUATOR_INFRA, POSITION_EVALUATOR_SCHEDULE } from './observation/position-evaluator-infra.js';
+        import { positionEvaluatorConfig } from './observation/position-evaluator-config.js';
+        import { validatePositionGeometryBundle } from './observation/position-evaluator-geometry.js';
+        const positionStatic=JSON.parse(readFileSync('./generated/p1-position-static.json','utf8'));
+        const geometry=JSON.parse(readFileSync('./observation/position-shadow-geometry.json','utf8'));
+        validatePositionGeometryBundle(geometry,positionStatic);
+        assert.equal(POSITION_EVALUATOR_SCHEDULE.cron,'45 19 * * 1-5');
+        assert.equal(POSITION_EVALUATOR_SCHEDULE.safetyMarginSec,570);
+        assert.deepEqual(POSITION_EVALUATOR_INFRA.runtime.forbiddenEnvNames,
+          ['ODPT_ACCESS_TOKEN','OBSERVATION_HMAC_KEY']);
+        assert.deepEqual(POSITION_EVALUATOR_INFRA.iam.runtimeProjectRoles,[]);
+        assert.deepEqual(POSITION_EVALUATOR_INFRA.iam.secretManagerRoles,[]);
+        const config=positionEvaluatorConfig({PALURU_BUS_OBSERVATION_SPREADSHEET_ID:'A'.repeat(24)});
+        assert.equal(config.targets.length,1);
+        console.log(JSON.stringify({status:'POSITION_EVALUATOR_IMAGE_SMOKE_PASS',nodeVersion:process.versions.node}));
+images: ['${_IMAGE}']
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 900s

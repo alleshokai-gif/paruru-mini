@@ -1,167 +1,201 @@
-# PALURU Bus P3.3 Position / stopsAway Automatic Observation Gate
+# PALURU Bus P3.3 Position Shadow Observation
 
-最終更新: 2026-09-15 Asia/Tokyo
+最終更新: 2026-09-16 Asia/Tokyo
 
-## 問題と方針
+## 目的と現在地
 
-Public Positionを判断する証拠は、手動probeではなく通常observerの自動観測を一次データとする。現行observerは平日朝7時・8時と、夕方17:30・18:30・19:30にCloud Schedulerから起動され、1 runで10 samplesを32秒間隔で取得する。
+Position / stopsAwayの公開判断に必要な証拠を、手動probeではなく通常observerの自動観測から作る。P3.3はStage 1（shadow evaluation）までを対象とし、Position UIとPublic departure predictionはOFFを維持する。
 
-```text
-paluru-bus-observer
-  -> ODPT feedをsampleごとに1回取得
-  -> Vehicle GPS / timestamp / HMAC vehicle identityを収集
-  -> Bus_Observation_Raw
-  -> P3.3 shadow evaluator
-  -> Bus_Position_Evaluation（将来の専用derived tab）
-```
+    paluru-bus-observer
+      -> Bus_Observation_Raw（既存schema、read-only）
+      -> paluru-bus-position-evaluator
+         -> GPS + version固定geometry candidate
+         -> Bus_Position_Evaluation（観測ごとのderived evidence）
+         -> Bus_Position_Daily（日次route/direction summary）
 
-`current_stop_sequence`、`stop_id`、`current_status`は補助証拠に限定する。stopsAwayはGPSをroute geometryへ投影し、順序付きstop projectionから得たnext stopを基準に計算する。Position UIとPublic departure predictionはOFFを維持する。
+ローカル実装、合成test、Cloud Run Job / Scheduler / IAMの設定契約まで作成した。本番GCPへのbuild / deploy / Scheduler作成は未実施である。
 
-## 現行GCP実体
+## 入力境界
 
-2026-09-15にread-onlyで確認した。
+Bus_Observation_Rawの既存34列を変更しない。使用する値は次のとおり。
 
-- Cloud Run Job: `paluru-bus-observer`
-- image: digest固定、generation 5
-- execution SA: `paluru-bus-observer@paluru-bus.iam.gserviceaccount.com`
-- timeout: 420秒
-- task maxRetries: 1
-- Scheduler morning: `0 7,8 * * 1-5` / `Asia/Tokyo` / ENABLED
-- Scheduler evening: `30 17,18,19 * * 1-5` / `Asia/Tokyo` / ENABLED
-- target: Cloud Run v2 Jobs `:run`へのOAuth POST
+- service date / observed time
+- provider / direction / route / trip
+- HMAC済みvehicle identity
+- GPS timestamp / freshness / lat / lon
+- 既存Position state / confidence / reason
+- previous / next / segment
+- raw stop / sequence / status（補助証拠のみ）
 
-Job、Scheduler、IAM、image、public API、PWAは今回変更していない。
+current_stop_sequence、stop_id、current_statusだけでpositionまたはstopsAwayを確定しない。生GPSは計算時だけ使用し、derived tabへ保存しない。
 
-## 現在Rawから取得できるPosition evidence
+## Geometry source
 
-既存`Bus_Observation_Raw`の34列から次を日次・provider・direction・route単位で評価できる。
+選択優先順位は次で固定した。
 
-- GPS timestamp / age / lat / lon
-- HMAC vehicle identity
-- trip / route / direction / service date
-- Position Engineのstate / confidence / reason
-- previous stop / next stop / segment key / expected segment count
-- raw stop ID / sequence / status（auxiliary）
+1. gtfs_shape
+2. official_odpt_geometry
+3. validated_road_geometry
+4. observed_corridor
 
-Raw schemaは変更しない。生vehicle ID、ODPT token、raw responseは保存しない。
+同じ優先順位のsourceが同一targetに複数ある場合はfail closedする。static source hash、provider、direction、chain、target stopが一致しないartifactも拒否する。
 
-## 現在不足する証拠
+現在のposition-shadow-geometry.jsonはsource 0件である。川崎公式GTFSにはshapeがなく、既存の登05 road candidateは利用条件と十分な実観測gateを満たしていないため、勝手にbundleへ入れていない。geometryがない日のJobはStage 0 / HOLDを記録し、positionを推測しない。
 
-現行observerのruntimeは`p1-position-static.json`だけを読み、外部geometry sourceを注入していない。川崎GTFSにshapeがないため、現状のruntime Position Engineは`route_geometry_unavailable`へ安全に落ちる。既存Docker imageにも研究用road artifactは含まれない。
+最初のshadow targetは、既存PoCと同じ次の1方向に限定した。
 
-またRaw v1には次の値を直接保存していない。
+- provider: kawasaki
+- direction: home_to_noborito
+- route: 10044（登05）
+- target stop: 362_1（登戸駅・正式stop ID）
 
-- geometry source / version / geometry ID
-- snap distance
-- snapped progress
-- inferred direction / direction confidence
-- candidate stopsAway / stopsAway confidence
-- outlier / ambiguous reasonの細分類
+対象を増やすときは、routeごとに正規stop列とgeometry sourceを独立検証する。
 
-これらを空欄から推測しない。既存Rawのlat/lonと、別管理のgeometry candidateをderived evaluatorへ入力して再計算する。
+## Shadow計算
 
-## Shadow evaluator
+有効なHMAC vehicle / trip / GPSについて次を計算する。
 
-`bus/observation/position-evaluator.js`は既存Rawを変更せず、次をpure calculationする。
+- route snap distance / progress
+- ordered stop projection
+- previous stop / next stop / stop interval
+- exact target stopまでのcandidate stopsAway
+- GPS ageとroute distanceからのconfidence
+- 同一service date / trip / HMAC vehicleの時系列progress
+- reverse / impossible jump / stop-boundary jitter
+- severe stopsAway contradiction
+- route crossing / off-route / stale / low-confidence reason
+- raw stop / sequenceとの一致・不一致（auxiliary）
 
-1. Raw header完全一致、observation ID、HMAC、token/raw response疑いを検査
-2. stale、GPS欠損、identity欠損を除外
-3. provider / direction / route / trip chainを一致させる
-4. GPSを候補geometryへ投影
-5. route外、交差・重複geometryのambiguous projection、低confidenceを抑止
-6. ordered stop projectionからprevious / next segmentとcandidate stopsAwayを算出
-7. 同一HMAC vehicle / tripの時系列で進行方向、jump、jitter、stopsAway増加を検査
-8. 生GPSを含まない日次summaryを生成
+単一点では進行方向を確定しない。初点はinsufficient_history、後続点が単調に進んだ場合だけforward候補とする。曖昧・route外・staleはunsupported相当のnullへ戻す。
 
-出力schemaは`Bus_Position_Evaluation`用に分離した。現時点ではstore / Cloud Run Job / Schedulerを実装・deployしていないため、実Sheetへは書かない。
+## Bus_Position_Evaluation
 
-## 登05 geometry candidate
+観測ごとのappend-only derived tab。主な列は次のとおり。
 
-既存PoC candidateは次の証拠を持つ。
+- deterministic evaluation_id
+- content source_fingerprint
+- source observation ID
+- service date / observed at
+- provider / route / trip / direction
+- HMAC vehicle ID
+- geometry source / version / ID
+- snap distance / progress
+- inferred direction / confidence
+- previous stop / next stop / interval index
+- candidate stopsAway / confidence
+- monotonicity / jitter / severe contradiction
+- ambiguity reason / auxiliary consistency
+- evaluator version
 
-- 281 points
-- way接続gap 0
-- GTFS stop 20件を投影
-- ODPT GPS p95 44.58m
-- 2 service days / 10 independent trips
-- monotonic traces 10/10
+lat/lon、raw vehicle ID、ODPT token、raw responseは保存しない。同じIDと同じfingerprintはduplicateとして抑止し、同じIDでfingerprintが変わった場合はfail closedする。
 
-一方で、`stop_projection_ambiguous`、service day不足、全segment coverage不足、同時刻の公式reference不足が残り、artifactは`geometryReady=false / eligible=false`である。P3.3 evaluatorもこれをPublic GOへ昇格しない。
+## Bus_Position_Daily
 
-## geometryReady gate案
+service date / provider / direction / route単位のappend-only summary。
 
-50m、95%、98%を現時点のproduction閾値として固定しない。まず複数日のshadow summaryを収集し、分布と重大誤判定を確認する。
+- total / usable / missing / stale observations
+- GPS usable coverage
+- independent trip / timeband count
+- snap distance p50 / p80 / p90 / p95 / max
+- snap match / ambiguous / off-route
+- direction trace / monotonic trace / consistency
+- stop projection / interval coverage
+- jitter / reverse-or-jump / severe contradiction
+- auxiliary sequence contradiction
+- schema / dedupe / raw-data security checks
+- Stage / decision / reason codes
+- geometry_ready_candidate=false
 
-候補となるレビュー条件:
+P3.3 Jobはgeometry_ready_candidateをtrueへ変更できない。日次結果は現時点でHOLDまたはNO_GOだけを生成し、GO昇格は複数日レビュー後の別フェーズとする。
 
-- 少なくとも3 service days、できれば平日5日以上
+## Sheetsと権限境界
+
+Evaluator専用SA:
+
+paluru-bus-position-evaluator@paluru-bus.iam.gserviceaccount.com
+
+Google Sheetsはtab単位ACLを提供しないため、対象SpreadsheetへのEditor共有が必要になる。コード側の境界は次で固定した。
+
+- Bus_Observation_Raw: read-only
+- Bus_Position_Evaluation: create / append
+- Bus_Position_Daily: create / append
+- その他tab: read / writeしない
+
+EvaluatorにはSecret Manager role、ODPT token、HMAC keyを付与しない。これらのenvが存在すると起動時にfail closedする。project-wide Viewer等も不要である。
+
+Scheduler SAは既存のpaluru-bus-scheduler@paluru-bus.iam.gserviceaccount.comを使用し、Evaluator Job resourceだけにroles/run.invokerを付与する。
+
+## Cloud Run Job / Scheduler設計
+
+Job:
+
+- name: paluru-bus-position-evaluator
+- region: asia-northeast1
+- task / parallelism: 1 / 1
+- max retries: 0
+- timeout: 300秒
+- image: digest固定
+- env: NODE_ENV、PALURU_BUS_OBSERVATION_SPREADSHEET_IDのみ
+
+Scheduler:
+
+- name: paluru-bus-position-evaluator-1945
+- cron: 45 19 * * 1-5
+- timezone: Asia/Tokyo
+- OAuth: Scheduler専用SA
+- retry: 0
+- target: Cloud Run v2 Jobs run endpoint
+
+通常observerの最終起動は19:30、bounded runは最大330秒である。19:45評価は最終run開始から900秒後、最大run終了後570秒の余裕を持つ。人間の時刻操作は不要である。
+
+## geometryReady gate候補
+
+既存登05 PoC（281 points、gap 0、GPS p95約44.6m、direction 10/10、20 stop projection）は候補値であり、GO証拠ではない。
+
+本番閾値を固定する前に次の分布を収集する。
+
+- 平日3日以上、可能なら5日以上
+- 朝夕を含む複数timeband
 - 20 independent trips以上
-- 全stop intervalで3 independent trips以上
-- GPS usable coverageの分母・欠損理由が安定
-- snap distance p50 / p80 / p90 / p95 / maxを記録
-- 現行候補のp95 44.58mを再現できるか確認
-- direction traceの単調性と95%信頼下限を確認
-- stop projection order violation 0
-- severe stopsAway contradiction 0
-- route corridor gap 0
-- origin / terminal / 分岐・近接道路を個別確認
-- official referenceを同一trip・同一時刻で20 pair以上、high-confidence一致率95%以上
+- targetまでの全stop intervalで複数trip
+- usable GPS coverageの分母と欠損理由
+- snap distance p50 / p80 / p90 / p95 / max
+- direction consistencyと逆走・jump
+- stop projection order violation
+- severe stopsAway contradiction
+- ambiguous / off-route rate
+- official referenceとの同一trip・同一時刻pair
 
-分布取得後に、`p95 <= 50m`、GPS usable coverage 95%、direction accuracy 98%を候補値として再評価する。観測母数と区間偏りを無視して採用しない。
+usable 95%以上、snap p95 50m以下、direction 98%以上はレビュー候補に留める。観測偏り、区間未網羅、重大矛盾があれば採用しない。重大stopsAway誤判定は0を目標とする。
 
-## stopsAway validation
+## 公開Stage
 
-候補stopsAwayは`target stop ordinal - inferred next stop ordinal`とする。同一vehicle / tripで次を検査する。
+|Stage|状態|
+|---|---|
+|0|geometryなし / geometryReady=false / UI非表示|
+|1|自動shadow evaluation（今回）|
+|2|internal/debug、高confidenceのみ|
+|3|限定route public|
+|4|route expansion|
 
-- 時間とともに自然減少する
-- 1 stopの境界振動はjitterとして別集計する
-- 2 stop以上の逆増加はsevere contradiction
-- geometry progressの後退、速度上限超過jumpをrejectする
-- 一度通過したstopへ戻るtraceを方向矛盾とする
-- origin / terminalではunknownへ落とせる
-- raw sequence / statusの不一致はaux contradictionであり、GPS判定を上書きしない
+Stage 2以降、PWA / Realtime API / Position UIは今回変更しない。
 
-重大矛盾0をPublic候補条件とする。
+## Rollback
 
-## Stage
+このフェーズは未deployのためproduction rollbackは発生していない。将来deploy時は次を独立して戻す。
 
-|Stage|状態|昇格条件|
-|---|---|---|
-|0|`geometryReady=false`、UI非表示|候補geometryと自動Rawが揃う|
-|1|shadow evaluation|複数日・全区間・複数便を自動集計|
-|2|internal/debug、高confidenceのみ|閾値校正、重大矛盾0、公式reference十分|
-|3|登05限定Public|実ブラウザ・Android受入とrollback確認|
-|4|route拡大|routeごとに同じgateを独立PASS|
+1. Position evaluator Schedulerをpause
+2. Evaluator Jobを直前digestへ戻す、または削除
+3. derived 2 tabは証拠として保持し、削除しない
+4. observer、Bus API、PWAには変更がないためrollback対象外
 
-Providerやroute間でthresholdを流用しない。
+## 未確認・不足データ
 
-## 自動収集の追加案
+- production Spreadsheet上の実GPS分布
+- 利用条件を確認済みでversion固定されたroute geometry artifact
+- 全stop interval / 複数日 / 複数timeband coverage
+- 公式表示との同時刻reference
+- GCP Job / Scheduler / SA / Sheet共有のremote acceptance
+- Android / Public UI（Stage 1では対象外）
 
-次の独立変更で、P3.3 evaluator用Cloud Run Jobを通常observer最終run後に起動する。
-
-- input: `Bus_Observation_Raw` read-only、version固定geometry artifact、Position static
-- output: `Bus_Position_Evaluation` append-only
-- evaluator SA: Raw read + derived tab writeに限定
-- Scheduler: 朝・夕の各最終run完了後。収集Jobと重ならない余裕を持つ
-- idempotency: date/provider/direction/route/evaluator version/source fingerprint
-- candidate artifactが未承認、hash不一致、schema不一致ならfail closed
-
-road geometry artifactは現在Git ignore下の研究成果であり、OSM派生物の配布条件とattributionを再確認するまでcontainerへ入れない。このため自動derived JobのdeployはHOLDとする。
-
-## Test
-
-- GPS shape snap / stop interval / candidate stopsAway
-- monotonic direction / reverse / speed jump
-- ±1 stop jitter / severe stopsAway contradiction
-- stale / missing / identity missing
-- route crossing ambiguity / route外GPS
-- research confidence threshold
-- raw sequenceは補助証拠のみ
-- Raw header / HMAC / token / raw response fail closed
-- Public `geometry_ready=false`
-
-## 現在地
-
-既存Raw非変更のshadow evaluatorとderived summary schema、合成testまで実装した。通常observerの自動収集GCP実体はread-only確認済み。開発者端末のGoogle OAuth tokenはSheets scopeを持たず、observer SA impersonation権限もないため、実Sheetの最新分布はこの変更内で再取得できていない。
-
-P3.3 Architecture / pure evaluatorはGO候補。実データgate、derived Job deploy、`Bus_Position_Evaluation`実書込、Stage 2以降、Public PositionはHOLD / OFFである。
+したがって、P3.3 Architecture / local runtimeはGO候補、GCP deployはユーザー承認待ち、geometryReady / Public PositionはHOLD / OFFである。

@@ -1,0 +1,20 @@
+FROM node:24-bookworm-slim AS dependencies
+WORKDIR /app
+COPY observation/package.json observation/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+FROM node:24-bookworm-slim
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY observation/package.json observation/package-lock.json ./
+COPY observation/schema.js ./observation/
+COPY observation/position-evaluator-config.js observation/position-evaluator-targets.js ./observation/
+COPY observation/position-evaluator-geometry.js observation/position-shadow-geometry.json ./observation/
+COPY observation/position-evaluator-schema.js observation/position-evaluator.js ./observation/
+COPY observation/position-evaluator-sheets.js observation/position-evaluator-job.js ./observation/
+COPY observation/position-evaluator-infra.js ./observation/
+COPY position/geometry.js position/policy.js ./position/
+COPY generated/p1-position-static.json ./generated/
+USER node
+CMD ["node", "observation/position-evaluator-job.js"]
