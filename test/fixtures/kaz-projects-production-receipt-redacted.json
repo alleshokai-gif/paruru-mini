@@ -1,0 +1,22 @@
+{
+  "schema_version": "phase4c2a-production-receipt-redacted-0.1",
+  "captured_at": "2026-09-16T03:04:34.294Z",
+  "origin": "notion_official_api",
+  "mode": "read_only",
+  "fixture_only": false,
+  "sources": {
+    "projects": {
+      "status": "ok",
+      "complete": true,
+      "fetched_at": "2026-09-16T12:04:35.731512+09:00",
+      "valid_until": "2026-09-16T12:19:35.731512+09:00",
+      "source_revision": "observation-sha256:d1221824dbbfe48241cf7907d613ccb5607497c984eeb4a66e8e9baa458cf554",
+      "scope": "Notion Projects · read-only",
+      "record_count": 8,
+      "fetch_status": "SUCCESS",
+      "snapshot_ref": "observation-sha256:d1221824dbbfe48241cf7907d613ccb5607497c984eeb4a66e8e9baa458cf554"
+    }
+  },
+  "project_count": 8,
+  "project_payload": "OMITTED"
+}

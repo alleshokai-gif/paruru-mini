@@ -8,13 +8,14 @@
   const PROJECT_STATES = ['ACTIVE', 'REVIEW', 'BLOCKED', 'BACKLOG', 'DONE'];
   const INBOX_KINDS = { human_review: 'Human Review', acceptance: 'Acceptance', blocked: 'Blocked解除', idea: 'Idea', context_candidate: 'Context candidate' };
   const laneLimits = { now: 1, next: 2, quick_wins: 2, waiting_preview: 2 };
+  const MAX_SOURCE_CLOCK_SKEW_MS = 60_000;
   const stamp = value => Date.parse(value);
   const list = value => Array.isArray(value) && value.every(v => v && typeof v.id === 'string' && v.id) && new Set(value.map(v => v.id)).size === value.length ? value : null;
   function health(source, now = Date.now()) {
     if (!source) return 'not_connected';
     if (['failed', 'not_connected', 'stale'].includes(source.status)) return source.status;
     if (!['ok', 'partial'].includes(source.status)) return 'failed';
-    if (!Number.isFinite(stamp(source.fetched_at)) || !Number.isFinite(stamp(source.valid_until)) || stamp(source.fetched_at) > now || stamp(source.valid_until) <= now) return 'stale';
+    if (!Number.isFinite(stamp(source.fetched_at)) || !Number.isFinite(stamp(source.valid_until)) || stamp(source.fetched_at) > now + MAX_SOURCE_CLOCK_SKEW_MS || stamp(source.valid_until) <= now) return 'stale';
     if (!source.source_revision || !source.scope) return 'partial';
     return source.status === 'ok' && source.complete === true ? 'ok' : 'partial';
   }

@@ -5,6 +5,7 @@ const path = require('node:path');
 const view = require('../features/kaz-os/personal');
 const { fixture } = require('./fixtures/kaz-personal-view');
 const d = fixture(), now = Date.parse(d.as_of);
+const productionReceipt = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kaz-projects-production-receipt-redacted.json'), 'utf8'));
 const cases = [];
 function test(name, fn) { fn(); cases.push(name); }
 test('10 projects / 100 work items / 15 calendar / 8 inbox / 5 Runs', () => assert.deepEqual([d.projects.length,d.work_items.length,d.calendar_events.length,d.inbox_items.length,d.active_runs.length], [10,100,15,8,5]));
@@ -31,10 +32,22 @@ test('JST week boundary and distinct project moves', () => {
   ]};assert.equal(view.projectSummary(x,now).MOVED,1);
   x.project_history.coverage_from=d.as_of;assert.equal(view.projectSummary(x,now).MOVED,undefined);
 });
-test('fetched freshness rejects future, expired and missing metadata', () => {
+test('freshness permits bounded clock skew and rejects unsafe timestamps', () => {
+  const observed = productionReceipt.sources.projects;
+  const observedAt = Date.parse(productionReceipt.captured_at);
+  assert.equal(Date.parse(observed.fetched_at) - observedAt, 1437);
+  assert.equal(view.health(observed, observedAt), 'ok');
+  assert.equal(view.health({...observed,fetched_at:new Date(observedAt+59999).toISOString()},observedAt),'ok');
+  assert.equal(view.health({...observed,fetched_at:new Date(observedAt+60001).toISOString()},observedAt),'stale');
+  assert.equal(view.health({...observed,valid_until:new Date(observedAt).toISOString()},observedAt),'stale');
+  assert.equal(view.health({...observed,valid_until:new Date(observedAt-1).toISOString()},observedAt),'stale');
+  assert.equal(view.health({...observed,valid_until:new Date(observedAt+1).toISOString()},observedAt),'ok');
+  assert.equal(view.health({...observed,fetched_at:'malformed'},observedAt),'stale');
+  assert.equal(view.health({...observed,valid_until:'malformed'},observedAt),'stale');
+  assert.equal(view.health({...observed,fetched_at:null},observedAt),'stale');
+  assert.equal(view.health({...observed,valid_until:null},observedAt),'stale');
   assert.equal(view.health(d.sources.tasks,now),'ok');
   assert.equal(view.health(d.sources.tasks,Date.parse('2026-09-14T09:46:00+09:00')),'stale');
-  assert.equal(view.health(d.sources.tasks,now-1000),'stale');
   assert.equal(view.health({...d.sources.tasks,complete:false},now),'partial');
   assert.equal(view.health({...d.sources.tasks,scope:null},now),'partial');
   assert.equal(view.health(null,now),'not_connected');
