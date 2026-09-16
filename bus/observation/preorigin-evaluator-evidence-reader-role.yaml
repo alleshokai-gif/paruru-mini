@@ -1,0 +1,6 @@
+title: PALURU Bus Preorigin Evaluator Evidence Reader
+description: Read the two preorigin Scheduler resources and their safe operational log evidence.
+stage: GA
+includedPermissions:
+  - cloudscheduler.jobs.get
+  - logging.logEntries.list

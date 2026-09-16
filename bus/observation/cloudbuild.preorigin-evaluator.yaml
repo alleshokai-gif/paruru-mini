@@ -12,10 +12,14 @@ steps:
       - -e
       - |
         import assert from 'node:assert/strict';
+        import { PREORIGIN_EVALUATOR_INFRA } from './observation/preorigin-evaluator-infra.js';
         import { PREORIGIN_EVALUATOR_SCHEDULE, PREORIGIN_DAILY_SHEET } from './observation/preorigin-evaluator-schema.js';
         import { preoriginEvaluatorConfig } from './observation/preorigin-evaluator-config.js';
         assert.equal(PREORIGIN_DAILY_SHEET, 'Bus_Preorigin_Daily');
         assert.equal(PREORIGIN_EVALUATOR_SCHEDULE.cron, '10 9 * * 1-5');
+        assert.equal(PREORIGIN_EVALUATOR_INFRA.runtime.forbiddenEnvNames.includes('ODPT_ACCESS_TOKEN'), true);
+        assert.deepEqual(PREORIGIN_EVALUATOR_INFRA.iam.evidenceReaderPermissions,
+          ['cloudscheduler.jobs.get', 'logging.logEntries.list']);
         const config=preoriginEvaluatorConfig({PALURU_BUS_OBSERVATION_SPREADSHEET_ID:'A'.repeat(24)});
         assert.equal(config.sourceJob, 'paluru-bus-preorigin-observer');
         console.log(JSON.stringify({status:'PREORIGIN_EVALUATOR_IMAGE_SMOKE_PASS',nodeVersion:process.versions.node}));

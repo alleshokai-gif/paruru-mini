@@ -10,6 +10,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY observation/package.json observation/package-lock.json ./
 COPY observation/preorigin-schema.js observation/preorigin-scheduler.js ./observation/
 COPY observation/preorigin-evaluator-config.js ./observation/
+COPY observation/preorigin-evaluator-infra.js ./observation/
 COPY observation/preorigin-evaluator-schema.js observation/preorigin-evaluator.js ./observation/
 COPY observation/preorigin-evaluator-sheets.js observation/preorigin-evaluator-job.js ./observation/
 USER node
