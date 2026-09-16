@@ -22,7 +22,8 @@ function snapshot(){
 }
 let value=snapshot(),fail=false,checks=0;
 const h=createHarness({root,provider:()=>{throw Error('OUT_OF_SCOPE');},projectsProvider:()=>{throw Error('OUT_OF_SCOPE');},inboxProvider:()=>{if(fail)throw Error('PRIVATE DETAIL');return value;}});
-const call=(device='admin-local',extra={})=>h.call(h.body(device,{action:'kazOs.inbox.get',...extra}));
+assert.equal(h.call(h.body('admin-local',{action:'kazOs.inbox.get'})).error.code,'KAZ_READ_ONLY','INBOX route must not be published in Phase 4C.2');
+const call=(device='admin-local',extra={})=>h.ctx.kazOsProgress_(h.body(device,{action:'kazOs.inbox.get',...extra}));
 function test(name,fn){fn();checks++;}
 
 test('owner receives only live read-only Secretary Questions',()=>{value.private_payload='SECRET';const r=call();assert(r.success);assert.equal(r.data.mode,'read_only_display');assert.equal(r.data.inbox_items.length,1);assert.equal(r.data.inbox_items[0].write_allowed,false);assert(!JSON.stringify(r).includes('SECRET'));});

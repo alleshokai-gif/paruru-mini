@@ -8,6 +8,8 @@ const snapshot = () => ({schema_version:'kaz-progress-0.1',generated_at:new Date
   system_status:[{id:'lifecycle',label:'Task Lifecycle',state:'PoC',basis:'test'}],recent_wins:[],recent_runs:[],waiting_for_review:[],next:{status:'NEXT UNDEFINED',milestones:[]},source_health:[]});
 let data = snapshot();
 const h=createHarness({root,baseRoot,provider:()=>data});
+assert.equal(h.call(h.body()).error.code,'KAZ_READ_ONLY','Progress route must not be published in Phase 4C.2');
+h.call=body=>h.ctx.kazOsProgress_(body);
 assert.equal(h.call(h.body()).success,true);
 assert.equal(h.stats().writes,0,'progress authentication wrote registry');
 for (const id of ['child-local','guardian-local','other-local']) {

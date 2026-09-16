@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260915-kaz-live-read-v1";
+globalThis.BUILD_ID = "v20260916-kaz-projects-live-v1";

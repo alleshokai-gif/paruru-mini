@@ -158,8 +158,12 @@ function doPost(e) {
       return json_({ success: true, data: getMembershipContext_(body), message: 'membership context loaded' });
     }
 
-    if (String(action).indexOf('kazOs.') === 0) {
+    if (action === 'kazOs.projects.get') {
       return kazOsProgress_(body);
+    }
+
+    if (String(action).indexOf('kazOs.') === 0) {
+      return json_({ success: false, data: null, error: { code: 'KAZ_READ_ONLY' }, message: 'KAZ_READ_ONLY' });
     }
 
     if (String(action).indexOf('familyInbox.') === 0) {

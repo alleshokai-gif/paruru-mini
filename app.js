@@ -955,9 +955,7 @@ const activateMembershipContext_ = function(membershipContext) {
         capabilities: membershipContext.capabilities,
         allowedViews: membershipContext.allowedViews,
       },
-      kazOsProgressApi: callAuthenticatedKazOsProgress_,
       kazOsProjectsApi: callAuthenticatedKazOsProjects_,
-      kazOsInboxApi: callAuthenticatedKazOsInbox_,
       healthApi: callAuthenticatedHealth_,
       nurseOkanCommentApi: callNurseOkanComment_,
       petHealthApi: callAuthenticatedPetHealth_,
@@ -2223,11 +2221,6 @@ async function cancelAgentActionConfirmation(candidate) {
     }),
   });
   return parseApiResponse(response);
-}
-
-async function callAuthenticatedKazOsProgress_() {
-  if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  return callHomeControlApi(buildMemoCredentialPayload("kazOs.progress.get"));
 }
 
 async function callHomeControlApi(payload) {
@@ -5547,11 +5540,6 @@ function applyAllowedViews_() {
 async function callAuthenticatedKazOsProjects_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
   return callHomeControlApi(buildMemoCredentialPayload("kazOs.projects.get"));
-}
-
-async function callAuthenticatedKazOsInbox_() {
-  if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  return callHomeControlApi(buildMemoCredentialPayload("kazOs.inbox.get"));
 }
 
 function applyMembershipCapabilityVisibility_() {

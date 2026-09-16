@@ -56,13 +56,14 @@
     return result;
   }
   function route(hash) {
-    const match = /^#kaz-os(?:\/(today|projects|inbox|diagnostics)(?:\/([^/]+))?)?$/.exec(hash || '');
-    if (!match) return { page: 'today', id: null };
+    const match = /^#kaz-os(?:\/projects(?:\/([^/]+))?)?$/.exec(hash || '');
+    if (!match) return { page: 'projects', id: null };
     let id = null;
-    try { if (match[2]) id = decodeURIComponent(match[2]); } catch { /* Invalid URL is not an entity ID. */ }
-    return { page: match[1] || 'today', id };
+    try { if (match[1]) id = decodeURIComponent(match[1]); } catch { /* Invalid URL is not an entity ID. */ }
+    return { page: 'projects', id };
   }
   function render(host, selection, data, now = Date.now(), options = {}) {
+    if (!selection || selection.page !== 'projects') selection = { page: 'projects', id: null };
     todayView?.dispose(host);
     inboxView?.dispose(host);
     host.replaceChildren();
