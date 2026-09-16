@@ -21,8 +21,8 @@ export const PREORIGIN_EVALUATOR_INFRA = Object.freeze({
   runtime: Object.freeze({
     taskCount: 1,
     parallelism: 1,
-    maxRetries: 1,
-    timeoutSec: 600,
+    maxRetries: 0,
+    timeoutSec: 300,
     envNames: Object.freeze(['NODE_ENV', 'PALURU_BUS_OBSERVATION_SPREADSHEET_ID']),
     forbiddenEnvNames: PREORIGIN_EVALUATOR_FORBIDDEN_ENV
   }),
@@ -33,7 +33,7 @@ export const PREORIGIN_EVALUATOR_INFRA = Object.freeze({
     targetUri: TARGET_URI,
     method: 'POST',
     retryCount: 0,
-    attemptDeadlineSec: 180
+    attemptDeadlineSec: 60
   }),
   iam: Object.freeze({
     sourceJobRole: 'roles/run.viewer',

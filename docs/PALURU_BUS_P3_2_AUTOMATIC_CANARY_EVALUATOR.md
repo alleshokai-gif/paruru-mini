@@ -44,7 +44,7 @@ Cloud Schedulerが開始・終了ログを出すこととtype URLはGoogle公式
 - succeeded / failed / running / retried task count
 - execution重複と時間的overlap
 
-Scheduler retry 0とCloud Run Job task `maxRetries=1`は別に集計する。
+Scheduler retry 0とCloud Run Job task `maxRetries=0`は別レイヤの設定として確認する。source collection Job側でtask retryが発生した場合は、source execution evidenceとして別途集計する。
 
 ### 安全なapplication log
 
@@ -134,8 +134,8 @@ custom role定義は`bus/observation/preorigin-evaluator-evidence-reader-role.ya
 既存`paluru-bus-scheduler` SAへはEvaluator Job resourceの`roles/run.invoker`だけを追加する。Evaluator Jobは次の境界を持つ。
 
 - task 1 / parallelism 1
-- task retry 1
-- timeout 600秒
+- task retry 0
+- timeout 300秒
 - imageはdigest固定
 - envは`NODE_ENV`と`PALURU_BUS_OBSERVATION_SPREADSHEET_ID`だけ
 - `ODPT_ACCESS_TOKEN`または`OBSERVATION_HMAC_KEY`が空値を含めて設定されていればfail closed
@@ -161,9 +161,9 @@ IAMはdeploy前に実権限を`test-iam-permissions`で確認し、広いEditor/
 3. custom roleをYAMLどおりcreate/updateし、runtime SAへproject resourceで付与する。
 4. source Job resourceへruntime SAの`roles/run.viewer`を付与する。
 5. 対象Spreadsheetだけをruntime SAへEditor共有する。
-6. Evaluator Jobをdigest固定、1 task、parallelism 1、retry 1、timeout 600秒、Secret bindingなしでdeployする。
+6. Evaluator Jobをdigest固定、1 task、parallelism 1、retry 0、timeout 300秒、Secret bindingなしでdeployする。
 7. Evaluator Job resourceへ既存Scheduler SAの`roles/run.invoker`を付与する。
-8. `paluru-bus-preorigin-evaluator-0910`を`10 9 * * 1-5`、`Asia/Tokyo`、OAuth POST、retry 0で作成する。
+8. `paluru-bus-preorigin-evaluator-0910`を`10 9 * * 1-5`、`Asia/Tokyo`、OAuth POST、retry 0、attempt deadline 60秒で作成する。
 9. read-backでJob、env名、Secret binding、IAM、Scheduler、target URIを検証する。
 10. 時刻合わせのforce-runはせず、次の自然09:10 executionを初回remote acceptanceにする。
 

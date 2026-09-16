@@ -9,7 +9,7 @@ const infraSnapshot = () => ({
     name: PREORIGIN_EVALUATOR_INFRA.evaluatorJob,
     serviceAccount: PREORIGIN_EVALUATOR_INFRA.runtimeServiceAccount,
     image: `${PREORIGIN_EVALUATOR_INFRA.imageRepository}@sha256:${'a'.repeat(64)}`,
-    taskCount: 1, parallelism: 1, maxRetries: 1, timeoutSec: 600,
+    taskCount: 1, parallelism: 1, maxRetries: 0, timeoutSec: 300,
     envNames: ['PALURU_BUS_OBSERVATION_SPREADSHEET_ID', 'NODE_ENV'], secretEnvNames: []
   },
   scheduler: {
@@ -33,7 +33,7 @@ test('Evaluator infrastructure pins one digest, one task, dedicated identities a
   const snapshot = infraSnapshot();
   assert.equal(validatePreoriginEvaluatorInfrastructure(snapshot), snapshot);
   assert.equal(PREORIGIN_EVALUATOR_INFRA.scheduler.cron, '10 9 * * 1-5');
-  assert.equal(PREORIGIN_EVALUATOR_INFRA.scheduler.attemptDeadlineSec, 180);
+  assert.equal(PREORIGIN_EVALUATOR_INFRA.scheduler.attemptDeadlineSec, 60);
   assert.equal(PREORIGIN_EVALUATOR_INFRA.iam.spreadsheetAccess, 'target_file_editor');
 });
 
