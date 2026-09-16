@@ -4,6 +4,7 @@ import { OBSERVATION_HEADERS } from '../observation/schema.js';
 import { derivePositionEvaluations, evaluatePositionObservations } from '../observation/position-evaluator.js';
 import { POSITION_DAILY_HEADERS, POSITION_EVALUATION_HEADERS, positionDailyValues,
   positionObservationValues } from '../observation/position-evaluator-schema.js';
+import { prepareShape } from '../position/geometry.js';
 
 const DATE = '2026-09-14';
 const TARGET = { provider: 'kawasaki', directionId: 'home_to_noborito', routeId: '10044', targetStopId: 's3' };
@@ -18,12 +19,19 @@ const positionStatic = {
   chains: { [CHAIN]: { chainId: CHAIN, stops: stops.map(({ stopId, sequence }) => ({ stopId, sequence })) } },
   trips: {}
 };
-const artifact = (points = stops.map((stop) => stop.position), overrides = {}) => ({
-  schemaVersion: 1, provider: 'kawasaki', sourceType: 'validated_road_geometry', sourceVersion: 'fixture-v1',
-  staticSourceHash: 'source-hash', generatedAt: `${DATE}T00:00:00.000Z`, directionId: TARGET.directionId,
-  chains: { [CHAIN]: { geometryId: 'fixture-geometry', eligible: false, geometryReady: false,
-    points, reasons: [], ...overrides } }
-});
+const artifact = (points = stops.map((stop) => stop.position), overrides = {}) => {
+  const total = prepareShape(points).total;
+  return {
+    schemaVersion: 1, provider: 'kawasaki', routeId: TARGET.routeId,
+    sourceType: 'validated_road_geometry', sourceVersion: 'fixture-v1',
+    staticSourceHash: 'source-hash', generatedAt: `${DATE}T00:00:00.000Z`, directionId: TARGET.directionId,
+    approvedForShadow: true, approvedForPublic: false, geometryReady: false,
+    chains: { [CHAIN]: { geometryId: 'fixture-geometry', eligible: false, geometryReady: false,
+      approvedForShadow: true, approvedForPublic: false, points, reasons: [],
+      stopProjections: stops.map((stop, ordinal) => ({ stopId: stop.stopId, sequence: stop.sequence,
+        ordinal, along: ordinal * total / (stops.length - 1), distance: 0 })), ...overrides } }
+  };
+};
 let sequence = 0;
 function row({ tripId = 'trip-1', lat, lon = 139, timestamp, age = 1, vehicleHash = VEHICLE,
   auxSequence = '', positionReason = 'route_geometry_unavailable' } = {}) {

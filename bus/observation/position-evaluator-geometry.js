@@ -15,10 +15,14 @@ export function validatePositionGeometryBundle(bundle, positionStatic) {
       || source.provider !== positionStatic.provider || source.staticSourceHash !== positionStatic.sourceHash
       || typeof source.sourceVersion !== 'string' || !source.sourceVersion
       || !Number.isFinite(Date.parse(source.generatedAt || '')) || typeof source.directionId !== 'string'
+      || typeof source.routeId !== 'string' || source.approvedForShadow !== true
+      || source.approvedForPublic !== false || source.geometryReady !== false
       || !source.chains || typeof source.chains !== 'object') throw Error('POSITION_GEOMETRY_BUNDLE_INVALID');
     for (const chain of Object.values(source.chains)) {
       if (!chain || typeof chain.geometryId !== 'string' || !chain.geometryId
-        || !Array.isArray(chain.points) || chain.points.length < 2 || chain.points.some((point) => !validPoint(point)))
+        || chain.approvedForShadow !== true || chain.approvedForPublic !== false || chain.geometryReady !== false
+        || !Array.isArray(chain.points) || chain.points.length < 2 || chain.points.some((point) => !validPoint(point))
+        || !Array.isArray(chain.stopProjections) || chain.stopProjections.length < 2)
         throw Error('POSITION_GEOMETRY_BUNDLE_INVALID');
     }
   }
@@ -28,6 +32,8 @@ export function validatePositionGeometryBundle(bundle, positionStatic) {
 export function selectPositionGeometry({ bundle, positionStatic, target }) {
   validatePositionGeometryBundle(bundle, positionStatic);
   const candidates = bundle.sources.filter((source) => source.provider === target.provider
+    && source.routeId === target.routeId && source.approvedForShadow === true
+    && source.approvedForPublic === false && source.geometryReady === false
     && source.directionId === target.directionId
     && Object.keys(source.chains).some((chainId) => positionStatic.chains?.[chainId]
       && positionStatic.chains[chainId].stops.some((stop) => stop.stopId === target.targetStopId)))

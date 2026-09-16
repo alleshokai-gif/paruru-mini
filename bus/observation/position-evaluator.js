@@ -46,40 +46,33 @@ function parseRaw(rawValues, serviceDate, target) {
   return result;
 }
 
-function projectStops(shape, chain, staticStops, policy) {
-  let paths = [];
-  for (const item of chain?.stops || []) {
-    const stop = staticStops?.[item.stopId];
-    if (!validPoint(stop?.position)) return { rows: [], orderViolations: 1, ambiguous: true };
-    const candidates = snapCandidates(shape, stop.position, policy.stopRouteMeters, policy.candidateSlackMeters).slice(0, 16);
-    if (!candidates.length) return { rows: [], orderViolations: 1, ambiguous: true };
-    if (!paths.length) paths = candidates.map((candidate) => ({ score: candidate.distance,
-      rows: [{ id: item.stopId, sequence: item.sequence, along: candidate.along, distance: candidate.distance }] }));
-    else {
-      const next = [];
-      for (const path of paths) for (const candidate of candidates) if (candidate.along > path.rows.at(-1).along + 1)
-        next.push({ score: path.score + candidate.distance,
-          rows: [...path.rows, { id: item.stopId, sequence: item.sequence, along: candidate.along, distance: candidate.distance }] });
-      if (!next.length) return { rows: [], orderViolations: 1, ambiguous: true };
-      next.sort((a, b) => a.score - b.score); paths = next.slice(0, 256);
-    }
-  }
-  paths.sort((a, b) => a.score - b.score);
-  const best = paths[0], competitive = paths.filter((path) => path.score <= best.score + policy.candidateSlackMeters);
-  const ambiguous = competitive.some((path) => path.rows.some((stop, index) =>
-    Math.abs(stop.along - best.rows[index].along) >= policy.ambiguityMeters));
-  return { rows: best.rows.map((stop, ordinal) => ({ ...stop, ordinal })), orderViolations: 0, ambiguous };
+function approvedStops(candidate, chain, shape) {
+  if (candidate?.approvedForShadow !== true || !Array.isArray(candidate.stopProjections)
+    || candidate.stopProjections.length !== chain?.stops?.length) throw Error('GEOMETRY_ARTIFACT_INVALID');
+  let previousAlong = -1;
+  const rows = candidate.stopProjections.map((row, index) => {
+    const expected = chain.stops[index];
+    if (row?.stopId !== expected.stopId || row.sequence !== expected.sequence || row.ordinal !== index
+      || !Number.isFinite(row.along) || row.along < 0 || row.along > shape.total + 1
+      || (index && row.along <= previousAlong + 1) || !Number.isFinite(row.distance) || row.distance < 0)
+      throw Error('GEOMETRY_ARTIFACT_INVALID');
+    previousAlong = row.along;
+    return { id: row.stopId, sequence: row.sequence, ordinal: index, along: row.along, distance: row.distance };
+  });
+  return { rows, orderViolations: 0, ambiguous: false, source: 'approved_shadow_projection' };
 }
 
 function geometryContext(geometryArtifact, positionStatic, target, policy) {
   if (!geometryArtifact) return null;
   if (geometryArtifact.provider !== target.provider || geometryArtifact.staticSourceHash !== positionStatic?.sourceHash
-    || geometryArtifact.directionId !== target.directionId) throw Error('GEOMETRY_ARTIFACT_INVALID');
+    || geometryArtifact.routeId !== target.routeId || geometryArtifact.directionId !== target.directionId
+    || geometryArtifact.approvedForShadow !== true || geometryArtifact.approvedForPublic !== false
+    || geometryArtifact.geometryReady !== false) throw Error('GEOMETRY_ARTIFACT_INVALID');
   const entries = Object.entries(geometryArtifact.chains || {}).filter(([, value]) => Array.isArray(value?.points));
   if (entries.length !== 1) throw Error('GEOMETRY_ARTIFACT_INVALID');
   const [chainId, candidate] = entries[0], chain = positionStatic.chains?.[chainId];
   if (!chain) throw Error('GEOMETRY_ARTIFACT_INVALID');
-  const shape = prepareShape(candidate.points), stops = projectStops(shape, chain, positionStatic.stops, policy);
+  const shape = prepareShape(candidate.points), stops = approvedStops(candidate, chain, shape);
   const targetIndexes = stops.rows.flatMap((stop, index) => stop.id === target.targetStopId ? [index] : []);
   if (targetIndexes.length !== 1) throw Error('TARGET_STOP_NOT_IN_GEOMETRY');
   return { chainId, candidate, chain, shape, stops, targetIndex: targetIndexes[0],
@@ -232,7 +225,7 @@ export function derivePositionEvaluations({ rawValues, serviceDate, evaluatedAt,
     draft.candidate_stops_away = geometry.targetIndex - nextIndex;
     draft.aux_consistency = auxiliaryConsistency(row, previous, next);
     if (draft.aux_consistency === 'conflict') auxContradictions++;
-    if (geometry.stops.ambiguous || geometry.candidate?.reasons?.includes('stop_projection_ambiguous')) {
+    if (geometry.stops.ambiguous) {
       ambiguous++; draft.monotonicity_status = 'ambiguous'; draft.ambiguity_reason = 'stop_projection_ambiguous'; continue;
     }
     if (confidence < policy.threshold) {
@@ -245,8 +238,7 @@ export function derivePositionEvaluations({ rawValues, serviceDate, evaluatedAt,
 
   const traces = analyzeTraces(points, policy);
   const evaluations = drafts.map((draft) => finalizePositionObservation(draft));
-  const stopProjectionAmbiguous = Boolean(geometry?.stops.ambiguous
-    || geometry?.candidate?.reasons?.includes('stop_projection_ambiguous'));
+  const stopProjectionAmbiguous = Boolean(geometry?.stops.ambiguous);
   if (stopProjectionAmbiguous) reasons.add('STOP_PROJECTION_AMBIGUOUS');
   if (!parsed.rows.length) reasons.add('NO_TARGET_OBSERVATIONS');
   if (!usable) reasons.add('NO_USABLE_GPS');

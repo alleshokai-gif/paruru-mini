@@ -40,7 +40,7 @@ current_stop_sequence、stop_id、current_statusだけでpositionまたはstopsA
 
 同じ優先順位のsourceが同一targetに複数ある場合はfail closedする。static source hash、provider、direction、chain、target stopが一致しないartifactも拒否する。
 
-現在のposition-shadow-geometry.jsonはsource 0件である。川崎公式GTFSにはshapeがなく、既存の登05 road candidateは利用条件と十分な実観測gateを満たしていないため、勝手にbundleへ入れていない。geometryがない日のJobはStage 0 / HOLDを記録し、positionを推測しない。
+現在のposition-shadow-geometry.jsonには、登05専用の`validated_road_geometry` sourceを1件収録する。OSM relation 7109917 version 14の道路形状を国土数値情報N07 2022で照合し、GTFS stop列の投影結果をversion固定artifactへ保存した。`approvedForShadow=true`、`approvedForPublic=false`、`geometryReady=false`をschemaとtestで固定する。
 
 最初のshadow targetは、既存PoCと同じ次の1方向に限定した。
 
@@ -50,6 +50,23 @@ current_stop_sequence、stop_id、current_statusだけでpositionまたはstopsA
 - target stop: 362_1（登戸駅・正式stop ID）
 
 対象を増やすときは、routeごとに正規stop列とgeometry sourceを独立検証する。
+
+### 登05 Shadow artifact
+
+- approval version: `p3.3-shadow-1`
+- source version: `osm:7109917:v14+mlit:n07:2022`
+- point / way: 281 / 39
+- way gap: 0、gap distance: 0m
+- proper self intersection: 0
+- GTFS stop projection: 20/20、順序整合
+- N07: 281/281 pointが60m以内、p95 4.877m
+- 既存GPS: 80点中79点match、p95 44.576m、10/10 tripが単調進行
+- 神木本町 `184_2`: ordinal 12
+- 登戸駅 `362_1`: ordinal 19
+
+`362_1`は折返し形状により複数投影候補がある。ShadowではGTFS終点とOSM relation終端が一致する最終投影を`terminal_route_end_order_constraint`としてartifactへ固定した。走行中GPS自体に複数のsnap候補が出る場合は、この解決を流用せず`route_crossing_ambiguous`でfail closedする。
+
+OSM由来pointsはODbL 1.0と出典をartifact内に記録する。N07はgeometryの正解ではなく公的road corroborationとして使い、国土交通省の現行利用規約URL、加工表示、input SHA-256を記録する。
 
 ## Shadow計算
 
@@ -192,7 +209,6 @@ Stage 2以降、PWA / Realtime API / Position UIは今回変更しない。
 ## 未確認・不足データ
 
 - production Spreadsheet上の実GPS分布
-- 利用条件を確認済みでversion固定されたroute geometry artifact
 - 全stop interval / 複数日 / 複数timeband coverage
 - 公式表示との同時刻reference
 - GCP Job / Scheduler / SA / Sheet共有のremote acceptance

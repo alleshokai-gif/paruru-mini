@@ -74,6 +74,27 @@ function projectOrderedStops(shape,chain,stops,policy,rejected) {
   return best.rows;
 }
 
+export function projectRoadStops({points,chain,stops,policy:overrides={}}={}) {
+  const policy={...ROAD_VALIDATION_POLICY,...overrides};
+  if(!Array.isArray(points)||points.length<2||!chain?.stops?.length||!stops)
+    throw Error('ROAD_STOP_PROJECTION_INPUT_INVALID');
+  const rejected={},shape=prepareShape(points),rows=projectOrderedStops(shape,chain,stops,policy,rejected);
+  const ambiguousStopIds=rows.filter((row)=>{
+    const stop=stops[row.stopId],candidates=snapCandidates(shape,stop.position,policy.stopRouteMeters,policy.candidateSlackMeters);
+    return candidates.some((candidate)=>Math.abs(candidate.along-candidates[0].along)>=policy.ambiguityMeters);
+  }).map((row)=>row.stopId);
+  return Object.freeze({
+    rows:Object.freeze(rows.map((row,ordinal)=>Object.freeze({...row,ordinal}))),
+    orderValid:rows.length===chain.stops.length&&rows.every((row,index)=>
+      row.stopId===chain.stops[index].stopId&&row.sequence===chain.stops[index].sequence
+      && (index===0||row.along>rows[index-1].along+1)),
+    ambiguous:Boolean(rejected.stop_projection_ambiguous),
+    ambiguousStopIds:Object.freeze(ambiguousStopIds),
+    rejected:Object.freeze({...rejected}),
+    routeLengthMeters:shape.total
+  });
+}
+
 function nearestLineDistance(lines,point) {
   let best=Infinity;
   for(const line of lines)for(const segment of line.segments) {

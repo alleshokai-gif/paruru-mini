@@ -8,6 +8,7 @@ import { POSITION_DAILY_HEADERS, POSITION_DAILY_SHEET, POSITION_EVALUATION_HEADE
   POSITION_EVALUATION_SHEET } from '../observation/position-evaluator-schema.js';
 import { createPositionEvaluationStore } from '../observation/position-evaluator-sheets.js';
 import { startPositionEvaluatorJob } from '../observation/position-evaluator-job.js';
+import { prepareShape } from '../position/geometry.js';
 
 const DATE = '2026-09-16', TARGET = {
   provider: 'kawasaki', directionId: 'home_to_noborito', routeId: '10044', targetStopId: '362_1'
@@ -24,10 +25,13 @@ const positionStatic = {
   trips: { 'trip-1': { tripId: 'trip-1', routeId: '10044', chainId: CHAIN, shapeId: null } }
 };
 const source = (sourceType = 'validated_road_geometry', geometryId = sourceType) => ({
-  schemaVersion: 1, provider: 'kawasaki', sourceType, sourceVersion: 'fixture-v1',
+  schemaVersion: 1, provider: 'kawasaki', routeId: TARGET.routeId, sourceType, sourceVersion: 'fixture-v1',
   staticSourceHash: 'source-hash', generatedAt: `${DATE}T00:00:00.000Z`, directionId: TARGET.directionId,
+  approvedForShadow: true, approvedForPublic: false, geometryReady: false,
   chains: { [CHAIN]: { geometryId, eligible: false, geometryReady: false,
-    points: stops.map((stop) => stop.position), reasons: [] } }
+    approvedForShadow: true, approvedForPublic: false, points: stops.map((stop) => stop.position), reasons: [],
+    stopProjections: stops.map((stop, ordinal) => ({ stopId: stop.stopId, sequence: stop.sequence, ordinal,
+      along: ordinal * prepareShape(stops.map((value) => value.position)).total / (stops.length - 1), distance: 0 })) } }
 });
 const bundle = (...sources) => ({ schemaVersion: 1, staticSourceHash: 'source-hash', sources });
 function rawRow() {
