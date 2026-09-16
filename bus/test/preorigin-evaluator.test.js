@@ -6,6 +6,7 @@ import { PREORIGIN_DAILY_HEADERS, PREORIGIN_EVALUATOR_SCHEDULE,
   preoriginDailyValues } from '../observation/preorigin-evaluator-schema.js';
 import { createPreoriginDailyStore } from '../observation/preorigin-evaluator-sheets.js';
 import { preoriginEvaluatorConfig } from '../observation/preorigin-evaluator-config.js';
+import { startPreoriginEvaluatorJob } from '../observation/preorigin-evaluator-job.js';
 import { PREORIGIN_SCHEDULER_CONFIG } from '../observation/preorigin-scheduler.js';
 import { readFileSync } from 'node:fs';
 
@@ -194,7 +195,48 @@ test('evaluator runtime rejects ODPT/HMAC secret bindings and image excludes col
     'paluru-bus-preorigin-observer');
   assert.throws(() => preoriginEvaluatorConfig({ PALURU_BUS_OBSERVATION_SPREADSHEET_ID: 'A'.repeat(24),
     ODPT_ACCESS_TOKEN: 'present' }), /SECRET_BOUNDARY_INVALID/);
+  assert.throws(() => preoriginEvaluatorConfig({ PALURU_BUS_OBSERVATION_SPREADSHEET_ID: 'A'.repeat(24),
+    OBSERVATION_HMAC_KEY: '' }), /SECRET_BOUNDARY_INVALID/);
   const docker = readFileSync(new URL('../observation/Dockerfile.preorigin-evaluator', import.meta.url), 'utf8');
   assert.match(docker, /preorigin-evaluator-job\.js/);
   assert.doesNotMatch(docker, /preorigin-job\.js|preorigin-collector\.js|providers\/kawasaki|generated\/p0-static/);
+});
+
+test('evaluator job reads only target-date Raw rows and appends through the Daily store', async () => {
+  const input = healthyInput(), requests = [], logged = [];
+  const client = { request: async (request) => {
+    requests.push(request); const decoded = decodeURIComponent(request.url);
+    if (decoded.includes('cloudscheduler.googleapis.com')) {
+      const id = decoded.split('/').at(-1);
+      return { data: resources().find((value) => value.name.endsWith(`/${id}`)) };
+    }
+    if (decoded.includes('logging.googleapis.com')) return {
+      data: { entries: request.data.filter.includes('cloud_scheduler_job')
+        ? input.schedulerLogEntries : input.runLogEntries }
+    };
+    if (decoded.includes('run.googleapis.com')) return { data: { executions: input.executions } };
+    if (decoded.includes('?fields=sheets.properties.title')) return {
+      data: { sheets: [{ properties: { title: 'Bus_Preorigin_Raw' } }] }
+    };
+    if (decoded.includes("'Bus_Preorigin_Raw'!A1:AJ1")) return { data: { values: [PREORIGIN_HEADERS] } };
+    if (decoded.includes("'Bus_Preorigin_Raw'!E2:E")) return {
+      data: { values: [input.rawValues.slice(1).map(() => '20260916')] }
+    };
+    if (decoded.includes("'Bus_Preorigin_Raw'!A2:AJ281")) return { data: { values: input.rawValues.slice(1) } };
+    throw Error(`UNEXPECTED_REQUEST_${decoded}`);
+  } };
+  let appended = null;
+  const output = await startPreoriginEvaluatorJob({
+    env: { PALURU_BUS_OBSERVATION_SPREADSHEET_ID: 'A'.repeat(24) },
+    now: () => Date.parse(`${DATE}T09:10:00+09:00`),
+    auth: { getClient: async () => client },
+    storeFactory: () => ({ append: async (row) => { appended = row; return { inserted: 1, duplicate: 0 }; } }),
+    log: (value) => logged.push(value)
+  });
+  assert.equal(output.result.evaluation_id, appended.evaluation_id);
+  assert.deepEqual(output.write, { inserted: 1, duplicate: 0 });
+  assert.equal(logged[0].event, 'preorigin_evaluator_complete');
+  assert.ok(requests.some((value) => decodeURIComponent(value.url).includes("'Bus_Preorigin_Raw'!E2:E")));
+  assert.ok(requests.some((value) => decodeURIComponent(value.url).includes("'Bus_Preorigin_Raw'!A2:AJ281")));
+  assert.ok(requests.every((value) => !/secretmanager|odpt/i.test(value.url)));
 });
