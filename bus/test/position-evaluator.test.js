@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OBSERVATION_HEADERS } from '../observation/schema.js';
-import { evaluatePositionObservations } from '../observation/position-evaluator.js';
-import { POSITION_EVALUATION_HEADERS, positionEvaluationValues } from '../observation/position-evaluator-schema.js';
+import { derivePositionEvaluations, evaluatePositionObservations } from '../observation/position-evaluator.js';
+import { POSITION_DAILY_HEADERS, POSITION_EVALUATION_HEADERS, positionDailyValues,
+  positionObservationValues } from '../observation/position-evaluator-schema.js';
 
 const DATE = '2026-09-14';
-const TARGET = { provider: 'kawasaki', directionId: 'home_to_noborito', routeId: '10044' };
+const TARGET = { provider: 'kawasaki', directionId: 'home_to_noborito', routeId: '10044', targetStopId: 's3' };
 const CHAIN = 'chain-1', VEHICLE = `veh_${'a'.repeat(32)}`;
 const stops = [0, 0.01, 0.02, 0.03].map((offset, index) => ({
   stopId: `s${index}`, sequence: index + 1, position: { lat: 35 + offset, lon: 139 }
@@ -53,9 +54,9 @@ test('shadow evaluator snaps GPS to stop intervals and derives naturally decreas
   assert.equal(result.snap_match_rate, 1);
   assert.equal(result.stops_away_rows, 3); assert.equal(result.severe_stops_away_contradiction_count, 0);
   assert.equal(result.direction_trace_count, 1); assert.equal(result.monotonic_trace_count, 1);
-  assert.equal(result.direction_accuracy, 1); assert.equal(result.observed_segment_count, 3);
-  assert.equal(result.geometry_ready, false); assert.equal(result.decision, 'HOLD');
-  assert.equal(positionEvaluationValues(result).length, POSITION_EVALUATION_HEADERS.length);
+  assert.equal(result.direction_consistency, 1); assert.equal(result.observed_interval_count, 3);
+  assert.equal(result.geometry_ready_candidate, false); assert.equal(result.decision, 'HOLD');
+  assert.equal(positionDailyValues(result).length, POSITION_DAILY_HEADERS.length);
 });
 
 test('stale, missing and identity-missing GPS fail closed before geometry projection', () => {
@@ -74,7 +75,7 @@ test('reverse movement and stopsAway increase are retained as shadow contradicti
   const reasons = JSON.parse(result.reason_codes);
   assert.ok(reasons.includes('DIRECTION_CONTRADICTION_PRESENT'));
   assert.ok(reasons.includes('SEVERE_STOPS_AWAY_CONTRADICTION'));
-  assert.equal(result.geometry_ready, false);
+  assert.equal(result.geometry_ready_candidate, false);
 });
 
 test('small stop-boundary jitter is counted separately from severe contradiction', () => {
@@ -101,14 +102,14 @@ test('raw sequence is auxiliary evidence and cannot make a position supported', 
   const base = Date.parse(`${DATE}T07:00:00+09:00`) / 1000;
   const result = evaluate([row({ lat: 35.005, timestamp: base, auxSequence: 99 })]);
   assert.equal(result.aux_sequence_contradiction_count, 1); assert.equal(result.snap_matched_rows, 1);
-  assert.equal(result.direction_trace_count, 0); assert.equal(result.geometry_ready, false);
+  assert.equal(result.direction_trace_count, 0); assert.equal(result.geometry_ready_candidate, false);
 });
 
 test('research confidence threshold suppresses weak points without promoting geometryReady', () => {
   const base = Date.parse(`${DATE}T07:00:00+09:00`) / 1000;
   const weak = evaluate([row({ lat: 35.005, lon: 139.00035, timestamp: base, age: 120 })]);
   assert.equal(weak.confidence_fail_rows, 1); assert.equal(weak.snap_matched_rows, 0);
-  assert.equal(weak.geometry_ready, false); assert.equal(weak.stage, 'stage_1_shadow');
+  assert.equal(weak.geometry_ready_candidate, false); assert.equal(weak.stage, 'stage_1_shadow');
 });
 
 test('raw schema, HMAC and response-shaped cell violations produce NO_GO without exposing values', () => {
@@ -127,4 +128,29 @@ test('missing target identity is rejected before any Raw interpretation', () => 
   assert.throws(() => evaluatePositionObservations({ rawValues: [OBSERVATION_HEADERS], serviceDate: DATE,
     evaluatedAt: `${DATE}T21:00:00+09:00`, positionStatic, geometryArtifact: artifact(), target: null }),
   /POSITION_EVALUATOR_INPUT_INVALID/);
+});
+
+test('derived rows retain no raw GPS and use deterministic evaluation IDs', () => {
+  const base = Date.parse(`${DATE}T07:00:00+09:00`) / 1000;
+  const args = { rawValues: [OBSERVATION_HEADERS, row({ lat: 35.005, timestamp: base })], serviceDate: DATE,
+    evaluatedAt: `${DATE}T21:00:00+09:00`, positionStatic, geometryArtifact: artifact(), target: TARGET };
+  const first = derivePositionEvaluations(args), replay = derivePositionEvaluations(args);
+  assert.equal(first.evaluations.length, 1);
+  assert.equal(first.evaluations[0].evaluation_id, replay.evaluations[0].evaluation_id);
+  assert.equal(first.daily.daily_id, replay.daily.daily_id);
+  assert.equal(first.evaluations[0].candidate_stops_away, 2);
+  assert.equal(first.evaluations[0].monotonicity_status, 'insufficient_history');
+  assert.equal(positionObservationValues(first.evaluations[0]).length, POSITION_EVALUATION_HEADERS.length);
+  assert.doesNotMatch(JSON.stringify(first.evaluations[0]), /position_lat|position_lon|35\.005/);
+});
+
+test('sequence and stop status remain auxiliary and cannot decide stopsAway', () => {
+  const base = Date.parse(`${DATE}T07:00:00+09:00`) / 1000;
+  const raw = row({ lat: 35.005, timestamp: base, auxSequence: 99 });
+  raw[OBSERVATION_HEADERS.indexOf('aux_status')] = 'IN_TRANSIT_TO';
+  const result = derivePositionEvaluations({ rawValues: [OBSERVATION_HEADERS, raw], serviceDate: DATE,
+    evaluatedAt: `${DATE}T21:00:00+09:00`, positionStatic, geometryArtifact: artifact(), target: TARGET });
+  assert.equal(result.evaluations[0].aux_consistency, 'conflict');
+  assert.equal(result.evaluations[0].candidate_stops_away, 2);
+  assert.equal(result.daily.aux_sequence_contradiction_count, 1);
 });
