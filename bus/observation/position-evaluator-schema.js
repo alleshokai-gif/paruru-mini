@@ -5,7 +5,7 @@ export const POSITION_DAILY_SHEET = 'Bus_Position_Daily';
 export const POSITION_EVALUATOR_VERSION = 'p3.3-shadow-v2';
 
 export const POSITION_EVALUATION_HEADERS = Object.freeze([
-  'evaluation_id', 'source_observation_id', 'service_date', 'observed_at', 'provider', 'route_id',
+  'evaluation_id', 'source_fingerprint', 'source_observation_id', 'service_date', 'observed_at', 'provider', 'route_id',
   'trip_id', 'direction', 'vehicle_hmac', 'geometry_source', 'geometry_version', 'geometry_id',
   'snap_distance_m', 'snapped_progress', 'inferred_direction', 'direction_confidence',
   'previous_stop_id', 'next_stop_id', 'stop_interval_index', 'candidate_stops_away',
@@ -47,6 +47,9 @@ function hash32(value) {
 
 export function finalizePositionObservation(row) {
   const value = { ...row, evaluator_version: POSITION_EVALUATOR_VERSION };
+  value.source_fingerprint = hash32(Object.fromEntries(POSITION_EVALUATION_HEADERS
+    .filter((name) => !['evaluation_id', 'source_fingerprint'].includes(name))
+    .map((name) => [name, value[name] ?? null])));
   value.evaluation_id = `posrow_${hash32([
     value.source_observation_id, value.provider, value.direction, value.route_id,
     value.geometry_source, value.geometry_version, value.geometry_id, value.evaluator_version
@@ -58,6 +61,7 @@ export function finalizePositionObservation(row) {
 export function validatePositionObservation(row) {
   if (!row || !/^posrow_[a-f0-9]{32}$/.test(row.evaluation_id || '')
     || !/^obs_[a-f0-9]{32}$/.test(row.source_observation_id || '')
+    || !/^[a-f0-9]{32}$/.test(row.source_fingerprint || '')
     || !/^\d{4}-\d{2}-\d{2}$/.test(row.service_date || '')
     || !Number.isFinite(Date.parse(row.observed_at || ''))
     || !identifierOrNull(row.provider) || !identifierOrNull(row.route_id)
