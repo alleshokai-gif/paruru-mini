@@ -41,7 +41,7 @@ test('fetched freshness rejects future, expired and missing metadata', () => {
 });
 test('routes preserve project IDs and unknown routes default safely', () => {
   assert.deepEqual(view.route('#kaz-os/projects/fx-p01'),{page:'projects',id:'fx-p01'});
-  assert.equal(view.route('#kaz-os').page,'today');assert.equal(view.route('#kaz-os/diagnostics').page,'diagnostics');
+  assert.equal(view.route('#kaz-os').page,'projects');assert.equal(view.route('#kaz-os/diagnostics').page,'projects');
   assert.equal(view.route('#kaz-os/projects/%ZZ').id,null);
 });
 test('fixture never linked from public shell or production fallback', () => {
