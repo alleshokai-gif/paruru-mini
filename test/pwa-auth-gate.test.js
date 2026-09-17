@@ -5,7 +5,7 @@ assert(source.includes('async function initializeAuthenticatedPwa()'),'auth gate
 assert(source.includes('function initializeNormalPwaOnce()'),'normal initializer missing');
 assert(source.includes('action: "membership.context.get"'),'membership context missing');
 assert(source.includes('if (!token)'),'unpaired branch missing');
-assert(source.includes('error?.code === "MEMBERSHIP_NOT_FOUND"'),'unassigned branch missing');
+assert(!source.includes('error?.code === "MEMBERSHIP_NOT_FOUND"'),'fresh PWA must not branch into membership-only registration');
 assert(source.includes('if (normalPwaInitialized) loadNotificationCandidates'),'visibility gate missing');
 const normal=source.slice(source.indexOf('function initializeNormalPwaOnce()'),source.indexOf('async function initializeAuthenticatedPwa()'));
 assert(normal.includes('loadNotificationCandidates({ force: true })'),'active initialization changed');

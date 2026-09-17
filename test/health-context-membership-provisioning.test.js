@@ -48,10 +48,11 @@ for (const file of ['HomeMemberPolicy.js', 'HomeMembershipService.js', 'HealthGa
 }
 
 assert.deepStrictEqual(JSON.parse(JSON.stringify(context.getActiveSelfRecordMembers_('paluru-home'))), [], 'father-only home must have no health targets');
-context.provisionMembershipFromApprovalTemplateWithinRegistryLock_(
+context.provisionMembershipIdentityWithinRegistryLock_(
   { homeId: 'paluru-home', memberUserId: 'father', role: 'admin', deviceId: 'father-device' },
   'second-son-device',
-  'second_son_initial',
+  'second_son',
+  '次男',
   'membership-request-1',
   '2026-07-30T12:00:00+09:00',
 );

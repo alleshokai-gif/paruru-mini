@@ -1,5 +1,11 @@
 # PALURU 長女ユーザー機能許可
 
+> 2026-09-15: 本書のユーザー別access制限と承認テンプレート設計は
+> [Issue #1 simple user registration](./ISSUE_1_SIMPLE_USER_REGISTRATION.md)
+> により廃止された。以下は変更前の履歴であり、現行契約では固定rosterを
+> identity validationのみに使い、長女を含むrole未付与memberへ共通baseline
+> accessを返す。
+
 更新日: 2026-09-14
 状態: ローカル実装・自動テストPASS、deploy／Android実機Acceptance待ち
 

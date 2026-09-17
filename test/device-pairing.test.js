@@ -15,6 +15,7 @@ let uuidCounter = 1;
 let randomUuidCounter = 1;
 let locked = false;
 const membershipStatuses = {};
+const membershipAssignments = {};
 
 function hash(value) { return crypto.createHash('sha256').update(String(value)).digest('hex'); }
 function uuid() { return `aaaaaaaa-aaaa-4aaa-8aaa-${String(uuidCounter++).padStart(12, '0')}`; }
@@ -27,6 +28,7 @@ function reset() {
   uuidCounter = 1;
   randomUuidCounter = 1;
   Object.keys(membershipStatuses).forEach((key) => delete membershipStatuses[key]);
+  Object.keys(membershipAssignments).forEach((key) => delete membershipAssignments[key]);
 }
 
 const context = {
@@ -46,10 +48,18 @@ const context = {
     }
     return { homeId: 'test-home', memberUserId: 'father', role: 'admin', deviceId };
   },
-  provisionMembershipFromApprovalTemplateWithinRegistryLock_: (_actor, targetDeviceId) => {
+  provisionMembershipIdentityWithinRegistryLock_: (_actor, targetDeviceId, _memberUserId, _displayName, requestId) => {
     membershipStatuses[targetDeviceId] = 'active';
+    membershipAssignments[targetDeviceId] = `pairing_approval:${requestId}`;
     return { status: 'active' };
   },
+  getDeviceMembership_: (deviceId) => membershipStatuses[deviceId] ? {
+    deviceId,
+    homeId: 'test-home',
+    memberUserId: 'father',
+    status: membershipStatuses[deviceId],
+    assignedBy: membershipAssignments[deviceId] || '',
+  } : null,
   snapshotActiveDeviceMembershipForRevoke_: (deviceId, homeId) => {
     if (homeId !== 'test-home' || membershipStatuses[deviceId] !== 'active') throw Object.assign(new Error('MEMBERSHIP_NOT_FOUND'), { code: 'MEMBERSHIP_NOT_FOUND' });
     return { deviceId, homeId, memberUserId: 'father', status: 'active' };
@@ -74,11 +84,11 @@ function legacyParent() {
 }
 
 function begin() {
-  return post('devicePairingBegin_', { deviceId: childId, displayName: '新しい端末', tokenHash: childTokenHash });
+  return post('deviceRegistrationBegin_', { deviceId: childId, displayName: '新しい端末', tokenHash: childTokenHash });
 }
 
-function approve(code, membershipTemplate = 'father_add_device') {
-  return post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code, membershipTemplate });
+function approve(code) {
+  return post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code, memberUserId: 'father', displayName: '父' });
 }
 
 const tests = [];
@@ -120,6 +130,8 @@ test('wrong code expires, rate limits, and cannot be reused', () => {
   const expired = approve(started.data.code);
   assert(!expired.success, 'expired code was accepted');
   const second = begin();
+  assert(second.data.requestId !== started.data.requestId, 'reissue reused the prior request id');
+  assert(second.data.code !== started.data.code, 'reissue reused the prior six-digit code');
   const secondRegistry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
   assert(secondRegistry.requests[second.data.requestId].codeHash === hash(second.data.code), 'new code hash was not persisted');
   assert(!secondRegistry.requests[started.data.requestId], 'expired prior request remained after reissue');
@@ -157,14 +169,14 @@ test('expiring a legacy sibling request preserves the newer pending request and 
 test('unregistered, revoked, or current devices cannot approve or use the registry', () => {
   reset(); legacyParent();
   const started = begin();
-  const unknown = post('devicePairingApprove_', { deviceId: 'unknown-device', pairingToken: parentToken, code: started.data.code, membershipTemplate: 'father_add_device' });
+  const unknown = post('devicePairingApprove_', { deviceId: 'unknown-device', pairingToken: parentToken, code: started.data.code, memberUserId: 'father', displayName: '父' });
   assert(!unknown.success && unknown.error.code === 'UNAUTHORIZED_DEVICE', 'unregistered device approved');
   const current = post('devicePairingRevoke_', { deviceId: parentId, pairingToken: parentToken, targetDeviceId: parentId });
   assert(!current.success && current.error.code === 'CANNOT_REVOKE_CURRENT_DEVICE', 'current device could revoke itself');
   const registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
   registry.devices[parentId].status = 'revoked';
   properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(registry);
-  const rejected = post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code: started.data.code, membershipTemplate: 'father_add_device' });
+  const rejected = post('devicePairingApprove_', { deviceId: parentId, pairingToken: parentToken, code: started.data.code, memberUserId: 'father', displayName: '父' });
   assert(!rejected.success && rejected.error.code === 'UNAUTHORIZED_DEVICE', 'revoked device approved');
 });
 
@@ -190,7 +202,7 @@ test('a revoked device can request pairing again, remains pending, and requires 
   assert(approve(first.data.code).success, 'initial child pairing failed');
   const revoke = post('devicePairingRevoke_', { deviceId: parentId, pairingToken: parentToken, targetDeviceId: childId });
   assert(revoke.success, 'active child could not be revoked');
-  const rePair = post('devicePairingBegin_', { deviceId: childId, displayName: '再登録端末', tokenHash: hash('replacement-child-credential') });
+  const rePair = post('deviceRegistrationBegin_', { deviceId: childId, displayName: '再登録端末', tokenHash: hash('replacement-child-credential') });
   assert(rePair.success, 'revoked device could not create a new pairing request');
   let registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
   assert(registry.devices[childId].status === 'pending', 're-pairing must remain pending before approval');
@@ -198,7 +210,7 @@ test('a revoked device can request pairing again, remains pending, and requires 
   assert(approve(rePair.data.code).success, 'admin approval did not complete re-pairing');
   registry = JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1);
   assert(registry.devices[childId].status === 'active', 'only admin approval may activate re-pairing');
-  const activeRetry = post('devicePairingBegin_', { deviceId: childId, displayName: 'active端末', tokenHash: hash('another-child-credential') });
+  const activeRetry = post('deviceRegistrationBegin_', { deviceId: childId, displayName: 'active端末', tokenHash: hash('another-child-credential') });
   assert(!activeRetry.success && activeRetry.error.code === 'DEVICE_ALREADY_REGISTERED', 'active device was allowed to re-pair');
 });
 
@@ -212,7 +224,7 @@ test('only one concurrent approval succeeds and the twenty-device cap is enforce
     registry.devices[`device-${index}`] = { deviceId: `device-${index}`, displayName: '端末', tokenHash: hash(`token-${index}`), status: 'active', registeredAt: null, lastUsedAt: null, revokedAt: null, tokenGeneration: 1 };
   }
   properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(registry);
-  const blocked = post('devicePairingBegin_', { deviceId: 'limit-device', displayName: '上限端末', tokenHash: hash('limit-token') });
+  const blocked = post('deviceRegistrationBegin_', { deviceId: 'limit-device', displayName: '上限端末', tokenHash: hash('limit-token') });
   assert(!blocked.success && blocked.error.code === 'DEVICE_LIMIT_REACHED', 'device cap was not enforced');
 });
 

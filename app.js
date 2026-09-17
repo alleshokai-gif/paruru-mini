@@ -9,7 +9,10 @@ const PROFILE_STORAGE_KEY = "paruru-mini-profile";
 const AGENT_CHAT_SESSION_STORAGE_KEY = "paruru-mini-agent-chat-session-v1";
 const HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY = "paruru-mini-home-agent-pairing-v1";
 const HOME_CONTROL_PENDING_STORAGE_KEY = "paruru-mini-home-control-pending-v1";
-const MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY = "paruru-mini-membership-registration-pending-v1";
+const HOME_CONTROL_REGISTRATION_IDENTITIES = Object.freeze({
+  father: "父", mother: "母", eldest_son: "長男", eldest_daughter: "長女",
+  second_son: "次男", youngest_daughter: "次女",
+});
 const PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY = "paruru-mini-pet-health-dashboard-popio-v1";
 const PET_HEALTH_DASHBOARD_CACHE_SCHEMA_VERSION = "pet-health-1.0";
 const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 30000;
@@ -323,7 +326,6 @@ const authLock = document.querySelector("#authLock");
 const authLockMessage = document.querySelector("#authLockMessage");
 const authLockUnpaired = document.querySelector("#authLockUnpaired");
 const authLockPending = document.querySelector("#authLockPending");
-const authLockUnassigned = document.querySelector("#authLockUnassigned");
 const authLockError = document.querySelector("#authLockError");
 const authLockDeviceName = document.querySelector("#authLockDeviceName");
 const authLockBeginButton = document.querySelector("#authLockBeginButton");
@@ -331,11 +333,6 @@ const authLockRetryButton = document.querySelector("#authLockRetryButton");
 const authLockReRegisterButton = document.querySelector("#authLockReRegisterButton");
 const authLockCode = document.querySelector("#authLockCode");
 const authLockExpiry = document.querySelector("#authLockExpiry");
-const authLockMembershipBeginButton = document.querySelector("#authLockMembershipBeginButton");
-const authLockMembershipPending = document.querySelector("#authLockMembershipPending");
-const authLockMembershipCode = document.querySelector("#authLockMembershipCode");
-const authLockMembershipExpiry = document.querySelector("#authLockMembershipExpiry");
-const authLockMembershipMessage = document.querySelector("#authLockMembershipMessage");
 const buildVersion = document.querySelector("#buildVersion");
 const views = document.querySelectorAll(".app-view");
 const navItems = document.querySelectorAll(".nav-item");
@@ -423,7 +420,7 @@ const homeControlPendingExpiry = document.querySelector("#homeControlPendingExpi
 const homeControlRegistered = document.querySelector("#homeControlRegistered");
 const homeControlRegisteredLabel = document.querySelector("#homeControlRegisteredLabel");
 const homeControlApprovePanel = document.querySelector("#homeControlApprovePanel");
-const homeControlMembershipTemplate = document.querySelector("#homeControlMembershipTemplate");
+const homeControlMemberUserId = document.querySelector("#homeControlMemberUserId");
 const homeControlApproveCode = document.querySelector("#homeControlApproveCode");
 const homeControlApproveButton = document.querySelector("#homeControlApproveButton");
 const homeControlDeviceList = document.querySelector("#homeControlDeviceList");
@@ -443,7 +440,6 @@ let pendingHomeAgentActionCandidate = null;
 let pendingHomeAgentRetry = null;
 let pendingHomeInputIntentConfirmation = null;
 let homeControlPollTimer = null;
-let membershipRegistrationPollTimer = null;
 let activeMembershipContext = null;
 let healthTaskCache = null;
 
@@ -789,16 +785,14 @@ function showAuthenticationState(message, state = "locked") {
     authLock.hidden = false;
     authLockMessage.textContent = message;
     document.body.classList.remove("is-authenticated");
-    [authLockUnpaired, authLockPending, authLockUnassigned, authLockError].forEach((element) => {
+    [authLockUnpaired, authLockPending, authLockError].forEach((element) => {
       if (element) element.hidden = true;
     });
     const panel = state === "unpaired"
       ? authLockUnpaired
       : state === "pairing_pending"
         ? authLockPending
-        : state === "paired_unassigned"
-          ? authLockUnassigned
-          : authLockError;
+        : authLockError;
     if (panel) panel.hidden = false;
   }
 }
@@ -842,7 +836,6 @@ function resetRevokedDeviceForReRegistration_() {
   if (!confirmReRegistration) return;
   localStorage.removeItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY);
   clearHomeControlPending();
-  clearMembershipRegistrationPending();
   showAuthenticationState("この端末は未登録です。既存の6桁コードで登録を開始してください。", "unpaired");
 }
 
@@ -869,7 +862,6 @@ function bindAuthenticationLockControls_() {
   });
   authLockRetryButton?.addEventListener("click", retryAuthentication_);
   authLockReRegisterButton?.addEventListener("click", resetRevokedDeviceForReRegistration_);
-  authLockMembershipBeginButton?.addEventListener("click", () => beginMembershipRegistration());
 }
 
 bindAuthenticationLockControls_();
@@ -878,7 +870,10 @@ function renderAuthenticationLock_() {
   const pending = getHomeControlPending();
   if (!pending) return;
   if (isHomeControlPendingExpired_(pending)) {
-    expireHomeControlPending_();
+    showAuthenticationState("端末登録を確認中…", "pairing_pending");
+    if (authLockCode) authLockCode.textContent = "";
+    if (authLockExpiry) authLockExpiry.textContent = "";
+    void pollHomeControlPairing();
     return;
   }
   showAuthenticationState("端末承認を待っています。", "pairing_pending");
@@ -886,22 +881,6 @@ function renderAuthenticationLock_() {
   authLockExpiry.textContent = formatHomeControlExpiry(pending.expiresAt);
   scheduleHomeControlPoll();
 }
-
-const renderMembershipRegistrationLock_ = function() {
-  const pending = getMembershipRegistrationPending();
-  if (pending && isMembershipRegistrationPendingExpired_(pending)) {
-    expireMembershipRegistrationPending_();
-    return;
-  }
-  showAuthenticationState(pending ? "家族登録の承認を待っています。" : "端末は承認済みです。家族登録を申請してください。", "paired_unassigned");
-  if (authLockMembershipPending) authLockMembershipPending.hidden = !pending;
-  if (authLockMembershipBeginButton) authLockMembershipBeginButton.hidden = Boolean(pending);
-  if (pending) {
-    if (authLockMembershipCode) authLockMembershipCode.textContent = String(pending.code || "");
-    if (authLockMembershipExpiry) authLockMembershipExpiry.textContent = formatHomeControlExpiry(pending.expiresAt);
-    scheduleMembershipRegistrationPoll();
-  }
-};
 
 async function initializeAuthenticatedPwa() {
   showAuthenticationState("端末を確認中…", "booting");
@@ -917,10 +896,6 @@ async function initializeAuthenticatedPwa() {
     const membershipContext = await callHomeControlApi({ action: "membership.context.get", deviceId: userProfile.deviceId, pairingToken: token });
     activateMembershipContext_(membershipContext);
   } catch (error) {
-    if (error?.code === "MEMBERSHIP_NOT_FOUND") {
-      renderMembershipRegistrationLock_();
-      return;
-    }
     showAuthenticationState("端末登録を確認できませんでした。", "revoked_error");
     setAuthenticationRetryState_("端末登録を確認できませんでした。再確認するか、この端末を再登録してください。");
   }
@@ -939,7 +914,6 @@ const activateMembershipContext_ = function(membershipContext) {
   if (typeof familyInboxSubjectMember !== "undefined" && familyInboxSubjectMember && Array.from(familyInboxSubjectMember.options).some((option) => option.value === membershipContext.memberUserId)) {
     familyInboxSubjectMember.value = membershipContext.memberUserId;
   }
-  clearMembershipRegistrationPending();
   appAuthenticationState = "active_member";
   initializeNormalPwaOnce();
   applyAllowedViews_();
@@ -2295,41 +2269,6 @@ function expireHomeControlPending_() {
   showAuthenticationState("承認期限が切れました。もう一度登録してください。", "unpaired");
 }
 
-const getMembershipRegistrationPending = function() {
-  try {
-    const value = JSON.parse(localStorage.getItem(MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY) || "");
-    return value && value.kind === "membership" && isUuid(value.requestId) && typeof value.requestSecret === "string" && /^\d{6}$/.test(String(value.code || "")) ? value : null;
-  } catch (error) {
-    return null;
-  }
-};
-
-const saveMembershipRegistrationPending = function(value) {
-  localStorage.setItem(MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY, JSON.stringify(value));
-};
-
-const clearMembershipRegistrationPending = function() {
-  localStorage.removeItem(MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY);
-  if (membershipRegistrationPollTimer) {
-    clearTimeout(membershipRegistrationPollTimer);
-    membershipRegistrationPollTimer = null;
-  }
-};
-
-const isMembershipRegistrationPendingExpired_ = function(pending) {
-  const now = Date.now();
-  const codeExpiresAt = Date.parse(String(pending?.expiresAt || ""));
-  const requestExpiresAt = Number(pending?.requestExpiresAt || 0);
-  return (Number.isFinite(codeExpiresAt) && now >= codeExpiresAt)
-    || (Number.isFinite(requestExpiresAt) && requestExpiresAt > 0 && now >= requestExpiresAt);
-};
-
-const expireMembershipRegistrationPending_ = function() {
-  clearMembershipRegistrationPending();
-  if (authLockMembershipMessage) authLockMembershipMessage.textContent = "承認期限が切れました。もう一度申請してください。";
-  renderMembershipRegistrationLock_();
-};
-
 function setHomeControlMessage(message, type = "") {
   if (!homeControlMessage) return;
   homeControlMessage.textContent = message || "";
@@ -2364,7 +2303,7 @@ async function beginHomeControlPairing() {
   setHomeControlMessage("登録コードを準備中…");
   try {
     const generated = await createHomeControlToken();
-    const data = await callHomeControlApi({ action: "devicePairingBegin", deviceId: profile.deviceId, displayName, tokenHash: generated.tokenHash });
+    const data = await callHomeControlApi({ action: "deviceRegistrationBegin", deviceId: profile.deviceId, displayName, tokenHash: generated.tokenHash });
     if (!isUuid(data.requestId) || !/^\d{6}$/.test(String(data.code || "")) || !String(data.requestSecret || "")) throw createHomeControlError("HOME_CONTROL_FAILED");
     saveHomeControlPending({ requestId: data.requestId, requestSecret: data.requestSecret, token: generated.token, code: data.code, expiresAt: data.expiresAt, requestExpiresAt: Date.now() + 15 * 60 * 1000, displayName });
     renderAuthenticationLock_();
@@ -2375,40 +2314,25 @@ async function beginHomeControlPairing() {
   }
 }
 
-const beginMembershipRegistration = async function() {
-  if (authLockMembershipBeginButton?.disabled) return;
-  const profile = userProfile || loadUserProfile();
-  const pairingToken = getHomeAgentPairingToken();
-  if (!pairingToken) return;
-  if (authLockMembershipBeginButton) authLockMembershipBeginButton.disabled = true;
-  if (authLockMembershipMessage) authLockMembershipMessage.textContent = "家族登録の承認コードを準備中…";
-  try {
-    const data = await callHomeControlApi({ action: "membershipRegistrationBegin", deviceId: profile.deviceId, pairingToken });
-    if (!isUuid(data.requestId) || !/^\d{6}$/.test(String(data.code || "")) || !String(data.requestSecret || "") ||
-      !Number.isFinite(Date.parse(String(data.expiresAt || "")))) {
-      throw createHomeControlError("MEMBERSHIP_REGISTRATION_REQUEST_INVALID");
-    }
-    saveMembershipRegistrationPending({
-      kind: "membership", requestId: data.requestId, requestSecret: data.requestSecret,
-      code: data.code, expiresAt: data.expiresAt, requestExpiresAt: Date.now() + 15 * 60 * 1000,
-    });
-    if (authLockMembershipMessage) authLockMembershipMessage.textContent = "父PCで承認してください。";
-    renderMembershipRegistrationLock_();
-  } catch (error) {
-    if (authLockMembershipMessage) authLockMembershipMessage.textContent = getHomeControlPublicMessage(error?.code);
-  } finally {
-    if (authLockMembershipBeginButton) authLockMembershipBeginButton.disabled = false;
-  }
-};
-
 async function pollHomeControlPairing() {
   const pending = getHomeControlPending();
   if (!pending) return;
-  if (isHomeControlPendingExpired_(pending)) {
-    expireHomeControlPending_();
-    return;
-  }
   try {
+    const profile = userProfile || loadUserProfile();
+    try {
+      const membershipContext = await callHomeControlApi({ action: "membership.context.get", deviceId: profile.deviceId, pairingToken: pending.token });
+      localStorage.setItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY, pending.token);
+      clearHomeControlPending();
+      setHomeControlMessage("この端末を登録したで。", "success");
+      activateMembershipContext_(membershipContext);
+      return;
+    } catch (authenticationError) {
+      if (!["UNAUTHORIZED_DEVICE", "MEMBERSHIP_NOT_FOUND"].includes(authenticationError?.code)) throw authenticationError;
+    }
+    if (isHomeControlPendingExpired_(pending)) {
+      expireHomeControlPending_();
+      return;
+    }
     const data = await callHomeControlApi({ action: "devicePairingStatus", requestId: pending.requestId, requestSecret: pending.requestSecret });
     if (data.status === "active") {
       localStorage.setItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY, pending.token);
@@ -2417,7 +2341,13 @@ async function pollHomeControlPairing() {
       await initializeAuthenticatedPwa();
       return;
     }
+    if (data.status === "revoked") {
+      clearHomeControlPending();
+      showAuthenticationState("端末登録を続行できません。管理者に確認してください。", "revoked_error");
+      return;
+    }
     pending.expiresAt = data.expiresAt || pending.expiresAt;
+    if (Number.isFinite(Date.parse(String(data.expiresAt || "")))) pending.requestExpiresAt = Date.parse(String(data.expiresAt));
     saveHomeControlPending(pending);
   } catch (error) {
     setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
@@ -2435,74 +2365,14 @@ function scheduleHomeControlPoll() {
   if (getHomeControlPending()) homeControlPollTimer = setTimeout(() => pollHomeControlPairing(), HOME_CONTROL_POLL_MILLISECONDS);
 }
 
-const pollMembershipRegistration = async function() {
-  const pending = getMembershipRegistrationPending();
-  if (!pending) return;
-  if (isMembershipRegistrationPendingExpired_(pending)) {
-    expireMembershipRegistrationPending_();
-    return;
-  }
-  const profile = userProfile || loadUserProfile();
-  const pairingToken = getHomeAgentPairingToken();
-  if (!pairingToken) {
-    clearMembershipRegistrationPending();
-    showAuthenticationState("端末登録を確認できませんでした。", "revoked_error");
-    return;
-  }
-  try {
-    const data = await callHomeControlApi({
-      action: "membershipRegistrationStatus", deviceId: profile.deviceId, pairingToken,
-      requestId: pending.requestId, requestSecret: pending.requestSecret,
-    });
-    if (data.status === "approved") {
-      try {
-        const membershipContext = await callHomeControlApi({ action: "membership.context.get", deviceId: profile.deviceId, pairingToken });
-        activateMembershipContext_(membershipContext);
-        return;
-      } catch (error) {
-        if (["MEMBERSHIP_REGISTRATION_REQUEST_INVALID", "PAIRING_REQUEST_INVALID", "UNAUTHORIZED_DEVICE"].includes(error?.code)) {
-          clearMembershipRegistrationPending();
-          renderMembershipRegistrationLock_();
-          return;
-        }
-        if (authLockMembershipMessage) authLockMembershipMessage.textContent = "家族登録を確認中です。";
-      }
-    } else if (data.status === "expired") {
-      expireMembershipRegistrationPending_();
-      return;
-    } else if (data.status !== "pending") {
-      clearMembershipRegistrationPending();
-      renderMembershipRegistrationLock_();
-      return;
-    } else {
-      pending.expiresAt = data.expiresAt || pending.expiresAt;
-      saveMembershipRegistrationPending(pending);
-    }
-  } catch (error) {
-    if (authLockMembershipMessage) authLockMembershipMessage.textContent = getHomeControlPublicMessage(error?.code);
-    if (["MEMBERSHIP_REGISTRATION_REQUEST_INVALID", "PAIRING_REQUEST_INVALID", "UNAUTHORIZED_DEVICE"].includes(error?.code)) {
-      clearMembershipRegistrationPending();
-      renderMembershipRegistrationLock_();
-      return;
-    }
-  }
-  scheduleMembershipRegistrationPoll();
-};
-
-const scheduleMembershipRegistrationPoll = function() {
-  if (membershipRegistrationPollTimer) clearTimeout(membershipRegistrationPollTimer);
-  if (getMembershipRegistrationPending()) {
-    membershipRegistrationPollTimer = setTimeout(() => pollMembershipRegistration(), HOME_CONTROL_POLL_MILLISECONDS);
-  }
-};
-
 async function approveHomeControlPairing() {
   if (!canApproveHomeControlPairing_()) {
     setHomeControlMessage("この端末では新しい端末を承認できません。", "error");
     return;
   }
-  const membershipTemplate = String(homeControlMembershipTemplate?.value || "").trim();
-  if (!["father_add_device", "eldest_daughter_initial", "second_son_initial"].includes(membershipTemplate)) {
+  const memberUserId = String(homeControlMemberUserId?.value || "").trim();
+  const displayName = String(HOME_CONTROL_REGISTRATION_IDENTITIES[memberUserId] || "");
+  if (!memberUserId || !displayName) {
     setHomeControlMessage("登録する家族を選んでな。", "error");
     return;
   }
@@ -2512,30 +2382,50 @@ async function approveHomeControlPairing() {
     setHomeControlMessage("6桁の承認コードを入力してな。", "error");
     return;
   }
+  const clientRequestId = createUuid();
   if (homeControlApproveButton) homeControlApproveButton.disabled = true;
   try {
-    const response = await callHomeControlApi({ action: "devicePairingApprove", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(), code, membershipTemplate });
-    logDevicePairingApprovalResult_({ action: "devicePairingApprove", membershipTemplate, deviceId: profile.deviceId, success: true, errorCode: "", message: "", response });
-    if (homeControlApproveCode) homeControlApproveCode.value = "";
-    setHomeControlMessage("新しい端末を承認したで。", "success");
-    await renderHomeControlSettings();
+    const response = await callHomeControlApi({
+      action: "devicePairingApprove", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(),
+      code, memberUserId, displayName, clientRequestId,
+    });
+    logDevicePairingApprovalResult_({ action: "devicePairingApprove", memberUserId, deviceId: profile.deviceId, success: true, errorCode: "", message: "", response });
+    await completeHomeControlApprovalUi_("新しい端末を承認したで。", true);
   } catch (error) {
-    logDevicePairingApprovalResult_({ action: "devicePairingApprove", membershipTemplate, deviceId: profile.deviceId, success: false, errorCode: String(error?.response?.error?.code || error?.code || ""), message: String(error?.response?.message || error?.message || ""), response: error?.response || null });
-    setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
+    logDevicePairingApprovalResult_({ action: "devicePairingApprove", memberUserId, deviceId: profile.deviceId, success: false, errorCode: String(error?.response?.error?.code || error?.code || ""), message: String(error?.response?.message || error?.message || ""), response: error?.response || null });
+    setHomeControlMessage(["INVALID_PAIRING_CODE", "INVALID_MEMBER_IDENTITY", "IDEMPOTENCY_CONFLICT", "FORBIDDEN", "UNAUTHORIZED_DEVICE"].includes(error?.code)
+      ? getHomeControlPublicMessage(error?.code)
+      : "承認結果を対象端末で再確認してな。", "error");
   } finally {
     if (homeControlApproveButton) homeControlApproveButton.disabled = false;
   }
 }
 
+async function completeHomeControlApprovalUi_(messageText, refreshSettings) {
+  if (homeControlApproveCode) homeControlApproveCode.value = "";
+  setHomeControlMessage(messageText, "success");
+  if (refreshSettings) await renderHomeControlSettings();
+}
+
 function logDevicePairingApprovalResult_(details) {
+  const stageNames = ["pendingRequest", "registryDevice", "registryActivation", "memberIdentity", "homeMembers", "deviceMemberships", "conflict"];
+  const sourceStages = details?.response?.diagnostics?.stages;
+  const stages = sourceStages && typeof sourceStages === "object"
+    ? stageNames.reduce((result, name) => {
+      if (typeof sourceStages[name] === "string") result[name] = sourceStages[name].slice(0, 40);
+      return result;
+    }, {})
+    : {};
   const entry = {
     action: String(details?.action || "devicePairingApprove"),
-    membershipTemplate: String(details?.membershipTemplate || ""),
-    deviceId: String(details?.deviceId || ""),
+    memberUserId: String(details?.memberUserId || ""),
+    deviceIdSuffix: String(details?.deviceId || "").slice(-8),
     success: Boolean(details?.success),
     errorCode: String(details?.errorCode || ""),
-    message: String(details?.message || ""),
-    response: details?.response || null,
+    registrationState: String(details?.response?.registrationState || ""),
+    replayed: details?.response?.replayed === true,
+    stages,
+    buildId: String(globalThis.BUILD_ID || ""),
   };
   (entry.success ? console.info : console.error)("[Paruru] devicePairingApprove", entry);
 }

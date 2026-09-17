@@ -106,9 +106,10 @@ function createHarness() {
   }
   function registry() { return JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1); }
   function revoke(deviceId) { return context.devicePairingRevoke_({ deviceId: adminDevice, pairingToken: adminToken, targetDeviceId: deviceId }); }
-  function begin(deviceId, displayName, tokenHash) { return context.devicePairingBegin_({ deviceId, displayName, tokenHash }); }
-  function approve(code, membershipTemplate, extra) {
-    return context.devicePairingApprove_(Object.assign({ deviceId: adminDevice, pairingToken: adminToken, code, membershipTemplate }, extra || {}));
+  function begin(deviceId, displayName, tokenHash) { return context.deviceRegistrationBegin_({ deviceId, displayName, tokenHash }); }
+  function approve(code, memberUserId, extra) {
+    const names = { father: '父', second_son: '次男' };
+    return context.devicePairingApprove_(Object.assign({ deviceId: adminDevice, pairingToken: adminToken, code, memberUserId, displayName: names[memberUserId] }, extra || {}));
   }
   function resetFailureCounters() { propertySetCount = 0; failPropertySetAt = 0; dropPropertySetAt = 0; spreadsheet.writeCount = 0; spreadsheet.failOnWrites = []; spreadsheet.corruptOnWrites = []; }
   return {
@@ -144,7 +145,7 @@ function createHarness() {
   const started = h.begin(sonDeviceB, 'son b re-registration', sha256(replacementToken));
   assert(started.success, 'revoked device could not begin re-registration');
   assert.strictEqual(h.registry().devices[sonDeviceB].status, 'pending');
-  const approved = h.approve(started.data.code, 'second_son_initial', { userId: 'father', role: 'admin', homeId: 'other-home', actorUserId: 'father' });
+  const approved = h.approve(started.data.code, 'second_son', { userId: 'father', role: 'admin', homeId: 'other-home', actorUserId: 'father' });
   assert(approved.success, 'same-device re-registration approval failed');
   const active = h.membership(sonDeviceB);
   assert.strictEqual(h.registry().devices[sonDeviceB].status, 'active');
@@ -176,13 +177,13 @@ for (const setupRegistryFailure of [
   const started = h.begin(sonDeviceB, 'son b rollback', sha256(replacementToken));
   h.resetFailureCounters();
   setupRegistryFailure(h);
-  const failed = h.approve(started.data.code, 'second_son_initial');
+  const failed = h.approve(started.data.code, 'second_son');
   assert.strictEqual(failed.success, false, 'Registry failure reported re-registration success');
   assert.deepStrictEqual(h.membership(sonDeviceB), disabledBefore, 'Registry failure did not restore the complete disabled row');
   assert.strictEqual(h.registry().devices[sonDeviceB].status, 'pending', 'Registry rollback did not restore pending device state');
   assert.strictEqual(h.registry().requests[started.data.requestId].status, 'pending', 'Registry rollback did not restore pending request state');
   h.resetFailureCounters();
-  assert(h.approve(started.data.code, 'second_son_initial').success, 'same operation could not retry after a verified rollback');
+  assert(h.approve(started.data.code, 'second_son').success, 'same operation could not retry after a verified rollback');
 }
 
 {
@@ -193,7 +194,7 @@ for (const setupRegistryFailure of [
   h.resetFailureCounters();
   h.failNextRegistryWrite();
   h.spreadsheet.failOnWrites = [2];
-  const failed = h.approve(started.data.code, 'second_son_initial');
+  const failed = h.approve(started.data.code, 'second_son');
   assert.strictEqual(failed.error.code, 'MEMBERSHIP_ROLLBACK_PENDING', 'rollback failure did not return the safe error');
 }
 

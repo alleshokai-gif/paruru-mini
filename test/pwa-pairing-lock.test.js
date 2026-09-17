@@ -14,7 +14,6 @@ const nurse = fs.readFileSync(path.join(root, 'features/nurse-okan', 'nurse-okan
   'authLock',
   'authLockUnpaired',
   'authLockPending',
-  'authLockUnassigned',
   'authLockError',
   'authLockBeginButton',
   'authLockRetryButton',
@@ -75,7 +74,6 @@ function createHarness(options = {}) {
     message: element(),
     unpaired: element(),
     pending: element(),
-    unassigned: element(),
     error: element(),
   };
   let response = options.response || (() => ({}));
@@ -84,10 +82,8 @@ function createHarness(options = {}) {
     BUILD_VERSION: 'test',
     HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY: 'pairing-token',
     HOME_CONTROL_PENDING_STORAGE_KEY: 'pairing-pending',
-    MEMBERSHIP_REGISTRATION_PENDING_STORAGE_KEY: 'membership-pending',
     HOME_CONTROL_POLL_MILLISECONDS: 5000,
     homeControlPollTimer: null,
-    membershipRegistrationPollTimer: null,
     notificationBoundaryTimerEnabled: false,
     activeView: 'home',
     userProfile: null,
@@ -95,7 +91,6 @@ function createHarness(options = {}) {
     authLockMessage: panels.message,
     authLockUnpaired: panels.unpaired,
     authLockPending: panels.pending,
-    authLockUnassigned: panels.unassigned,
     authLockError: panels.error,
     authLockDeviceName: element(),
     authLockBeginButton: element(),
@@ -103,11 +98,6 @@ function createHarness(options = {}) {
     authLockReRegisterButton: element(),
     authLockCode: element(),
     authLockExpiry: element(),
-    authLockMembershipBeginButton: element(),
-    authLockMembershipPending: element(),
-    authLockMembershipCode: element(),
-    authLockMembershipExpiry: element(),
-    authLockMembershipMessage: element(),
     homeControlDeviceName: element(),
     homeControlEnableButton: element(),
     homeControlMessage: element(),
@@ -257,9 +247,9 @@ async function startup(options) {
     token: 'credential',
     response: () => { const error = new Error('missing'); error.code = 'MEMBERSHIP_NOT_FOUND'; throw error; },
   });
-  assert.strictEqual(unassigned.state(), 'paired_unassigned');
+  assert.strictEqual(unassigned.state(), 'revoked_error');
   assert.strictEqual(unassigned.context.normalInitializations, 0);
-  assert.strictEqual(unassigned.panels.unassigned.hidden, false);
+  assert.strictEqual(unassigned.panels.error.hidden, false);
 
   const revoked = await startup({
     token: 'credential',
@@ -303,12 +293,14 @@ async function startup(options) {
   preserve.context.localStorage.setItem('pairing-token', 'credential');
   preserve.context.localStorage.setItem('pairing-pending', 'pairing-data');
   preserve.context.localStorage.setItem('membership-pending', 'membership-data');
+  preserve.context.localStorage.setItem('approval-attempt', 'approval-data');
   await preserve.context.initializeAuthenticatedPwa();
   await preserve.context.authLockReRegisterButton.click();
   assert.strictEqual(preserve.state(), 'unpaired', 're-registration must return to the unpaired screen');
   assert.strictEqual(preserve.context.localStorage.getItem('pairing-token'), null);
   assert.strictEqual(preserve.context.localStorage.getItem('pairing-pending'), null);
-  assert.strictEqual(preserve.context.localStorage.getItem('membership-pending'), null);
+  assert.strictEqual(preserve.context.localStorage.getItem('membership-pending'), 'membership-data');
+  assert.strictEqual(preserve.context.localStorage.getItem('approval-attempt'), 'approval-data');
   assert.strictEqual(preserve.context.localStorage.getItem('profile'), 'profile-data');
   assert.strictEqual(preserve.context.localStorage.getItem('inbox'), 'inbox-data');
   assert.strictEqual(preserve.context.localStorage.getItem('agent-session'), 'session-data');
@@ -316,9 +308,12 @@ async function startup(options) {
 
   const pending = createHarness({ token: 'credential' });
   pending.savePending({ requestId: 'request-a', requestSecret: 'secret', token: 'credential', code: '123456', expiresAt: new Date(Date.now() + 60000).toISOString(), requestExpiresAt: Date.now() + 60000 });
-  pending.setResponse((payload) => payload.action === 'devicePairingStatus' ? { status: 'pending' } : ({ memberUserId: 'father' }));
+  pending.setResponse((payload) => {
+    if (payload.action === 'membership.context.get') { const error = new Error('pending'); error.code = 'UNAUTHORIZED_DEVICE'; throw error; }
+    return { status: 'pending' };
+  });
   await pending.context.pollHomeControlPairing();
-  assert.strictEqual(pending.requests[0].action, 'devicePairingStatus');
+  assert.deepStrictEqual(pending.requests.map((request) => request.action), ['membership.context.get', 'devicePairingStatus']);
   assert.strictEqual(pending.timers.length, 1, 'pending must schedule exactly one retry');
   assert.strictEqual(pending.timers[0].milliseconds, 5000, 'pending retry interval must be five seconds');
   pending.context.scheduleHomeControlPoll();
@@ -343,16 +338,17 @@ async function startup(options) {
 
   const expired = createHarness({ token: 'credential' });
   expired.savePending({ requestId: 'request-a', requestSecret: 'secret', token: 'credential', code: '123456', expiresAt: new Date(Date.now() - 1000).toISOString(), requestExpiresAt: Date.now() + 60000 });
+  expired.setResponse(() => { const error = new Error('pending'); error.code = 'UNAUTHORIZED_DEVICE'; throw error; });
   await expired.context.pollHomeControlPairing();
-  assert.strictEqual(expired.hasPending(), false);
-  assert.strictEqual(expired.requests.length, 0, 'expired requests must not call the API');
-  assert.strictEqual(expired.state(), 'unpaired');
+  assert.strictEqual(expired.hasPending(), false, 'expired code must not remain displayable');
+  assert.deepStrictEqual(expired.requests.map((request) => request.action), ['membership.context.get']);
+  assert.strictEqual(expired.timers.length, 0, 'expired pending must not continue polling');
 
   const paired = createHarness({ token: '' });
   paired.savePending({ requestId: 'request-a', requestSecret: 'secret', token: 'credential', code: '123456', expiresAt: new Date(Date.now() + 60000).toISOString(), requestExpiresAt: Date.now() + 60000 });
-  paired.setResponse((payload) => payload.action === 'devicePairingStatus' ? { status: 'active' } : ({ memberUserId: 'father' }));
+  paired.setResponse(() => ({ memberUserId: 'father' }));
   await paired.context.pollHomeControlPairing();
-  assert.deepStrictEqual(paired.requests.map((request) => request.action), ['devicePairingStatus', 'membership.context.get']);
+  assert.deepStrictEqual(paired.requests.map((request) => request.action), ['membership.context.get']);
   assert.strictEqual(paired.hasPending(), false);
   assert.strictEqual(paired.context.normalInitializations, 1);
 
