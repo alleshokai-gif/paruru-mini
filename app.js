@@ -5435,7 +5435,12 @@ async function callAuthenticatedKazOsProjects_() {
 
 async function callAuthenticatedKazOsInbox_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  return callHomeControlApi(buildMemoCredentialPayload("kazOs.inbox.get"));
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi || typeof cryptoApi.randomUUID !== "function") throw createHomeControlError("KAZ_TRACE_UNAVAILABLE");
+  return callHomeControlApi({
+    ...buildMemoCredentialPayload("kazOs.inbox.get"),
+    request_id: cryptoApi.randomUUID(),
+  });
 }
 
 function applyMembershipCapabilityVisibility_() {

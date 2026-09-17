@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260917-kaz-inbox-read-v1";
+globalThis.BUILD_ID = "v20260917-kaz-inbox-trace-v1";

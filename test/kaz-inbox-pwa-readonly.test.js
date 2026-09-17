@@ -13,11 +13,13 @@ const navigation = fs.readFileSync(path.join(root, 'features', 'kaz-os', 'naviga
 const personal = fs.readFileSync(path.join(root, 'features', 'kaz-os', 'personal.js'), 'utf8');
 const serviceWorker = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 
-assert(build.includes('v20260917-kaz-inbox-read-v1'), 'release candidate build ID missing');
+assert(build.includes('v20260917-kaz-inbox-trace-v1'), 'trace release candidate build ID missing');
 assert(personal.includes('MAX_SOURCE_CLOCK_SKEW_MS = 60_000'), '60 second source clock skew contract regressed');
 
 assert(app.includes('kazOsInboxApi: callAuthenticatedKazOsInbox_'), 'authenticated event omits INBOX read API');
 assert(app.includes('buildMemoCredentialPayload("kazOs.inbox.get")'), 'INBOX read action missing');
+assert(app.includes('request_id: cryptoApi.randomUUID()'), 'opaque INBOX request id missing');
+assert(app.includes('typeof cryptoApi.randomUUID !== "function"'), 'request id generation must fail closed');
 assert(!app.includes('buildMemoCredentialPayload("kazOs.inbox.answer")'), 'answer action must remain disabled');
 assert(!app.includes('buildMemoCredentialPayload("kazOs.inbox.update")'), 'mutation action must remain disabled');
 
