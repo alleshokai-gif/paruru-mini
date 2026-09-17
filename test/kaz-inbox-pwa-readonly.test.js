@@ -12,6 +12,9 @@ const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const navigation = fs.readFileSync(path.join(root, 'features', 'kaz-os', 'navigation.js'), 'utf8');
 const personal = fs.readFileSync(path.join(root, 'features', 'kaz-os', 'personal.js'), 'utf8');
 const serviceWorker = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+const gasCode = fs.readFileSync(path.join(root, 'gas', 'Code.js'), 'utf8');
+const gasProgress = fs.readFileSync(path.join(root, 'gas', 'KazOsProgress.js'), 'utf8');
+const gasInbox = fs.readFileSync(path.join(root, 'gas', 'KazOsInbox.js'), 'utf8');
 
 assert(build.includes('v20260917-kaz-inbox-trace-v1'), 'trace release candidate build ID missing');
 assert(personal.includes('MAX_SOURCE_CLOCK_SKEW_MS = 60_000'), '60 second source clock skew contract regressed');
@@ -22,6 +25,9 @@ assert(app.includes('request_id: cryptoApi.randomUUID()'), 'opaque INBOX request
 assert(app.includes('typeof cryptoApi.randomUUID !== "function"'), 'request id generation must fail closed');
 assert(!app.includes('buildMemoCredentialPayload("kazOs.inbox.answer")'), 'answer action must remain disabled');
 assert(!app.includes('buildMemoCredentialPayload("kazOs.inbox.update")'), 'mutation action must remain disabled');
+for (const [name, source] of [['app.js', app], ['gas/Code.js', gasCode], ['gas/KazOsProgress.js', gasProgress], ['gas/KazOsInbox.js', gasInbox]]) {
+  assert(!source.includes('KAZ_OS_INBOX_LIVE_ENABLED'), `${name} must not revive the deprecated INBOX read flag`);
+}
 
 assert(html.includes('href="#kaz-os/inbox"'), 'INBOX navigation missing');
 assert(html.includes('features/kaz-os/inbox.js'), 'INBOX renderer not loaded');

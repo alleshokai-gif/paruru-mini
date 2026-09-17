@@ -27,6 +27,13 @@ const call=(device='admin-local',extra={})=>h.call(h.body(device,{action:'kazOs.
 function test(name,fn){fn();checks++;}
 
 test('owner receives only live read-only Secretary Questions',()=>{value.private_payload='SECRET';const r=call();assert(r.success);assert.equal(r.data.mode,'read_only_display');assert.equal(r.data.inbox_items.length,1);assert.equal(r.data.inbox_items[0].write_allowed,false);assert(!JSON.stringify(r).includes('SECRET'));});
+test('shared Kaz OS live gate controls INBOX and deprecated INBOX read flag is ignored',()=>{
+  value=snapshot();h.props.KAZ_OS_INBOX_LIVE_ENABLED='false';
+  const deprecatedFlagRead=call();assert(deprecatedFlagRead.success);assert.equal(deprecatedFlagRead.data.mode,'read_only_display');
+  const before=h.stats().reads;h.props.KAZ_OS_LIVE_ENABLED='false';const globallyDisabled=call();
+  assert.equal(globallyDisabled.error.code,'KAZ_NOT_CONNECTED');assert.equal(globallyDisabled.data,null);assert.equal(h.stats().reads,before);
+  h.props.KAZ_OS_LIVE_ENABLED='true';delete h.props.KAZ_OS_INBOX_LIVE_ENABLED;
+});
 test('non-owner denial happens before source read',()=>{for(const device of ['child-local','guardian-local','other-local']){const before=h.stats().reads,r=call(device,{role:'admin',memberUserId:'father'});assert.equal(r.error.code,'FORBIDDEN');assert.equal(r.data,null);assert.equal(h.stats().reads,before);}});
 test('answer and mutation actions remain denied',()=>{assert.equal(call('admin-local',{action:'kazOs.inbox.answer'}).error.code,'KAZ_READ_ONLY');assert.equal(call('admin-local',{action:'kazOs.inbox.update'}).error.code,'KAZ_READ_ONLY');assert.equal(h.stats().writes,0);});
 test('missing or malformed request id is rejected before source read',()=>{
