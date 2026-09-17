@@ -1,0 +1,13 @@
+{
+  "name": "paluru-secret-console-prototype",
+  "version": "0.0.0-phase2",
+  "private": true,
+  "description": "Synthetic-only PALURU Secret Console prototype",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

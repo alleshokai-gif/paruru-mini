@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>PALURU Secret Console — Synthetic Prototype</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">NON-PRODUCTION / SYNTHETIC</p>
+      <h1>PALURU Secret Console</h1>
+      <p class="subtitle">Credential metadataとrotation contractを、安全な合成データだけで確認するprototypeです。</p>
+    </div>
+    <span class="phase-badge">Phase 2/6</span>
+  </header>
+
+  <main>
+    <section class="notice" aria-label="重要な注意">
+      <strong>実credentialを入力しないでください。</strong>
+      <span>値は保存・再表示されません。production backendには接続していません。</span>
+    </section>
+
+    <section aria-labelledby="credential-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Credential inventory</p>
+          <h2 id="credential-heading">サービス一覧</h2>
+        </div>
+        <button id="refreshButton" class="secondary" type="button">再読込</button>
+      </div>
+      <div id="credentialList" class="credential-grid" aria-live="polite"></div>
+    </section>
+
+    <section id="detailPanel" class="panel" aria-labelledby="detailHeading">
+      <div id="detailEmpty" class="empty-state">
+        <p>サービスの「詳細」を選ぶと、redacted metadataを表示します。</p>
+      </div>
+      <div id="detailContent" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Credential detail</p>
+            <h2 id="detailHeading"></h2>
+          </div>
+          <span id="detailState" class="status-pill"></span>
+        </div>
+        <dl class="detail-grid">
+          <div><dt>Status</dt><dd id="detailStatus"></dd></div>
+          <div><dt>Enabled</dt><dd id="detailEnabled"></dd></div>
+          <div><dt>Backend</dt><dd id="detailBackend"></dd></div>
+          <div><dt>Consumers</dt><dd id="detailConsumers"></dd></div>
+          <div><dt>Connectivity</dt><dd id="detailConnectivity"></dd></div>
+          <div><dt>Last rotated</dt><dd id="detailRotated"></dd></div>
+        </dl>
+        <div class="button-row">
+          <button id="changeButton" type="button">新しいcredentialを設定</button>
+          <button id="probeButton" class="secondary" type="button">疎通確認</button>
+          <button id="rotationButton" class="secondary" type="button">rotation準備</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="stagePanel" class="panel sensitive-panel" aria-labelledby="stageHeading" hidden>
+      <p class="eyebrow">Write-only input</p>
+      <h2 id="stageHeading">新しいcredentialをstaging</h2>
+      <p class="support-copy">入力値はこのrequest以外へ保存されず、送信後ただちに入力欄から消去されます。</p>
+      <form id="stageForm" autocomplete="off">
+        <label for="newCredential">New credential</label>
+        <input id="newCredential" name="newCredential" type="password" minlength="12" maxlength="512" required autocomplete="new-password" spellcheck="false">
+        <label for="confirmCredential">Confirm</label>
+        <input id="confirmCredential" name="confirmCredential" type="password" minlength="12" maxlength="512" required autocomplete="new-password" spellcheck="false">
+        <div class="button-row">
+          <button type="submit">保存してstaging</button>
+          <button id="cancelStageButton" class="secondary" type="button">閉じる</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="rotationPanel" class="panel" aria-labelledby="rotationHeading" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Synthetic rotation</p>
+          <h2 id="rotationHeading">Rotation</h2>
+        </div>
+        <span id="rotationState" class="status-pill"></span>
+      </div>
+      <p id="rotationMessage" class="support-copy"></p>
+      <div id="rotationActions" class="button-row"></div>
+      <details>
+        <summary>Redacted audit</summary>
+        <ol id="auditList" class="audit-list"></ol>
+      </details>
+    </section>
+
+    <section id="diagnosticPanel" class="panel" aria-labelledby="diagnosticHeading" hidden>
+      <p class="eyebrow">Redacted diagnostics</p>
+      <h2 id="diagnosticHeading">疎通結果</h2>
+      <dl id="diagnosticSummary" class="detail-grid"></dl>
+      <ul id="consumerDiagnostics" class="consumer-list"></ul>
+    </section>
+
+    <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
+  </main>
+
+  <footer>
+    Synthetic adapter only · No production credential · No deployment
+  </footer>
+</body>
+</html>
