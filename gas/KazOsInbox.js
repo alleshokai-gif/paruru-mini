@@ -1,16 +1,74 @@
 // Fresh Secretary Questions for the authorized Kaz owner. No answer or writer exists here.
-function readKazOsInbox_() {
+var KAZ_OS_INBOX_TRACE_RELEASE_ = 'phase4c3-redacted-trace-v1';
+var KAZ_OS_INBOX_TRACE_STAGES_ = ['REQUEST_RECEIVED', 'ROUTER_MATCHED', 'AUTH_PASSED', 'INBOX_READ_STARTED',
+  'CALENDAR_CAPTURE_OK', 'CALENDAR_CAPTURE_FAILED', 'GATEWAY_POST_STARTED', 'GATEWAY_RESPONSE', 'SANITIZER_OK', 'RESPONSE_SENT'];
+var KAZ_OS_INBOX_TRACE_ERROR_CODES_ = ['FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'KAZ_NOT_CONNECTED',
+  'KAZ_READ_ONLY', 'KAZ_REQUEST_ID_INVALID', 'KAZ_SOURCE_FAILED'];
+
+function createKazOsInboxTrace_(requestId) {
+  const normalized = String(requestId || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(normalized)) return null;
+  return { request_id: normalized, started_at_ms: Date.now() };
+}
+
+function recordKazOsInboxTrace_(trace, stage, values) {
+  if (!trace || KAZ_OS_INBOX_TRACE_STAGES_.indexOf(stage) < 0) return;
+  const input = values || {};
+  const safeNumber = function(value, upper) {
+    return Number.isInteger(value) && value >= 0 && value <= upper ? value : null;
+  };
+  const requestedCode = String(input.error_code || '');
+  const entry = {
+    request_id: trace.request_id,
+    timestamp: new Date().toISOString(),
+    stage: stage,
+    error_code: requestedCode ? (KAZ_OS_INBOX_TRACE_ERROR_CODES_.indexOf(requestedCode) >= 0 ? requestedCode : 'KAZ_SOURCE_FAILED') : null,
+    event_count: safeNumber(input.event_count, 200),
+    http_status: safeNumber(input.http_status, 599),
+    question_count: safeNumber(input.question_count, 20),
+    elapsed_ms: safeNumber(Math.max(0, Date.now() - trace.started_at_ms), 600000),
+    gas_version: KAZ_OS_INBOX_TRACE_RELEASE_
+  };
+  if (typeof Logger !== 'undefined' && typeof Logger.log === 'function') {
+    Logger.log('[KAZ_OS_INBOX_TRACE] ' + JSON.stringify(entry));
+  }
+}
+
+function safeKazOsInboxTraceErrorCode_(error) {
+  const code = String(error && error.code || '');
+  return KAZ_OS_INBOX_TRACE_ERROR_CODES_.indexOf(code) >= 0 ? code : 'KAZ_SOURCE_FAILED';
+}
+
+function readKazOsInbox_(trace) {
   const props = PropertiesService.getScriptProperties();
   const url = String(props.getProperty('KAZ_OS_INBOX_READ_URL') || '');
   const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
   if (!/^https:\/\/[^\s?#]+\/v1\/inbox$/.test(url) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
-  const capture = buildKazOsCalendarCapture_();
-  const response = UrlFetchApp.fetch(url, {
-    method: 'post', contentType: 'application/json', payload: JSON.stringify(capture),
-    headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true,
-    followRedirects: false, validateHttpsCertificates: true
-  });
-  if (response.getResponseCode() !== 200) throw homeMembershipError_('KAZ_SOURCE_FAILED');
+  let capture;
+  try {
+    capture = buildKazOsCalendarCapture_();
+    recordKazOsInboxTrace_(trace, 'CALENDAR_CAPTURE_OK', { event_count: capture.response.events.length });
+  } catch (error) {
+    recordKazOsInboxTrace_(trace, 'CALENDAR_CAPTURE_FAILED', { error_code: safeKazOsInboxTraceErrorCode_(error) });
+    throw error;
+  }
+  const eventCount = capture.response.events.length;
+  recordKazOsInboxTrace_(trace, 'GATEWAY_POST_STARTED', { event_count: eventCount });
+  let response;
+  try {
+    response = UrlFetchApp.fetch(url, {
+      method: 'post', contentType: 'application/json', payload: JSON.stringify(capture),
+      headers: { Authorization: 'Bearer ' + token, 'X-Kaz-Request-Id': trace.request_id }, muteHttpExceptions: true,
+      followRedirects: false, validateHttpsCertificates: true
+    });
+  } catch (_) {
+    recordKazOsInboxTrace_(trace, 'GATEWAY_RESPONSE', { event_count: eventCount, error_code: 'KAZ_SOURCE_FAILED' });
+    throw homeMembershipError_('KAZ_SOURCE_FAILED');
+  }
+  const httpStatus = response.getResponseCode();
+  recordKazOsInboxTrace_(trace, 'GATEWAY_RESPONSE', { event_count: eventCount, http_status: httpStatus,
+    error_code: httpStatus === 200 ? null : 'KAZ_SOURCE_FAILED' });
+  if (httpStatus !== 200) throw homeMembershipError_('KAZ_SOURCE_FAILED');
   const text = response.getContentText();
   if (text.length > 524288) throw homeMembershipError_('KAZ_SOURCE_FAILED');
   return JSON.parse(text);

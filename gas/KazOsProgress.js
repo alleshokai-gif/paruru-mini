@@ -7,7 +7,7 @@ function verifyHomeControlDevicePairingReadOnly_(deviceId, pairingToken) {
   return { handled: true, authorized: true };
 }
 
-function kazOsProgress_(body) {
+function kazOsProgress_(body, inboxTrace) {
   try {
     const input = body || {};
     if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
@@ -19,12 +19,21 @@ function kazOsProgress_(body) {
     const ownerMember = String(props.getProperty('KAZ_OS_PROGRESS_OWNER_MEMBER_ID') || '');
     if (!ownerHome || !ownerMember) throw homeMembershipError_('KAZ_NOT_CONNECTED');
     if (actor.homeId !== ownerHome || actor.memberUserId !== ownerMember) throw homeMembershipError_('FORBIDDEN');
+    if (input.action === 'kazOs.inbox.get') recordKazOsInboxTrace_(inboxTrace, 'AUTH_PASSED');
     if (input.action === 'kazOs.projects.get') return json_({ success: true, data: sanitizeKazOsProjects_(readKazOsProjects_()), message: 'read only' });
-    if (input.action === 'kazOs.inbox.get') return json_({ success: true, data: sanitizeKazOsInbox_(readKazOsInbox_()), message: 'read only' });
+    if (input.action === 'kazOs.inbox.get') {
+      recordKazOsInboxTrace_(inboxTrace, 'INBOX_READ_STARTED');
+      const sanitized = sanitizeKazOsInbox_(readKazOsInbox_(inboxTrace));
+      const questionCount = Array.isArray(sanitized.inbox_items) ? sanitized.inbox_items.length : null;
+      recordKazOsInboxTrace_(inboxTrace, 'SANITIZER_OK', { question_count: questionCount });
+      recordKazOsInboxTrace_(inboxTrace, 'RESPONSE_SENT', { question_count: questionCount });
+      return json_({ success: true, data: sanitized, message: 'read only' });
+    }
     return json_({ success: true, data: sanitizeKazOsProgress_(readKazOsProgress_()), message: 'read only' });
   } catch (error) {
-    const allowed = ['FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'KAZ_NOT_CONNECTED', 'KAZ_READ_ONLY'];
+    const allowed = ['FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'KAZ_NOT_CONNECTED', 'KAZ_READ_ONLY', 'KAZ_REQUEST_ID_INVALID'];
     const code = allowed.indexOf(error && error.code) >= 0 ? error.code : 'KAZ_SOURCE_FAILED';
+    if (inboxTrace) recordKazOsInboxTrace_(inboxTrace, 'RESPONSE_SENT', { error_code: code });
     return json_({ success: false, data: null, error: { code: code }, message: code });
   }
 }
