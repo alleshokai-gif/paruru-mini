@@ -33,7 +33,6 @@ function createHarness(options = {}) {
   const requests = [];
   const messages = [];
   const logs = [];
-  let approvalAttempt = options.approvalAttempt || null;
   const context = {
     String, Array, Object, Promise, Boolean, Date,
     BUILD_ID: 'test-build',
@@ -44,7 +43,7 @@ function createHarness(options = {}) {
     homeControlApproveButton: element(),
     homeControlApprovePanel: element(),
     homeControlUnregistered: element(), homeControlPending: element(), homeControlRegistered: element(),
-    homeControlPendingCode: element(), homeControlPendingExpiry: element(), homeControlStatus: element(), homeControlDeviceName: element(), homeControlRegisteredLabel: element(), homeControlDeviceList: element(), homeControlRecoveryList: element(),
+    homeControlPendingCode: element(), homeControlPendingExpiry: element(), homeControlStatus: element(), homeControlDeviceName: element(), homeControlRegisteredLabel: element(), homeControlDeviceList: element(),
     getCurrentProfile: () => ({ deviceId: 'test-device', displayName: '父' }),
     getHomeAgentPairingToken: () => 'test-credential',
     getHomeControlPending: () => null,
@@ -53,26 +52,20 @@ function createHarness(options = {}) {
     renderHomeControlDeviceList() {},
     createUuid: () => '11111111-1111-4111-8111-111111111111',
     isUuid: (value) => /^[0-9a-f-]{36}$/i.test(String(value || '')),
-    getHomeControlApprovalAttempt_: () => approvalAttempt,
-    saveHomeControlApprovalAttempt_: (value) => { approvalAttempt = { ...value }; },
-    clearHomeControlApprovalAttempt_: () => { approvalAttempt = null; },
     setHomeControlMessage(message, type) { messages.push({ message, type }); },
     getHomeControlPublicMessage: (code) => String(code || ''),
     callHomeControlApi: async (payload) => {
       requests.push(payload);
       if (typeof options.api === 'function') return options.api(payload);
       if (payload.action === 'devicePairingApprove' && options.approvalError) throw options.approvalError;
-      if (payload.action === 'devicePairingList') return { devices: [], recoveries: [] };
-      if (payload.action === 'devicePairingApprovalStatus') {
-        const error = new Error('not found'); error.code = 'PAIRING_APPROVAL_NOT_FOUND'; throw error;
-      }
+      if (payload.action === 'devicePairingList') return { devices: [] };
       return { registrationState: 'READY', diagnostics: { stages: {} } };
     },
     renderHomeControlSettings: async () => {},
   };
   vm.createContext(context);
   vm.runInContext(`let appAuthenticationState = ${JSON.stringify(options.state || 'active_member')}; let activeMembershipContext = ${JSON.stringify({ role: options.role || 'admin' })}; ${approveSource}\n${revokeSource}\n${renderSource}\n${deviceListSource}\nglobalThis.setRole_ = (role) => { activeMembershipContext = { role }; };`, context);
-  return { context, requests, messages, logs, approvalAttempt: () => approvalAttempt };
+  return { context, requests, messages, logs };
 }
 
 (async () => {
@@ -141,32 +134,17 @@ function createHarness(options = {}) {
       if (payload.action === 'devicePairingApprove') {
         const error = new Error('timeout'); error.code = 'HOME_CONTROL_UNAVAILABLE'; throw error;
       }
-      if (payload.action === 'devicePairingApprovalStatus') return { registrationState: 'READY', retryable: false };
-      if (payload.action === 'devicePairingList') return { devices: [], recoveries: [] };
       return {};
     },
   });
   await responseTimeout.context.approveHomeControlPairing();
-  assert.deepStrictEqual(responseTimeout.requests.map((request) => request.action), ['devicePairingApprove', 'devicePairingApprovalStatus', 'devicePairingList']);
-  assert.strictEqual(responseTimeout.approvalAttempt(), null, 'confirmed READY must clear the client approval attempt');
-  assert.strictEqual(responseTimeout.context.homeControlApproveCode.value, '', 'confirmed READY must clear the consumed code');
-  assert(responseTimeout.messages.some((item) => item.message === '端末登録の成功を確認したで。' && item.type === 'success'));
+  assert.deepStrictEqual(responseTimeout.requests.map((request) => request.action), ['devicePairingApprove']);
+  assert.strictEqual(responseTimeout.context.homeControlApproveCode.value, '123456', 'uncertain response must not be treated as consumed by the admin UI');
+  assert(responseTimeout.messages.some((item) => item.message === '承認結果を対象端末で再確認してな。' && item.type === 'error'));
 
-  const retryableReload = createHarness({
-    memberUserId: 'eldest_daughter',
-    approvalAttempt: { clientRequestId: '11111111-1111-4111-8111-111111111111', memberUserId: 'eldest_daughter', displayName: '長女' },
-    api: async (payload) => {
-      if (payload.action === 'devicePairingList') return { devices: [], recoveries: [{ requestId: '22222222-2222-4222-8222-222222222222', deviceName: '長女の端末', retryable: true }] };
-      if (payload.action === 'devicePairingApprovalStatus') return { registrationState: 'FAILED_RETRYABLE', retryable: true };
-      if (payload.action === 'devicePairingResume') return { registrationState: 'READY' };
-      return {};
-    },
+  ['devicePairingResume', 'devicePairingApprovalStatus', '登録処理を再開', 'HOME_CONTROL_APPROVAL_ATTEMPT_STORAGE_KEY'].forEach((value) => {
+    assert(!source.includes(value), `fresh PWA still contains ${value}`);
   });
-  await retryableReload.context.renderHomeControlSettings();
-  assert(retryableReload.context.homeControlRecoveryList.innerHTML.includes('登録処理を再開'), 'reload must render the resumable registration action');
-  assert.strictEqual(retryableReload.context.homeControlApproveButton.textContent, '再試行');
-  await retryableReload.context.resumeHomeControlPairing('22222222-2222-4222-8222-222222222222');
-  assert(retryableReload.requests.some((request) => request.action === 'devicePairingResume'), 'resume endpoint was not called');
 
-  console.log('PASS PWA identity-only approval, idempotent retry, reload recovery, and admin-only visibility');
+  console.log('PASS PWA identity-only approval and minimal admin visibility');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
