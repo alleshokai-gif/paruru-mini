@@ -57,14 +57,15 @@
     return result;
   }
   function route(hash) {
-    const match = /^#kaz-os(?:\/projects(?:\/([^/]+))?)?$/.exec(hash || '');
+    const match = /^#kaz-os(?:\/(projects|inbox)(?:\/([^/]+))?)?$/.exec(hash || '');
     if (!match) return { page: 'projects', id: null };
+    const page = match[1] || 'projects';
     let id = null;
-    try { if (match[1]) id = decodeURIComponent(match[1]); } catch { /* Invalid URL is not an entity ID. */ }
-    return { page: 'projects', id };
+    try { if (match[2]) id = decodeURIComponent(match[2]); } catch { /* Invalid URL is not an entity ID. */ }
+    return { page, id };
   }
   function render(host, selection, data, now = Date.now(), options = {}) {
-    if (!selection || selection.page !== 'projects') selection = { page: 'projects', id: null };
+    if (!selection || !['projects', 'inbox'].includes(selection.page)) selection = { page: 'projects', id: null };
     todayView?.dispose(host);
     inboxView?.dispose(host);
     host.replaceChildren();

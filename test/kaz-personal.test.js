@@ -54,6 +54,8 @@ test('freshness permits bounded clock skew and rejects unsafe timestamps', () =>
 });
 test('routes preserve project IDs and unknown routes default safely', () => {
   assert.deepEqual(view.route('#kaz-os/projects/fx-p01'),{page:'projects',id:'fx-p01'});
+  assert.deepEqual(view.route('#kaz-os/inbox'),{page:'inbox',id:null});
+  assert.deepEqual(view.route('#kaz-os/inbox/decision-1'),{page:'inbox',id:'decision-1'});
   assert.equal(view.route('#kaz-os').page,'projects');assert.equal(view.route('#kaz-os/diagnostics').page,'projects');
   assert.equal(view.route('#kaz-os/projects/%ZZ').id,null);
 });
