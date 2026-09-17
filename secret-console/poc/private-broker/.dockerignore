@@ -1,0 +1,5 @@
+test/
+apps-script/
+README.md
+*.log
+*.json.tmp
