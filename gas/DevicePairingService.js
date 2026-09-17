@@ -5,19 +5,21 @@ const HOME_CONTROL_CODE_TTL_MILLISECONDS = 10 * 60 * 1000;
 const HOME_CONTROL_REQUEST_TTL_MILLISECONDS = 15 * 60 * 1000;
 const HOME_CONTROL_APPROVE_MAX_FAILURES = 5;
 const HOME_CONTROL_APPROVE_RATE_WINDOW_MILLISECONDS = 10 * 60 * 1000;
-const HOME_CONTROL_RECOVERY_TTL_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
+const LEGACY_HOME_CONTROL_RECOVERY_TTL_MILLISECONDS = 7 * 24 * 60 * 60 * 1000;
 const DEVICE_REGISTRATION_STATES = Object.freeze({
-  UNREGISTERED: 'UNREGISTERED',
+  PENDING: 'PENDING',
+  READY: 'READY',
+  REVOKED: 'REVOKED',
+});
+const LEGACY_DEVICE_REGISTRATION_STATES = Object.freeze({
   PAIRING_PENDING: 'PAIRING_PENDING',
   MEMBERSHIP_APPROVED: 'MEMBERSHIP_APPROVED',
   DEVICE_PROVISIONING_PENDING: 'DEVICE_PROVISIONING_PENDING',
-  READY: 'READY',
   FAILED_RETRYABLE: 'FAILED_RETRYABLE',
   FAILED_TERMINAL: 'FAILED_TERMINAL',
-  REVOKED: 'REVOKED',
 });
 
-function devicePairingBegin_(body) {
+function deviceRegistrationBegin_(body) {
   try {
     const input = validateDevicePairingBeginInput_(body || {});
     const result = withHomeControlRegistryLock_(function(registry, deps) {
@@ -53,13 +55,10 @@ function devicePairingBegin_(body) {
         codeExpiresAt: homeControlIso_(new Date(now.getTime() + HOME_CONTROL_CODE_TTL_MILLISECONDS)),
         approvedAt: null,
         approvedByDeviceId: null,
-        registrationState: DEVICE_REGISTRATION_STATES.PAIRING_PENDING,
+        registrationState: DEVICE_REGISTRATION_STATES.PENDING,
         approvalClientRequestId: null,
         memberUserId: null,
         memberDisplayName: null,
-        failureCode: null,
-        lastAttemptAt: null,
-        recoveryExpiresAt: null,
       };
       registry.devices[input.deviceId] = {
         deviceId: input.deviceId,
@@ -98,7 +97,9 @@ function devicePairingApprove_(body) {
         : null;
       if (replayRequest) {
         assertDevicePairingApprovalReplay_(replayRequest, input, adminActor);
-        return continueDevicePairingApproval_(registry, deps, adminActor, replayRequest, input.memberUserId, input.displayName, now, diagnostics, true);
+        return isFreshDeviceRegistrationRequest_(replayRequest)
+          ? completeFreshDeviceRegistration_(registry, deps, adminActor, replayRequest, input.memberUserId, input.displayName, now, diagnostics, true)
+          : continueLegacyDevicePairingApproval_(registry, deps, adminActor, replayRequest, input.memberUserId, input.displayName, now, diagnostics, true);
       }
       const rate = registry.approveAttempts[input.deviceId] || { count: 0, startedAt: now.getTime() };
       if (!Number.isFinite(rate.startedAt) || now.getTime() - rate.startedAt >= HOME_CONTROL_APPROVE_RATE_WINDOW_MILLISECONDS) {
@@ -128,18 +129,18 @@ function devicePairingApprove_(body) {
         throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
       }
       setDevicePairingApprovalStage_(diagnostics, 'registryDevice', 'verified', { requestKind: approval.kind });
-      if (request.registrationState === DEVICE_REGISTRATION_STATES.FAILED_TERMINAL) {
-        throw homeControlPairingError_(String(request.failureCode || 'PAIRING_RECOVERY_NOT_ALLOWED'));
+      if (isFreshDeviceRegistrationRequest_(request)) {
+        return completeFreshDeviceRegistration_(registry, deps, adminActor, request, input.memberUserId, input.displayName, now, diagnostics, false, input.clientRequestId);
       }
       request.approvalClientRequestId = input.clientRequestId || null;
       request.memberUserId = input.memberUserId;
       request.memberDisplayName = input.displayName;
       request.approvedByDeviceId = input.deviceId;
-      request.registrationState = DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING;
+      request.registrationState = LEGACY_DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING;
       request.lastAttemptAt = homeControlIso_(now);
-      request.recoveryExpiresAt = homeControlIso_(new Date(now.getTime() + HOME_CONTROL_RECOVERY_TTL_MILLISECONDS));
+      request.recoveryExpiresAt = homeControlIso_(new Date(now.getTime() + LEGACY_HOME_CONTROL_RECOVERY_TTL_MILLISECONDS));
       request.failureCode = null;
-      return continueDevicePairingApproval_(registry, deps, adminActor, request, input.memberUserId, input.displayName, now, diagnostics, false);
+      return continueLegacyDevicePairingApproval_(registry, deps, adminActor, request, input.memberUserId, input.displayName, now, diagnostics, false);
     });
     return json_({ success: true, data: result, warnings: [], diagnostics: diagnostics });
   } catch (error) {
@@ -160,14 +161,14 @@ function devicePairingResume_(body) {
       const request = registry.requests[input.requestId];
       if (!request) throw homeControlPairingError_('PAIRING_RECOVERY_NOT_FOUND');
       const recovery = getDevicePairingRecovery_(request, registry, adminActor);
-      if (!recovery || recovery.registrationState === DEVICE_REGISTRATION_STATES.FAILED_TERMINAL) {
+      if (!recovery || recovery.registrationState === LEGACY_DEVICE_REGISTRATION_STATES.FAILED_TERMINAL) {
         throw homeControlPairingError_(String(request.failureCode || 'PAIRING_RECOVERY_NOT_ALLOWED'));
       }
       if (recovery.registrationState === DEVICE_REGISTRATION_STATES.READY) return createDevicePairingApprovalResult_(request, registry, true);
-      if ([DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED, DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING, DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE].indexOf(recovery.registrationState) < 0) {
+      if ([LEGACY_DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED, LEGACY_DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING, LEGACY_DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE].indexOf(recovery.registrationState) < 0) {
         throw homeControlPairingError_('PAIRING_RECOVERY_NOT_ALLOWED');
       }
-      return continueDevicePairingApproval_(registry, deps, adminActor, request, recovery.memberUserId, recovery.displayName, now, diagnostics, true);
+      return continueLegacyDevicePairingApproval_(registry, deps, adminActor, request, recovery.memberUserId, recovery.displayName, now, diagnostics, true);
     });
     return json_({ success: true, data: result, warnings: [], diagnostics: diagnostics });
   } catch (error) {
@@ -214,7 +215,75 @@ function resolveDevicePairingApprovalIdentity_(request, memberUserId, displayNam
   throw homeControlPairingError_('INVALID_MEMBER_IDENTITY');
 }
 
-function continueDevicePairingApproval_(registry, deps, adminActor, request, memberUserId, displayName, now, diagnostics, replayed) {
+function isFreshDeviceRegistrationRequest_(request) {
+  return Boolean(request && request.kind === 'pairing' &&
+    (request.registrationState === DEVICE_REGISTRATION_STATES.PENDING || request.registrationState === DEVICE_REGISTRATION_STATES.READY));
+}
+
+function completeFreshDeviceRegistration_(registry, deps, adminActor, request, memberUserId, displayName, now, diagnostics, replayed, clientRequestId) {
+  const targetDevice = request && registry.devices[String(request.deviceId || '')];
+  if (!targetDevice || (targetDevice.status !== 'pending' && targetDevice.status !== 'active')) throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
+  const identity = resolveDevicePairingApprovalIdentity_(request, memberUserId, displayName);
+  setDevicePairingApprovalStage_(diagnostics, 'memberIdentity', 'matched');
+  if ((request.memberUserId && request.memberUserId !== identity.memberUserId) ||
+      (request.memberDisplayName && request.memberDisplayName !== identity.displayName)) throw homeControlPairingError_('IDEMPOTENCY_CONFLICT');
+  if (request.approvedByDeviceId && request.approvedByDeviceId !== adminActor.deviceId) throw homeControlPairingError_('FORBIDDEN');
+  if (resolveDeviceRegistrationState_(request, registry) === DEVICE_REGISTRATION_STATES.READY) {
+    return createDevicePairingApprovalResult_(request, registry, true);
+  }
+
+  const registryBeforeApprovalCommit = cloneHomeControlRegistryValue_(registry);
+  const membershipApprovalContext = {
+    requestKind: 'pairing',
+    registryDeviceStatus: String(targetDevice.status || ''),
+    requestDeviceId: String(request.deviceId || ''),
+    requestId: String(request.requestId || ''),
+  };
+  provisionMembershipIdentityWithinRegistryLock_(
+    adminActor,
+    targetDevice.deviceId,
+    identity.memberUserId,
+    identity.displayName,
+    request.requestId,
+    homeControlIso_(now),
+    diagnostics,
+    membershipApprovalContext
+  );
+
+  request.approvalClientRequestId = String(clientRequestId || request.approvalClientRequestId || '') || null;
+  request.memberUserId = identity.memberUserId;
+  request.memberDisplayName = identity.displayName;
+  request.approvedByDeviceId = adminActor.deviceId;
+  targetDevice.status = 'active';
+  targetDevice.registeredAt = targetDevice.registeredAt || homeControlIso_(now);
+  targetDevice.lastUsedAt = homeControlIso_(now);
+  targetDevice.revokedAt = null;
+  setDevicePairingApprovalStage_(diagnostics, 'registryActivation', 'active');
+  request.status = 'approved';
+  request.approvedAt = request.approvedAt || homeControlIso_(now);
+  request.codeHash = '';
+  request.codeExpiresAt = null;
+  request.registrationState = DEVICE_REGISTRATION_STATES.READY;
+  deleteOtherPendingPairingRequestsForDevice_(registry, targetDevice.deviceId, request.requestId);
+  const approvalResult = createDevicePairingApprovalResult_(request, registry, replayed);
+  if (!membershipApprovalContext.reRegistrationSnapshot) return approvalResult;
+  return createHomeControlRegistryCommitResult_(
+    approvalResult,
+    function() {
+      restoreHomeControlRegistrySnapshot_(registry, registryBeforeApprovalCommit);
+      restoreDeviceMembershipAfterReRegistrationFailure_(membershipApprovalContext.reRegistrationSnapshot);
+    },
+    'MEMBERSHIP_ROLLBACK_PENDING',
+    function() {
+      verifyDevicePairingReRegistrationCommit_(registry, deps, membershipApprovalContext, request.requestId);
+    },
+    function() {
+      verifyDevicePairingReRegistrationRollback_(registry, deps, membershipApprovalContext.reRegistrationSnapshot);
+    }
+  );
+}
+
+function continueLegacyDevicePairingApproval_(registry, deps, adminActor, request, memberUserId, displayName, now, diagnostics, replayed) {
   const targetDevice = request && registry.devices[String(request.deviceId || '')];
   const requestKind = normalizeDevicePairingRequestKind_(request);
   if (!targetDevice || !requestKind) throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
@@ -226,17 +295,17 @@ function continueDevicePairingApproval_(registry, deps, adminActor, request, mem
       (request.memberDisplayName && request.memberDisplayName !== identity.displayName)) throw homeControlPairingError_('IDEMPOTENCY_CONFLICT');
   if (request.approvedByDeviceId && request.approvedByDeviceId !== adminActor.deviceId) throw homeControlPairingError_('FORBIDDEN');
 
-  const stateBefore = resolveDeviceRegistrationState_(request, registry);
+  const stateBefore = resolveLegacyDeviceRegistrationState_(request, registry);
   if (stateBefore === DEVICE_REGISTRATION_STATES.READY) return createDevicePairingApprovalResult_(request, registry, true);
-  if (stateBefore === DEVICE_REGISTRATION_STATES.FAILED_TERMINAL) throw homeControlPairingError_(String(request.failureCode || 'PAIRING_RECOVERY_NOT_ALLOWED'));
+  if (stateBefore === LEGACY_DEVICE_REGISTRATION_STATES.FAILED_TERMINAL) throw homeControlPairingError_(String(request.failureCode || 'PAIRING_RECOVERY_NOT_ALLOWED'));
 
   const registryBeforeApprovalCommit = cloneHomeControlRegistryValue_(registry);
   request.memberUserId = identity.memberUserId;
   request.memberDisplayName = identity.displayName;
   request.approvedByDeviceId = adminActor.deviceId;
-  request.registrationState = DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING;
+  request.registrationState = LEGACY_DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING;
   request.lastAttemptAt = homeControlIso_(now);
-  request.recoveryExpiresAt = request.recoveryExpiresAt || homeControlIso_(new Date(now.getTime() + HOME_CONTROL_RECOVERY_TTL_MILLISECONDS));
+  request.recoveryExpiresAt = request.recoveryExpiresAt || homeControlIso_(new Date(now.getTime() + LEGACY_HOME_CONTROL_RECOVERY_TTL_MILLISECONDS));
   request.failureCode = null;
   const membershipApprovalContext = {
     requestKind: requestKind,
@@ -258,12 +327,12 @@ function continueDevicePairingApproval_(registry, deps, adminActor, request, mem
   } catch (error) {
     request.failureCode = String(error && error.code || 'PAIRING_FAILED');
     request.registrationState = isRetryableDevicePairingApprovalFailure_(request.failureCode)
-      ? DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE
-      : DEVICE_REGISTRATION_STATES.FAILED_TERMINAL;
+      ? LEGACY_DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE
+      : LEGACY_DEVICE_REGISTRATION_STATES.FAILED_TERMINAL;
     throw error;
   }
 
-  request.registrationState = DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED;
+  request.registrationState = LEGACY_DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED;
   if (requestKind === 'pairing') {
     targetDevice.status = 'active';
     targetDevice.registeredAt = targetDevice.registeredAt || homeControlIso_(now);
@@ -362,68 +431,6 @@ function devicePairingApprovalFailure_(code, diagnostics) {
   return failure;
 }
 
-function membershipRegistrationBegin_(body) {
-  try {
-    const input = validateHomeControlAuthenticatedInput_(body || {});
-    const result = withHomeControlRegistryLock_(function(registry, deps) {
-      const now = deps.now();
-      pruneHomeControlRegistry_(registry, now.getTime());
-      verifyHomeControlRegistryDevice_(input.deviceId, input.pairingToken, registry, deps, now);
-      // getDeviceMembership_ is deliberately unique-row based: any active, disabled,
-      // or duplicate Device_Memberships row must fail closed rather than be reassigned.
-      if (getDeviceMembership_(input.deviceId)) throw homeControlPairingError_('MEMBERSHIP_ALREADY_ASSIGNED');
-      if (findActiveMembershipRegistrationRequestForDevice_(registry, input.deviceId, now)) {
-        throw homeControlPairingError_('MEMBERSHIP_REGISTRATION_PENDING');
-      }
-
-      const requestId = deps.uuid();
-      const requestSecret = deps.randomToken(24);
-      let code = '';
-      for (let attempt = 0; attempt < 10; attempt += 1) {
-        const candidate = deps.randomCode();
-        if (!findHomeControlRequestByCode_(registry, candidate, deps)) {
-          code = candidate;
-          break;
-        }
-      }
-      if (!code) throw homeControlPairingError_('PAIRING_CODE_UNAVAILABLE');
-      const device = registry.devices[input.deviceId];
-      const createdAt = homeControlIso_(now);
-      registry.requests[requestId] = {
-        requestId: requestId,
-        requestSecretHash: deps.hash(requestSecret),
-        deviceId: input.deviceId,
-        displayName: String(device.displayName || ''),
-        tokenHash: String(device.tokenHash || ''),
-        codeHash: deps.hash(code),
-        kind: 'membership',
-        status: 'pending',
-        createdAt: createdAt,
-        expiresAt: homeControlIso_(new Date(now.getTime() + HOME_CONTROL_REQUEST_TTL_MILLISECONDS)),
-        codeExpiresAt: homeControlIso_(new Date(now.getTime() + HOME_CONTROL_CODE_TTL_MILLISECONDS)),
-        approvedAt: null,
-        approvedByDeviceId: null,
-        registrationState: DEVICE_REGISTRATION_STATES.PAIRING_PENDING,
-        approvalClientRequestId: null,
-        memberUserId: null,
-        memberDisplayName: null,
-        failureCode: null,
-        lastAttemptAt: null,
-        recoveryExpiresAt: null,
-      };
-      return {
-        requestId: requestId,
-        requestSecret: requestSecret,
-        code: code,
-        expiresAt: registry.requests[requestId].codeExpiresAt,
-      };
-    });
-    return json_({ success: true, data: result, warnings: [] });
-  } catch (error) {
-    return json_(homeControlPairingFailure_(error && error.code));
-  }
-}
-
 function membershipRegistrationStatus_(body) {
   try {
     const input = validateMembershipRegistrationStatusInput_(body || {});
@@ -460,15 +467,13 @@ function devicePairingStatus_(body) {
       if (!isPairingStatusRequest_(request) || !constantTimeEqualHomeControl_(deps.hash(input.requestSecret), String(request.requestSecretHash || ''))) {
         throw homeControlPairingError_('PAIRING_REQUEST_INVALID');
       }
-      const device = registry.devices[request.deviceId];
       const registrationState = resolveDeviceRegistrationState_(request, registry);
       const active = registrationState === DEVICE_REGISTRATION_STATES.READY;
-      const retryable = [DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED, DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING, DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE].indexOf(registrationState) >= 0;
       return {
-        status: active ? 'active' : retryable ? 'failed_retryable' : registrationState === DEVICE_REGISTRATION_STATES.FAILED_TERMINAL ? 'failed_terminal' : 'pending',
+        status: active ? 'active' : registrationState === DEVICE_REGISTRATION_STATES.REVOKED ? 'revoked' : 'pending',
         registrationState: registrationState,
         deviceName: String(request.displayName || ''),
-        expiresAt: active ? null : request.recoveryExpiresAt || request.expiresAt || request.codeExpiresAt,
+        expiresAt: active ? null : request.codeExpiresAt || request.expiresAt,
       };
     });
     return json_({ success: true, data: result, warnings: [] });
@@ -741,6 +746,7 @@ function pruneHomeControlRegistry_(registry, nowMs) {
     const request = registry.requests[requestId];
     const device = request && registry.devices[request.deviceId];
     if (request && request.status === 'pending' && isPairingStatusRequest_(request) && device && device.status === 'active') {
+      if (isFreshDeviceRegistrationRequest_(request)) return;
       if (preserveRecoverableDevicePairingRequest_(request, registry, now)) return;
       delete registry.requests[requestId];
     }
@@ -752,10 +758,11 @@ function pruneHomeControlRegistry_(registry, nowMs) {
 }
 
 function preserveRecoverableDevicePairingRequest_(request, registry, now) {
-  const state = resolveDeviceRegistrationState_(request, registry);
-  if ([DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED, DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING, DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE].indexOf(state) < 0) return false;
+  if (isFreshDeviceRegistrationRequest_(request)) return false;
+  const state = resolveLegacyDeviceRegistrationState_(request, registry);
+  if ([LEGACY_DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED, LEGACY_DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING, LEGACY_DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE].indexOf(state) < 0) return false;
   const recoveryExpiresAt = String(request.recoveryExpiresAt || recoveryExpiryFromRequest_(request));
-  if (state === DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED) {
+  if (state === LEGACY_DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED) {
     request.registrationState = state;
     request.recoveryExpiresAt = recoveryExpiresAt || null;
     return true;
@@ -769,7 +776,7 @@ function preserveRecoverableDevicePairingRequest_(request, registry, now) {
 function recoveryExpiryFromRequest_(request) {
   const base = Date.parse(String(request && (request.approvedAt || request.lastAttemptAt || request.createdAt) || ''));
   if (!Number.isFinite(base)) return '';
-  return homeControlIso_(new Date(base + HOME_CONTROL_RECOVERY_TTL_MILLISECONDS));
+  return homeControlIso_(new Date(base + LEGACY_HOME_CONTROL_RECOVERY_TTL_MILLISECONDS));
 }
 
 function normalizeDevicePairingRequestKind_(request) {
@@ -784,36 +791,47 @@ function inspectDevicePairingMembership_(request) {
     const assignment = 'pairing_approval:' + String(request && request.requestId || '');
     return {
       membership: membership || null,
+      active: Boolean(membership && membership.status === 'active'),
       matching: Boolean(membership && membership.status === 'active' && membership.assignedBy === assignment),
       errorCode: '',
     };
   } catch (error) {
-    return { membership: null, matching: false, errorCode: String(error && error.code || 'MEMBERSHIP_STATE_UNAVAILABLE') };
+    return { membership: null, active: false, matching: false, errorCode: String(error && error.code || 'MEMBERSHIP_STATE_UNAVAILABLE') };
   }
 }
 
 function resolveDeviceRegistrationState_(request, registry, inspectedMembership) {
-  if (!request) return DEVICE_REGISTRATION_STATES.UNREGISTERED;
+  if (!request) return DEVICE_REGISTRATION_STATES.PENDING;
   const device = registry && registry.devices && registry.devices[String(request.deviceId || '')];
   if (device && device.status === 'revoked') return DEVICE_REGISTRATION_STATES.REVOKED;
-  if (request.registrationState === DEVICE_REGISTRATION_STATES.FAILED_TERMINAL) return DEVICE_REGISTRATION_STATES.FAILED_TERMINAL;
+  const membershipState = inspectedMembership || inspectDevicePairingMembership_(request);
+  if (!membershipState.errorCode && membershipState.active && device && device.status === 'active') return DEVICE_REGISTRATION_STATES.READY;
+  return DEVICE_REGISTRATION_STATES.PENDING;
+}
+
+function resolveLegacyDeviceRegistrationState_(request, registry, inspectedMembership) {
+  if (!request) return DEVICE_REGISTRATION_STATES.PENDING;
+  const device = registry && registry.devices && registry.devices[String(request.deviceId || '')];
+  if (device && device.status === 'revoked') return DEVICE_REGISTRATION_STATES.REVOKED;
+  if (request.registrationState === LEGACY_DEVICE_REGISTRATION_STATES.FAILED_TERMINAL) return LEGACY_DEVICE_REGISTRATION_STATES.FAILED_TERMINAL;
   const membershipState = inspectedMembership || inspectDevicePairingMembership_(request);
   if (membershipState.errorCode) {
-    return request.registrationState === DEVICE_REGISTRATION_STATES.PAIRING_PENDING && !request.approvalClientRequestId && !request.lastAttemptAt
-      ? DEVICE_REGISTRATION_STATES.PAIRING_PENDING
-      : DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE;
+    return request.registrationState === LEGACY_DEVICE_REGISTRATION_STATES.PAIRING_PENDING && !request.approvalClientRequestId && !request.lastAttemptAt
+      ? LEGACY_DEVICE_REGISTRATION_STATES.PAIRING_PENDING
+      : LEGACY_DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE;
   }
-  if (request.status === 'approved' && device && device.status === 'active' && membershipState.matching) return DEVICE_REGISTRATION_STATES.READY;
-  if (membershipState.matching) return DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED;
-  if (request.registrationState === DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE) return DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE;
-  if (request.registrationState === DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING || request.approvalClientRequestId) {
-    return DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING;
+  if (request.status === 'approved' && membershipState.matching && device && device.status === 'active') return DEVICE_REGISTRATION_STATES.READY;
+  if (membershipState.matching) return LEGACY_DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED;
+  if (request.registrationState === LEGACY_DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE) return LEGACY_DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE;
+  if (request.registrationState === LEGACY_DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING || request.approvalClientRequestId) {
+    return LEGACY_DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING;
   }
-  return DEVICE_REGISTRATION_STATES.PAIRING_PENDING;
+  return LEGACY_DEVICE_REGISTRATION_STATES.PAIRING_PENDING;
 }
 
 function getDevicePairingRecovery_(request, registry, adminActor) {
   if (!request || !adminActor || !adminActor.homeId) return null;
+  if (isFreshDeviceRegistrationRequest_(request)) return null;
   const membershipState = inspectDevicePairingMembership_(request);
   if (membershipState.membership && String(membershipState.membership.homeId || '') !== String(adminActor.homeId || '')) return null;
   let identity = null;
@@ -825,15 +843,15 @@ function getDevicePairingRecovery_(request, registry, adminActor) {
     if (policy) identity = { memberUserId: policy.memberUserId, displayName: policy.displayName };
   }
   if (!identity) return null;
-  const registrationState = resolveDeviceRegistrationState_(request, registry, membershipState);
+  const registrationState = resolveLegacyDeviceRegistrationState_(request, registry, membershipState);
   return {
     requestId: String(request.requestId || ''),
     deviceName: String(request.displayName || ''),
     memberUserId: identity.memberUserId,
     displayName: identity.displayName,
     registrationState: registrationState,
-    retryable: [DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED, DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING, DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE].indexOf(registrationState) >= 0,
-    failureCode: registrationState === DEVICE_REGISTRATION_STATES.FAILED_TERMINAL ? String(request.failureCode || membershipState.errorCode || 'PAIRING_RECOVERY_NOT_ALLOWED') : '',
+    retryable: [LEGACY_DEVICE_REGISTRATION_STATES.MEMBERSHIP_APPROVED, LEGACY_DEVICE_REGISTRATION_STATES.DEVICE_PROVISIONING_PENDING, LEGACY_DEVICE_REGISTRATION_STATES.FAILED_RETRYABLE].indexOf(registrationState) >= 0,
+    failureCode: registrationState === LEGACY_DEVICE_REGISTRATION_STATES.FAILED_TERMINAL ? String(request.failureCode || membershipState.errorCode || 'PAIRING_RECOVERY_NOT_ALLOWED') : '',
     expiresAt: String(request.recoveryExpiresAt || request.expiresAt || ''),
   };
 }
@@ -842,7 +860,7 @@ function listDevicePairingRecoveries_(registry, adminActor) {
   return Object.keys(registry.requests).map(function(requestId) {
     return getDevicePairingRecovery_(registry.requests[requestId], registry, adminActor);
   }).filter(function(recovery) {
-    return recovery && (recovery.retryable || recovery.registrationState === DEVICE_REGISTRATION_STATES.FAILED_TERMINAL);
+    return recovery && (recovery.retryable || recovery.registrationState === LEGACY_DEVICE_REGISTRATION_STATES.FAILED_TERMINAL);
   });
 }
 
@@ -921,13 +939,6 @@ function isPairingStatusRequest_(request) {
     isHomeControlTokenHash_(request.requestSecretHash) &&
     isHomeControlTokenHash_(request.tokenHash);
   return hasRequiredFields && (isHomeControlTokenHash_(request.codeHash) || request.status === 'approved');
-}
-
-function findActiveMembershipRegistrationRequestForDevice_(registry, deviceId, now) {
-  return Object.keys(registry.requests).map(function(id) { return registry.requests[id]; }).filter(function(request) {
-    return request && request.kind === 'membership' && request.deviceId === deviceId && request.status === 'pending' &&
-      homeControlFutureIso_(request.expiresAt, now) && homeControlFutureIso_(request.codeExpiresAt, now);
-  })[0] || null;
 }
 
 function isPendingMembershipRegistrationRequest_(request, now) {

@@ -1,67 +1,93 @@
-# Issue #1: simple user registration
+# Issue #1: Minimal Registration final design
 
 ## Problem
 
-Device approval currently requires a `membershipTemplate`. The template selects
-a fixed member and also assigns that member's roster `role`. Authentication then
-rejects an otherwise valid member row when the stored role differs from the
-roster role. This couples device registration to privilege assignment and keeps
-some of the six fixed identities from registering.
+The previous registration implementation coupled fresh device registration to a
+membership-only registration path and a multi-state recovery workflow. A fresh
+request could create recovery states, recovery TTLs, resume actions, and client
+approval-attempt state even though the durable registration facts are the active
+device membership and active Registry credential.
 
-## Confirmed cause
+## Fresh registration contract
 
-- `devicePairingApprove` accepts `membershipTemplate` instead of member identity.
-- provisioning resolves `memberUserId`, `displayName`, and `role` from that
-  template and writes the role into `Home_Members`;
-- `isHomeMemberPolicyMatch_()` treats the roster role as identity data; and
-- a member without one of the three known roles cannot authenticate.
+```text
+deviceRegistrationBegin
+→ fresh requestId + fresh 6-digit code
+→ admin selects memberUserId/displayName
+→ idempotent approve
+→ Device_Memberships active
+→ Registry credential active
+→ READY
+```
 
-The resumable Issue #1 state machine is independent of this coupling and remains
-the registration/recovery authority.
+Fresh registration has only three semantic states:
 
-## Change policy
+- `PENDING`
+- `READY`
+- `REVOKED`
 
-- Approval accepts only `memberUserId` and `displayName` as the target identity.
-- All six entries in the fixed roster are valid identities. Their roster roles
-  and legacy approval-template metadata are not registration inputs.
-- A newly created `Home_Members` row has an empty `role` and receives baseline
-  capabilities/views in code.
-- Registration preserves an existing member role. It never grants, removes, or
-  overwrites privileges.
-- `Device_Memberships` remains the device-to-member binding and the existing
-  approval request id remains the idempotency key.
-- Legacy partial recovery records may be translated from their stored template
-  to a roster identity, but all new approval and recovery writes use identity.
-- A separate admin privilege-management operation is outside this registration
-  change; no unreviewed role/capability mutation API is introduced here.
+An active `Device_Memberships` row is the authoritative device-to-member
+binding. An active Registry credential plus that active binding is sufficient
+for normal authentication. Request status is not a permanent authorization or
+READY fact.
 
-## Impact and side effects
+## Fresh-flow rules
 
-- Members with no role can reach `READY` and use the common baseline features.
-- Existing `admin`, `guardian`, and `self_record` rows keep their current access.
-- Identity-specific access overrides are removed; the fixed roster is used only
-  to validate `memberUserId` and exact `displayName`.
-- Admin-only pairing approval and home-control authorization remain privileged.
-- No Spreadsheet headers are added, reordered, or deleted. No existing rows are
-  migrated or deleted.
-- PWA Build ID is `v20260915-simple-user-registration-v1`; Mini Build ID is
-  `mini-20260915-simple-user-registration-v1`.
+- Every begin creates a new request id and code.
+- A new begin invalidates older pending requests for the same device.
+- A device has at most one active pending request.
+- Expired or consumed codes are not displayed again.
+- Approval accepts only the exact fixed-roster `memberUserId` and `displayName`.
+- Registration does not accept or assign a role, capability, home id, or user id.
+- New members receive the role-empty baseline; existing roles are preserved.
+- Replaying the same approval idempotency key returns the existing READY result.
+- Response loss is resolved by replaying approval or re-reading the active
+  binding through status/authentication. Fresh registration has no resume flow.
+- Fresh requests do not write `MEMBERSHIP_APPROVED`,
+  `DEVICE_PROVISIONING_PENDING`, `FAILED_RETRYABLE`, `FAILED_TERMINAL`, or
+  `recoveryExpiresAt`.
+- The PWA has no `membershipRegistrationBegin/status`, recovery list,
+  approval-attempt recovery, or `devicePairingResume` path.
 
-## Rollback
+## Legacy isolation
 
-Revert this commit. The previous resumable registration code and existing data
-remain intact because this change performs no migration.
+Legacy handling may only close records created before this design:
 
-## Acceptance items
+- stored `membershipTemplate` may be translated to its fixed-roster identity;
+- requests without `kind` retain pairing compatibility when structurally valid;
+- existing partial requests may use the existing server-side resume endpoint;
+- existing client approval request ids may be queried.
 
-- all six exact roster identities can be approved without template or role;
-- unknown identity and display-name mismatch are rejected;
-- a new member is active with an empty role and baseline access;
-- an existing privileged role is preserved during device binding;
-- registration payload contains no `membershipTemplate` or `role`;
-- duplicate approval and repeated retry remain idempotent;
-- reload recovery resumes by stored member identity;
-- baseline access excludes settings, supervision, inbox review, and home control;
-- existing admin approval/home-control behavior remains authorized;
-- full repository test suite passes;
-- after user deployment, real-browser/PWA acceptance verifies the above flows.
+No endpoint may create a new membership-registration request. The new PWA does
+not call legacy resume, approval-status, or membership-registration endpoints.
+
+## Data and authorization boundaries
+
+- Existing `Home_Members` rows and roles are preserved.
+- Existing `Device_Memberships` rows are not deleted or duplicated.
+- Duplicate or conflicting device bindings fail closed.
+- Admin approval remains server-authorized.
+- No Spreadsheet header migration is part of this change.
+- No live eldest-daughter or second-son data is reset before deployment and
+  real-device acceptance.
+
+## Build identifiers
+
+- PWA: `v20260917-minimal-registration-v1`
+- Mini: `mini-20260917-minimal-registration-v1`
+
+## Acceptance
+
+- fresh device → code → identity → approve → READY;
+- reload before approval remains PENDING;
+- reload after approval reaches READY;
+- response loss reaches READY by reload/status or identical approval replay;
+- repeated identical approval does not add a membership row;
+- a second device can bind to an existing member;
+- active binding plus active credential is READY despite stale request state;
+- wrong or expired codes do not mutate registration facts;
+- no role or capability is granted;
+- no fresh recovery state or membership-registration request is created;
+- consecutive fresh begins do not reuse the pending request id or code.
+
+Deployment and real-browser/PWA acceptance remain separate user-run phases.

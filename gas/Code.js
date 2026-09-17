@@ -126,8 +126,8 @@ function doPost(e) {
       return agentActionCancel_(body);
     }
 
-    if (action === 'devicePairingBegin') {
-      return devicePairingBegin_(body);
+    if (action === 'deviceRegistrationBegin') {
+      return deviceRegistrationBegin_(body);
     }
 
     if (action === 'devicePairingApprove') {
@@ -152,10 +152,6 @@ function doPost(e) {
 
     if (action === 'devicePairingRevoke') {
       return devicePairingRevoke_(body);
-    }
-
-    if (action === 'membershipRegistrationBegin') {
-      return membershipRegistrationBegin_(body);
     }
 
     if (action === 'membershipRegistrationStatus') {

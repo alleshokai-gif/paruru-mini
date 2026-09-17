@@ -1,5 +1,10 @@
 # Issue #1: 端末登録の部分成功リカバリー
 
+> Legacy-only: この文書の状態機械、resume、approval status、recovery TTLは、
+> Minimal Registration導入前に作成済みのpartial recordを閉じる用途に限る。
+> fresh registrationは`docs/ISSUE_1_SIMPLE_USER_REGISTRATION.md`を正本とし、
+> この文書のstateやrequestを新規生成しない。
+
 ## 問題
 
 端末承認は、Pairing Registry、`Home_Members`、`Device_Memberships` の複数保存先を更新する。サーバー側の更新が成功した後にレスポンス受信または画面更新が失敗すると、管理者画面は失敗を表示する一方、6桁コードはサーバー側で消費済みになる。現行UIは成功照合用のIDと再開操作を持たないため、同じ操作を安全に再実行できない。

@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260917-simple-user-registration-v2";
+globalThis.BUILD_ID = "v20260917-minimal-registration-v1";

@@ -1032,7 +1032,7 @@ test('EVA-03H1 pairing UI uses explicit onboarding actions and has no manual tok
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   assert(!html.includes('profileHomeAgentPairingToken'), 'manual pairing token input remains in the normal UI');
   assert(html.includes('homeControlEnableButton') && html.includes('homeControlApproveButton'), 'pairing onboarding controls are missing');
-  ['devicePairingBegin', 'devicePairingApprove', 'devicePairingResume', 'devicePairingApprovalStatus', 'devicePairingStatus', 'devicePairingRevoke'].forEach((action) => {
+  ['deviceRegistrationBegin', 'devicePairingApprove', 'devicePairingStatus', 'devicePairingRevoke'].forEach((action) => {
     assert(appSource.includes(`action: "${action}"`), `missing explicit onboarding action: ${action}`);
   });
   assert(appSource.includes('crypto?.getRandomValues') && appSource.includes('crypto?.subtle') && appSource.includes('crypto.subtle.digest'), 'PWA token generation is not Web Crypto based');
@@ -1167,7 +1167,7 @@ test('agentChat logs API_ERROR and FETCH_FAILED with the same request context', 
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260917-simple-user-registration-v2';
+  const expected = 'v20260917-minimal-registration-v1';
   const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
   assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID must have one definition');
   assert(appSource.includes('Build: ${globalThis.BUILD_ID}') && !/const\s+(?:ASSET_VERSION|BUILD_VERSION|BUILD_ID)\s*=/.test(appSource), 'app does not use BUILD_ID as the only Build display source');

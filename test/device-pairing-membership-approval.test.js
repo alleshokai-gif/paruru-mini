@@ -99,8 +99,24 @@ function createHarness() {
     };
     properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(registry);
   }
-  function begin() { return context.devicePairingBegin_({ deviceId: childId, displayName: 'joining', tokenHash: childTokenHash }); }
-  function membershipBegin() { return context.membershipRegistrationBegin_({ deviceId: membershipDeviceId, pairingToken: membershipToken }); }
+  function begin() { return context.deviceRegistrationBegin_({ deviceId: childId, displayName: 'joining', tokenHash: childTokenHash }); }
+  function membershipBegin() {
+    const requestId = '99999999-9999-4999-8999-999999999999';
+    const requestSecret = 'legacy-membership-request-secret-000000000001';
+    const code = '654321';
+    const saved = registry();
+    saved.requests[requestId] = {
+      requestId, requestSecretHash: sha256(requestSecret), deviceId: membershipDeviceId,
+      displayName: 'paired unassigned', tokenHash: sha256(membershipToken), codeHash: sha256(code),
+      kind: 'membership', status: 'pending', createdAt: '2026-07-20T01:00:00.000Z',
+      expiresAt: '2099-07-20T01:15:00.000Z', codeExpiresAt: '2099-07-20T01:10:00.000Z',
+      approvedAt: null, approvedByDeviceId: null, registrationState: 'PAIRING_PENDING',
+      approvalClientRequestId: null, memberUserId: null, memberDisplayName: null,
+      failureCode: null, lastAttemptAt: null, recoveryExpiresAt: null,
+    };
+    properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1 = JSON.stringify(saved);
+    return { success: true, data: { requestId, requestSecret, code, expiresAt: saved.requests[requestId].codeExpiresAt } };
+  }
   function membershipStatus(started) {
     return context.membershipRegistrationStatus_({ deviceId: membershipDeviceId, pairingToken: membershipToken, requestId: started.data.requestId, requestSecret: started.data.requestSecret });
   }
@@ -317,13 +333,14 @@ test('only one concurrent approval consumes a code', () => {
   assert.strictEqual(h.provisionCalls.length, 1);
 });
 
-test('retryable provisioning failure leaves request and pairing pending for same request retry', () => {
+test('fresh provisioning failure leaves only PENDING and can retry the same request', () => {
   const h = createHarness(); h.seedParent(); const started = h.begin(); h.setProvisionFailure('MEMBERSHIP_TEMPORARY_FAILURE');
   expectCode(h.approve(started.data.code, 'second_son_initial'), 'MEMBERSHIP_TEMPORARY_FAILURE');
   let saved = h.registry();
   assert.strictEqual(saved.devices[childId].status, 'pending');
   assert.notStrictEqual(saved.requests[started.data.requestId].codeHash, '');
-  assert.strictEqual(saved.requests[started.data.requestId].registrationState, 'FAILED_RETRYABLE');
+  assert.strictEqual(saved.requests[started.data.requestId].registrationState, 'PENDING');
+  ['recoveryExpiresAt', 'failureCode', 'lastAttemptAt'].forEach((key) => assert(!Object.prototype.hasOwnProperty.call(saved.requests[started.data.requestId], key)));
   h.setProvisionFailure(false);
   assert(h.approve(started.data.code, 'second_son_initial').success);
   saved = h.registry();
@@ -386,29 +403,39 @@ test('response timeout replay uses the client idempotency key without provisioni
   const clientRequestId = '11111111-1111-4111-8111-111111111111';
   const first = h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId });
   assert(first.success && first.data.registrationState === 'READY');
-  assert.strictEqual(h.approvalStatus(clientRequestId).data.registrationState, 'READY', 'committed approval was not discoverable after a lost response');
   const replay = h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId });
   assert(replay.success && replay.data.replayed === true, 'same approval did not replay');
   assert.strictEqual(h.provisionCalls.length, 1, 'response retry provisioned membership twice');
   expectCode(h.approve(started.data.code, 'father_add_device', { clientRequestId }), 'IDEMPOTENCY_CONFLICT');
 });
 
-test('retryable provisioning failure survives reload and resume is idempotent', () => {
+test('active membership and active credential remain READY with a stale request state', () => {
+  const h = createHarness(); h.seedParent(); const started = h.begin();
+  assert(h.approve(started.data.code, 'eldest_daughter_initial').success);
+  const saved = h.registry();
+  saved.requests[started.data.requestId].status = 'pending';
+  saved.requests[started.data.requestId].registrationState = 'PENDING';
+  h.setRegistry(saved);
+  const status = h.context.devicePairingStatus_({ requestId: started.data.requestId, requestSecret: started.data.requestSecret });
+  assert(status.success);
+  assert.strictEqual(status.data.status, 'active');
+  assert.strictEqual(status.data.registrationState, 'READY');
+});
+
+test('fresh failures create no recovery record and retry through approve only', () => {
   const h = createHarness(); h.seedParent(); const started = h.begin();
   const clientRequestId = '22222222-2222-4222-8222-222222222222';
   h.setProvisionFailure('MEMBERSHIP_TEMPORARY_FAILURE');
   expectCode(h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId }), 'MEMBERSHIP_TEMPORARY_FAILURE');
   let saved = h.registry();
-  assert.strictEqual(saved.requests[started.data.requestId].registrationState, 'FAILED_RETRYABLE');
-  assert.strictEqual(h.approvalStatus(clientRequestId).data.retryable, true);
-  const recoveries = h.list().data.recoveries;
-  assert.strictEqual(recoveries.length, 1, 'reload list did not expose the recovery');
-  assert.strictEqual(recoveries[0].requestId, started.data.requestId);
+  assert.strictEqual(saved.requests[started.data.requestId].registrationState, 'PENDING');
+  assert.strictEqual(h.list().data.recoveries.length, 0, 'fresh request leaked into the legacy recovery list');
+  expectCode(h.resume(started.data.requestId), 'PAIRING_RECOVERY_NOT_ALLOWED');
+  expectCode(h.approvalStatus(clientRequestId), 'PAIRING_APPROVAL_NOT_FOUND');
 
   h.setProvisionFailure(false);
-  assert(h.resume(started.data.requestId).success, 'resume failed');
+  assert(h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId }).success, 'approve retry failed');
   assert.strictEqual(h.registry().requests[started.data.requestId].registrationState, 'READY');
-  assert(h.resume(started.data.requestId).success, 'second resume was not idempotent');
   assert.strictEqual(h.provisionCalls.length, 2, 'READY resume repeated provisioning');
 });
 
@@ -431,27 +458,18 @@ test('consumed code with membership committed resumes only the missing device ac
   assert.strictEqual(h.registry().devices[childId].status, 'active');
 });
 
-test('expired pairing request is retained when its membership write committed', () => {
+test('fresh request never enters legacy recovery preservation after a save failure', () => {
   const h = createHarness(); h.seedParent(); const started = h.begin();
   h.setSaveFailures(2);
   assert(!h.approve(started.data.code, 'eldest_daughter_initial').success, 'simulated response uncertainty must fail');
   h.setSaveFailures(0);
-  h.setNow('2026-07-20T10:20:00+09:00');
+  const expired = h.registry();
+  expired.requests[started.data.requestId].expiresAt = '2020-01-01T00:00:00.000Z';
+  expired.requests[started.data.requestId].codeExpiresAt = '2020-01-01T00:00:00.000Z';
+  h.setRegistry(expired);
   const listed = h.list();
-  assert.strictEqual(listed.data.recoveries.length, 1, 'expired partial request was pruned');
-  assert.strictEqual(listed.data.recoveries[0].registrationState, 'MEMBERSHIP_APPROVED');
-  assert(h.resume(started.data.requestId).success, 'expired partial request did not resume');
-});
-
-test('committed membership recovery is not pruned after the ordinary recovery window', () => {
-  const h = createHarness(); h.seedParent(); const started = h.begin();
-  h.setSaveFailures(2);
-  assert(!h.approve(started.data.code, 'eldest_daughter_initial').success);
-  h.setSaveFailures(0);
-  h.setNow('2026-07-29T10:00:00+09:00');
-  const listed = h.list();
-  assert.strictEqual(listed.data.recoveries[0].registrationState, 'MEMBERSHIP_APPROVED');
-  assert(h.resume(started.data.requestId).success, 'committed membership became unrecoverable after time elapsed');
+  assert.strictEqual(listed.data.recoveries.length, 0);
+  assert.strictEqual(h.registry().requests[started.data.requestId], undefined, 'expired fresh request was retained as recovery state');
 });
 
 test('existing membership owned by another approval is never overwritten', () => {
@@ -460,10 +478,10 @@ test('existing membership owned by another approval is never overwritten', () =>
   h.seedMembership(childId, existing);
   expectCode(h.approve(started.data.code, 'eldest_daughter_initial', { clientRequestId: '44444444-4444-4444-8444-444444444444' }), 'MEMBERSHIP_CONFLICT');
   assert.deepStrictEqual(h.membership(childId), existing);
-  assert.strictEqual(h.registry().requests[started.data.requestId].registrationState, 'FAILED_TERMINAL');
-  expectCode(h.resume(started.data.requestId), 'MEMBERSHIP_CONFLICT');
+  assert.strictEqual(h.registry().requests[started.data.requestId].registrationState, 'PENDING');
+  expectCode(h.resume(started.data.requestId), 'PAIRING_RECOVERY_NOT_ALLOWED');
   expectCode(h.approve(started.data.code, 'eldest_daughter_initial'), 'MEMBERSHIP_CONFLICT');
-  assert.strictEqual(h.provisionCalls.length, 1, 'terminal retry called provisioning again');
+  assert.strictEqual(h.provisionCalls.length, 2, 'approve retry must remain deterministic without a terminal state');
 });
 
 if (!process.exitCode) console.log('PASS all membership-aware device pairing approval tests');

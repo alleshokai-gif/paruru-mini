@@ -106,7 +106,7 @@ function createHarness() {
   }
   function registry() { return JSON.parse(properties.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1); }
   function revoke(deviceId) { return context.devicePairingRevoke_({ deviceId: adminDevice, pairingToken: adminToken, targetDeviceId: deviceId }); }
-  function begin(deviceId, displayName, tokenHash) { return context.devicePairingBegin_({ deviceId, displayName, tokenHash }); }
+  function begin(deviceId, displayName, tokenHash) { return context.deviceRegistrationBegin_({ deviceId, displayName, tokenHash }); }
   function approve(code, memberUserId, extra) {
     const names = { father: '父', second_son: '次男' };
     return context.devicePairingApprove_(Object.assign({ deviceId: adminDevice, pairingToken: adminToken, code, memberUserId, displayName: names[memberUserId] }, extra || {}));
