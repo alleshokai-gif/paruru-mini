@@ -49,6 +49,12 @@ created_at, updated_at, safe_error_code, secret_version_alias
 `secret_version_alias` is an opaque reference. The payload remains in the
 external secret-store seam and is read only during an authenticated redeem.
 
+For live acceptance, `FirestoreOperationStore` uses a Firestore transaction so
+separate broker instances serialize the same operation. It rejects any stored
+field outside the safe schema. `GoogleSyntheticSecretStore` reads only an
+explicit version of an isolated synthetic Secret Manager secret. Neither
+adapter has access to production credential names or values.
+
 The private HTTP contract is:
 
 ```text
@@ -94,6 +100,10 @@ npm test
 
 No dependency installation, Google credential, cloud resource, or network
 access is required by the test suite.
+
+The Human-operated live setup and redacted evidence contract are documented in
+[`LIVE_ACCEPTANCE_RUNBOOK.md`](LIVE_ACCEPTANCE_RUNBOOK.md). Codex does not run
+the deploy, create the trigger, or change cloud IAM.
 
 ## Local verification versus Google acceptance
 

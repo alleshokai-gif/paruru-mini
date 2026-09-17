@@ -1,5 +1,7 @@
 test/
 apps-script/
+node_modules/
 README.md
+LIVE_ACCEPTANCE_RUNBOOK.md
 *.log
 *.json.tmp

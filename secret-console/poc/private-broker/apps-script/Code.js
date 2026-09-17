@@ -56,10 +56,41 @@ function pocPrivateBrokerTick_() {
       }
     });
   } catch (error) {
-    return { success: false, code: pocSafeErrorCode_(error) };
+    throw new Error(pocSafeErrorCode_(error));
   } finally {
     lock.releaseLock();
   }
+}
+
+function pocIdentityBindingMetadata_() {
+  var identityToken = ScriptApp.getIdentityToken();
+  if (!identityToken) throw new Error('POC_IDENTITY_TOKEN_UNAVAILABLE');
+  var parts = identityToken.split('.');
+  if (parts.length !== 3) throw new Error('POC_IDENTITY_TOKEN_INVALID');
+  var claims;
+  try {
+    claims = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[1])).getDataAsString());
+  } catch (ignored) {
+    throw new Error('POC_IDENTITY_TOKEN_INVALID');
+  }
+  if (typeof claims.aud !== 'string' || typeof claims.sub !== 'string') {
+    throw new Error('POC_IDENTITY_CLAIMS_INVALID');
+  }
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    claims.sub,
+    Utilities.Charset.UTF_8
+  ).map(function (value) {
+    return ('0' + ((value + 256) % 256).toString(16)).slice(-2);
+  }).join('');
+  return {
+    audience: claims.aud,
+    owner_subject_sha256: digest,
+    issuer_valid: claims.iss === 'https://accounts.google.com' || claims.iss === 'accounts.google.com',
+    has_exp: typeof claims.exp === 'number',
+    has_iat: typeof claims.iat === 'number',
+    has_nbf: typeof claims.nbf === 'number'
+  };
 }
 
 function pocPrivateBrokerTickWithDeps_(deps) {
@@ -180,6 +211,7 @@ function pocSafeErrorCode_(error) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     POC_BROKER_KEYS_: POC_BROKER_KEYS_,
+    pocIdentityBindingMetadata_: pocIdentityBindingMetadata_,
     pocPrivateBrokerTick_: pocPrivateBrokerTick_,
     pocPrivateBrokerTickWithDeps_: pocPrivateBrokerTickWithDeps_
   };

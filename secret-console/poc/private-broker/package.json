@@ -7,6 +7,10 @@
     "start": "node src/server.js",
     "test": "node --test test/*.test.js"
   },
+  "dependencies": {
+    "@google-cloud/firestore": "9.1.0",
+    "@google-cloud/secret-manager": "7.1.0"
+  },
   "engines": {
     "node": ">=22"
   }

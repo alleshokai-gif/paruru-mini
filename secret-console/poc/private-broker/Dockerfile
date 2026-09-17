@@ -5,7 +5,8 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY src ./src
 
 USER 65532:65532

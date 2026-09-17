@@ -17,6 +17,7 @@ const { OidcVerifier } = require('../src/oidc-verifier');
 const { makeSigningFixture, signJwt } = require('./helpers');
 const {
   POC_BROKER_KEYS_: KEYS,
+  pocIdentityBindingMetadata_,
   pocPrivateBrokerTick_,
   pocPrivateBrokerTickWithDeps_: runTick,
 } = require('../apps-script/Code');
@@ -254,6 +255,44 @@ test('ScriptLock rejects an overlapping invocation before token or transport acc
   } finally {
     if (original === undefined) delete global.LockService;
     else global.LockService = original;
+  }
+});
+
+test('identity bootstrap returns audience and subject digest without raw token or subject', () => {
+  const originalScriptApp = global.ScriptApp;
+  const originalUtilities = global.Utilities;
+  const audience = `aud_${crypto.randomUUID()}`;
+  const subject = `sub_${crypto.randomUUID()}`;
+  const claims = {
+    iss: 'https://accounts.google.com',
+    aud: audience,
+    sub: subject,
+    iat: 1899999990,
+    exp: 1900000300,
+  };
+  const token = `header.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.signature`;
+  global.ScriptApp = { getIdentityToken: () => token };
+  global.Utilities = {
+    base64DecodeWebSafe: (value) => Buffer.from(value, 'base64url'),
+    newBlob: (value) => ({ getDataAsString: () => Buffer.from(value).toString('utf8') }),
+    DigestAlgorithm: { SHA_256: 'SHA_256' },
+    Charset: { UTF_8: 'UTF_8' },
+    computeDigest: (_algorithm, value) => [...crypto.createHash('sha256').update(value).digest()]
+      .map((byte) => byte > 127 ? byte - 256 : byte),
+  };
+  try {
+    const metadata = pocIdentityBindingMetadata_();
+    assert.equal(metadata.audience, audience);
+    assert.equal(metadata.owner_subject_sha256, crypto.createHash('sha256').update(subject).digest('hex'));
+    const serialized = JSON.stringify(metadata);
+    assert.equal(serialized.includes(subject), false);
+    assert.equal(serialized.includes(token), false);
+    assert.equal(Object.hasOwn(metadata, 'email'), false);
+  } finally {
+    if (originalScriptApp === undefined) delete global.ScriptApp;
+    else global.ScriptApp = originalScriptApp;
+    if (originalUtilities === undefined) delete global.Utilities;
+    else global.Utilities = originalUtilities;
   }
 });
 
