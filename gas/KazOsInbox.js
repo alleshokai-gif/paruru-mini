@@ -190,6 +190,7 @@ function sanitizeKazOsInbox_(data) {
       project_id: text(value.project_id, 80, true), entity_ref: text(value.entity_ref, 80, true),
       source_label: text(value.source_label, 100), entity_revision: text(value.entity_revision, 80, true),
       question_revision: text(value.question_revision, 90),
+      expires_at: text(value.expires_at, 80, true),
       source_revision_references: { projects: refs.projects, work_items: refs.work_items, calendar: refs.calendar },
       answer_contract: { inbox_item_id: text(value.answer_contract.inbox_item_id, 80),
         question_revision: text(value.answer_contract.question_revision, 90),

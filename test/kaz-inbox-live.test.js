@@ -35,7 +35,7 @@ test('shared Kaz OS live gate controls INBOX and deprecated INBOX read flag is i
   h.props.KAZ_OS_LIVE_ENABLED='true';delete h.props.KAZ_OS_INBOX_LIVE_ENABLED;
 });
 test('non-owner denial happens before source read',()=>{for(const device of ['child-local','guardian-local','other-local']){const before=h.stats().reads,r=call(device,{role:'admin',memberUserId:'father'});assert.equal(r.error.code,'FORBIDDEN');assert.equal(r.data,null);assert.equal(h.stats().reads,before);}});
-test('answer and mutation actions remain denied',()=>{assert.equal(call('admin-local',{action:'kazOs.inbox.answer'}).error.code,'KAZ_READ_ONLY');assert.equal(call('admin-local',{action:'kazOs.inbox.update'}).error.code,'KAZ_READ_ONLY');assert.equal(h.stats().writes,0);});
+test('answer gate defaults disabled and mutation remains denied',()=>{assert.equal(call('admin-local',{action:'kazOs.inbox.answer'}).error.code,'KAZ_ANSWER_DISABLED');assert.equal(call('admin-local',{action:'kazOs.inbox.update'}).error.code,'KAZ_READ_ONLY');assert.equal(h.stats().writes,0);});
 test('missing or malformed request id is rejected before source read',()=>{
   const before=h.stats().reads;
   for(const request_id of [undefined,'not-a-uuid','123e4567-e89b-12d3-a456-426614174000']){

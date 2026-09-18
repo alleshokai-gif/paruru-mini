@@ -176,6 +176,10 @@ function doPost(e) {
       return kazOsProgress_(body, trace);
     }
 
+    if (action === 'kazOs.inbox.answer') {
+      return answerKazOsInbox_(body);
+    }
+
     if (String(action).indexOf('kazOs.') === 0) {
       return json_({ success: false, data: null, error: { code: 'KAZ_READ_ONLY' }, message: 'KAZ_READ_ONLY' });
     }

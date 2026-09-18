@@ -15,17 +15,18 @@ const serviceWorker = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 const gasCode = fs.readFileSync(path.join(root, 'gas', 'Code.js'), 'utf8');
 const gasProgress = fs.readFileSync(path.join(root, 'gas', 'KazOsProgress.js'), 'utf8');
 const gasInbox = fs.readFileSync(path.join(root, 'gas', 'KazOsInbox.js'), 'utf8');
+const gasAnswer = fs.readFileSync(path.join(root, 'gas', 'KazOsInboxAnswer.js'), 'utf8');
 
-assert(build.includes('v20260917-kaz-inbox-trace-v1'), 'trace release candidate build ID missing');
+assert(build.includes('v20260917-kaz-inbox-answer-v1'), 'answer production candidate build ID missing');
 assert(personal.includes('MAX_SOURCE_CLOCK_SKEW_MS = 60_000'), '60 second source clock skew contract regressed');
 
 assert(app.includes('kazOsInboxApi: callAuthenticatedKazOsInbox_'), 'authenticated event omits INBOX read API');
 assert(app.includes('buildMemoCredentialPayload("kazOs.inbox.get")'), 'INBOX read action missing');
 assert(app.includes('request_id: cryptoApi.randomUUID()'), 'opaque INBOX request id missing');
 assert(app.includes('typeof cryptoApi.randomUUID !== "function"'), 'request id generation must fail closed');
-assert(!app.includes('buildMemoCredentialPayload("kazOs.inbox.answer")'), 'answer action must remain disabled');
+assert(app.includes('buildMemoCredentialPayload("kazOs.inbox.answer")'), 'answer action missing');
 assert(!app.includes('buildMemoCredentialPayload("kazOs.inbox.update")'), 'mutation action must remain disabled');
-for (const [name, source] of [['app.js', app], ['gas/Code.js', gasCode], ['gas/KazOsProgress.js', gasProgress], ['gas/KazOsInbox.js', gasInbox]]) {
+for (const [name, source] of [['app.js', app], ['gas/Code.js', gasCode], ['gas/KazOsProgress.js', gasProgress], ['gas/KazOsInbox.js', gasInbox], ['gas/KazOsInboxAnswer.js', gasAnswer]]) {
   assert(!source.includes('KAZ_OS_INBOX_LIVE_ENABLED'), `${name} must not revive the deprecated INBOX read flag`);
 }
 
@@ -41,8 +42,8 @@ assert(navigation.includes("data?.persistence?.status === 'disabled'"), 'disable
 assert(navigation.includes("data?.writes?.notion === 0"), 'Notion write gate missing');
 assert(navigation.includes("data?.writes?.calendar === 0"), 'Calendar write gate missing');
 assert(navigation.includes("data?.writes?.context === 0"), 'Context write gate missing');
-assert(navigation.includes('{ answerApi: null }'), 'answer transport must not be supplied');
-assert(!navigation.includes('kazOsInboxAnswerApi'), 'answer API must not be wired');
+assert(navigation.includes("data?.mode === 'controlled_proposal'"), 'controlled proposal mode gate missing');
+assert(navigation.includes('kazOsInboxAnswerApi'), 'answer API must be wired through authenticated event');
 assert(!navigation.includes('localStorage'), 'INBOX response must not be persisted locally');
 assert(!navigation.includes('kaz-personal-scale'), 'fixture fallback must not be wired');
 
@@ -107,6 +108,8 @@ const freshInbox = () => ({
   sources: { inbox: { status: 'ok', complete: true, valid_until: new Date(Date.now() + 600000).toISOString() } },
   inbox_items: [],
 });
+const controlledInbox = () => ({ ...freshInbox(), mode: 'controlled_proposal',
+  persistence: { kind: 'paluru_spreadsheet_append_only', status: 'enabled' } });
 
 (async () => {
   const denied = navigationHarness();
@@ -133,6 +136,20 @@ const freshInbox = () => ({
   const rendered = allowed.renders.find(args => args[2]?.mode === 'read_only_display');
   assert(rendered, 'fresh read-only INBOX was not rendered');
   assert.equal(rendered[4].answerApi, null, 'answer API must remain disabled');
+
+  const controlled = navigationHarness();
+  let answerCalls = 0;
+  controlled.listeners['paruru:authenticated']({ detail: {
+    context: { role: 'admin', allowedViews: ['home', 'kaz-os'] },
+    kazOsProjectsApi: async () => null,
+    kazOsInboxApi: async () => controlledInbox(),
+    kazOsInboxAnswerApi: async () => { answerCalls++; return { inbox: controlledInbox() }; },
+  } });
+  await new Promise(setImmediate);
+  const controlledRender = controlled.renders.find(args => args[2]?.mode === 'controlled_proposal');
+  assert.equal(typeof controlledRender[4].answerApi, 'function', 'controlled mode answer API missing');
+  await controlledRender[4].answerApi({ decision_id: 'd' });
+  assert.equal(answerCalls, 1, 'answer API was not called exactly once');
 
   const unsafe = navigationHarness();
   unsafe.listeners['paruru:authenticated']({ detail: {

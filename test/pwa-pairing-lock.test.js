@@ -135,6 +135,7 @@ function createHarness(options = {}) {
     callAuthenticatedKazOsProgress_: async () => ({}),
     callAuthenticatedKazOsProjects_: async () => ({}),
     callAuthenticatedKazOsInbox_: async () => ({}),
+    callAuthenticatedKazOsInboxAnswer_: async () => ({}),
     callHomeControlApi: async (payload) => {
       requests.push(payload);
       return response(payload);

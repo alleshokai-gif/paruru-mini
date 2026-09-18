@@ -1,4 +1,4 @@
-/* Human Decision Queue. Pure selection and ephemeral proposals; no transport or persistence. */
+/* Human Decision Queue. Transport is injected; Operational Source writers remain outside this component. */
 (function(root, factory) {
   const view=factory();
   if(typeof module==='object' && module.exports) module.exports=view;
@@ -330,7 +330,7 @@
             const button=add(pager,'button',label,'ki-button');button.type='button';button.onclick=()=>{page+=offset;showPage();head.scrollIntoView({block:'start'});};
           }
         }
-        add(footer,'p',answerApi?'LOCAL · 回答はlocal storeへ保存。Notion / Calendar / Contextは未変更。':data?.mode==='read_only_display'?'LIVE READ-ONLY · 回答はまだ無効です。':'LOCAL · 回答案のみ。移動・再読込で消えます。','kiq-local-note');
+        add(footer,'p',answerApi?'LIVE · 回答と変更案を保存。Notion / Calendar / Contextは未変更。':data?.mode==='read_only_display'?'LIVE READ-ONLY · 回答はまだ無効です。':'LOCAL · 回答案のみ。移動・再読込で消えます。','kiq-local-note');
         link(footer,`あとで見る · 全INBOX ${model.total}件${trusted?'':'（取得済み）'}`,'inbox/all','kiq-all');
       }
       showPage();
