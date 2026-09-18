@@ -100,6 +100,23 @@ test('expired lease rejects old redemption and permits same-operation re-lease',
   assert.equal((await f.broker.redeem('owner_binding', f.operationAlias, second.lease_alias)).synthetic_payload, f.payload);
 });
 
+test('expired redeemed lease permits ACK-only reconciliation for the same owner and lease', async (t) => {
+  const f = await fixture(t);
+  const lease = await f.broker.lease('owner_binding', f.operationAlias);
+  await f.broker.redeem('owner_binding', f.operationAlias, lease.lease_alias);
+  f.advance(1001);
+
+  const acknowledged = await f.broker.acknowledge(
+    'owner_binding',
+    f.operationAlias,
+    lease.lease_alias,
+  );
+
+  assert.equal(acknowledged.state, 'APPLIED_ACKNOWLEDGED');
+  assert.equal(acknowledged.acknowledged, true);
+  assert.equal(acknowledged.attempt_count, 1);
+});
+
 test('parallel different callers produce one lease winner and no takeover', async (t) => {
   const f = await fixture(t);
   const settled = await Promise.allSettled([

@@ -266,9 +266,12 @@ class PrivateBrokerService {
         }
         return publicOperation(operation);
       }
-      this.assertActiveLease(operation, principalAlias, leaseAlias, nowMs);
       if (operation.state !== 'REDEEMED') {
+        this.assertActiveLease(operation, principalAlias, leaseAlias, nowMs);
         throw new BrokerError('ACK_BEFORE_REDEEM', 409);
+      }
+      if (operation.lease_owner_alias !== principalAlias || operation.lease_alias !== leaseAlias) {
+        throw new BrokerError('LEASE_INVALID', 409);
       }
       operation.state = TERMINAL_STATE;
       operation.acknowledged = true;

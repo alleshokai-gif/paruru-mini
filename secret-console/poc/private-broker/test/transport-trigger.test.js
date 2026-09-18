@@ -201,14 +201,16 @@ test('duplicate trigger applies the synthetic value once', () => {
   assert.equal(transport.counts().redeemCount, 1);
 });
 
-test('lost ACK retries ACK only and does not reapply or redeem again', () => {
+test('lost ACK retries the saved lease after expiry without re-leasing, reapplying, or redeeming', () => {
   const transport = makeSynchronousTransport();
   const trigger = makeTriggerDeps(transport);
   transport.failNextAck();
   assert.throws(() => runTick(trigger.deps), /ACK_TRANSPORT_FAILED/);
+  transport.advance(101);
   assert.equal(runTick(trigger.deps).code, 'ACK_RECONCILED');
   assert.equal(trigger.slotWrites.A + trigger.slotWrites.B, 1);
   assert.equal(transport.counts().redeemCount, 1);
+  assert.deepEqual(transport.counts(), { redeemCount: 1, ackCount: 2, leaseNumber: 1 });
 });
 
 test('crash immediately after redeem recovers after lease timeout with the same operation', () => {

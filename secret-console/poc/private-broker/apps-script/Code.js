@@ -99,18 +99,22 @@ function pocPrivateBrokerTickWithDeps_(deps) {
   if (!operation) return { success: true, code: 'NO_OPERATION' };
   var operationAlias = pocRequireAlias_(operation.operation_alias, 'OPERATION_ALIAS_INVALID');
 
-  var leased = deps.request('/v1/operations/lease', { operation_alias: operationAlias });
-  var lease = leased && leased.operation;
-  var leaseAlias = pocRequireAlias_(lease && lease.lease_alias, 'LEASE_ALIAS_INVALID');
-
   if (deps.get(POC_BROKER_KEYS_.LAST_APPLIED) === operationAlias) {
+    var appliedLeaseAlias = pocRequireAlias_(
+      deps.get(POC_BROKER_KEYS_.APPLY_LEASE),
+      'APPLY_LEASE_INVALID'
+    );
     deps.request('/v1/operations/ack', {
       operation_alias: operationAlias,
-      lease_alias: leaseAlias
+      lease_alias: appliedLeaseAlias
     });
     pocClearApplyMarker_(deps);
     return { success: true, code: 'ACK_RECONCILED', operation_alias: operationAlias };
   }
+
+  var leased = deps.request('/v1/operations/lease', { operation_alias: operationAlias });
+  var lease = leased && leased.operation;
+  var leaseAlias = pocRequireAlias_(lease && lease.lease_alias, 'LEASE_ALIAS_INVALID');
 
   var markedOperation = deps.get(POC_BROKER_KEYS_.APPLY_OPERATION);
   var markedState = deps.get(POC_BROKER_KEYS_.APPLY_STATE);
