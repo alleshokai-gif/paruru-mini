@@ -94,7 +94,7 @@ export POC_IMAGE="private-broker"
 export POC_OPERATION_ALIAS="live_acceptance_op_01"
 export RUNTIME_SA_ID="poc-broker-runtime"
 export PROVISION_SA_ID="poc-broker-provisioner"
-export EXPECTED_SOURCE_COMMIT="63b8fc2bab8dec164741cb1aaa63c1c3c0d63c8f"
+export EXPECTED_SOURCE_COMMIT="960b834dc7e082e8b84a5d8e74fa7062263405d3"
 
 ORIGINAL_PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
 OWNER_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
@@ -353,6 +353,7 @@ gcloud iam service-accounts create "$PROVISION_SA_ID" \
 
 PROVISION_ROLES=(
   roles/serviceusage.serviceUsageAdmin
+  roles/serviceusage.serviceUsageConsumer
   roles/run.admin
   roles/artifactregistry.admin
   roles/cloudbuild.builds.editor
@@ -725,7 +726,7 @@ Humanがやること:
 
 ```powershell
 $Repo = 'C:\Users\alles\Alle_apps\Projects\HomeApps\paruru-mini'
-$Expected = '63b8fc2bab8dec164741cb1aaa63c1c3c0d63c8f'
+$Expected = '960b834dc7e082e8b84a5d8e74fa7062263405d3'
 $Worktree = Join-Path $env:TEMP 'paluru-secret-broker-reviewed'
 $Archive = Join-Path $env:TEMP 'private-broker-source.tar.gz'
 
@@ -834,12 +835,13 @@ export BUILD_ALIAS IMAGE_URI
 
 cd "$SOURCE_DIR"
 assert_poc_project || exit 1
+# `gcloud builds submit`のsource staging uploadだけは、ログイン済みHuman
+# credentialを使う。provisionerへCloud Storage権限を追加しない。
 BUILD_ID="$(
   gcloud builds submit . \
     --tag="${IMAGE_URI}:${BUILD_ALIAS}" \
     --region="$POC_REGION" \
     --project="$POC_PROJECT" \
-    "${GCLOUD_AS_PROVISIONER[@]}" \
     --suppress-logs --quiet --format='value(id)'
 )"
 test -n "$BUILD_ID" || { printf 'STOP: Cloud Build ID missing\n'; exit 1; }
@@ -941,7 +943,7 @@ gcloud run deploy "$POC_BROKER" \
   --max-instances=1 \
   --concurrency=1 \
   --cpu=1 \
-  --memory=256Mi \
+  --memory=512Mi \
   --timeout=60s \
   --set-env-vars="POC_OPERATION_STORE_MODE=firestore,POC_SECRET_STORE_MODE=gcp,POC_GCP_PROJECT_ID=${POC_PROJECT},POC_FIRESTORE_DATABASE_ID=${POC_DB},POC_FIRESTORE_COLLECTION=${POC_COLLECTION},POC_SYNTHETIC_SECRET_ID=${POC_SECRET},POC_SYNTHETIC_SECRET_VERSION=${POC_SECRET_VERSION},POC_OPERATION_ALIAS=${POC_OPERATION_ALIAS},POC_OIDC_AUDIENCE=${BOOTSTRAP_AUDIENCE},POC_OWNER_SUBJECT_SHA256=${BOOTSTRAP_OWNER_HASH}" \
   --labels="environment=poc,purpose=secret-console-live-acceptance" \
@@ -1030,6 +1032,30 @@ Apps Script — `AcceptanceHarness.gs`:
 
 ```javascript
 'use strict';
+
+function pocStageIdentityBindingForBootstrap() {
+  return pocStageIdentityBindingForBootstrap_();
+}
+
+function pocClearIdentityBindingBootstrap() {
+  return pocClearIdentityBindingBootstrap_();
+}
+
+function pocPrivateBrokerTick() {
+  return pocPrivateBrokerTick_();
+}
+
+function pocObservedPrivateBrokerTick() {
+  return pocObservedPrivateBrokerTick_();
+}
+
+function pocObservedNoLockTick() {
+  return pocObservedNoLockTick_();
+}
+
+function pocAckLossOnce() {
+  return pocAckLossOnce_();
+}
 
 function pocStageIdentityBindingForBootstrap_() {
   var metadata = pocIdentityBindingMetadata_();
@@ -1186,14 +1212,14 @@ ID tokenそのものやraw `sub`を表示せず、OIDC audienceと`sub`のSHA-25
 Humanがやること:
 
 1. Apps Script editor上部のfunction selectorで
-   `pocStageIdentityBindingForBootstrap_` を選び、**Run**を押す。
+   `pocStageIdentityBindingForBootstrap` を選び、**Run**を押す。
 2. このPoC scriptだけのOAuth consentを行う。要求scopeがB10の3件と一致しなければSTOP。
 3. 左の **Project Settings > Script properties** を開く。
 4. `POC_BOOTSTRAP_AUDIENCE` のvalueをコピーし、Cloud Shellの最初の非表示promptへ貼る。
 5. `POC_BOOTSTRAP_OWNER_SUBJECT_SHA256` のvalueをコピーし、2番目の非表示promptへ貼る。
 6. 値をchat、screenshot、メモ、Gitへ貼らない。
 7. Cloud Shell blockを実行する。
-8. Apps Scriptで`pocClearIdentityBindingBootstrap_`を1回Runする。
+8. Apps Scriptで`pocClearIdentityBindingBootstrap`を1回Runする。
 9. Project Settingsへ戻り、2つの`POC_BOOTSTRAP_*` propertyが消えたことを確認する。
 
 注意:
@@ -1354,7 +1380,7 @@ Humanがやること:
 2. 左の時計icon **Triggers** を開く。
 3. 右下 **Add Trigger** を押す。
 4. 次を選ぶ。
-   - Choose which function to run: `pocPrivateBrokerTick_`
+   - Choose which function to run: `pocPrivateBrokerTick`
    - Choose which deployment should run: `Head`
    - Select event source: `Time-driven`
    - Select type of time based trigger: `Minutes timer`
@@ -1373,7 +1399,7 @@ printf 'B13 UI CHECKPOINT\n'
 
 成功確認:
 
-- PoC projectに`pocPrivateBrokerTick_` / Time-driven / Every 5 minutesが1件。
+- PoC projectに`pocPrivateBrokerTick` / Time-driven / Every 5 minutesが1件。
 - trigger creatorはB12と同じHuman。
 - production Mini trigger変更は0。
 
@@ -1395,7 +1421,7 @@ Humanがやること:
 
 1. trigger作成後、最低15分待つ。Apps Scriptの時刻は多少ずれるため最大20分見る。
 2. Apps Script左の **Executions** を開く。
-3. Functionが`pocPrivateBrokerTick_`、Typeが`Time Driven`のexecutionを3件確認する。
+3. Functionが`pocPrivateBrokerTick`、Typeが`Time Driven`のexecutionを3件確認する。
 4. 3件すべてのStart time、Duration、Statusだけを確認する。画面全体のscreenshotは貼らない。
 5. Cloud Consoleで **Firestore > Databases > paluru-secret-poc > Data** を開く。
 6. `poc_operations`の対象documentで、最終stateが`APPLIED_ACKNOWLEDGED`、
@@ -1536,14 +1562,14 @@ Human UI:
    **PALURU Secret Broker Wrong Audience PoC** と名付ける。
 2. manifestはprimaryと同じ`openid`、`script.external_request`、`script.storage`だけにする。
 3. Script Property `POC_PRIVATE_BROKER_URL`へ同じPoC broker URLを設定する。
-4. 下のcodeを`Code.gs`へ貼り、`pocWrongAudienceProbe_`をRunする。
+4. 下のcodeを`Code.gs`へ貼り、`pocWrongAudienceProbe`をRunする。
 5. Execution logに`WRONG_AUDIENCE_REJECTED`だけが出ればPASS。
 6. client ID/tokenは表示・保存しない。このscriptへtriggerは作らない。
 
 Apps Script:
 
 ```javascript
-function pocWrongAudienceProbe_() {
+function pocWrongAudienceProbe() {
   var url = PropertiesService.getScriptProperties()
     .getProperty('POC_PRIVATE_BROKER_URL');
   if (!url || !/^https:\/\/[A-Za-z0-9.-]+\/?$/.test(url)) {
@@ -1597,7 +1623,7 @@ gcloud run services update "$POC_BROKER" \
 
 Human UI:
 
-1. primary Apps Scriptで`pocObservedPrivateBrokerTick_`をRunする。
+1. primary Apps Scriptで`pocObservedPrivateBrokerTick`をRunする。
 2. `TOKEN_OWNER_INVALID`だけがsafe errorとして出ることを確認する。
 3. 直ちに次のrestore blockを実行する。
 
@@ -1646,7 +1672,7 @@ gcloud run services update "$POC_BROKER" \
 Human UI — ScriptLock duplicate:
 
 1. primary Apps Scriptを2つのbrowser tabで開く。
-2. 両方で`pocObservedPrivateBrokerTick_`を選び、ほぼ同時にRunする。
+2. 両方で`pocObservedPrivateBrokerTick`を選び、ほぼ同時にRunする。
 3. 一方がapplyし、もう一方が`TRIGGER_BUSY`であることをsafe logで確認する。
 4. Firestoreの`attempt_count=1`、final state `APPLIED_ACKNOWLEDGED`を確認する。
 
@@ -1668,7 +1694,7 @@ gcloud run services update "$POC_BROKER" \
 
 Human UI — no-lock competitors:
 
-1. primary Apps Scriptの2つのtabで`pocObservedNoLockTick_`をほぼ同時にRunする。
+1. primary Apps Scriptの2つのtabで`pocObservedNoLockTick`をほぼ同時にRunする。
 2. 1件だけがredeem/applyすることを確認する。
 3. 他方は`LEASE_ALREADY_REDEEMED`等のsafe conflict、または同じleaseのidempotent結果でよい。
 4. Firestoreで`attempt_count=1`、1つの`lease_alias`、final state
@@ -1707,7 +1733,7 @@ gcloud run services update "$POC_BROKER" \
 
 Human UI:
 
-1. primary Apps Scriptで`pocAckLossOnce_`をRunする。
+1. primary Apps Scriptで`pocAckLossOnce`をRunする。
 2. safe error `POC_ACK_LOSS_INJECTED`を確認する。
 3. Firestore stateが`REDEEMED`、Apps Script側のsafe apply markerが残ることを確認する。
 4. payload/tokenは見ない・コピーしない。
@@ -1726,7 +1752,7 @@ gcloud run services update "$POC_BROKER" \
 
 Human UI:
 
-1. primary Apps Scriptで`pocObservedPrivateBrokerTick_`をRunする。
+1. primary Apps Scriptで`pocObservedPrivateBrokerTick`をRunする。
 2. safe code `ACK_RECONCILED`を確認する。
 3. Firestore final state `APPLIED_ACKNOWLEDGED`、`attempt_count=1`を確認する。
 4. Script Propertiesのapply markerが消え、last-applied markerだけが残ることを確認する。
@@ -1746,7 +1772,7 @@ Humanがやること:
 
 1. Cloud Runがmin 0であることを確認する。
 2. triggerは削除済みのまま、20分trafficを送らない。
-3. 20分後にprimary Apps Scriptで`pocObservedPrivateBrokerTick_`を1回Runする。
+3. 20分後にprimary Apps Scriptで`pocObservedPrivateBrokerTick`を1回Runする。
 4. Cloud Runの`broker_started` logが新しいinstanceから出たか確認する。
 5. scale-to-zeroは即時保証ではない。30分まで待っても新instanceが確認できなければ
    `UNKNOWN`。無制限に待たない。
@@ -1779,7 +1805,7 @@ printf 'WAIT 20 MINUTES WITHOUT TRAFFIC\n'
 Humanがやること:
 
 1. 下のremove blockを実行する。
-2. すぐprimary Apps Scriptで`pocObservedPrivateBrokerTick_`を1回Runする。
+2. すぐprimary Apps Scriptで`pocObservedPrivateBrokerTick`を1回Runする。
 3. warm instanceなら`STATE_STORE_UNAVAILABLE`を確認する。もし同時にcold startが起きた場合は、
    Cloud Run 503とsafe startup log `STARTUP_FAILED`でもfail-closedは確認できるが、
    request-pathのFirestore error codeは`UNKNOWN`として分離する。
