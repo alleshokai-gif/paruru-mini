@@ -13,21 +13,17 @@ function kazOsProgress_(body, inboxTrace) {
     if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
     if (!isKazOsLiveEnabled_()) throw homeMembershipError_('KAZ_NOT_CONNECTED');
     const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken, true);
-    if (actor.role !== 'admin') throw homeMembershipError_('FORBIDDEN');
-    const props = PropertiesService.getScriptProperties();
-    const ownerHome = String(props.getProperty('KAZ_OS_PROGRESS_OWNER_HOME_ID') || '');
-    const ownerMember = String(props.getProperty('KAZ_OS_PROGRESS_OWNER_MEMBER_ID') || '');
-    if (!ownerHome || !ownerMember) throw homeMembershipError_('KAZ_NOT_CONNECTED');
-    if (actor.homeId !== ownerHome || actor.memberUserId !== ownerMember) throw homeMembershipError_('FORBIDDEN');
+    authorizeKazOsOwner_(actor);
     if (input.action === 'kazOs.inbox.get') recordKazOsInboxTrace_(inboxTrace, 'AUTH_PASSED');
     if (input.action === 'kazOs.projects.get') return json_({ success: true, data: sanitizeKazOsProjects_(readKazOsProjects_()), message: 'read only' });
     if (input.action === 'kazOs.inbox.get') {
       recordKazOsInboxTrace_(inboxTrace, 'INBOX_READ_STARTED');
       const sanitized = sanitizeKazOsInbox_(readKazOsInbox_(inboxTrace));
-      const questionCount = Array.isArray(sanitized.inbox_items) ? sanitized.inbox_items.length : null;
+      const projected = typeof applyKazOsDecisionLedger_ === 'function' ? applyKazOsDecisionLedger_(sanitized) : sanitized;
+      const questionCount = Array.isArray(projected.inbox_items) ? projected.inbox_items.length : null;
       recordKazOsInboxTrace_(inboxTrace, 'SANITIZER_OK', { question_count: questionCount });
       recordKazOsInboxTrace_(inboxTrace, 'RESPONSE_SENT', { question_count: questionCount });
-      return json_({ success: true, data: sanitized, message: 'read only' });
+      return json_({ success: true, data: projected, message: projected.mode === 'controlled_proposal' ? 'controlled proposal' : 'read only' });
     }
     return json_({ success: true, data: sanitizeKazOsProgress_(readKazOsProgress_()), message: 'read only' });
   } catch (error) {
@@ -36,6 +32,16 @@ function kazOsProgress_(body, inboxTrace) {
     if (inboxTrace) recordKazOsInboxTrace_(inboxTrace, 'RESPONSE_SENT', { error_code: code });
     return json_({ success: false, data: null, error: { code: code }, message: code });
   }
+}
+
+function authorizeKazOsOwner_(actor) {
+  if (!actor || actor.role !== 'admin') throw homeMembershipError_('FORBIDDEN');
+  const props = PropertiesService.getScriptProperties();
+  const ownerHome = String(props.getProperty('KAZ_OS_PROGRESS_OWNER_HOME_ID') || '');
+  const ownerMember = String(props.getProperty('KAZ_OS_PROGRESS_OWNER_MEMBER_ID') || '');
+  if (!ownerHome || !ownerMember) throw homeMembershipError_('KAZ_NOT_CONNECTED');
+  if (actor.homeId !== ownerHome || actor.memberUserId !== ownerMember) throw homeMembershipError_('FORBIDDEN');
+  return actor;
 }
 
 function readKazOsProgress_() {

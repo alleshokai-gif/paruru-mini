@@ -1,14 +1,20 @@
-/* Kaz-only PROJECTS and read-only INBOX navigation. No TODAY, diagnostics or write transport. */
+/* Kaz-only PROJECTS and controlled-proposal INBOX navigation. Operational writes remain absent. */
 (() => {
   'use strict';
   const byId = id => document.getElementById(id);
-  let context = null, projectsApi = null, inboxApi = null;
+  let context = null, projectsApi = null, inboxApi = null, inboxAnswerApi = null;
   let projectEpoch = 0, inboxEpoch = 0, projectExpiry = null, inboxExpiry = null;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
   const isKazHash = () => /^#kaz-os(?:\/|$)/.test(location.hash);
   const active = () => byId('kazOsView')?.classList.contains('is-active');
   const readOnlyInbox = data => data?.mode === 'read_only_display'
     && data?.persistence?.status === 'disabled'
+    && data?.writes?.notion === 0
+    && data?.writes?.calendar === 0
+    && data?.writes?.context === 0;
+  const controlledInbox = data => data?.mode === 'controlled_proposal'
+    && data?.persistence?.kind === 'paluru_spreadsheet_append_only'
+    && data?.persistence?.status === 'enabled'
     && data?.writes?.notion === 0
     && data?.writes?.calendar === 0
     && data?.writes?.context === 0;
@@ -64,12 +70,17 @@
     try {
       const data = await inboxApi();
       if (!current()) return;
-      if (!readOnlyInbox(data)) throw Object.assign(new Error('KAZ_READ_ONLY'), { code: 'KAZ_READ_ONLY' });
-      globalThis.KazPersonalView.render(host, selection, data, Date.now(), { answerApi: null });
+      if (!readOnlyInbox(data) && !controlledInbox(data)) throw Object.assign(new Error('KAZ_READ_ONLY'), { code: 'KAZ_READ_ONLY' });
+      const answerApi = controlledInbox(data) && inboxAnswerApi ? async answer => {
+        const result = await inboxAnswerApi(answer);
+        if (!result?.inbox) throw Object.assign(new Error('KAZ_PERSISTENCE_FAILED'), { code: 'KAZ_PERSISTENCE_FAILED' });
+        return result;
+      } : null;
+      globalThis.KazPersonalView.render(host, selection, data, Date.now(), { answerApi });
       const until = Date.parse(data?.sources?.inbox?.valid_until);
       if (Number.isFinite(until) && until > Date.now()) {
         inboxExpiry = setTimeout(() => {
-          if (current()) globalThis.KazPersonalView.render(host, selection, data, Date.now(), { answerApi: null });
+          if (current()) globalThis.KazPersonalView.render(host, selection, data, Date.now(), { answerApi });
         }, Math.max(1, until - Date.now() + 1));
       }
     } catch (error) {
@@ -109,6 +120,7 @@
     context = event.detail?.context || null;
     projectsApi = event.detail?.kazOsProjectsApi || null;
     inboxApi = event.detail?.kazOsInboxApi || null;
+    inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = !allowed();
     const status = byId('kazOsEntryStatus');
@@ -120,6 +132,7 @@
     context = null;
     projectsApi = null;
     inboxApi = null;
+    inboxAnswerApi = null;
     clear();
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = true;

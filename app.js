@@ -931,6 +931,7 @@ const activateMembershipContext_ = function(membershipContext) {
       },
       kazOsProjectsApi: callAuthenticatedKazOsProjects_,
       kazOsInboxApi: callAuthenticatedKazOsInbox_,
+      kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
       nurseOkanCommentApi: callNurseOkanComment_,
       petHealthApi: callAuthenticatedPetHealth_,
@@ -5440,6 +5441,22 @@ async function callAuthenticatedKazOsInbox_() {
   return callHomeControlApi({
     ...buildMemoCredentialPayload("kazOs.inbox.get"),
     request_id: cryptoApi.randomUUID(),
+  });
+}
+
+async function callAuthenticatedKazOsInboxAnswer_(answer) {
+  if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi || typeof cryptoApi.randomUUID !== "function") throw createHomeControlError("KAZ_TRACE_UNAVAILABLE");
+  return callHomeControlApi({
+    ...buildMemoCredentialPayload("kazOs.inbox.answer"),
+    request_id: cryptoApi.randomUUID(),
+    decision_id: answer?.decision_id,
+    question_revision: answer?.question_revision,
+    source_revision_references: answer?.source_revision_references,
+    selected_option: answer?.selected_option,
+    reason: answer?.reason ?? null,
+    idempotency_key: answer?.idempotency_key,
   });
 }
 
