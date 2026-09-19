@@ -40,6 +40,7 @@ const context = {
   Utilities: { formatDate: () => '2026-07-30T12:00:00+09:00' },
   PropertiesService: { getScriptProperties: () => ({ getProperty: () => '' }) },
   verifyHomeControlDevicePairing_: (_deviceId, pairingToken) => ({ handled: true, authorized: pairingToken === 'pairing' }),
+  resolveFirebaseAuthenticatedActor_: () => ({ homeId: 'paluru-home', memberUserId: 'father', role: 'admin', authBindingKey: 'firebase-father' }),
   json_: (value) => value,
 };
 vm.createContext(context);
@@ -57,7 +58,7 @@ context.provisionMembershipIdentityWithinRegistryLock_(
   '2026-07-30T12:00:00+09:00',
 );
 
-const result = context.healthGateway_({ action: 'health.context.get', deviceId: 'father-device', pairingToken: 'pairing' });
+const result = context.healthGateway_({ action: 'health.context.get', auth: { provider: 'firebase', idToken: 'firebase-token' } });
 assert.strictEqual(result.success, true);
 assert.deepStrictEqual(JSON.parse(JSON.stringify(result.data.targets)), [{ userId: 'second_son', displayName: '次男' }]);
 console.log('PASS approved second-son membership appears as the sole Health context target');

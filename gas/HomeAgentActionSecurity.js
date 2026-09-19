@@ -48,7 +48,7 @@ function createHomeAgentActionConfirmation_(candidate, request, pairingToken, de
   deps.lock.waitLock(30000);
   try {
     cleanupHomeAgentActionState_(deps, nowMs);
-    const requestKey = homeAgentActionRequestKey_(actor.deviceId, clientRequestId, deps);
+    const requestKey = homeAgentActionRequestKey_(actor.authBindingKey, clientRequestId, deps);
     const existingText = readHomeAgentActionState_(requestKey, deps, nowMs, false);
     if (existingText) {
       const existing = parseHomeAgentActionJson_(existingText, 'INVALID_CONFIRMATION');
@@ -158,7 +158,7 @@ function executeSecuredHomeAgentActionRecord_(record, trustedActor) {
   const request = normalizeHomeAgentRequest_({
     userId: actor.memberUserId,
     userDisplayName: actor.displayName,
-    deviceId: actor.deviceId,
+    deviceId: actor.authBindingKey,
     parameters: record.skill === 'pauseRoomAutomation' ? {
       roomId: record.roomId,
       expiresAt: record.operation.pauseExpiresAt,
@@ -272,16 +272,16 @@ function sanitizeHomeAgentActionActor_(request) {
 function sanitizeTrustedHomeAgentActionActor_(actor) {
   const homeId = String(actor && actor.homeId || '').trim().slice(0, 200);
   const memberUserId = String(actor && actor.memberUserId || '').trim().slice(0, 100);
-  const deviceId = String(actor && actor.deviceId || '').trim().slice(0, 200);
+  const authBindingKey = String(actor && actor.authBindingKey || '').trim().slice(0, 200);
   const capabilities = Array.isArray(actor && actor.capabilities) ? actor.capabilities : [];
-  if (!homeId || !memberUserId || !deviceId || capabilities.indexOf('home.control') < 0) {
+  if (!homeId || !memberUserId || !authBindingKey || capabilities.indexOf('home.control') < 0) {
     throw homeAgentActionSecurityError_('UNAUTHORIZED_DEVICE');
   }
   return {
     homeId: homeId,
     memberUserId: memberUserId,
     displayName: String(actor && actor.displayName || '').trim().slice(0, 100),
-    deviceId: deviceId,
+    authBindingKey: authBindingKey,
   };
 }
 
@@ -289,7 +289,7 @@ function assertHomeAgentActionActorMatches_(recordActor, trustedActor) {
   if (!recordActor || !trustedActor
       || String(recordActor.homeId || '') !== String(trustedActor.homeId || '')
       || String(recordActor.memberUserId || '') !== String(trustedActor.memberUserId || '')
-      || String(recordActor.deviceId || '') !== String(trustedActor.deviceId || '')) {
+      || String(recordActor.authBindingKey || '') !== String(trustedActor.authBindingKey || '')) {
     throw homeAgentActionSecurityError_('UNAUTHORIZED_DEVICE');
   }
 }
@@ -371,8 +371,8 @@ function homeAgentActionResultKey_(confirmationId, deps) {
   return 'ha:result:' + deps.hash(confirmationId).slice(0, 40);
 }
 
-function homeAgentActionRequestKey_(deviceId, clientRequestId, deps) {
-  return 'ha:request:' + deps.hash(String(deviceId || '') + ':' + String(clientRequestId || '')).slice(0, 40);
+function homeAgentActionRequestKey_(authBindingKey, clientRequestId, deps) {
+  return 'ha:request:' + deps.hash(String(authBindingKey || '') + ':' + String(clientRequestId || '')).slice(0, 40);
 }
 
 function getDefaultHomeAgentActionState_() {

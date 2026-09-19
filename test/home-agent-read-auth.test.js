@@ -21,11 +21,11 @@ function load(options = {}) {
     },
     resolveHomeAgentReadActor_: options.resolve || (() => ({
       homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
-      capabilities: ['home.read', 'home.control'], deviceId: 'father-device',
+      capabilities: ['home.read', 'home.control'], authBindingKey: 'firebase-father',
     })),
     resolveHomeAgentControlActor_: options.resolveControl || (() => ({
       homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
-      capabilities: ['home.read', 'home.control'], deviceId: 'father-device',
+      capabilities: ['home.read', 'home.control'], authBindingKey: 'firebase-father',
     })),
     runHomeAgentRequest_: (request) => { calls += 1; return request; },
     executeHomeAgentActionConfirmation_: (request) => { calls += 1; return request; },
@@ -47,7 +47,7 @@ assert.strictEqual(result.userDisplayName, '父');
 assert.strictEqual(result.role, 'admin');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(result.capabilities)), ['home.read', 'home.control']);
 assert.strictEqual(result.homeId, 'home-a');
-assert.strictEqual(result.deviceId, 'father-device');
+assert.strictEqual(result.deviceId, 'firebase-father');
 assert.strictEqual(result.calendarSuffix, '（父）');
 assert.strictEqual(result.useMocks, false);
 assert.strictEqual(result.allowActiveSpreadsheetFallback, false);
@@ -63,7 +63,8 @@ const actionResult = actionAllowed.context.homeAgentAction_({
   deviceId: 'spoofed-device', pairingToken: 'credential', userId: 'spoofed-user', role: 'self_record', capabilities: [], homeId: 'spoofed-home', _authenticatedActor: { deviceId: 'spoofed' },
 });
 assert.strictEqual(actionAllowed.calls(), 1, 'authorized action did not reach confirmation handler');
-assert.strictEqual(actionResult.deviceId, 'father-device');
+assert.strictEqual(actionResult.deviceId, 'firebase-father');
+assert.strictEqual(actionResult._authenticatedActor.authBindingKey, 'firebase-father');
 assert.strictEqual(actionResult.userId, 'father');
 assert.strictEqual(actionResult.homeId, 'home-a');
 assert.strictEqual(actionResult._authenticatedActor.memberUserId, 'father');

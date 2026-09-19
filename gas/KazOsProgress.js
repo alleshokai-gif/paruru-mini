@@ -12,7 +12,7 @@ function kazOsProgress_(body, inboxTrace) {
     const input = body || {};
     if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
     if (!isKazOsLiveEnabled_()) throw homeMembershipError_('KAZ_NOT_CONNECTED');
-    const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken, true);
+    const actor = resolveFirebaseAuthenticatedActor_(input);
     authorizeKazOsOwner_(actor);
     if (input.action === 'kazOs.inbox.get') recordKazOsInboxTrace_(inboxTrace, 'AUTH_PASSED');
     if (input.action === 'kazOs.projects.get') return json_({ success: true, data: sanitizeKazOsProjects_(readKazOsProjects_()), message: 'read only' });

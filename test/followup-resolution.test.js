@@ -18,7 +18,7 @@ const context = {
 };
 vm.createContext(context);
 new vm.Script(fs.readFileSync(path.join(gasDir, 'Code.js'), 'utf8'), { filename: 'Code.js' }).runInContext(context);
-context.resolveAuthenticatedActor_ = () => ({ homeId: 'home', memberUserId: 'father', deviceId: 'father-device', role: 'admin' });
+context.resolveFirebaseAuthenticatedActor_ = () => ({ homeId: 'home', memberUserId: 'father', authBindingKey: 'firebase:father', role: 'admin' });
 context.authorizeCapability_ = () => true;
 context.getHomeMember_ = () => ({ displayName: 'Father', status: 'active' });
 context.updateRowFields_ = (sheet, row, index, updates) => { savedUpdates = Object.assign({}, updates); };

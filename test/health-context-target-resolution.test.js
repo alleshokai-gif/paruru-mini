@@ -4,7 +4,7 @@ const forwarded=[];
 const ctx={
   JSON,Error,String,Object,
   PropertiesService:{getScriptProperties:()=>({getProperty:key=>key==='HEALTH_WEBAPP_URL'?'https://script.google.com/macros/s/abc/exec':'service-token'})},
-  resolveAuthenticatedActor_:()=>({homeId:'home-1',memberUserId:'father',role:'admin'}),
+  resolveFirebaseAuthenticatedActor_:()=>({homeId:'home-1',memberUserId:'father',role:'admin'}),
   hasRoleCapability_:()=>true,
   getHomeMember_:(_homeId,userId)=>({memberUserId:userId,displayName:userId}),
   getActiveSelfRecordMembers_:()=>[{userId:'son-a',displayName:'長男'},{userId:'son-b',displayName:'次男'}],

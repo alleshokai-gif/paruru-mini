@@ -35,7 +35,7 @@ function familyInboxGateway_(body) {
   try {
     const capability = FAMILY_INBOX_GATEWAY_CAPABILITIES[operation];
     if (!capability) throw familyInboxGatewayError_('FORBIDDEN');
-    const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
+    const actor = resolveFirebaseAuthenticatedActor_(input);
     authorizeCapability_(actor, capability);
     const trusted = familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId);
     const result = familyInboxGatewayCallService_(trusted, operation);
@@ -51,7 +51,7 @@ function familyInboxGateway_(body) {
 
 function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId) {
   if (operation === 'familyInbox.submit') {
-    const allowed = { action: true, deviceId: true, pairingToken: true, clientRequestId: true, subjectMemberId: true, userNote: true, file: true };
+    const allowed = { action: true, auth: true, clientRequestId: true, subjectMemberId: true, userNote: true, file: true };
     if (!familyInboxGatewayPlainObject_(input) || Object.keys(input).some(function(key) { return !allowed[key]; })) throw familyInboxGatewayError_('INVALID_INPUT');
     const subjectMemberId = String(input.subjectMemberId || '').trim();
     const subject = getHomeMember_(actor.homeId, subjectMemberId);
@@ -74,20 +74,20 @@ function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId
   }
 
   if (operation === 'familyInbox.listReviews') {
-    const allowed = { action: true, deviceId: true, pairingToken: true };
+    const allowed = { action: true, auth: true };
     if (!familyInboxGatewayPlainObject_(input) || Object.keys(input).some(function(key) { return !allowed[key]; })) throw familyInboxGatewayError_('INVALID_INPUT');
     return { operation: operation, homeId: actor.homeId, traceId: traceId };
   }
 
   const inboxId = familyInboxGatewayInboxId_(input.inboxId);
   if (operation === 'familyInbox.getStatus' || operation === 'familyInbox.getReview') {
-    const allowed = { action: true, deviceId: true, pairingToken: true, inboxId: true };
+    const allowed = { action: true, auth: true, inboxId: true };
     if (!familyInboxGatewayPlainObject_(input) || Object.keys(input).some(function(key) { return !allowed[key]; })) throw familyInboxGatewayError_('INVALID_INPUT');
     return { operation: operation, homeId: actor.homeId, inboxId: inboxId, traceId: traceId };
   }
 
   const allowed = {
-    action: true, deviceId: true, pairingToken: true, inboxId: true,
+    action: true, auth: true, inboxId: true,
     candidateId: true, revision: true, reviewRequestId: true,
     payload: true, reviewReason: true, reviewNote: true,
   };
@@ -268,7 +268,7 @@ function familyInboxGatewayError_(code) {
 
 function familyInboxGatewaySafeErrorCode_(error) {
   const code = String(error && error.code || '');
-  if (code === 'UNAUTHORIZED_DEVICE' || code === 'MEMBERSHIP_NOT_FOUND') return 'FORBIDDEN';
+  if (/^AUTH_|^IDENTITY_/.test(code) || code === 'MEMBERSHIP_NOT_FOUND') return 'FORBIDDEN';
   return FAMILY_INBOX_GATEWAY_SAFE_ERRORS[code] ? code : 'INTERNAL_ERROR';
 }
 

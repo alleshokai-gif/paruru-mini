@@ -205,8 +205,7 @@ function isHomeMemberAccessRole_(role) {
 }
 
 function resolveHomeAgentReadActor_(body) {
-  const input = body || {};
-  const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
+  const actor = resolveFirebaseAuthenticatedActor_(body || {});
   authorizeCapability_(actor, 'home.read');
   const member = getHomeMember_(actor.homeId, actor.memberUserId);
   if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member)) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
@@ -216,13 +215,12 @@ function resolveHomeAgentReadActor_(body) {
     displayName: member.displayName,
     role: actor.role,
     capabilities: getEffectiveMemberCapabilities_(actor.memberUserId, actor.role),
-    deviceId: actor.deviceId,
+    authBindingKey: actor.authBindingKey,
   };
 }
 
 function resolveHomeAgentControlActor_(body) {
-  const input = body || {};
-  const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
+  const actor = resolveFirebaseAuthenticatedActor_(body || {});
   authorizeCapability_(actor, 'home.control');
   const member = getHomeMember_(actor.homeId, actor.memberUserId);
   if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member)) throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
@@ -232,7 +230,7 @@ function resolveHomeAgentControlActor_(body) {
     displayName: member.displayName,
     role: actor.role,
     capabilities: getEffectiveMemberCapabilities_(actor.memberUserId, actor.role),
-    deviceId: actor.deviceId,
+    authBindingKey: actor.authBindingKey,
   };
 }
 

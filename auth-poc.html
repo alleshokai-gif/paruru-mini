@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex,nofollow">
+    <title>PALURU Firebase Auth P2 PoC</title>
+    <style>
+      body { margin: 0; background: #f4f4fb; color: #20213a; font: 16px/1.6 system-ui, sans-serif; }
+      main { box-sizing: border-box; max-width: 560px; min-height: 100vh; margin: auto; padding: 24px 18px; }
+      section { background: #fff; border-radius: 18px; box-shadow: 0 8px 30px #26275618; padding: 22px; }
+      h1 { font-size: 1.35rem; margin-top: 0; }
+      #authPocGoogleButton { min-height: 48px; margin: 20px 0; }
+      .actions { display: grid; gap: 12px; grid-template-columns: 1fr; }
+      button { min-height: 48px; border: 0; border-radius: 12px; padding: 10px 16px; font-size: 16px; font-weight: 700; }
+      button:not(:disabled) { cursor: pointer; background: #4f51a8; color: #fff; }
+      button:disabled { background: #dedee8; color: #777; }
+      pre { overflow-wrap: anywhere; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section aria-live="polite">
+        <h1>PALURU Firebase Auth P2 PoC</h1>
+        <p id="authPocStatus">設定を確認中…</p>
+        <div id="authPocGoogleButton"></div>
+        <div class="actions">
+          <button id="authPocRefresh" type="button" disabled>token refreshを確認</button>
+          <button id="authPocSwitch" type="button" disabled>別のGoogleアカウントへ切替</button>
+          <button id="authPocLogout" type="button" disabled>ログアウト</button>
+        </div>
+        <pre id="authPocActor"></pre>
+      </section>
+    </main>
+    <script src="./features/auth/firebase-auth.js"></script>
+    <script type="module" src="./features/auth/firebase-auth-poc.js"></script>
+  </body>
+</html>

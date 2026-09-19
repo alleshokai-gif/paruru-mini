@@ -27,12 +27,13 @@ function healthGateway_(body) {
     return json_({ success: true, data: data, message: 'ok' });
   } catch (error) {
     const code = error && error.code;
-    return json_({ success: false, data: {}, error: { code: ['UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'FORBIDDEN', 'CONFIGURATION_ERROR', 'INVALID_INPUT', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR', 'HEALTH_UNAVAILABLE'].indexOf(code) >= 0 ? code : 'HEALTH_UNAVAILABLE' }, message: 'health request failed' });
+    const safeCode = (/^AUTH_|^IDENTITY_/.test(String(code || '')) || ['MEMBERSHIP_NOT_FOUND', 'FORBIDDEN', 'CONFIGURATION_ERROR', 'INVALID_INPUT', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR', 'HEALTH_UNAVAILABLE'].indexOf(code) >= 0) ? code : 'HEALTH_UNAVAILABLE';
+    return json_({ success: false, data: {}, error: { code: safeCode }, message: 'health request failed' });
   }
 }
 
 function resolveHealthGatewayContext_(input) {
-  const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
+  const actor = resolveFirebaseAuthenticatedActor_(input);
   const targets = getActiveSelfRecordMembers_(actor.homeId);
   const canSuperviseHealth = hasRoleCapability_(actor, 'health.supervision.read');
   const canControlHome = hasRoleCapability_(actor, 'home.control');
@@ -52,7 +53,7 @@ function fetchHealthGatewayData_(input, actor, targetUserId) {
   const serviceToken = String(properties.getProperty('HEALTH_SERVICE_TOKEN') || '');
   if (!isAllowedHealthWebAppUrl_(url) || !serviceToken) throw healthGatewayError_('CONFIGURATION_ERROR');
 
-  // Only server-resolved identity is forwarded.  In particular, never forward pairingToken.
+  // Only server-resolved identity is forwarded. The Firebase token never crosses this boundary.
   const forwarded = {
     operation: input.action, serviceToken: serviceToken,
     homeId: actor.homeId, actorUserId: actor.memberUserId, actorRole: actor.role,

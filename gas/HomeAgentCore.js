@@ -12,7 +12,7 @@ function buildTrustedHomeAgentRequest_(body, actor) {
     role: trustedActor.role,
     capabilities: Array.isArray(trustedActor.capabilities) ? trustedActor.capabilities.slice() : [],
     homeId: trustedActor.homeId,
-    deviceId: trustedActor.deviceId,
+    deviceId: trustedActor.authBindingKey,
     useMocks: false,
     allowActiveSpreadsheetFallback: false,
     _authenticatedActor: {
@@ -21,7 +21,7 @@ function buildTrustedHomeAgentRequest_(body, actor) {
       role: trustedActor.role,
       capabilities: Array.isArray(trustedActor.capabilities) ? trustedActor.capabilities.slice() : [],
       homeId: trustedActor.homeId,
-      deviceId: trustedActor.deviceId,
+      authBindingKey: trustedActor.authBindingKey,
     },
   });
   delete request.pairingToken;
@@ -41,14 +41,14 @@ function buildTrustedHomeAgentActionRequest_(body, actor) {
     role: trustedActor.role,
     capabilities: Array.isArray(trustedActor.capabilities) ? trustedActor.capabilities.slice() : [],
     homeId: trustedActor.homeId,
-    deviceId: trustedActor.deviceId,
+    deviceId: trustedActor.authBindingKey,
     _authenticatedActor: {
       memberUserId: trustedActor.memberUserId,
       displayName: trustedActor.displayName,
       role: trustedActor.role,
       capabilities: Array.isArray(trustedActor.capabilities) ? trustedActor.capabilities.slice() : [],
       homeId: trustedActor.homeId,
-      deviceId: trustedActor.deviceId,
+      authBindingKey: trustedActor.authBindingKey,
     },
   });
   delete request.pairingToken;

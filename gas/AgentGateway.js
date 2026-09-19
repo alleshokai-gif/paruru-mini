@@ -94,7 +94,7 @@ function agentActionConfirm_(body) {
     }
     const input = validateAgentActionConfirmInput_(body || {}, actor);
     assertAgentActionsEnabled_();
-    enforceAgentActionRateLimit_(actor.deviceId, input.clientRequestId);
+    enforceAgentActionRateLimit_(actor.authBindingKey, input.clientRequestId);
     const config = getPaluruAgentConfig_();
     assertSameHomeAgentControlActor_(actor, resolveHomeAgentControlActor_(body || {}));
     const response = callPaluruAgentActionConfirm_(config, input, trace);
@@ -156,7 +156,7 @@ function validateAgentChatInput_(body, actor) {
       role: String(actor && actor.role || '').trim().slice(0, 100),
       capabilities: Array.isArray(actor && actor.capabilities) ? actor.capabilities.slice() : [],
       homeId: String(actor && actor.homeId || '').trim().slice(0, 200),
-      deviceId: String(actor && actor.deviceId || '').trim().slice(0, 200),
+      authBindingKey: String(actor && actor.authBindingKey || '').trim().slice(0, 200),
     },
     requestMetadata: sanitizeAgentRequestMetadata_(body.requestMetadata, sessionId, clientRequestId, actor),
   };
@@ -368,7 +368,7 @@ function buildAgentChatSuccess_(response, input) {
 function validateAgentActionConfirmInput_(body, actor) {
   const confirmationId = String(body.confirmationId || '').trim();
   const clientRequestId = String(body.clientRequestId || '').trim();
-  if (!isUuid_(confirmationId) || !isUuid_(clientRequestId) || !actor || !actor.deviceId) {
+  if (!isUuid_(confirmationId) || !isUuid_(clientRequestId) || !actor || !actor.authBindingKey) {
     throw createAgentGatewayError_('INVALID_INPUT');
   }
   return {
@@ -380,7 +380,7 @@ function validateAgentActionConfirmInput_(body, actor) {
       displayName: String(actor.displayName || '').trim().slice(0, 100),
       role: String(actor.role || '').trim().slice(0, 100),
       capabilities: Array.isArray(actor.capabilities) ? actor.capabilities.slice() : [],
-      deviceId: String(actor.deviceId || '').trim().slice(0, 200),
+      authBindingKey: String(actor.authBindingKey || '').trim().slice(0, 200),
     },
   };
 }
@@ -394,13 +394,13 @@ function assertSameHomeAgentControlActor_(expected, actual) {
   if (!expected || !actual
       || String(expected.homeId || '') !== String(actual.homeId || '')
       || String(expected.memberUserId || '') !== String(actual.memberUserId || '')
-      || String(expected.deviceId || '') !== String(actual.deviceId || '')) {
-    throw createAgentGatewayError_('UNAUTHORIZED_DEVICE');
+      || String(expected.authBindingKey || '') !== String(actual.authBindingKey || '')) {
+    throw createAgentGatewayError_('AUTH_ACTOR_MISMATCH');
   }
 }
 
-function enforceAgentActionRateLimit_(deviceId, clientRequestId) {
-  const key = 'agentActionRate:' + String(deviceId || '').replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 80);
+function enforceAgentActionRateLimit_(authBindingKey, clientRequestId) {
+  const key = 'agentActionRate:' + String(authBindingKey || '').replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 80);
   try {
     const cache = CacheService.getScriptCache();
     const previousClientRequestId = cache.get(key);
@@ -580,6 +580,7 @@ function buildAgentActionConfirmError_(error) {
     CONFIGURATION_ERROR: true,
     AGENT_UNAVAILABLE: true,
     AGENT_ERROR: true,
+    AUTH_ACTOR_MISMATCH: true,
     UNAUTHORIZED_DEVICE: true,
     FORBIDDEN: true,
     MEMBERSHIP_NOT_FOUND: true,
@@ -595,7 +596,7 @@ function buildAgentActionConfirmError_(error) {
 
 function getAgentActionPublicErrorMessage_(code) {
   if (code === 'HOME_AGENT_ACTIONS_DISABLED') return 'home agent operations are disabled';
-  if (code === 'UNAUTHORIZED_DEVICE' || code === 'FORBIDDEN' || code === 'MEMBERSHIP_NOT_FOUND') return 'device authentication failed';
+  if (code === 'AUTH_ACTOR_MISMATCH' || code === 'UNAUTHORIZED_DEVICE' || code === 'FORBIDDEN' || code === 'MEMBERSHIP_NOT_FOUND') return 'authenticated actor does not match';
   if (code === 'AGENT_ACTION_RATE_LIMITED') return 'too many action requests';
   if (code === 'CONFIGURATION_ERROR') return 'Agent connection is not configured';
   if (code === 'AGENT_UNAVAILABLE') return 'Agent is unavailable';

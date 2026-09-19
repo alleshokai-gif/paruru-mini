@@ -14,7 +14,7 @@ assert(appSource.includes('await updateInboxItem(id, { status: "Done" });'), 'Do
 assert(appSource.includes('debugLog("[Paruru] edit update failed"') && appSource.includes('debugLog("[Paruru] complete update failed"'), 'update handlers lack failure handling');
 assert(appSource.includes('activeMembershipContext?.role !== "self_record"'), 'health task role gate missing');
 assert(appSource.includes('console.error("[Paruru] Inbox update failed"'), 'Inbox update diagnostic log missing');
-['action: "update"', 'httpStatus:', 'responseSuccess:', 'responseErrorCode:', 'responseMessage:', 'inboxId:', 'role:', 'hasDeviceId:', 'hasPairingToken:'].forEach((field) => assert(appSource.includes(field), `Inbox update diagnostic field missing: ${field}`));
+['action: "update"', 'httpStatus:', 'responseSuccess:', 'responseErrorCode:', 'responseMessage:', 'inboxId:', 'role:', 'authenticated:'].forEach((field) => assert(appSource.includes(field), `Inbox update diagnostic field missing: ${field}`));
 assert(appSource.includes('error.responseErrorCode = String(result?.error?.code || "").trim();'), 'API error code is not retained');
 assert(appSource.includes('error.httpStatus = response.status;'), 'HTTP status is not retained');
 assert(appSource.includes('完了できませんでした${code ? `（${code}）` : ""}'), 'completion error code is not shown safely');
@@ -26,7 +26,7 @@ assert(appSource.includes('throwOnError: true'), 'refresh failure is swallowed f
 assert(gasSource.includes("if (action === 'update')"), 'update route missing');
 assert(gasSource.includes("const prohibited = ['userId', 'userDisplayName', 'ownerUserId', 'createdByUserId', 'role', 'homeId'];"), 'identity allowlist regression');
 assert(!gasSource.includes("'deviceId', 'ownerUserId'"), 'deviceId remains forbidden for authenticated update');
-assert(!gasSource.includes("'pairingToken'"), 'pairingToken was added to the forbidden identity fields');
+assert(appSource.includes('"pairingToken"') && appSource.includes('delete request[key]'), 'ordinary request sanitizer no longer strips pairingToken');
 assert(gasSource.includes("if (target.item.ownerUserId !== actor.memberUserId) throw homeMembershipError_('FORBIDDEN');"), 'cross-owner rejection missing');
 assert(appSource.includes('health.daily.get') && appSource.includes('prependVirtualHealthTask_'), 'health task composition missing');
 assert(appSource.includes('action: "daily"') && appSource.includes('healthSlot'), 'health task navigation metadata missing');

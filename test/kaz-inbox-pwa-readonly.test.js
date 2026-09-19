@@ -17,7 +17,7 @@ const gasProgress = fs.readFileSync(path.join(root, 'gas', 'KazOsProgress.js'), 
 const gasInbox = fs.readFileSync(path.join(root, 'gas', 'KazOsInbox.js'), 'utf8');
 const gasAnswer = fs.readFileSync(path.join(root, 'gas', 'KazOsInboxAnswer.js'), 'utf8');
 
-assert(build.includes('v20260919-kaz-inbox-registration-v1'), 'combined Kaz Inbox and registration build ID missing');
+assert(build.includes('v20260919-firebase-auth-p3'), 'Firebase auth P3 build ID missing');
 assert(personal.includes('MAX_SOURCE_CLOCK_SKEW_MS = 60_000'), '60 second source clock skew contract regressed');
 
 assert(app.includes('kazOsInboxApi: callAuthenticatedKazOsInbox_'), 'authenticated event omits INBOX read API');

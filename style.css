@@ -1768,12 +1768,20 @@ body:not(.is-authenticated) .drawer-overlay {
   display: none;
 }
 
-.auth-lock input,
-.auth-lock button {
-  display: block;
-  width: 100%;
+.auth-google-button {
   min-height: 48px;
-  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+}
+
+.account-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.account-actions button {
+  min-height: 48px;
+  width: 100%;
 }
 
 .popio-health {

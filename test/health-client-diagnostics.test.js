@@ -2,9 +2,9 @@
 const assert=require('assert'),fs=require('fs'),vm=require('vm');
 const source=fs.readFileSync('app.js','utf8');
 const start=source.indexOf('async function callHomeControlApi(payload)');
-const end=source.indexOf('function getHomeControlPending()',start);
+const end=source.indexOf('function buildHomeAgentPayload',start);
 assert(start>=0&&end>start,'health client diagnostic source boundary missing');
-const ctx={GAS_WEB_APP_URL:'https://example.invalid/exec',JSON,Error,String,Object,Number,Promise,fetch:async()=>({ok:true,status:200,json:async()=>({success:false,error:{code:'INVALID_INPUT'},message:'target is required'})})};
+const ctx={GAS_WEB_APP_URL:'https://example.invalid/exec',JSON,Error,String,Object,Number,Promise,appAuthenticationState:'active_member',firebaseAuthService:{getAuthEnvelope:async()=>({provider:'firebase',idToken:'test-firebase-token'})},fetch:async()=>({ok:true,status:200,json:async()=>({success:false,error:{code:'INVALID_INPUT'},message:'target is required'})})};
 vm.createContext(ctx);
 vm.runInContext(source.slice(start,end),ctx);
 (async()=>{

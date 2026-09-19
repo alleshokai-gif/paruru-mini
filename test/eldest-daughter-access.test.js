@@ -35,6 +35,11 @@ const context = {
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMemberPolicy.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMembershipService.js'), 'utf8'), context);
+context.resolveFirebaseAuthenticatedActor_ = () => ({
+  homeId: 'home-a', memberUserId: 'eldest_daughter', displayName: '長女', role: 'self_record',
+  capabilities: context.getEffectiveMemberCapabilities_('eldest_daughter', 'self_record'),
+  authBindingKey: 'firebase-eldest-daughter',
+});
 
 const membership = JSON.parse(JSON.stringify(context.getMembershipContext_({
   deviceId: 'daughter-phone', pairingToken: 'credential', role: 'admin', capabilities: ['home.control'],
@@ -54,8 +59,8 @@ for (const capability of membership.capabilities) assert.strictEqual(context.aut
 for (const capability of ['home.control', 'health.supervision.read', 'health.supervision.record', 'family.inbox.review']) {
   assert.throws(() => context.authorizeCapability_(actor, capability), (error) => error && error.code === 'FORBIDDEN', capability);
 }
-assert.strictEqual(context.resolveHomeAgentReadActor_({ deviceId: 'daughter-phone', pairingToken: 'credential' }).memberUserId, 'eldest_daughter');
-assert.throws(() => context.resolveHomeAgentControlActor_({ deviceId: 'daughter-phone', pairingToken: 'credential' }), (error) => error && error.code === 'FORBIDDEN');
+assert.strictEqual(context.resolveHomeAgentReadActor_({ auth: { provider: 'firebase', idToken: 'firebase-token' } }).memberUserId, 'eldest_daughter');
+assert.throws(() => context.resolveHomeAgentControlActor_({ auth: { provider: 'firebase', idToken: 'firebase-token' } }), (error) => error && error.code === 'FORBIDDEN');
 assert.strictEqual(context.authorizeTargetOperation_(actor, 'eldest_daughter', 'health.daily.get'), true);
 
 assert.deepStrictEqual(JSON.parse(JSON.stringify(context.getRegistrationMemberIdentity_('eldest_daughter', '長女'))), { memberUserId: 'eldest_daughter', displayName: '長女' });

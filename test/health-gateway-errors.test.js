@@ -7,7 +7,7 @@ const vm = require('vm');
 const context = {
   JSON, Error, String, Object, Array,
   PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => key === 'HEALTH_WEBAPP_URL' ? 'https://script.google.com/macros/s/abc/exec' : 'service-token' }) },
-  resolveAuthenticatedActor_: () => ({ homeId: 'home-a', memberUserId: 'second_son', role: 'self_record' }),
+  resolveFirebaseAuthenticatedActor_: () => ({ homeId: 'home-a', memberUserId: 'second_son', role: 'self_record' }),
   hasRoleCapability_: () => false,
   getActiveSelfRecordMembers_: () => [],
   getHomeMember_: (_homeId, userId) => ({ memberUserId: userId, displayName: userId, status: 'active', role: 'self_record' }),

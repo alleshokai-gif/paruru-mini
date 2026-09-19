@@ -71,6 +71,18 @@ function doPost(e) {
       return json_({ success: false, status: 400, message: 'action is required' });
     }
 
+    if (action === 'auth.config.get') {
+      return json_({ success: true, data: getFirebasePublicAuthConfig_(), message: 'Firebase auth config loaded' });
+    }
+
+    if (action === 'auth.session.resolve') {
+      return json_({ success: true, data: getFirebaseMembershipContext_(body), message: 'authenticated actor resolved' });
+    }
+
+    if (isLegacyDeviceAuthMutationAction_(action)) {
+      return json_({ success: false, data: {}, error: { code: 'LEGACY_DEVICE_AUTH_READ_ONLY' }, message: 'LEGACY_DEVICE_AUTH_READ_ONLY' });
+    }
+
     if (action === 'list') {
       const actor = resolveMemoActor_(body, 'memo.self.read');
       return json_({ success: true, data: listInboxItems_(actor), message: 'listed' });
@@ -949,8 +961,7 @@ function getItemById_(id) {
 }
 
 function resolveMemoActor_(body, capability) {
-  const input = body || {};
-  const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
+  const actor = resolveFirebaseAuthenticatedActor_(body || {});
   authorizeCapability_(actor, capability);
   const member = getHomeMember_(actor.homeId, actor.memberUserId);
   if (!member || member.status !== 'active') throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
@@ -959,8 +970,12 @@ function resolveMemoActor_(body, capability) {
     memberUserId: actor.memberUserId,
     displayName: member.displayName,
     role: actor.role,
-    deviceId: actor.deviceId,
+    authBindingKey: actor.authBindingKey,
   };
+}
+
+function isLegacyDeviceAuthMutationAction_(action) {
+  return ['deviceRegistrationBegin', 'devicePairingApprove', 'devicePairingResume', 'devicePairingRevoke'].indexOf(String(action || '')) !== -1;
 }
 
 function getInternalFatherMemoIdentity_() {

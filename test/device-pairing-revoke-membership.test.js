@@ -205,7 +205,7 @@ for (const setupRegistryFailure of [
   assert.strictEqual(h.context.authorizeTargetOperation_(h.context.resolveAuthenticatedActor_(sonDeviceA, sonTokenA), 'second_son', 'health.weight.record'), true);
   assert.strictEqual(h.context.authorizeTargetOperation_(h.context.resolveAuthenticatedActor_(sonDeviceB, sonTokenB), 'second_son', 'health.daily.list'), true);
   expectCode(() => h.context.authorizeTargetOperation_(h.context.resolveAuthenticatedActor_(sonDeviceA, sonTokenA), 'father', 'health.weight.record'), 'FORBIDDEN');
-  expectCode(() => h.context.resolveHomeAgentControlActor_({ deviceId: sonDeviceB, pairingToken: sonTokenB }), 'FORBIDDEN');
+  expectCode(() => h.context.authorizeCapability_(h.context.resolveAuthenticatedActor_(sonDeviceB, sonTokenB), 'home.control'), 'FORBIDDEN');
   const homeBefore = JSON.stringify(h.spreadsheet.sheets.Home_Members.values);
   h.resetFailureCounters();
   const result = h.revoke(sonDeviceB);

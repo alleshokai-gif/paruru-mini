@@ -27,9 +27,9 @@ function fixture(options = {}) {
     youngest_daughter: { homeId: 'home-a', memberUserId: 'youngest_daughter', displayName: '次女', role: 'self_record', status: 'active' },
   };
   const context = {
-    resolveAuthenticatedActor_: () => {
-      if (options.unauthorized) { const error = new Error('raw auth details'); error.code = 'UNAUTHORIZED_DEVICE'; throw error; }
-      return { homeId: 'home-a', memberUserId: 'father', role: 'admin', deviceId: 'father-device' };
+    resolveFirebaseAuthenticatedActor_: () => {
+      if (options.unauthorized) { const error = new Error('raw auth details'); error.code = 'AUTH_TOKEN_INVALID'; throw error; }
+      return { homeId: 'home-a', memberUserId: 'father', role: 'admin', authBindingKey: 'firebase-father' };
     },
     authorizeCapability_: (_, capability) => state.authorized.push(capability),
     getHomeMember_: (homeId, memberId) => homeId === 'home-a' && members[memberId] ? members[memberId] : null,
@@ -62,7 +62,7 @@ function fixture(options = {}) {
 
 function submit(overrides = {}) {
   return Object.assign({
-    action: 'familyInbox.submit', deviceId: 'father-device', pairingToken: 'pairing-token',
+    action: 'familyInbox.submit', auth: { provider: 'firebase', idToken: 'firebase-token' },
     clientRequestId: uuid, subjectMemberId: 'youngest_daughter', userNote: 'family private note',
     file: { name: 'school.pdf', mediaType: 'application/pdf', base64: pdfBase64 },
   }, overrides);
@@ -141,7 +141,7 @@ function submit(overrides = {}) {
 
 {
   const f = fixture();
-  const result = f.api.familyInboxGateway_({ action: 'familyInbox.getStatus', deviceId: 'father-device', pairingToken: 'pairing-token', inboxId });
+  const result = f.api.familyInboxGateway_({ action: 'familyInbox.getStatus', auth: { provider: 'firebase', idToken: 'firebase-token' }, inboxId });
   assert.strictEqual(result.success, true);
   assert.strictEqual(result.data.inboxId, inboxId);
   assert.deepStrictEqual(f.state.authorized, ['family.inbox.read']);
@@ -149,7 +149,7 @@ function submit(overrides = {}) {
 
 {
   const f = fixture();
-  const list = f.api.familyInboxGateway_({ action: 'familyInbox.listReviews', deviceId: 'father-device', pairingToken: 'pairing-token' });
+  const list = f.api.familyInboxGateway_({ action: 'familyInbox.listReviews', auth: { provider: 'firebase', idToken: 'firebase-token' } });
   assert.strictEqual(list.success, true);
   assert.strictEqual(list.data.items[0].candidateCount, 5);
   assert.deepStrictEqual(f.state.authorized, ['family.inbox.review']);
@@ -160,7 +160,7 @@ function submit(overrides = {}) {
 
 {
   const f = fixture();
-  const detail = f.api.familyInboxGateway_({ action: 'familyInbox.getReview', deviceId: 'father-device', pairingToken: 'pairing-token', inboxId });
+  const detail = f.api.familyInboxGateway_({ action: 'familyInbox.getReview', auth: { provider: 'firebase', idToken: 'firebase-token' }, inboxId });
   assert.strictEqual(detail.success, true);
   assert.strictEqual(detail.data.candidates.length, 1);
   assert(!Object.hasOwn(detail.data.candidates[0], 'reviewedByMemberId'));
@@ -169,7 +169,7 @@ function submit(overrides = {}) {
 {
   const f = fixture();
   const result = f.api.familyInboxGateway_({
-    action: 'familyInbox.updateCandidate', deviceId: 'father-device', pairingToken: 'pairing-token',
+    action: 'familyInbox.updateCandidate', auth: { provider: 'firebase', idToken: 'firebase-token' },
     inboxId, candidateId, revision: 1, reviewRequestId: uuid, reviewNote: '',
     payload: { title: '始業式（修正）', date: '2026-09-03', startTime: '08:20', endTime: null, location: null },
   });
@@ -184,7 +184,7 @@ function submit(overrides = {}) {
 {
   const f = fixture();
   const result = f.api.familyInboxGateway_({
-    action: 'familyInbox.rejectCandidate', deviceId: 'father-device', pairingToken: 'pairing-token',
+    action: 'familyInbox.rejectCandidate', auth: { provider: 'firebase', idToken: 'firebase-token' },
     inboxId, candidateId, revision: 1, reviewRequestId: uuid, reviewNote: '', reviewReason: 'not_relevant',
   });
   assert.strictEqual(result.success, true);
@@ -195,7 +195,7 @@ function submit(overrides = {}) {
 {
   const f = fixture();
   const invalid = f.api.familyInboxGateway_({
-    action: 'familyInbox.approveCandidate', deviceId: 'father-device', pairingToken: 'pairing-token',
+    action: 'familyInbox.approveCandidate', auth: { provider: 'firebase', idToken: 'firebase-token' },
     inboxId, candidateId, revision: 1, reviewRequestId: uuid, reviewNote: '', reviewedByMemberId: 'spoofed',
   });
   assert.strictEqual(invalid.success, false);
@@ -205,7 +205,7 @@ function submit(overrides = {}) {
 
 {
   const f = fixture({ fetchError: true });
-  const result = f.api.familyInboxGateway_({ action: 'familyInbox.listReviews', deviceId: 'father-device', pairingToken: 'pairing-token' });
+  const result = f.api.familyInboxGateway_({ action: 'familyInbox.listReviews', auth: { provider: 'firebase', idToken: 'firebase-token' } });
   assert.strictEqual(result.error.code, 'SERVICE_UNAVAILABLE');
 }
 
