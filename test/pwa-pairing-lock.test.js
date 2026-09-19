@@ -135,6 +135,7 @@ function createHarness(options = {}) {
     callAuthenticatedKazOsProgress_: async () => ({}),
     callAuthenticatedKazOsProjects_: async () => ({}),
     callAuthenticatedKazOsInbox_: async () => ({}),
+    callAuthenticatedKazOsInboxAnswer_: async () => ({}),
     callHomeControlApi: async (payload) => {
       requests.push(payload);
       return response(payload);
@@ -203,6 +204,14 @@ async function startup(options) {
     (error) => error.code === 'AUTHENTICATION_REQUIRED',
   );
   assert.strictEqual(unpaired.requests.length, 0, 'unauthenticated facade must not call an API');
+
+  const stalePending = createHarness();
+  stalePending.context.localStorage.setItem('pairing-pending', JSON.stringify({
+    requestId: 'request-a', requestSecret: 'secret', token: 'credential', code: '',
+  }));
+  await stalePending.context.initializeAuthenticatedPwa();
+  assert.strictEqual(stalePending.state(), 'unpaired', 'stale pending registration must recover to the fresh flow');
+  assert.strictEqual(stalePending.context.localStorage.getItem('pairing-pending'), null, 'stale pending registration was not cleared');
 
   const waiting = createHarness();
   waiting.savePending({ requestId: 'request-a', requestSecret: 'secret', token: 'credential', code: '123456', expiresAt: new Date(Date.now() + 60000).toISOString(), requestExpiresAt: Date.now() + 60000 });

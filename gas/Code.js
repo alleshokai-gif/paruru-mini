@@ -166,6 +166,20 @@ function doPost(e) {
       return kazOsProgress_(body);
     }
 
+    if (action === 'kazOs.inbox.get') {
+      const trace = createKazOsInboxTrace_(body.request_id);
+      if (!trace) {
+        return json_({ success: false, data: null, error: { code: 'KAZ_REQUEST_ID_INVALID' }, message: 'KAZ_REQUEST_ID_INVALID' });
+      }
+      recordKazOsInboxTrace_(trace, 'REQUEST_RECEIVED');
+      recordKazOsInboxTrace_(trace, 'ROUTER_MATCHED');
+      return kazOsProgress_(body, trace);
+    }
+
+    if (action === 'kazOs.inbox.answer') {
+      return answerKazOsInbox_(body);
+    }
+
     if (String(action).indexOf('kazOs.') === 0) {
       return json_({ success: false, data: null, error: { code: 'KAZ_READ_ONLY' }, message: 'KAZ_READ_ONLY' });
     }

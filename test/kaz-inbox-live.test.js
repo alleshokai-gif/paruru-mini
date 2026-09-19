@@ -22,13 +22,28 @@ function snapshot(){
 }
 let value=snapshot(),fail=false,checks=0;
 const h=createHarness({root,provider:()=>{throw Error('OUT_OF_SCOPE');},projectsProvider:()=>{throw Error('OUT_OF_SCOPE');},inboxProvider:()=>{if(fail)throw Error('PRIVATE DETAIL');return value;}});
-assert.equal(h.call(h.body('admin-local',{action:'kazOs.inbox.get'})).error.code,'KAZ_READ_ONLY','INBOX route must not be published in Phase 4C.2');
-const call=(device='admin-local',extra={})=>h.ctx.kazOsProgress_(h.body(device,{action:'kazOs.inbox.get',...extra}));
+const requestId='123e4567-e89b-42d3-a456-426614174000';
+const call=(device='admin-local',extra={})=>h.call(h.body(device,{action:'kazOs.inbox.get',request_id:requestId,...extra}));
 function test(name,fn){fn();checks++;}
 
 test('owner receives only live read-only Secretary Questions',()=>{value.private_payload='SECRET';const r=call();assert(r.success);assert.equal(r.data.mode,'read_only_display');assert.equal(r.data.inbox_items.length,1);assert.equal(r.data.inbox_items[0].write_allowed,false);assert(!JSON.stringify(r).includes('SECRET'));});
+test('shared Kaz OS live gate controls INBOX and deprecated INBOX read flag is ignored',()=>{
+  value=snapshot();h.props.KAZ_OS_INBOX_LIVE_ENABLED='false';
+  const deprecatedFlagRead=call();assert(deprecatedFlagRead.success);assert.equal(deprecatedFlagRead.data.mode,'read_only_display');
+  const before=h.stats().reads;h.props.KAZ_OS_LIVE_ENABLED='false';const globallyDisabled=call();
+  assert.equal(globallyDisabled.error.code,'KAZ_NOT_CONNECTED');assert.equal(globallyDisabled.data,null);assert.equal(h.stats().reads,before);
+  h.props.KAZ_OS_LIVE_ENABLED='true';delete h.props.KAZ_OS_INBOX_LIVE_ENABLED;
+});
 test('non-owner denial happens before source read',()=>{for(const device of ['child-local','guardian-local','other-local']){const before=h.stats().reads,r=call(device,{role:'admin',memberUserId:'father'});assert.equal(r.error.code,'FORBIDDEN');assert.equal(r.data,null);assert.equal(h.stats().reads,before);}});
-test('answer and mutation actions remain denied',()=>{assert.equal(call('admin-local',{action:'kazOs.inbox.answer'}).error.code,'KAZ_READ_ONLY');assert.equal(call('admin-local',{action:'kazOs.inbox.update'}).error.code,'KAZ_READ_ONLY');assert.equal(h.stats().writes,0);});
+test('answer gate defaults disabled and mutation remains denied',()=>{assert.equal(call('admin-local',{action:'kazOs.inbox.answer'}).error.code,'KAZ_ANSWER_DISABLED');assert.equal(call('admin-local',{action:'kazOs.inbox.update'}).error.code,'KAZ_READ_ONLY');assert.equal(h.stats().writes,0);});
+test('missing or malformed request id is rejected before source read',()=>{
+  const before=h.stats().reads;
+  for(const request_id of [undefined,'not-a-uuid','123e4567-e89b-12d3-a456-426614174000']){
+    const r=h.call(h.body('admin-local',{action:'kazOs.inbox.get',request_id}));
+    assert.equal(r.error.code,'KAZ_REQUEST_ID_INVALID');assert.equal(r.data,null);
+  }
+  assert.equal(h.stats().reads,before);
+});
 test('failed or stale source never becomes an empty queue',()=>{fail=true;let r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);fail=false;value=snapshot();value.sources.inbox.valid_until=iso(-1);r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);});
 test('missing explicit owner member fails closed',()=>{value=snapshot();delete h.props.KAZ_OS_PROGRESS_OWNER_MEMBER_ID;const before=h.stats().reads,r=call();assert.equal(r.error.code,'KAZ_NOT_CONNECTED');assert.equal(h.stats().reads,before);h.props.KAZ_OS_PROGRESS_OWNER_MEMBER_ID='father';});
 test('GAS calendar read sends one transient bounded capture and no raw IDs',()=>{
@@ -38,10 +53,29 @@ test('GAS calendar read sends one transient bounded capture and no raw IDs',()=>
   h.ctx.getCalendarConfig_=()=>({calendarId:'private-calendar-id'});
   h.ctx.getCalendarByConfig_=()=>({getName:()=> 'ファミリー',getEvents:()=>[event]});
   h.ctx.Utilities.formatDate=(date,_zone,format)=>format==='yyyy-MM-dd'?new Date(date).toISOString().slice(0,10):new Date(date).toISOString();
+  const logs=[];h.ctx.Logger={log:line=>logs.push(line)};
   let request=null;h.ctx.UrlFetchApp.fetch=(url,options)=>{request={url,options};return{getResponseCode:()=>200,getContentText:()=>JSON.stringify(value)}};
   vm.runInContext(fs.readFileSync(path.join(root,'gas/KazOsInbox.js'),'utf8'),h.ctx,{filename:'gas/KazOsInbox.js'});
   const r=call();assert(r.success);assert.equal(request.url,h.props.KAZ_OS_INBOX_READ_URL);assert.equal(request.options.method,'post');assert.equal(request.options.followRedirects,false);
+  assert.equal(request.options.headers['X-Kaz-Request-Id'],requestId);
   const capture=JSON.parse(request.options.payload);assert.equal(capture.connector_receipt.calendar_write_requests,0);assert.equal(capture.connector_receipt.event_read_requests,1);assert.equal(capture.response.events.length,1);
   const encoded=JSON.stringify(capture);assert(!encoded.includes('raw-event-id'));assert(!encoded.includes('private-calendar-id'));assert(!encoded.includes(h.props.KAZ_OS_PROGRESS_READ_TOKEN));
+  assert(!Object.hasOwn(capture,'request_id'),'request id must not alter the Calendar capture contract');
+  const entries=logs.map(line=>JSON.parse(line.replace(/^\[KAZ_OS_INBOX_TRACE\] /,'')));
+  assert.deepEqual(entries.map(entry=>entry.stage),['REQUEST_RECEIVED','ROUTER_MATCHED','AUTH_PASSED','INBOX_READ_STARTED','CALENDAR_CAPTURE_OK','GATEWAY_POST_STARTED','GATEWAY_RESPONSE','SANITIZER_OK','RESPONSE_SENT']);
+  const allowed=['elapsed_ms','error_code','event_count','gas_version','http_status','question_count','request_id','stage','timestamp'].sort();
+  for(const entry of entries){assert.deepEqual(Object.keys(entry).sort(),allowed);assert.equal(entry.request_id,requestId);}
+  const traceText=JSON.stringify(entries);for(const forbidden of ['raw-event-id','private-calendar-id','家族予定',h.props.KAZ_OS_PROGRESS_READ_TOKEN,h.props.KAZ_OS_INBOX_READ_URL])assert(!traceText.includes(forbidden));
+});
+
+test('Calendar failure records only the safe failed stage and never calls the gateway',()=>{
+  const logs=[];h.ctx.Logger={log:line=>logs.push(line)};let gatewayCalls=0;
+  h.ctx.getCalendarByConfig_=()=>({getName:()=> 'ファミリー',getEvents:()=>{throw Error('PRIVATE CALENDAR FAILURE');}});
+  h.ctx.UrlFetchApp.fetch=()=>{gatewayCalls++;throw Error('MUST_NOT_RUN');};
+  const r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(gatewayCalls,0);
+  const entries=logs.map(line=>JSON.parse(line.replace(/^\[KAZ_OS_INBOX_TRACE\] /,'')));
+  assert(entries.some(entry=>entry.stage==='CALENDAR_CAPTURE_FAILED'&&entry.error_code==='KAZ_SOURCE_FAILED'));
+  assert.equal(entries.at(-1).stage,'RESPONSE_SENT');assert.equal(entries.at(-1).error_code,'KAZ_SOURCE_FAILED');
+  assert(!JSON.stringify(entries).includes('PRIVATE CALENDAR FAILURE'));
 });
 console.log(`kaz-inbox-live: ${checks}/${checks} PASS`);

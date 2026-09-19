@@ -440,6 +440,7 @@ let pendingHomeAgentActionCandidate = null;
 let pendingHomeAgentRetry = null;
 let pendingHomeInputIntentConfirmation = null;
 let homeControlPollTimer = null;
+let homeControlSelectedMemberUserId = "";
 let activeMembershipContext = null;
 let healthTaskCache = null;
 
@@ -868,7 +869,10 @@ bindAuthenticationLockControls_();
 
 function renderAuthenticationLock_() {
   const pending = getHomeControlPending();
-  if (!pending) return;
+  if (!pending) {
+    showAuthenticationState("この端末は未登録です。端末登録を完了してください。", "unpaired");
+    return;
+  }
   if (isHomeControlPendingExpired_(pending)) {
     showAuthenticationState("端末登録を確認中…", "pairing_pending");
     if (authLockCode) authLockCode.textContent = "";
@@ -930,6 +934,8 @@ const activateMembershipContext_ = function(membershipContext) {
         allowedViews: membershipContext.allowedViews,
       },
       kazOsProjectsApi: callAuthenticatedKazOsProjects_,
+      kazOsInboxApi: callAuthenticatedKazOsInbox_,
+      kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
       nurseOkanCommentApi: callNurseOkanComment_,
       petHealthApi: callAuthenticatedPetHealth_,
@@ -1586,7 +1592,21 @@ profileForm.addEventListener("submit", async (event) => {
 });
 
 homeControlEnableButton?.addEventListener("click", () => beginHomeControlPairing());
+homeControlMemberUserId?.addEventListener("change", () => {
+  const memberUserId = readHomeControlRegistrationIdentity_();
+  if (memberUserId && homeControlMessage?.textContent === "登録する家族を選んでな。") {
+    setHomeControlMessage("");
+  }
+  syncHomeControlApprovalUi_();
+});
+homeControlApproveCode?.addEventListener("input", () => {
+  if (/^\d{6}$/.test(String(homeControlApproveCode.value || "").trim()) && homeControlMessage?.textContent === "6桁の承認コードを入力してな。") {
+    setHomeControlMessage("");
+  }
+  syncHomeControlApprovalUi_();
+});
 homeControlApproveButton?.addEventListener("click", () => approveHomeControlPairing());
+syncHomeControlApprovalUi_();
 homeControlDeviceList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-home-control-revoke]");
   if (button) revokeHomeControlDevice(button.dataset.homeControlRevoke || "");
@@ -2238,8 +2258,18 @@ function createHomeControlError(code, details = {}) {
 function getHomeControlPending() {
   try {
     const value = JSON.parse(localStorage.getItem(HOME_CONTROL_PENDING_STORAGE_KEY) || "");
-    return value && isUuid(value.requestId) && typeof value.requestSecret === "string" && typeof value.token === "string" ? value : null;
+    const valid = value
+      && isUuid(value.requestId)
+      && typeof value.requestSecret === "string"
+      && typeof value.token === "string"
+      && /^\d{6}$/.test(String(value.code || ""));
+    if (!valid) {
+      localStorage.removeItem(HOME_CONTROL_PENDING_STORAGE_KEY);
+      return null;
+    }
+    return value;
   } catch (error) {
+    localStorage.removeItem(HOME_CONTROL_PENDING_STORAGE_KEY);
     return null;
   }
 }
@@ -2365,21 +2395,46 @@ function scheduleHomeControlPoll() {
   if (getHomeControlPending()) homeControlPollTimer = setTimeout(() => pollHomeControlPairing(), HOME_CONTROL_POLL_MILLISECONDS);
 }
 
+function readHomeControlRegistrationIdentity_() {
+  const selectedOption = homeControlMemberUserId?.selectedOptions?.[0];
+  const selectedValue = String(selectedOption?.value || homeControlMemberUserId?.value || "").trim();
+  if (selectedValue && HOME_CONTROL_REGISTRATION_IDENTITIES[selectedValue]) {
+    homeControlSelectedMemberUserId = selectedValue;
+    return selectedValue;
+  }
+  return HOME_CONTROL_REGISTRATION_IDENTITIES[homeControlSelectedMemberUserId]
+    ? homeControlSelectedMemberUserId
+    : "";
+}
+
+function syncHomeControlApprovalUi_() {
+  const canApprove = canApproveHomeControlPairing_();
+  const memberUserId = readHomeControlRegistrationIdentity_();
+  const code = String(homeControlApproveCode?.value || "").trim();
+  if (homeControlApproveButton) {
+    homeControlApproveButton.disabled = !canApprove || !memberUserId || !/^\d{6}$/.test(code);
+  }
+}
+
 async function approveHomeControlPairing() {
   if (!canApproveHomeControlPairing_()) {
     setHomeControlMessage("この端末では新しい端末を承認できません。", "error");
     return;
   }
-  const memberUserId = String(homeControlMemberUserId?.value || "").trim();
+  const memberUserId = readHomeControlRegistrationIdentity_();
   const displayName = String(HOME_CONTROL_REGISTRATION_IDENTITIES[memberUserId] || "");
   if (!memberUserId || !displayName) {
     setHomeControlMessage("登録する家族を選んでな。", "error");
+    homeControlMemberUserId?.focus();
+    syncHomeControlApprovalUi_();
     return;
   }
   const code = String(homeControlApproveCode?.value || "").trim();
   const profile = getCurrentProfile();
   if (!/^\d{6}$/.test(code)) {
     setHomeControlMessage("6桁の承認コードを入力してな。", "error");
+    homeControlApproveCode?.focus();
+    syncHomeControlApprovalUi_();
     return;
   }
   const clientRequestId = createUuid();
@@ -2458,7 +2513,7 @@ async function renderHomeControlSettings() {
   if (homeControlRegistered) homeControlRegistered.hidden = !token;
   const canApprove = canApproveHomeControlPairing_();
   if (homeControlApprovePanel) homeControlApprovePanel.hidden = !canApprove;
-  if (homeControlApproveButton) homeControlApproveButton.disabled = !canApprove;
+  syncHomeControlApprovalUi_();
   if (homeControlDeviceList) {
     homeControlDeviceList.hidden = !canApprove;
     if (!canApprove) homeControlDeviceList.replaceChildren();
@@ -5430,6 +5485,32 @@ function applyAllowedViews_() {
 async function callAuthenticatedKazOsProjects_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
   return callHomeControlApi(buildMemoCredentialPayload("kazOs.projects.get"));
+}
+
+async function callAuthenticatedKazOsInbox_() {
+  if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi || typeof cryptoApi.randomUUID !== "function") throw createHomeControlError("KAZ_TRACE_UNAVAILABLE");
+  return callHomeControlApi({
+    ...buildMemoCredentialPayload("kazOs.inbox.get"),
+    request_id: cryptoApi.randomUUID(),
+  });
+}
+
+async function callAuthenticatedKazOsInboxAnswer_(answer) {
+  if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi || typeof cryptoApi.randomUUID !== "function") throw createHomeControlError("KAZ_TRACE_UNAVAILABLE");
+  return callHomeControlApi({
+    ...buildMemoCredentialPayload("kazOs.inbox.answer"),
+    request_id: cryptoApi.randomUUID(),
+    decision_id: answer?.decision_id,
+    question_revision: answer?.question_revision,
+    source_revision_references: answer?.source_revision_references,
+    selected_option: answer?.selected_option,
+    reason: answer?.reason ?? null,
+    idempotency_key: answer?.idempotency_key,
+  });
 }
 
 function applyMembershipCapabilityVisibility_() {

@@ -60,9 +60,10 @@ test('gateway source client is only GET with no redirects',()=>{
   const fs=require('node:fs'),vm=require('node:vm');vm.runInContext(fs.readFileSync(path.join(root,'gas/KazOsProjects.js'),'utf8'),h.ctx);
   assert(call().success);assert.equal(calls,1);assert.equal(h.stats().writes,0);
 });
-test('production dispatcher exposes Projects only',()=>{
+test('production dispatcher exposes only approved Kaz read actions',()=>{
   const fs=require('node:fs'),source=fs.readFileSync(path.join(root,'gas/Code.js'),'utf8');
   assert(source.includes("action === 'kazOs.projects.get'"));
+  assert(source.includes("action === 'kazOs.inbox.get'"));
   assert(!source.includes("String(action).indexOf('kazOs.') === 0) {\n      return kazOsProgress_(body);"));
 });
 console.log(`kaz-projects: ${checks}/${checks} PASS`);

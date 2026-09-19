@@ -755,6 +755,17 @@ test('G frontend contains no Agent secret or Agent URL', () => {
   assert(!/PALURU_AGENT_TOKEN|PALURU_AGENT_URL|authToken/.test(frontend), 'Agent credential contract leaked to frontend');
 });
 
+test('registration approval retains the selected fixed-roster identity', () => {
+  const harness = createHarness();
+  const select = harness.elements.get('#homeControlMemberUserId');
+  select.value = 'eldest_daughter';
+  select.selectedOptions = [{ value: 'eldest_daughter' }];
+  assert(harness.run('readHomeControlRegistrationIdentity_()') === 'eldest_daughter', 'selected registration identity was not read');
+  select.value = '';
+  select.selectedOptions = [];
+  assert(harness.run('readHomeControlRegistrationIdentity_()') === 'eldest_daughter', 'selected registration identity was not retained for approval');
+});
+
 test('H existing feature routes remain present', () => {
   ['createWithAI', 'answerFollowup', 'notificationCandidates', 'syncCalendar', 'updateCalendar', 'homeAgentAction'].forEach((action) => {
     assert(appSource.includes(action), action + ' route disappeared');
@@ -1167,20 +1178,20 @@ test('agentChat logs API_ERROR and FETCH_FAILED with the same request context', 
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260917-minimal-registration-v1';
+  const expected = 'v20260919-kaz-inbox-registration-v1';
   const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
   assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID must have one definition');
   assert(appSource.includes('Build: ${globalThis.BUILD_ID}') && !/const\s+(?:ASSET_VERSION|BUILD_VERSION|BUILD_ID)\s*=/.test(appSource), 'app does not use BUILD_ID as the only Build display source');
-  assert(fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('importScripts("./build.js")') && fs.readFileSync(path.join(root, 'sw.js'), 'utf8').includes('const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`') && !/const\s+ASSET_VERSION\s*=/.test(fs.readFileSync(path.join(root, 'sw.js'), 'utf8')), 'SW does not use BUILD_ID for CACHE_NAME');
+  const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  assert(swSource.includes('importScripts("./build.js?v=' + expected + '")') && swSource.includes('const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`') && !/const\s+ASSET_VERSION\s*=/.test(swSource), 'SW does not cache-bust build.js or use BUILD_ID for CACHE_NAME');
   const indexSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-  assert(indexSource.includes('<script src="./build.js" defer></script>'), 'HTML does not load BUILD_ID');
+  assert(indexSource.includes('<script src="./build.js?v=' + expected + '" defer></script>'), 'HTML does not load the cache-busted BUILD_ID');
   assert(indexSource.includes('<p class="splash-logo">PALURU</p>') && indexSource.includes('<p class="splash-tagline">AI for everyday life.</p>') && indexSource.includes('<p class="splash-loading">端末を確認中…</p>'), 'splash product label, tagline, or device-check text changed');
   const styleSource = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
   const splashTaglineCss = (styleSource.match(/\.splash-tagline\s*\{[^}]*\}/) || [''])[0];
   const splashCss = (styleSource.match(/\.splash\s*\{[^}]*\}/) || [''])[0];
   assert(splashTaglineCss.includes('font-size: 0.78rem') && splashTaglineCss.includes('white-space: nowrap') && splashCss.includes('overflow-x: clip'), 'splash tagline must remain compact, single-line, and clipped on narrow screens');
   assert(appSource.includes('updateViaCache: "none"'), 'service worker updateViaCache changed');
-  const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   assert(swSource.includes('versioned("features/nurse-okan/health-routine.js")'), 'Nurse Okan routine is missing from the versioned app shell');
   assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service worker activation safeguards changed');
   const manifestSource = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '');

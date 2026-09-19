@@ -1,5 +1,5 @@
-importScripts("./build.js");
-// Release: device-registration-recovery-v1
+importScripts("./build.js?v=v20260919-kaz-inbox-registration-v1");
+// Release: v20260919-kaz-inbox-registration-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -20,6 +20,7 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/bus/journey.css"),
   versioned("features/bus/hub.js"),
   versioned("features/bus/hub.css"),
+  versioned("features/kaz-os/inbox.js"),
   versioned("features/kaz-os/personal.js"),
   versioned("features/kaz-os/personal.css"),
   versioned("features/kaz-os/navigation.js"),

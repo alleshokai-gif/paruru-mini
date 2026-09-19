@@ -9,6 +9,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const style = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
 function between(start, end) { return source.slice(source.indexOf(start), source.indexOf(end)); }
+const identitySource = between('function readHomeControlRegistrationIdentity_()', 'async function approveHomeControlPairing()');
 const approveSource = between('async function approveHomeControlPairing()', 'async function revokeHomeControlDevice');
 const revokeSource = between('async function revokeHomeControlDevice(targetDeviceId)', 'async function renderHomeControlSettings()');
 const renderSource = between('async function renderHomeControlSettings()', 'function renderHomeControlDeviceList');
@@ -25,7 +26,8 @@ for (const option of ['father', 'mother', 'eldest_son', 'eldest_daughter', 'seco
 
 function element(value = '') {
   return {
-    value, hidden: false, disabled: false, textContent: '', className: '', innerHTML: '',
+    value, selectedOptions: [], hidden: false, disabled: false, textContent: '', className: '', innerHTML: '',
+    focus() {},
     replaceChildren() { this.innerHTML = ''; },
   };
 }
@@ -64,7 +66,7 @@ function createHarness(options = {}) {
     renderHomeControlSettings: async () => {},
   };
   vm.createContext(context);
-  vm.runInContext(`let appAuthenticationState = ${JSON.stringify(options.state || 'active_member')}; let activeMembershipContext = ${JSON.stringify({ role: options.role || 'admin' })}; ${approveSource}\n${revokeSource}\n${renderSource}\n${deviceListSource}\nglobalThis.setRole_ = (role) => { activeMembershipContext = { role }; };`, context);
+  vm.runInContext(`let appAuthenticationState = ${JSON.stringify(options.state || 'active_member')}; let activeMembershipContext = ${JSON.stringify({ role: options.role || 'admin' })}; let homeControlSelectedMemberUserId = ""; ${identitySource}\n${approveSource}\n${revokeSource}\n${renderSource}\n${deviceListSource}\nglobalThis.setRole_ = (role) => { activeMembershipContext = { role }; };`, context);
   return { context, requests, messages, logs };
 }
 
