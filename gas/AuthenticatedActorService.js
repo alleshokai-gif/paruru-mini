@@ -84,4 +84,3 @@ function normalizeAuthPocErrorCode_(code) {
   const normalized = String(code || 'AUTHENTICATION_FAILED');
   return allowed[normalized] ? normalized : 'AUTHENTICATION_FAILED';
 }
-

@@ -179,4 +179,3 @@
 
   root.PALURUFirebaseAuth = Object.freeze({ create: createPaluruFirebaseAuth, states: AUTH_STATES });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
-

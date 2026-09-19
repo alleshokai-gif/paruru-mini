@@ -38,4 +38,3 @@ function homeIdentityError_(code) {
   error.code = String(code || 'IDENTITY_ERROR');
   return error;
 }
-
