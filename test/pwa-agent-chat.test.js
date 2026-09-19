@@ -181,7 +181,7 @@ function createHarness() {
   };
   vm.createContext(context);
   new vm.Script(appSource, { filename: 'app.js' }).runInContext(context);
-  vm.runInContext('appAuthenticationState = "active_member"; activeMembershipContext = { capabilities: ["home.read", "home.control", "health.self.read"] };', context);
+  vm.runInContext('appAuthenticationState = "active_member"; activeMembershipContext = { capabilities: ["home.read", "home.control", "health.self.read"] }; firebaseAuthService = { getAuthEnvelope: async () => ({ provider: "firebase", idToken: "test-firebase-token" }) };', context);
   return {
     context,
     elements,
@@ -720,14 +720,13 @@ test('E new submission gets new request ID and reuses session', async () => {
   assert(calls[0].clientRequestId !== calls[1].clientRequestId, 'new submission reused clientRequestId');
 });
 
-test('E2 invalid stored session is regenerated and UUID fallback works', () => {
+test('E2 invalid stored session is regenerated without device credentials and UUID fallback works', () => {
   const harness = createHarness();
   harness.storage.set('paruru-mini-agent-chat-session-v1', 'invalid-session');
-  harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
   const payload = harness.run('buildAgentChatPayload("書斎暑い？")');
   assert(/^[0-9a-f-]{36}$/i.test(payload.sessionId), 'invalid session was not regenerated');
   assert(harness.storage.get('paruru-mini-agent-chat-session-v1') === payload.sessionId, 'new session was not stored');
-  assert(payload.pairingToken === 'pairing-token-placeholder-000000000001', 'agentChat pairing token was not attached');
+  assert(!Object.prototype.hasOwnProperty.call(payload, 'pairingToken') && !Object.prototype.hasOwnProperty.call(payload, 'deviceId'), 'agentChat retained device credentials');
   harness.context.crypto.randomUUID = undefined;
   const fallback = harness.run('createUuid()');
   assert(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(fallback), 'UUID fallback is invalid');
@@ -755,15 +754,9 @@ test('G frontend contains no Agent secret or Agent URL', () => {
   assert(!/PALURU_AGENT_TOKEN|PALURU_AGENT_URL|authToken/.test(frontend), 'Agent credential contract leaked to frontend');
 });
 
-test('registration approval retains the selected fixed-roster identity', () => {
-  const harness = createHarness();
-  const select = harness.elements.get('#homeControlMemberUserId');
-  select.value = 'eldest_daughter';
-  select.selectedOptions = [{ value: 'eldest_daughter' }];
-  assert(harness.run('readHomeControlRegistrationIdentity_()') === 'eldest_daughter', 'selected registration identity was not read');
-  select.value = '';
-  select.selectedOptions = [];
-  assert(harness.run('readHomeControlRegistrationIdentity_()') === 'eldest_daughter', 'selected registration identity was not retained for approval');
+test('ordinary PWA has no fixed-roster registration approval state', () => {
+  assert(!appSource.includes('HOME_CONTROL_REGISTRATION_IDENTITIES'), 'fixed-roster registration identities remain');
+  assert(!appSource.includes('readHomeControlRegistrationIdentity_'), 'registration identity state remains');
 });
 
 test('H existing feature routes remain present', () => {
@@ -845,7 +838,7 @@ test('EVA-03G Agent confirmation card is rendered from structured field', async 
   assert(!html.includes('bedroom') && !html.includes('durationMinutes'), 'raw operation payload leaked');
 });
 
-test('EVA-03G confirm sends only confirmation identifiers and pairing token to Mini GAS', async () => {
+test('EVA-03G confirm sends only confirmation identifiers plus Firebase auth to Mini GAS', async () => {
   const harness = createHarness();
   harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
   await harness.run(`executeAgentActionConfirmation({
@@ -858,7 +851,8 @@ test('EVA-03G confirm sends only confirmation identifiers and pairing token to M
   })`);
   const sent = harness.requests[harness.requests.length - 1].payload;
   assert(sent.action === 'agentActionConfirm', 'wrong confirm action');
-  assert(sent.confirmationId && sent.clientRequestId && sent.pairingToken, 'required confirm identifiers missing');
+  assert(sent.confirmationId && sent.clientRequestId && sent.auth?.idToken === 'test-firebase-token', 'required confirm identifiers or Firebase auth missing');
+  assert(!Object.prototype.hasOwnProperty.call(sent, 'pairingToken') && !Object.prototype.hasOwnProperty.call(sent, 'deviceId'), 'device credential leaked into confirm');
   ['operation', 'skill', 'roomId', 'duration', 'durationMinutes', 'confirmed', 'payload'].forEach((field) => {
     assert(!Object.prototype.hasOwnProperty.call(sent, field), field + ' leaked from PWA confirm');
   });
@@ -939,14 +933,15 @@ test('EVA-03I-2B command result labels never fall back to pause', () => {
   assert(resultUnknown.includes('操作結果を確認できませんでした') && resultUnknown.includes('最初から頼んでな'), 'unknown action did not require a new prepare');
 });
 
-test('EVA-03G cancel sends only confirmation identifiers and pairing token to Mini GAS', async () => {
+test('EVA-03G cancel sends only confirmation identifiers plus Firebase auth to Mini GAS', async () => {
   const harness = createHarness();
   harness.storage.set('paruru-mini-home-agent-pairing-v1', 'pairing-token-placeholder-000000000001');
   harness.setActionResponder((payload) => {
     assert(payload.action === 'agentActionCancel', 'wrong cancel action');
     assert(payload.confirmationId === '88888888-8888-4888-8888-888888888888', 'confirmation id missing');
     assert(payload.clientRequestId === '6ba7b810-9dad-41d1-80b4-00c04fd430c8', 'clientRequestId missing');
-    assert(payload.deviceId && payload.pairingToken, 'device or pairing token missing');
+    assert(payload.auth?.idToken === 'test-firebase-token', 'Firebase auth missing');
+    assert(!Object.prototype.hasOwnProperty.call(payload, 'deviceId') && !Object.prototype.hasOwnProperty.call(payload, 'pairingToken'), 'device credential leaked into cancel');
     ['operation', 'skill', 'roomId', 'duration', 'durationMinutes', 'confirmed', 'payload'].forEach((field) => {
       assert(!Object.prototype.hasOwnProperty.call(payload, field), field + ' leaked from PWA cancel');
     });
@@ -1039,14 +1034,15 @@ test('Inbox API failure is distinct from a successful empty list and offers retr
   assert(failed.context.__retryCalls === 1, 'Inbox retry did not call loadInbox');
 });
 
-test('EVA-03H1 pairing UI uses explicit onboarding actions and has no manual token field', () => {
+test('EVA-03H1 ordinary PWA exposes Google login and no pairing onboarding', () => {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-  assert(!html.includes('profileHomeAgentPairingToken'), 'manual pairing token input remains in the normal UI');
-  assert(html.includes('homeControlEnableButton') && html.includes('homeControlApproveButton'), 'pairing onboarding controls are missing');
-  ['deviceRegistrationBegin', 'devicePairingApprove', 'devicePairingStatus', 'devicePairingRevoke'].forEach((action) => {
-    assert(appSource.includes(`action: "${action}"`), `missing explicit onboarding action: ${action}`);
+  assert(html.includes('authGoogleButton') && html.includes('authLogoutButton') && html.includes('authAccountSwitchButton'), 'Google auth controls are missing');
+  ['profileHomeAgentPairingToken', 'homeControlEnableButton', 'homeControlApproveButton', 'authLockCode'].forEach((id) => {
+    assert(!html.includes(id), `legacy pairing control remains: ${id}`);
   });
-  assert(appSource.includes('crypto?.getRandomValues') && appSource.includes('crypto?.subtle') && appSource.includes('crypto.subtle.digest'), 'PWA token generation is not Web Crypto based');
+  ['deviceRegistrationBegin', 'devicePairingApprove', 'devicePairingStatus', 'devicePairingRevoke', 'pairingToken:'].forEach((value) => {
+    assert(!appSource.includes(value), `ordinary PWA retains legacy device auth: ${value}`);
+  });
 });
 
 test('home action labels are centralized in JavaScript and mobile grid stays two-column', () => {
@@ -1178,7 +1174,7 @@ test('agentChat logs API_ERROR and FETCH_FAILED with the same request context', 
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260919-kaz-inbox-registration-v1';
+  const expected = 'v20260919-firebase-auth-p3';
   const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
   assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID must have one definition');
   assert(appSource.includes('Build: ${globalThis.BUILD_ID}') && !/const\s+(?:ASSET_VERSION|BUILD_VERSION|BUILD_ID)\s*=/.test(appSource), 'app does not use BUILD_ID as the only Build display source');
@@ -1186,7 +1182,7 @@ test('I JavaScript syntax and J cache versions', () => {
   assert(swSource.includes('importScripts("./build.js?v=' + expected + '")') && swSource.includes('const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`') && !/const\s+ASSET_VERSION\s*=/.test(swSource), 'SW does not cache-bust build.js or use BUILD_ID for CACHE_NAME');
   const indexSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   assert(indexSource.includes('<script src="./build.js?v=' + expected + '" defer></script>'), 'HTML does not load the cache-busted BUILD_ID');
-  assert(indexSource.includes('<p class="splash-logo">PALURU</p>') && indexSource.includes('<p class="splash-tagline">AI for everyday life.</p>') && indexSource.includes('<p class="splash-loading">端末を確認中…</p>'), 'splash product label, tagline, or device-check text changed');
+  assert(indexSource.includes('<p class="splash-logo">PALURU</p>') && indexSource.includes('<p class="splash-tagline">AI for everyday life.</p>') && indexSource.includes('<p class="splash-loading">Googleセッションを確認中…</p>'), 'splash product label, tagline, or Firebase session text changed');
   const styleSource = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
   const splashTaglineCss = (styleSource.match(/\.splash-tagline\s*\{[^}]*\}/) || [''])[0];
   const splashCss = (styleSource.match(/\.splash\s*\{[^}]*\}/) || [''])[0];

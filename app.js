@@ -1,18 +1,12 @@
 ﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const DEBUG = false;
 const DEFAULT_PRIORITY = "";
 const CHARACTER_BASE_PATH = "assets/character/paluru";
 const assetUrl = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const PROFILE_STORAGE_KEY = "paruru-mini-profile";
 const AGENT_CHAT_SESSION_STORAGE_KEY = "paruru-mini-agent-chat-session-v1";
-const HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY = "paruru-mini-home-agent-pairing-v1";
-const HOME_CONTROL_PENDING_STORAGE_KEY = "paruru-mini-home-control-pending-v1";
-const HOME_CONTROL_REGISTRATION_IDENTITIES = Object.freeze({
-  father: "父", mother: "母", eldest_son: "長男", eldest_daughter: "長女",
-  second_son: "次男", youngest_daughter: "次女",
-});
 const PET_HEALTH_DASHBOARD_CACHE_STORAGE_KEY = "paruru-mini-pet-health-dashboard-popio-v1";
 const PET_HEALTH_DASHBOARD_CACHE_SCHEMA_VERSION = "pet-health-1.0";
 const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 30000;
@@ -27,7 +21,6 @@ const PET_HEALTH_DASHBOARD_SAFE_ERROR_CODES = new Set([
   "INVALID_INPUT",
   "DATA_INTEGRITY_ERROR",
 ]);
-const HOME_CONTROL_POLL_MILLISECONDS = 5000;
 const NOTIFICATION_CACHE_MS = 5000;
 const NOTIFICATION_DISPLAY_LIMIT = 5;
 const TOKYO_TIME_ZONE = "Asia/Tokyo";
@@ -324,15 +317,10 @@ const message = document.querySelector("#message");
 const splash = document.querySelector("#splash");
 const authLock = document.querySelector("#authLock");
 const authLockMessage = document.querySelector("#authLockMessage");
-const authLockUnpaired = document.querySelector("#authLockUnpaired");
-const authLockPending = document.querySelector("#authLockPending");
-const authLockError = document.querySelector("#authLockError");
-const authLockDeviceName = document.querySelector("#authLockDeviceName");
-const authLockBeginButton = document.querySelector("#authLockBeginButton");
-const authLockRetryButton = document.querySelector("#authLockRetryButton");
-const authLockReRegisterButton = document.querySelector("#authLockReRegisterButton");
-const authLockCode = document.querySelector("#authLockCode");
-const authLockExpiry = document.querySelector("#authLockExpiry");
+const authGoogleButton = document.querySelector("#authGoogleButton");
+const authAccountStatus = document.querySelector("#authAccountStatus");
+const authAccountSwitchButton = document.querySelector("#authAccountSwitchButton");
+const authLogoutButton = document.querySelector("#authLogoutButton");
 const buildVersion = document.querySelector("#buildVersion");
 const views = document.querySelectorAll(".app-view");
 const navItems = document.querySelectorAll(".nav-item");
@@ -406,25 +394,9 @@ const profileDisplayName = document.querySelector("#profileDisplayName");
 const profileRole = document.querySelector("#profileRole");
 const profileCalendarSuffix = document.querySelector("#profileCalendarSuffix");
 const profileDefaultCalendar = document.querySelector("#profileDefaultCalendar");
-const profileDeviceId = document.querySelector("#profileDeviceId");
 const profileCalendarMembers = document.querySelector("#profileCalendarMembers");
 const profileIncludeUnknownCalendarEvents = document.querySelector("#profileIncludeUnknownCalendarEvents");
 const profileTomorrowScheduleStartTime = document.querySelector("#profileTomorrowScheduleStartTime");
-const homeControlStatus = document.querySelector("#homeControlStatus");
-const homeControlUnregistered = document.querySelector("#homeControlUnregistered");
-const homeControlDeviceName = document.querySelector("#homeControlDeviceName");
-const homeControlEnableButton = document.querySelector("#homeControlEnableButton");
-const homeControlPending = document.querySelector("#homeControlPending");
-const homeControlPendingCode = document.querySelector("#homeControlPendingCode");
-const homeControlPendingExpiry = document.querySelector("#homeControlPendingExpiry");
-const homeControlRegistered = document.querySelector("#homeControlRegistered");
-const homeControlRegisteredLabel = document.querySelector("#homeControlRegisteredLabel");
-const homeControlApprovePanel = document.querySelector("#homeControlApprovePanel");
-const homeControlMemberUserId = document.querySelector("#homeControlMemberUserId");
-const homeControlApproveCode = document.querySelector("#homeControlApproveCode");
-const homeControlApproveButton = document.querySelector("#homeControlApproveButton");
-const homeControlDeviceList = document.querySelector("#homeControlDeviceList");
-const homeControlMessage = document.querySelector("#homeControlMessage");
 const todayParuru = document.querySelector("#todayParuru");
 const todayParuruLine = document.querySelector("#todayParuruLine");
 const todayParuruList = document.querySelector("#todayParuruList");
@@ -439,8 +411,6 @@ let homeAgentConversationContext = {};
 let pendingHomeAgentActionCandidate = null;
 let pendingHomeAgentRetry = null;
 let pendingHomeInputIntentConfirmation = null;
-let homeControlPollTimer = null;
-let homeControlSelectedMemberUserId = "";
 let activeMembershipContext = null;
 let healthTaskCache = null;
 
@@ -546,6 +516,7 @@ if ("serviceWorker" in navigator) {
 
 let appAuthenticationState = "booting";
 let normalPwaInitialized = false;
+let firebaseAuthService = null;
 
 function canUseHomeControl_() {
   return hasMembershipCapability_("home.control");
@@ -583,16 +554,10 @@ async function callAuthenticatedHealth_(action, body = {}) {
   if (!NURSE_OKAN_HEALTH_ACTIONS.has(action)) {
     throw createHomeControlError("HEALTH_ACTION_NOT_ALLOWED");
   }
-  const token = getHomeAgentPairingToken();
-  if (!token || !userProfile?.deviceId) {
-    throw createHomeControlError("AUTHENTICATION_REQUIRED");
-  }
   try {
     return await callHomeControlApi({
       ...(body && typeof body === "object" ? body : {}),
       action,
-      deviceId: userProfile.deviceId,
-      pairingToken: token,
     });
   } catch (error) {
     if (error && typeof error === "object" && !error.code) error.code = "HOME_CONTROL_UNAVAILABLE";
@@ -604,16 +569,10 @@ async function callNurseOkanComment_(body = {}) {
   if (appAuthenticationState !== "active_member" || !normalPwaInitialized) {
     throw createHomeControlError("AUTHENTICATION_REQUIRED");
   }
-  const token = getHomeAgentPairingToken();
-  if (!token || !userProfile?.deviceId) {
-    throw createHomeControlError("AUTHENTICATION_REQUIRED");
-  }
   return callHomeControlApi({
     action: "nurseOkanComment",
     targetMemberUserId: String(body.targetMemberUserId || "").trim(),
     clientRequestId: String(body.clientRequestId || "").trim(),
-    deviceId: userProfile.deviceId,
-    pairingToken: token,
   });
 }
 
@@ -673,21 +632,13 @@ async function callAuthenticatedPetHealth_(action, body = {}) {
   if (!PET_HEALTH_ACTIONS.has(action)) {
     throw createHomeControlError("PET_HEALTH_ACTION_NOT_ALLOWED");
   }
-  const token = getHomeAgentPairingToken();
-  if (!token || !userProfile?.deviceId) {
-    throw createHomeControlError("AUTHENTICATION_REQUIRED");
-  }
   const authenticatedPayload = buildAuthenticatedPetHealthPayload_(action, body);
   const dashboardDiagnostic = action === "pet.health.getDashboard"
     ? { requestId: String(authenticatedPayload.requestId || ""), startedAtMs: Date.now() }
     : null;
   if (dashboardDiagnostic) logPetHealthDashboardDiagnostic_(dashboardDiagnostic, "REQUEST_SENT");
   try {
-    const request = callHomeControlApi({
-      ...authenticatedPayload,
-      deviceId: userProfile.deviceId,
-      pairingToken: token,
-    });
+    const request = callHomeControlApi(authenticatedPayload);
     const result = action === "pet.health.getDashboard"
       ? await withPetHealthDashboardTimeout_(request)
       : await request;
@@ -771,6 +722,13 @@ function showAuthenticationState(message, state = "locked") {
     try { globalThis.PALURUBus?.setActive(false); } catch { /* Bus lifecycle must not block authentication. */ }
     try { globalThis.PALURUBusHub?.setActive(false); } catch { /* Hub lifecycle must not block authentication. */ }
     activeMembershipContext = null;
+    inboxItems = [];
+    familyInboxReviews = [];
+    activeFamilyInboxReview = null;
+    healthTaskCache = null;
+    homeAgentConversationContext = {};
+    notificationCandidatesState = { lastFetchedAt: 0, inFlight: null, items: [], totalCount: 0, includeTomorrow: false, warnings: [] };
+    try { sessionStorage.removeItem(AGENT_CHAT_SESSION_STORAGE_KEY); } catch (_) {}
     if (typeof CustomEvent === "function" && typeof document.dispatchEvent === "function") document.dispatchEvent(new CustomEvent("kaz-os:locked", { detail: {} }));
     if (typeof pendingHomeAgentActionCandidate !== "undefined") pendingHomeAgentActionCandidate = null;
   }
@@ -786,58 +744,7 @@ function showAuthenticationState(message, state = "locked") {
     authLock.hidden = false;
     authLockMessage.textContent = message;
     document.body.classList.remove("is-authenticated");
-    [authLockUnpaired, authLockPending, authLockError].forEach((element) => {
-      if (element) element.hidden = true;
-    });
-    const panel = state === "unpaired"
-      ? authLockUnpaired
-      : state === "pairing_pending"
-        ? authLockPending
-        : authLockError;
-    if (panel) panel.hidden = false;
   }
-}
-
-function setAuthenticationRetryState_(message, isBusy = false) {
-  if (authLockMessage) authLockMessage.textContent = message;
-  if (authLockRetryButton) {
-    authLockRetryButton.disabled = isBusy;
-    authLockRetryButton.textContent = isBusy ? "再確認中…" : "再確認";
-  }
-}
-
-async function retryAuthentication_() {
-  if (authLockRetryButton?.disabled) return;
-  setAuthenticationRetryState_("端末を再確認中…", true);
-  try {
-    await initializeAuthenticatedPwa();
-    if (appAuthenticationState === "active_member") {
-      setAuthenticationRetryState_("端末を確認できました。");
-      if (typeof message !== "undefined" && message) {
-        message.textContent = "端末を確認できました。";
-        message.className = "message success";
-      }
-      return;
-    }
-    if (appAuthenticationState === "revoked_error") {
-      setAuthenticationRetryState_("再確認できませんでした。端末が無効化されている場合は再登録してください。");
-    }
-  } catch (error) {
-    showAuthenticationState("再確認できませんでした。", "revoked_error");
-  } finally {
-    if (appAuthenticationState !== "active_member") setAuthenticationRetryState_(authLockMessage?.textContent || "再確認できませんでした。");
-  }
-}
-
-function resetRevokedDeviceForReRegistration_() {
-  if (appAuthenticationState !== "revoked_error") return;
-  const confirmReRegistration = typeof window.confirm === "function"
-    ? window.confirm("この端末を再登録します。端末の承認情報だけを削除し、プロフィールやメモは残ります。続けますか？")
-    : false;
-  if (!confirmReRegistration) return;
-  localStorage.removeItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY);
-  clearHomeControlPending();
-  showAuthenticationState("この端末は未登録です。既存の6桁コードで登録を開始してください。", "unpaired");
 }
 
 function initializeNormalPwaOnce() {
@@ -855,55 +762,50 @@ function initializeNormalPwaOnce() {
   loadNotificationCandidates({ force: true });
 }
 
-function bindAuthenticationLockControls_() {
-  authLockBeginButton?.addEventListener("click", async () => {
-    if (homeControlDeviceName) homeControlDeviceName.value = authLockDeviceName.value;
-    await beginHomeControlPairing();
-    renderAuthenticationLock_();
-  });
-  authLockRetryButton?.addEventListener("click", retryAuthentication_);
-  authLockReRegisterButton?.addEventListener("click", resetRevokedDeviceForReRegistration_);
-}
-
-bindAuthenticationLockControls_();
-
-function renderAuthenticationLock_() {
-  const pending = getHomeControlPending();
-  if (!pending) {
-    showAuthenticationState("この端末は未登録です。端末登録を完了してください。", "unpaired");
-    return;
-  }
-  if (isHomeControlPendingExpired_(pending)) {
-    showAuthenticationState("端末登録を確認中…", "pairing_pending");
-    if (authLockCode) authLockCode.textContent = "";
-    if (authLockExpiry) authLockExpiry.textContent = "";
-    void pollHomeControlPairing();
-    return;
-  }
-  showAuthenticationState("端末承認を待っています。", "pairing_pending");
-  authLockCode.textContent = String(pending.code || "");
-  authLockExpiry.textContent = formatHomeControlExpiry(pending.expiresAt);
-  scheduleHomeControlPoll();
-}
-
 async function initializeAuthenticatedPwa() {
-  showAuthenticationState("端末を確認中…", "booting");
+  showAuthenticationState("Googleセッションを確認中…", "booting");
   userProfile = loadUserProfile();
-  const token = getHomeAgentPairingToken();
-  if (!token) {
-    const pending = getHomeControlPending();
-    showAuthenticationState(pending ? "端末承認を待っています。" : "この端末は未登録です。端末登録を完了してください。", pending ? "pairing_pending" : "unpaired");
-    renderAuthenticationLock_();
-    return;
-  }
   try {
-    const membershipContext = await callHomeControlApi({ action: "membership.context.get", deviceId: userProfile.deviceId, pairingToken: token });
-    activateMembershipContext_(membershipContext);
+    firebaseAuthService = await globalThis.PALURUFirebaseAuthRuntime.create({
+      gasWebAppUrl: GAS_WEB_APP_URL,
+      onState: handleFirebaseAuthenticationState_,
+    });
+    firebaseAuthService.renderGoogleButton(authGoogleButton);
   } catch (error) {
-    showAuthenticationState("端末登録を確認できませんでした。", "revoked_error");
-    setAuthenticationRetryState_("端末登録を確認できませんでした。再確認するか、この端末を再登録してください。");
+    showAuthenticationState(`認証を開始できませんでした: ${safeAuthenticationCode_(error)}`, "auth_error");
   }
 }
+
+function handleFirebaseAuthenticationState_(value) {
+  const state = String(value?.state || "error");
+  if (state === "active" && value.actor) {
+    activateMembershipContext_(value.actor);
+    return;
+  }
+  if (state === "booting" || state === "resolving") {
+    showAuthenticationState(state === "resolving" ? "家族情報を確認中…" : "Googleセッションを確認中…", "booting");
+    return;
+  }
+  if (state === "signed_out") {
+    showAuthenticationState("Googleで続けてください。", "signed_out");
+    return;
+  }
+  showAuthenticationState(`認証を完了できませんでした: ${String(value?.safeCode || "AUTHENTICATION_FAILED")}`, "auth_error");
+}
+
+function safeAuthenticationCode_(error) {
+  return String(error?.code || "AUTH_UNAVAILABLE").replace(/[^A-Z0-9_]/g, "").slice(0, 80) || "AUTH_UNAVAILABLE";
+}
+
+authLogoutButton?.addEventListener("click", async () => {
+  if (!firebaseAuthService) return;
+  await firebaseAuthService.logout();
+});
+
+authAccountSwitchButton?.addEventListener("click", async () => {
+  if (!firebaseAuthService) return;
+  await firebaseAuthService.beginAccountSwitch();
+});
 
 const activateMembershipContext_ = function(membershipContext) {
   activeMembershipContext = {
@@ -915,11 +817,13 @@ const activateMembershipContext_ = function(membershipContext) {
     capabilities: Array.isArray(membershipContext.capabilities) ? membershipContext.capabilities.slice() : [],
     allowedViews: Array.isArray(membershipContext.allowedViews) ? membershipContext.allowedViews.slice() : [],
   };
+  if (authAccountStatus) authAccountStatus.textContent = `${membershipContext.displayName}としてログイン中`;
   if (typeof familyInboxSubjectMember !== "undefined" && familyInboxSubjectMember && Array.from(familyInboxSubjectMember.options).some((option) => option.value === membershipContext.memberUserId)) {
     familyInboxSubjectMember.value = membershipContext.memberUserId;
   }
   appAuthenticationState = "active_member";
   initializeNormalPwaOnce();
+  void loadNotificationCandidates({ force: true });
   applyAllowedViews_();
   applyMembershipCapabilityVisibility_();
   document.dispatchEvent(new CustomEvent("paruru:authenticated", {
@@ -1591,27 +1495,6 @@ profileForm.addEventListener("submit", async (event) => {
   await loadNotificationCandidates({ force: true });
 });
 
-homeControlEnableButton?.addEventListener("click", () => beginHomeControlPairing());
-homeControlMemberUserId?.addEventListener("change", () => {
-  const memberUserId = readHomeControlRegistrationIdentity_();
-  if (memberUserId && homeControlMessage?.textContent === "登録する家族を選んでな。") {
-    setHomeControlMessage("");
-  }
-  syncHomeControlApprovalUi_();
-});
-homeControlApproveCode?.addEventListener("input", () => {
-  if (/^\d{6}$/.test(String(homeControlApproveCode.value || "").trim()) && homeControlMessage?.textContent === "6桁の承認コードを入力してな。") {
-    setHomeControlMessage("");
-  }
-  syncHomeControlApprovalUi_();
-});
-homeControlApproveButton?.addEventListener("click", () => approveHomeControlPairing());
-syncHomeControlApprovalUi_();
-homeControlDeviceList?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-home-control-revoke]");
-  if (button) revokeHomeControlDevice(button.dataset.homeControlRevoke || "");
-});
-
 document.querySelectorAll("[data-close-dialog]").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelector(`#${button.dataset.closeDialog}`)?.close();
@@ -1649,7 +1532,6 @@ async function switchView(viewName) {
 
   if (resolvedView === "settings") {
     renderProfileForm();
-    await renderHomeControlSettings();
   }
 
   if (resolvedView === "nurse-okan") {
@@ -1968,13 +1850,7 @@ async function saveMemo(payload) {
     return dummyCreate(payload);
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify(payload),
-  });
+  const response = await postAuthenticatedApi_(payload);
 
   return parseApiResponse(response);
 }
@@ -1984,13 +1860,7 @@ async function callHomeAgent(payload) {
     return dummyHomeAgent(payload);
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify(payload),
-  });
+  const response = await postAuthenticatedApi_(payload);
 
   return parseApiResponse(response);
 }
@@ -2004,13 +1874,7 @@ async function callAgentChat(payload) {
   logAgentChatDiagnostic_("info", "REQUEST_START", diagnostic, {});
   let response;
   try {
-    response = await fetch(GAS_WEB_APP_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify(payload),
-    });
+    response = await postAuthenticatedApi_(payload);
   } catch (error) {
     logAgentChatDiagnostic_("error", "FETCH_FAILED", diagnostic);
     throw createAgentChatClientError("AGENT_UNAVAILABLE", "FETCH_FAILED");
@@ -2149,17 +2013,10 @@ async function executeHomeAgentAction(candidate) {
     };
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify({
+  const response = await postAuthenticatedApi_({
       action: "homeAgentAction",
       confirmationId: String(candidate?.confirmationId || ""),
       clientRequestId: String(candidate?.clientRequestId || ""),
-      pairingToken: getHomeAgentPairingToken(),
-    }),
   });
 
   return parseApiResponse(response);
@@ -2177,19 +2034,10 @@ async function executeAgentActionConfirmation(candidate) {
     };
   }
 
-  const profile = getCurrentProfile();
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify({
+  const response = await postAuthenticatedApi_({
       action: "agentActionConfirm",
       confirmationId: String(candidate?.confirmationId || ""),
       clientRequestId: String(candidate?.clientRequestId || ""),
-      deviceId: profile.deviceId,
-      pairingToken: getHomeAgentPairingToken(),
-    }),
   });
 
   return parseApiResponse(response);
@@ -2200,19 +2048,10 @@ async function cancelAgentActionConfirmation(candidate) {
   if (!GAS_WEB_APP_URL) {
     return { success: true, status: "cancelled" };
   }
-  const profile = getCurrentProfile();
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify({
+  const response = await postAuthenticatedApi_({
       action: "agentActionCancel",
       confirmationId: String(candidate?.confirmationId || ""),
       clientRequestId: String(candidate?.clientRequestId || ""),
-      deviceId: profile.deviceId,
-      pairingToken: getHomeAgentPairingToken(),
-    }),
   });
   return parseApiResponse(response);
 }
@@ -2221,11 +2060,7 @@ async function callHomeControlApi(payload) {
   if (!GAS_WEB_APP_URL) throw createHomeControlError("HOME_CONTROL_UNAVAILABLE");
   let response;
   try {
-    response = await fetch(GAS_WEB_APP_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload),
-    });
+    response = await postAuthenticatedApi_(payload);
   } catch (cause) {
     throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", { cause });
   }
@@ -2242,6 +2077,22 @@ async function callHomeControlApi(payload) {
   return result.data || {};
 }
 
+async function postAuthenticatedApi_(payload) {
+  if (!firebaseAuthService || appAuthenticationState !== "active_member") {
+    throw createHomeControlError("AUTHENTICATION_REQUIRED");
+  }
+  const source = payload && typeof payload === "object" ? payload : {};
+  const request = Object.assign({}, source);
+  ["auth", "deviceId", "pairingToken", "memberUserId", "userId", "userDisplayName", "calendarSuffix", "role", "capabilities", "homeId", "_authenticatedActor"].forEach((key) => delete request[key]);
+  request.auth = await firebaseAuthService.getAuthEnvelope(false);
+  return fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(request),
+  });
+}
+
 async function readHomeControlErrorResponse_(response) {
   try { return await response.clone().json(); } catch (_) { return null; }
 }
@@ -2255,325 +2106,11 @@ function createHomeControlError(code, details = {}) {
   return error;
 }
 
-function getHomeControlPending() {
-  try {
-    const value = JSON.parse(localStorage.getItem(HOME_CONTROL_PENDING_STORAGE_KEY) || "");
-    const valid = value
-      && isUuid(value.requestId)
-      && typeof value.requestSecret === "string"
-      && typeof value.token === "string"
-      && /^\d{6}$/.test(String(value.code || ""));
-    if (!valid) {
-      localStorage.removeItem(HOME_CONTROL_PENDING_STORAGE_KEY);
-      return null;
-    }
-    return value;
-  } catch (error) {
-    localStorage.removeItem(HOME_CONTROL_PENDING_STORAGE_KEY);
-    return null;
-  }
-}
-
-function saveHomeControlPending(value) {
-  localStorage.setItem(HOME_CONTROL_PENDING_STORAGE_KEY, JSON.stringify(value));
-}
-
-function clearHomeControlPending() {
-  localStorage.removeItem(HOME_CONTROL_PENDING_STORAGE_KEY);
-  if (homeControlPollTimer) {
-    clearTimeout(homeControlPollTimer);
-    homeControlPollTimer = null;
-  }
-}
-
-function isHomeControlPendingExpired_(pending) {
-  const now = Date.now();
-  const codeExpiresAt = Date.parse(String(pending?.expiresAt || ""));
-  const requestExpiresAt = Number(pending?.requestExpiresAt || 0);
-  return (Number.isFinite(codeExpiresAt) && now >= codeExpiresAt)
-    || (Number.isFinite(requestExpiresAt) && requestExpiresAt > 0 && now >= requestExpiresAt);
-}
-
-function expireHomeControlPending_() {
-  clearHomeControlPending();
-  showAuthenticationState("承認期限が切れました。もう一度登録してください。", "unpaired");
-}
-
-function setHomeControlMessage(message, type = "") {
-  if (!homeControlMessage) return;
-  homeControlMessage.textContent = message || "";
-  homeControlMessage.className = `form-message${type ? ` ${type}` : ""}`;
-}
-
-function formatHomeControlExpiry(value) {
-  const expires = Date.parse(String(value || ""));
-  const remaining = Number.isFinite(expires) ? Math.max(0, Math.ceil((expires - Date.now()) / 1000)) : 0;
-  return remaining > 0 ? `有効期限：あと${Math.ceil(remaining / 60)}分` : "承認コードの期限が切れました。";
-}
-
-async function createHomeControlToken() {
-  if (!globalThis.crypto?.getRandomValues || !globalThis.crypto?.subtle) throw createHomeControlError("HOME_CONTROL_CRYPTO_UNAVAILABLE");
-  const bytes = new Uint8Array(32);
-  globalThis.crypto.getRandomValues(bytes);
-  const token = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  const tokenHash = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
-  return { token, tokenHash };
-}
-
-async function beginHomeControlPairing() {
-  if (homeControlEnableButton?.disabled) return;
-  const profile = getCurrentProfile();
-  const displayName = String(homeControlDeviceName?.value || profile.displayName || "この端末").trim();
-  if (!displayName) {
-    setHomeControlMessage("端末名を入力してな。", "error");
-    return;
-  }
-  homeControlEnableButton.disabled = true;
-  setHomeControlMessage("登録コードを準備中…");
-  try {
-    const generated = await createHomeControlToken();
-    const data = await callHomeControlApi({ action: "deviceRegistrationBegin", deviceId: profile.deviceId, displayName, tokenHash: generated.tokenHash });
-    if (!isUuid(data.requestId) || !/^\d{6}$/.test(String(data.code || "")) || !String(data.requestSecret || "")) throw createHomeControlError("HOME_CONTROL_FAILED");
-    saveHomeControlPending({ requestId: data.requestId, requestSecret: data.requestSecret, token: generated.token, code: data.code, expiresAt: data.expiresAt, requestExpiresAt: Date.now() + 15 * 60 * 1000, displayName });
-    renderAuthenticationLock_();
-  } catch (error) {
-    setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
-  } finally {
-    if (homeControlEnableButton) homeControlEnableButton.disabled = false;
-  }
-}
-
-async function pollHomeControlPairing() {
-  const pending = getHomeControlPending();
-  if (!pending) return;
-  try {
-    const profile = userProfile || loadUserProfile();
-    try {
-      const membershipContext = await callHomeControlApi({ action: "membership.context.get", deviceId: profile.deviceId, pairingToken: pending.token });
-      localStorage.setItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY, pending.token);
-      clearHomeControlPending();
-      setHomeControlMessage("この端末を登録したで。", "success");
-      activateMembershipContext_(membershipContext);
-      return;
-    } catch (authenticationError) {
-      if (!["UNAUTHORIZED_DEVICE", "MEMBERSHIP_NOT_FOUND"].includes(authenticationError?.code)) throw authenticationError;
-    }
-    if (isHomeControlPendingExpired_(pending)) {
-      expireHomeControlPending_();
-      return;
-    }
-    const data = await callHomeControlApi({ action: "devicePairingStatus", requestId: pending.requestId, requestSecret: pending.requestSecret });
-    if (data.status === "active") {
-      localStorage.setItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY, pending.token);
-      clearHomeControlPending();
-      setHomeControlMessage("この端末を登録したで。", "success");
-      await initializeAuthenticatedPwa();
-      return;
-    }
-    if (data.status === "revoked") {
-      clearHomeControlPending();
-      showAuthenticationState("端末登録を続行できません。管理者に確認してください。", "revoked_error");
-      return;
-    }
-    pending.expiresAt = data.expiresAt || pending.expiresAt;
-    if (Number.isFinite(Date.parse(String(data.expiresAt || "")))) pending.requestExpiresAt = Date.parse(String(data.expiresAt));
-    saveHomeControlPending(pending);
-  } catch (error) {
-    setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
-    if (["PAIRING_REQUEST_INVALID", "INVALID_PAIRING_CODE", "DEVICE_ALREADY_REGISTERED", "UNAUTHORIZED_DEVICE"].includes(error?.code)) {
-      clearHomeControlPending();
-      showAuthenticationState("端末登録を確認できませんでした。", "revoked_error");
-      return;
-    }
-  }
-  scheduleHomeControlPoll();
-}
-
-function scheduleHomeControlPoll() {
-  if (homeControlPollTimer) clearTimeout(homeControlPollTimer);
-  if (getHomeControlPending()) homeControlPollTimer = setTimeout(() => pollHomeControlPairing(), HOME_CONTROL_POLL_MILLISECONDS);
-}
-
-function readHomeControlRegistrationIdentity_() {
-  const selectedOption = homeControlMemberUserId?.selectedOptions?.[0];
-  const selectedValue = String(selectedOption?.value || homeControlMemberUserId?.value || "").trim();
-  if (selectedValue && HOME_CONTROL_REGISTRATION_IDENTITIES[selectedValue]) {
-    homeControlSelectedMemberUserId = selectedValue;
-    return selectedValue;
-  }
-  return HOME_CONTROL_REGISTRATION_IDENTITIES[homeControlSelectedMemberUserId]
-    ? homeControlSelectedMemberUserId
-    : "";
-}
-
-function syncHomeControlApprovalUi_() {
-  const canApprove = canApproveHomeControlPairing_();
-  const memberUserId = readHomeControlRegistrationIdentity_();
-  const code = String(homeControlApproveCode?.value || "").trim();
-  if (homeControlApproveButton) {
-    homeControlApproveButton.disabled = !canApprove || !memberUserId || !/^\d{6}$/.test(code);
-  }
-}
-
-async function approveHomeControlPairing() {
-  if (!canApproveHomeControlPairing_()) {
-    setHomeControlMessage("この端末では新しい端末を承認できません。", "error");
-    return;
-  }
-  const memberUserId = readHomeControlRegistrationIdentity_();
-  const displayName = String(HOME_CONTROL_REGISTRATION_IDENTITIES[memberUserId] || "");
-  if (!memberUserId || !displayName) {
-    setHomeControlMessage("登録する家族を選んでな。", "error");
-    homeControlMemberUserId?.focus();
-    syncHomeControlApprovalUi_();
-    return;
-  }
-  const code = String(homeControlApproveCode?.value || "").trim();
-  const profile = getCurrentProfile();
-  if (!/^\d{6}$/.test(code)) {
-    setHomeControlMessage("6桁の承認コードを入力してな。", "error");
-    homeControlApproveCode?.focus();
-    syncHomeControlApprovalUi_();
-    return;
-  }
-  const clientRequestId = createUuid();
-  if (homeControlApproveButton) homeControlApproveButton.disabled = true;
-  try {
-    const response = await callHomeControlApi({
-      action: "devicePairingApprove", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(),
-      code, memberUserId, displayName, clientRequestId,
-    });
-    logDevicePairingApprovalResult_({ action: "devicePairingApprove", memberUserId, deviceId: profile.deviceId, success: true, errorCode: "", message: "", response });
-    await completeHomeControlApprovalUi_("新しい端末を承認したで。", true);
-  } catch (error) {
-    logDevicePairingApprovalResult_({ action: "devicePairingApprove", memberUserId, deviceId: profile.deviceId, success: false, errorCode: String(error?.response?.error?.code || error?.code || ""), message: String(error?.response?.message || error?.message || ""), response: error?.response || null });
-    setHomeControlMessage(["INVALID_PAIRING_CODE", "INVALID_MEMBER_IDENTITY", "IDEMPOTENCY_CONFLICT", "FORBIDDEN", "UNAUTHORIZED_DEVICE"].includes(error?.code)
-      ? getHomeControlPublicMessage(error?.code)
-      : "承認結果を対象端末で再確認してな。", "error");
-  } finally {
-    if (homeControlApproveButton) homeControlApproveButton.disabled = false;
-  }
-}
-
-async function completeHomeControlApprovalUi_(messageText, refreshSettings) {
-  if (homeControlApproveCode) homeControlApproveCode.value = "";
-  setHomeControlMessage(messageText, "success");
-  if (refreshSettings) await renderHomeControlSettings();
-}
-
-function logDevicePairingApprovalResult_(details) {
-  const stageNames = ["pendingRequest", "registryDevice", "registryActivation", "memberIdentity", "homeMembers", "deviceMemberships", "conflict"];
-  const sourceStages = details?.response?.diagnostics?.stages;
-  const stages = sourceStages && typeof sourceStages === "object"
-    ? stageNames.reduce((result, name) => {
-      if (typeof sourceStages[name] === "string") result[name] = sourceStages[name].slice(0, 40);
-      return result;
-    }, {})
-    : {};
-  const entry = {
-    action: String(details?.action || "devicePairingApprove"),
-    memberUserId: String(details?.memberUserId || ""),
-    deviceIdSuffix: String(details?.deviceId || "").slice(-8),
-    success: Boolean(details?.success),
-    errorCode: String(details?.errorCode || ""),
-    registrationState: String(details?.response?.registrationState || ""),
-    replayed: details?.response?.replayed === true,
-    stages,
-    buildId: String(globalThis.BUILD_ID || ""),
-  };
-  (entry.success ? console.info : console.error)("[Paruru] devicePairingApprove", entry);
-}
-
-function canApproveHomeControlPairing_() {
-  return appAuthenticationState === "active_member" && activeMembershipContext?.role === "admin";
-}
-
-async function revokeHomeControlDevice(targetDeviceId) {
-  if (!canApproveHomeControlPairing_()) {
-    return;
-  }
-  const profile = getCurrentProfile();
-  try {
-    await callHomeControlApi({ action: "devicePairingRevoke", deviceId: profile.deviceId, pairingToken: getHomeAgentPairingToken(), targetDeviceId });
-    if (targetDeviceId === profile.deviceId) localStorage.removeItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY);
-    setHomeControlMessage("端末を失効したで。", "success");
-    await renderHomeControlSettings();
-  } catch (error) {
-    setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
-  }
-}
-
-async function renderHomeControlSettings() {
-  const profile = getCurrentProfile();
-  const token = getHomeAgentPairingToken();
-  const pending = getHomeControlPending();
-  if (homeControlUnregistered) homeControlUnregistered.hidden = Boolean(token || pending);
-  if (homeControlPending) homeControlPending.hidden = !pending;
-  if (homeControlRegistered) homeControlRegistered.hidden = !token;
-  const canApprove = canApproveHomeControlPairing_();
-  if (homeControlApprovePanel) homeControlApprovePanel.hidden = !canApprove;
-  syncHomeControlApprovalUi_();
-  if (homeControlDeviceList) {
-    homeControlDeviceList.hidden = !canApprove;
-    if (!canApprove) homeControlDeviceList.replaceChildren();
-  }
-  if (pending) {
-    if (homeControlPendingCode) homeControlPendingCode.textContent = String(pending.code || "");
-    if (homeControlPendingExpiry) homeControlPendingExpiry.textContent = formatHomeControlExpiry(pending.expiresAt);
-    if (homeControlStatus) homeControlStatus.textContent = "この端末の承認を待っています。";
-    scheduleHomeControlPoll();
-    return;
-  }
-  if (!token) {
-    if (homeControlStatus) homeControlStatus.textContent = "この端末は未登録です。";
-    if (homeControlDeviceName && !homeControlDeviceName.value) homeControlDeviceName.value = `${profile.displayName || "ぱるる"}の端末`;
-    return;
-  }
-  if (homeControlStatus) homeControlStatus.textContent = "この端末は登録済みです。";
-  if (homeControlRegisteredLabel) homeControlRegisteredLabel.textContent = `${profile.displayName || "この"}端末で家電操作を利用できます。`;
-  if (!canApprove) {
-    return;
-  }
-  try {
-    const data = await callHomeControlApi({ action: "devicePairingList", deviceId: profile.deviceId, pairingToken: token });
-    renderHomeControlDeviceList(Array.isArray(data.devices) ? data.devices : []);
-  } catch (error) {
-    setHomeControlMessage(getHomeControlPublicMessage(error?.code), "error");
-  }
-}
-
-function renderHomeControlDeviceList(devices) {
-  if (!homeControlDeviceList) return;
-  homeControlDeviceList.innerHTML = devices.length ? devices.map((device) => {
-    const label = escapeHtml(String(device.displayName || "登録済み端末"));
-    const state = device.status === "active" ? "登録済み" : device.status === "revoked" ? "失効済み" : "承認待ち";
-    const isCurrent = device.isCurrentDevice === true || device.isCurrent === true;
-    const current = isCurrent ? '<span>この端末</span>' : "";
-    const revoke = device.status === "active" && !isCurrent ? `<button type="button" class="secondary-button" data-home-control-revoke="${escapeHtml(String(device.deviceId || ""))}">失効</button>` : "";
-    return `<div class="home-control-device-row"><span>${label}（${state}）</span>${current}${revoke}</div>`;
-  }).join("") : "<p>登録済み端末を読み込めませんでした。</p>";
-}
-
-function getHomeControlPublicMessage(code) {
-  if (code === "DEVICE_LIMIT_REACHED") return "登録できる端末数の上限です。";
-  if (code === "PAIRING_CODE_RATE_LIMITED") return "承認コードの確認回数が多すぎます。しばらく待ってな。";
-  if (code === "UNAUTHORIZED_DEVICE") return "この端末の登録状態を確認できませんでした。";
-  if (code === "INVALID_PAIRING_CODE") return "承認コードを確認できませんでした。";
-  return "家電操作の端末登録を完了できませんでした。";
-}
-
 function buildHomeAgentPayload(messageText, options = {}) {
-  const profile = getCurrentProfile();
   return {
     action: "homeAgent",
     message: messageText,
-    userId: profile.userId,
-    userDisplayName: profile.displayName,
-    calendarSuffix: profile.calendarSuffix,
-    deviceId: profile.deviceId,
     clientRequestId: options.clientRequestId || createUuid(),
-    pairingToken: getHomeAgentPairingToken(),
     conversationId: "",
     context: homeAgentConversationContext,
   };
@@ -2610,7 +2147,6 @@ async function submitHomeAgentQuery(messageText, options = {}) {
 }
 
 function buildAgentChatPayload(messageText, options = {}) {
-  const profile = getCurrentProfile();
   const sessionId = options.sessionId || getOrCreateAgentChatSessionId();
   const clientRequestId = options.clientRequestId || createUuid();
   return {
@@ -2618,8 +2154,6 @@ function buildAgentChatPayload(messageText, options = {}) {
     message: String(messageText || "").trim(),
     sessionId,
     clientRequestId,
-    deviceId: profile.deviceId,
-    pairingToken: getHomeAgentPairingToken(),
     requestMetadata: buildAgentRequestMetadata(messageText, {
       purpose: options.purpose,
       sessionId,
@@ -2680,8 +2214,6 @@ async function submitAgentChatQuery(messageText, options = {}) {
     message: request.message,
     sessionId: request.sessionId,
     clientRequestId: request.clientRequestId,
-    deviceId: request.deviceId,
-    pairingToken: request.pairingToken,
     requestMetadata: request.requestMetadata,
   };
   pendingHomeAgentRetry = request;
@@ -2846,12 +2378,7 @@ function validateAgentFollowup(followup) {
 }
 
 function buildMemoCredentialPayload(action) {
-  const profile = getCurrentProfile();
-  return {
-    ...(action ? { action } : {}),
-    deviceId: profile.deviceId,
-    pairingToken: getHomeAgentPairingToken(),
-  };
+  return action ? { action } : {};
 }
 
 function buildCreateWithAIPayload(memo) {
@@ -2860,10 +2387,6 @@ function buildCreateWithAIPayload(memo) {
   const payload = {
     action: "createWithAI",
     memo,
-    userId: profile.userId,
-    userDisplayName: profile.displayName,
-    calendarSuffix: profile.calendarSuffix,
-    deviceId: profile.deviceId,
     visibility: "private",
     ...buildMemoCredentialPayload(),
   };
@@ -2881,8 +2404,6 @@ function buildCreateWithAIPayload(memo) {
     hasMemo: Boolean(payload.memo),
     category: payload.category || "",
     priority: payload.priority || "",
-    userId: payload.userId || "",
-    hasDeviceId: Boolean(payload.deviceId),
   });
   return payload;
 }
@@ -2892,11 +2413,7 @@ async function fetchInboxItems() {
     return sortInboxItemsNewestFirst(loadDummyItems().filter(isInboxItem));
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(buildMemoCredentialPayload("list")),
-  });
+  const response = await postAuthenticatedApi_(buildMemoCredentialPayload("list"));
   const result = await parseApiResponse(response);
   return sortInboxItemsNewestFirst((result.data || []).filter(isInboxItem));
 }
@@ -2994,32 +2511,22 @@ async function fetchNotificationCandidates() {
     );
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({
+  const response = await postAuthenticatedApi_({
       ...buildMemoCredentialPayload("todayParuruContext"),
       selectedMemberKeys: resolveCalendarMemberKeysForServer(profile.selectedCalendarMemberKeys).join(","),
       includeUnknown: profile.includeUnknownCalendarEvents ? "true" : "false",
       tomorrowScheduleStartTime: getTomorrowScheduleStartTime(profile),
-    }),
   });
   return parseApiResponse(response);
 }
 
 async function fetchNotificationCandidatesForDate(profile, targetDate) {
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({
+  const response = await postAuthenticatedApi_({
       ...buildMemoCredentialPayload("notificationCandidates"),
       limit: "50",
       date: targetDate,
       selectedMemberKeys: resolveCalendarMemberKeysForServer(profile.selectedCalendarMemberKeys).join(","),
       includeUnknown: profile.includeUnknownCalendarEvents ? "true" : "false",
-    }),
   });
   return parseApiResponse(response);
 }
@@ -3111,13 +2618,7 @@ async function updateInboxItem(id, updates) {
   }
 
   try {
-    const response = await fetch(GAS_WEB_APP_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify({ ...buildMemoCredentialPayload("update"), id, ...updates }),
-    });
+    const response = await postAuthenticatedApi_({ ...buildMemoCredentialPayload("update"), id, ...updates });
 
     return await parseApiResponse(response);
   } catch (error) {
@@ -3131,13 +2632,7 @@ async function answerFollowup(payload) {
     return dummyAnswerFollowup(payload);
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify({ ...buildMemoCredentialPayload("answerFollowup"), ...payload }),
-  });
+  const response = await postAuthenticatedApi_({ ...buildMemoCredentialPayload("answerFollowup"), ...payload });
 
   return parseApiResponse(response);
 }
@@ -3148,13 +2643,7 @@ async function syncCalendar(payload) {
   }
 
   debugLog("[Paruru] syncCalendar payload", sanitizeCalendarPayloadForLog(payload));
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify({ ...buildMemoCredentialPayload("syncCalendar"), ...payload }),
-  });
+  const response = await postAuthenticatedApi_({ ...buildMemoCredentialPayload("syncCalendar"), ...payload });
 
   return parseApiResponse(response, { debugLabel: "syncCalendar" });
 }
@@ -3164,13 +2653,7 @@ async function updateCalendar(payload) {
     return dummyUpdateCalendar(payload);
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify({ ...buildMemoCredentialPayload("updateCalendar"), ...payload }),
-  });
+  const response = await postAuthenticatedApi_({ ...buildMemoCredentialPayload("updateCalendar"), ...payload });
 
   return parseApiResponse(response);
 }
@@ -3180,13 +2663,7 @@ async function deleteInboxItem(id) {
     return dummyDelete(id);
   }
 
-  const response = await fetch(GAS_WEB_APP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify({ ...buildMemoCredentialPayload("delete"), id }),
-  });
+  const response = await postAuthenticatedApi_({ ...buildMemoCredentialPayload("delete"), id });
 
   return parseApiResponse(response);
 }
@@ -3231,8 +2708,6 @@ async function parseApiResponse(response, options = {}) {
 }
 
 function logInboxUpdateFailure_(id, error) {
-  const profile = getCurrentProfile();
-  const pairingToken = getHomeAgentPairingToken();
   console.error("[Paruru] Inbox update failed", {
     action: "update",
     httpStatus: Number.isFinite(Number(error?.httpStatus)) ? Number(error.httpStatus) : null,
@@ -3241,8 +2716,7 @@ function logInboxUpdateFailure_(id, error) {
     responseMessage: String(error?.responseMessage || error?.message || "").trim(),
     inboxId: String(id || "").trim(),
     role: String(activeMembershipContext?.role || "").trim(),
-    hasDeviceId: Boolean(profile?.deviceId),
-    hasPairingToken: Boolean(pairingToken),
+    authenticated: typeof appAuthenticationState !== "undefined" && appAuthenticationState === "active_member",
   });
 }
 
@@ -5028,10 +4502,6 @@ function buildCalendarSyncPayload(state) {
     endDate: endDate || startDate,
     endTime: allDay ? "" : endTime,
     allDay,
-    userId: profile.userId,
-    userDisplayName: profile.displayName,
-    calendarSuffix: profile.calendarSuffix,
-    deviceId: profile.deviceId,
   };
 }
 
@@ -5371,7 +4841,6 @@ function loadUserProfile() {
     selectedCalendarMemberKeys: stored.selectedCalendarMemberKeys,
     includeUnknownCalendarEvents: stored.includeUnknownCalendarEvents,
     tomorrowScheduleStartTime: stored.tomorrowScheduleStartTime,
-    deviceId: stored.deviceId || createDeviceId(),
   };
   profile.selectedCalendarMemberKeys = normalizeCalendarMemberSelection(profile.selectedCalendarMemberKeys);
   profile.includeUnknownCalendarEvents = Boolean(profile.includeUnknownCalendarEvents);
@@ -5386,14 +4855,6 @@ function readStoredProfile() {
   } catch (error) {
     return {};
   }
-}
-
-function createDeviceId() {
-  if (crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-
-  return `device-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function getOrCreateAgentChatSessionId() {
@@ -5442,7 +4903,6 @@ function renderProfileForm() {
   if (profileRole) profileRole.value = profile.role || "";
   profileCalendarSuffix.value = profile.calendarSuffix || "";
   profileDefaultCalendar.value = "Family";
-  profileDeviceId.value = profile.deviceId || "";
   if (profileTomorrowScheduleStartTime) {
     profileTomorrowScheduleStartTime.value = getTomorrowScheduleStartTime(profile);
   }
@@ -5450,12 +4910,10 @@ function renderProfileForm() {
 }
 
 function saveUserProfileFromForm() {
-  const current = getCurrentProfile();
   const profile = {
     selectedCalendarMemberKeys: readCalendarMemberSelectionFromForm(),
     includeUnknownCalendarEvents: Boolean(profileIncludeUnknownCalendarEvents?.checked),
     tomorrowScheduleStartTime: normalizeClockTime(profileTomorrowScheduleStartTime?.value) || DEFAULT_TOMORROW_SCHEDULE_START_TIME,
-    deviceId: current.deviceId || createDeviceId(),
   };
   localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   return profile;
@@ -5525,10 +4983,6 @@ function applyMembershipCapabilityVisibility_() {
   if (familyInboxReviewSection) familyInboxReviewSection.hidden = !hasMembershipCapability_("family.inbox.review");
   if (!hasMembershipCapability_("calendar.family.create")) hideCalendarSyncPanel("home");
   if (!hasMembershipCapability_("calendar.family.edit_own")) hideCalendarSyncPanel("detail");
-}
-
-function getHomeAgentPairingToken() {
-  return String(localStorage.getItem(HOME_AGENT_PAIRING_TOKEN_STORAGE_KEY) || "").trim();
 }
 
 function normalizeCalendarMemberSelection(value) {

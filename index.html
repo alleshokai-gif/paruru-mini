@@ -21,18 +21,13 @@
         <p class="splash-logo">PALURU</p>
         <p class="splash-tagline">AI for everyday life.</p>
       </div>
-      <p class="splash-loading">端末を確認中…</p>
+      <p class="splash-loading">Googleセッションを確認中…</p>
     </div>
 
     <section id="authLock" class="auth-lock" aria-live="polite" hidden>
-      <h1>端末登録</h1><p id="authLockMessage">登録状態を確認中…</p>
-      <div id="authLockUnpaired"><label>この端末の名前<input id="authLockDeviceName" maxlength="80" autocomplete="off"></label><button id="authLockBeginButton" type="button">登録を開始</button></div>
-      <div id="authLockPending" hidden><p>承認コード</p><p id="authLockCode"></p><p id="authLockExpiry"></p><p>父の端末で承認してください。</p></div>
-      <div id="authLockError" hidden>
-        <p>端末登録を再確認してください。端末が無効化されている場合は、既存の6桁コードで再登録できます。</p>
-        <button id="authLockRetryButton" type="button">再確認</button>
-        <button id="authLockReRegisterButton" type="button">この端末を再登録</button>
-      </div>
+      <h1>PALURUへログイン</h1>
+      <p id="authLockMessage">Googleセッションを確認中…</p>
+      <div id="authGoogleButton" class="auth-google-button" aria-label="Googleで続ける"></div>
     </section>
     <button id="menuToggleButton" class="menu-toggle" type="button" aria-label="メニューを開く" aria-controls="appDrawer" aria-expanded="false">☰</button>
 
@@ -227,10 +222,6 @@
               <input id="profileDefaultCalendar" type="text" value="Family" readonly>
             </label>
             <label class="field">
-              <span>&#31471;&#26411;ID</span>
-              <input id="profileDeviceId" type="text" readonly>
-            </label>
-            <label class="field">
               <span>明日の予定を表示する時刻</span>
               <input id="profileTomorrowScheduleStartTime" type="time" required>
             </label>
@@ -252,45 +243,13 @@
             </fieldset>
             <button type="submit">表示設定を保存</button>
           </form>
-          <section id="homeControlSettings" class="settings-fieldset" aria-live="polite">
-            <h2>家電操作</h2>
-            <div id="homeControlStatus"></div>
-            <div id="homeControlUnregistered" hidden>
-              <label class="field">
-                <span>この端末の名前</span>
-                <input id="homeControlDeviceName" type="text" maxlength="80" autocomplete="off">
-              </label>
-              <button id="homeControlEnableButton" type="button">この端末で家電操作を有効にする</button>
+          <section id="accountSettings" class="settings-fieldset" aria-live="polite">
+            <h2>Googleアカウント</h2>
+            <p id="authAccountStatus">ログイン中</p>
+            <div class="account-actions">
+              <button id="authAccountSwitchButton" class="secondary-button" type="button">別のGoogleアカウントへ切替</button>
+              <button id="authLogoutButton" class="secondary-button" type="button">ログアウト</button>
             </div>
-            <div id="homeControlPending" hidden>
-              <p>新しい端末に、次の承認コードを入力してください。</p>
-              <p id="homeControlPendingCode" class="home-control-code"></p>
-              <p id="homeControlPendingExpiry"></p>
-            </div>
-            <div id="homeControlRegistered" hidden>
-              <p id="homeControlRegisteredLabel"></p>
-              <div id="homeControlApprovePanel" class="home-control-approve-panel" hidden>
-                <label class="field">
-                  <span>登録する端末</span>
-                  <select id="homeControlMemberUserId">
-                    <option value="">選んでください</option>
-                    <option value="father">父の端末</option>
-                    <option value="mother">母の端末</option>
-                    <option value="eldest_son">長男の端末</option>
-                    <option value="eldest_daughter">長女の端末</option>
-                    <option value="second_son">次男の端末</option>
-                    <option value="youngest_daughter">次女の端末</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>スマホに表示された6桁コード</span>
-                  <input id="homeControlApproveCode" class="home-control-approve-code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000">
-                </label>
-                <button id="homeControlApproveButton" type="button">承認する</button>
-              </div>
-              <div id="homeControlDeviceList"></div>
-            </div>
-            <p id="homeControlMessage" class="form-message" aria-live="polite"></p>
           </section>
           <p id="buildVersion" class="build-version">アプリVersion: 読み込み中…</p>
         </div>
@@ -523,18 +482,20 @@
       <div id="familyInboxReviewCandidates" class="family-inbox-review-candidates"></div>
     </dialog>
 
-    <script src="./build.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/nurse-okan/health-routine.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./app.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/nurse-okan/nurse-okan.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/popio-health/popio-health.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/bus/config.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/bus/bus.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/bus/journey.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/bus/hub.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/kaz-os/inbox.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/kaz-os/personal.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
-    <script src="./features/kaz-os/navigation.js?v=v20260919-kaz-inbox-registration-v1" defer></script>
+    <script src="./build.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/auth/firebase-auth.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/auth/firebase-auth-runtime.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/nurse-okan/health-routine.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./app.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/nurse-okan/nurse-okan.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/popio-health/popio-health.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/bus/config.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/bus/bus.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/bus/journey.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/bus/hub.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/kaz-os/inbox.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/kaz-os/personal.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./features/kaz-os/navigation.js?v=v20260919-firebase-auth-p3" defer></script>
   </body>
 </html>
 

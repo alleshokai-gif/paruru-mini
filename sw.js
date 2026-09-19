@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260919-kaz-inbox-registration-v1");
-// Release: v20260919-kaz-inbox-registration-v1
+importScripts("./build.js?v=v20260919-firebase-auth-p3");
+// Release: v20260919-firebase-auth-p3
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -10,6 +10,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("build.js"),
   versioned("style.css"),
   versioned("app.js"),
+  versioned("features/auth/firebase-auth.js"),
+  versioned("features/auth/firebase-auth-runtime.js"),
   versioned("features/nurse-okan/health-routine.js"),
   versioned("features/nurse-okan/nurse-okan.js"),
   versioned("features/popio-health/popio-health.js"),
