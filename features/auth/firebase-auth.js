@@ -6,6 +6,8 @@
     SIGNED_OUT: 'signed_out',
     RESOLVING: 'resolving',
     ACTIVE: 'active',
+    REGISTRATION_REQUIRED: 'registration_required',
+    LINK_PENDING: 'link_pending',
     ERROR: 'error',
   });
 
@@ -16,8 +18,9 @@
     const firebaseConfig = settings.firebaseConfig || {};
     const googleClientId = String(settings.googleClientId || '').trim();
     const resolveActor = typeof settings.resolveActor === 'function' ? settings.resolveActor : null;
+    const registerUser = typeof settings.registerUser === 'function' ? settings.registerUser : null;
     const onState = typeof settings.onState === 'function' ? settings.onState : function() {};
-    if (!firebase || !gis || !resolveActor) throw authError_('AUTH_CONFIGURATION_ERROR');
+    if (!firebase || !gis || !resolveActor || !registerUser) throw authError_('AUTH_CONFIGURATION_ERROR');
     if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId || !firebaseConfig.appId || !googleClientId) {
       throw authError_('AUTH_CONFIGURATION_ERROR');
     }
@@ -61,7 +64,16 @@
       } catch (error) {
         if (expectedGeneration !== generation) return null;
         actorContext = null;
-        publish_(AUTH_STATES.ERROR, safeCode_(error));
+        const code = safeCode_(error);
+        if (code === 'REGISTRATION_REQUIRED') {
+          publish_(AUTH_STATES.REGISTRATION_REQUIRED, code);
+          return null;
+        }
+        if (code === 'MEMBER_LINK_PENDING') {
+          publish_(AUTH_STATES.LINK_PENDING, code);
+          return null;
+        }
+        publish_(AUTH_STATES.ERROR, code);
         throw error;
       }
     }
@@ -112,6 +124,19 @@
       return { provider: 'firebase', idToken: idToken };
     }
 
+    async function register(displayName) {
+      if (!currentUser) throw authError_('AUTHENTICATION_REQUIRED');
+      const authEnvelope = await getAuthEnvelope(false);
+      const result = await registerUser(authEnvelope, { displayName: String(displayName || '').trim() });
+      publish_(AUTH_STATES.LINK_PENDING, 'MEMBER_LINK_PENDING');
+      return result;
+    }
+
+    async function retryResolve() {
+      if (!currentUser) throw authError_('AUTHENTICATION_REQUIRED');
+      return resolveCurrentUser_(currentUser);
+    }
+
     async function logout() {
       clearActor_();
       currentUser = null;
@@ -132,6 +157,8 @@
       initialize: initialize,
       renderGoogleButton: renderGoogleButton,
       getAuthEnvelope: getAuthEnvelope,
+      register: register,
+      retryResolve: retryResolve,
       logout: logout,
       beginAccountSwitch: beginAccountSwitch,
       getSafeState: function() {
