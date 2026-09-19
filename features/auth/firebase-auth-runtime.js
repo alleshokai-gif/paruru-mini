@@ -6,20 +6,43 @@
   async function createRuntime(options) {
     const settings = options || {};
     const gasWebAppUrl = String(settings.gasWebAppUrl || '').trim();
-    if (!gasWebAppUrl || !root.PALURUFirebaseAuth) throw codedError_('AUTH_CONFIGURATION_ERROR');
-    const config = await loadPublicConfig_(gasWebAppUrl);
-    const modules = await loadFirebase_();
-    await loadGis_();
-    const service = root.PALURUFirebaseAuth.create({
-      firebase: modules,
-      gis: root.google.accounts.id,
-      firebaseConfig: config.firebaseConfig,
-      googleClientId: config.googleClientId,
-      resolveActor: function(auth) { return resolveActor_(gasWebAppUrl, auth); },
-      registerUser: function(auth, profile) { return registerUser_(gasWebAppUrl, auth, profile); },
-      onState: settings.onState,
-    });
-    await service.initialize();
+    if (!gasWebAppUrl || !root.PALURUFirebaseAuth) throw codedError_('AUTH_RUNTIME_UNAVAILABLE');
+
+    let config;
+    try {
+      config = await loadPublicConfig_(gasWebAppUrl);
+    } catch (_) {
+      throw codedError_('AUTH_CONFIG_LOAD_FAILED');
+    }
+
+    let modules;
+    try {
+      modules = await loadFirebase_();
+    } catch (_) {
+      throw codedError_('FIREBASE_SDK_LOAD_FAILED');
+    }
+
+    try {
+      await loadGis_();
+    } catch (_) {
+      throw codedError_('GIS_LOAD_FAILED');
+    }
+
+    let service;
+    try {
+      service = root.PALURUFirebaseAuth.create({
+        firebase: modules,
+        gis: root.google.accounts.id,
+        firebaseConfig: config.firebaseConfig,
+        googleClientId: config.googleClientId,
+        resolveActor: function(auth) { return resolveActor_(gasWebAppUrl, auth); },
+        registerUser: function(auth, profile) { return registerUser_(gasWebAppUrl, auth, profile); },
+        onState: settings.onState,
+      });
+      await service.initialize();
+    } catch (_) {
+      throw codedError_('AUTH_INITIALIZE_FAILED');
+    }
     return service;
   }
 

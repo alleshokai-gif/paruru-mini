@@ -3145,3 +3145,8 @@ body:not(.is-authenticated) .drawer-overlay {
     grid-template-columns: 1fr;
   }
 }
+
+
+[hidden] {
+  display: none !important;
+}
