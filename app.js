@@ -869,7 +869,10 @@ bindAuthenticationLockControls_();
 
 function renderAuthenticationLock_() {
   const pending = getHomeControlPending();
-  if (!pending) return;
+  if (!pending) {
+    showAuthenticationState("この端末は未登録です。端末登録を完了してください。", "unpaired");
+    return;
+  }
   if (isHomeControlPendingExpired_(pending)) {
     showAuthenticationState("端末登録を確認中…", "pairing_pending");
     if (authLockCode) authLockCode.textContent = "";
@@ -2255,8 +2258,18 @@ function createHomeControlError(code, details = {}) {
 function getHomeControlPending() {
   try {
     const value = JSON.parse(localStorage.getItem(HOME_CONTROL_PENDING_STORAGE_KEY) || "");
-    return value && isUuid(value.requestId) && typeof value.requestSecret === "string" && typeof value.token === "string" ? value : null;
+    const valid = value
+      && isUuid(value.requestId)
+      && typeof value.requestSecret === "string"
+      && typeof value.token === "string"
+      && /^\d{6}$/.test(String(value.code || ""));
+    if (!valid) {
+      localStorage.removeItem(HOME_CONTROL_PENDING_STORAGE_KEY);
+      return null;
+    }
+    return value;
   } catch (error) {
+    localStorage.removeItem(HOME_CONTROL_PENDING_STORAGE_KEY);
     return null;
   }
 }
