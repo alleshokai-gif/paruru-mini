@@ -35,6 +35,11 @@ function load(spreadsheet, properties) {
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMemberPolicy.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMembershipService.js'), 'utf8'), context);
+  context.resolveFirebaseAuthenticatedActor_ = (body) => {
+    const deviceId = String(body && body.auth && body.auth.idToken || '');
+    const actor = context.resolveAuthenticatedActor_(deviceId, 'pairing');
+    return Object.assign({}, actor, { authBindingKey: 'firebase-' + actor.memberUserId });
+  };
   return context;
 }
 function addRow(sheet, headers, valueByHeader) { sheet.values.push(headers.map((header) => valueByHeader[header] || '')); }
@@ -58,10 +63,10 @@ addRow(spreadsheet.sheets.Device_Memberships, deviceHeaders, { deviceId: 'unknow
 const api = load(spreadsheet, {});
 
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_('father-phone', 'pairing'))), { homeId: 'home-a', memberUserId: 'father', role: 'admin', deviceId: 'father-phone' });
-assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }))), { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit', 'family.inbox.review'], deviceId: 'father-phone' });
-assert.strictEqual(api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: 'pairing' }).memberUserId, 'second_son');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ auth: { provider: 'firebase', idToken: 'father-phone' }, userId: 'spoofed', role: 'self_record' }))), { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.read', 'home.control', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit', 'family.inbox.review'], authBindingKey: 'firebase-father' });
+assert.strictEqual(api.resolveHomeAgentReadActor_({ auth: { provider: 'firebase', idToken: 'son-phone' } }).memberUserId, 'second_son');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveAuthenticatedActor_('son-edge', 'pairing'))), { homeId: 'home-a', memberUserId: 'second_son', role: 'self_record', deviceId: 'son-edge' });
-assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ deviceId: 'mother-phone', pairingToken: 'pairing' }))), { homeId: 'home-a', memberUserId: 'mother', displayName: '母', role: 'guardian', capabilities: ['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit', 'family.inbox.review'], deviceId: 'mother-phone' });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(api.resolveHomeAgentReadActor_({ auth: { provider: 'firebase', idToken: 'mother-phone' } }))), { homeId: 'home-a', memberUserId: 'mother', displayName: '母', role: 'guardian', capabilities: ['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit', 'family.inbox.review'], authBindingKey: 'firebase-mother' });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(api.getMembershipContext_({ deviceId: 'mother-phone', pairingToken: 'pairing' }))), { memberUserId: 'mother', displayName: '母', role: 'guardian', calendarSuffix: '（母）', addressTerms: { paruru: '', nurseOkan: '' }, capabilities: ['home.read', 'calendar.family.read', 'calendar.family.create', 'calendar.family.edit_own', 'calendar.family.delete_own', 'memo.self.read', 'memo.self.create', 'memo.self.update', 'memo.self.delete', 'health.self.read', 'health.self.record', 'health.supervision.read', 'health.supervision.record', 'pet.health.read', 'pet.health.record', 'family.inbox.read', 'family.inbox.submit', 'family.inbox.review'], allowedViews: ['home', 'inbox', 'nurse-okan', 'popio-health', 'bus'] });
 const memberRoleColumn = homeHeaders.indexOf('role');
 spreadsheet.sheets.Home_Members.values[3][memberRoleColumn] = '';
@@ -71,15 +76,14 @@ assert(baselineContext.capabilities.includes('home.read') && baselineContext.cap
 assert(!baselineContext.capabilities.includes('home.control') && !baselineContext.capabilities.includes('health.supervision.read') && !baselineContext.capabilities.includes('family.inbox.review'));
 assert.deepStrictEqual(baselineContext.allowedViews, ['home', 'inbox', 'nurse-okan', 'popio-health', 'bus']);
 spreadsheet.sheets.Home_Members.values[3][memberRoleColumn] = 'self_record';
-expectCode(() => api.resolveHomeAgentReadActor_({ deviceId: 'son-phone', pairingToken: '' }), 'UNAUTHORIZED_DEVICE');
-assert.strictEqual(api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing', userId: 'spoofed', role: 'self_record' }).memberUserId, 'father');
-expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'son-phone', pairingToken: 'pairing' }), 'FORBIDDEN');
-expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'son-edge', pairingToken: 'pairing' }), 'FORBIDDEN');
-expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'mother-phone', pairingToken: 'pairing' }), 'FORBIDDEN');
-expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: '' }), 'UNAUTHORIZED_DEVICE');
+expectCode(() => api.resolveHomeAgentReadActor_({ auth: { provider: 'firebase', idToken: '' } }), 'MEMBERSHIP_NOT_FOUND');
+assert.strictEqual(api.resolveHomeAgentControlActor_({ auth: { provider: 'firebase', idToken: 'father-phone' }, userId: 'spoofed', role: 'self_record' }).memberUserId, 'father');
+expectCode(() => api.resolveHomeAgentControlActor_({ auth: { provider: 'firebase', idToken: 'son-phone' } }), 'FORBIDDEN');
+expectCode(() => api.resolveHomeAgentControlActor_({ auth: { provider: 'firebase', idToken: 'son-edge' } }), 'FORBIDDEN');
+expectCode(() => api.resolveHomeAgentControlActor_({ auth: { provider: 'firebase', idToken: 'mother-phone' } }), 'FORBIDDEN');
 const fatherStatusColumn = homeHeaders.indexOf('status');
 spreadsheet.sheets.Home_Members.values[1][fatherStatusColumn] = 'disabled';
-expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing' }), 'MEMBERSHIP_NOT_FOUND');
+expectCode(() => api.resolveHomeAgentControlActor_({ auth: { provider: 'firebase', idToken: 'father-phone' } }), 'MEMBERSHIP_NOT_FOUND');
 spreadsheet.sheets.Home_Members.values[1][fatherStatusColumn] = 'active';
 expectCode(() => api.resolveAuthenticatedActor_('old-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
 expectCode(() => api.resolveAuthenticatedActor_('unknown-phone', 'pairing'), 'MEMBERSHIP_NOT_FOUND');
@@ -90,7 +94,7 @@ spreadsheet.sheets.Home_Members.values[1][fatherDisplayNameColumn] = '父';
 const fatherRoleColumn = homeHeaders.indexOf('role');
 spreadsheet.sheets.Home_Members.values[1][fatherRoleColumn] = 'self_record';
 assert.strictEqual(api.resolveAuthenticatedActor_('father-phone', 'pairing').role, 'self_record', 'fixed roster role must not be an identity constraint');
-expectCode(() => api.resolveHomeAgentControlActor_({ deviceId: 'father-phone', pairingToken: 'pairing' }), 'FORBIDDEN');
+expectCode(() => api.resolveHomeAgentControlActor_({ auth: { provider: 'firebase', idToken: 'father-phone' } }), 'FORBIDDEN');
 spreadsheet.sheets.Home_Members.values[1][fatherRoleColumn] = 'admin';
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'second_son', 'health.profile.get'), true);
 assert.strictEqual(api.authorizeTargetOperation_(api.resolveAuthenticatedActor_('father-phone', 'pairing'), 'second_son', 'health.profile.update'), true);

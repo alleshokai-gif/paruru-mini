@@ -84,3 +84,19 @@ function normalizeAuthPocErrorCode_(code) {
   const normalized = String(code || 'AUTHENTICATION_FAILED');
   return allowed[normalized] ? normalized : 'AUTHENTICATION_FAILED';
 }
+
+function getFirebaseMembershipContext_(body, overrides) {
+  const actor = resolveFirebaseAuthenticatedActor_(body, overrides);
+  authorizeCapability_(actor, 'home.read');
+  const policy = getHomeMemberPolicy_(actor.memberUserId);
+  return {
+    memberUserId: actor.memberUserId,
+    displayName: actor.displayName,
+    role: actor.role,
+    calendarSuffix: policy.calendarSuffix,
+    addressTerms: getHomeMemberAddressTerms_(actor.memberUserId),
+    capabilities: actor.capabilities.slice(),
+    allowedViews: actor.allowedViews.slice(),
+    canHomeControl: hasRoleCapability_(actor, 'home.control'),
+  };
+}

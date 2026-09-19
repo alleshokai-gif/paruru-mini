@@ -1,5 +1,8 @@
-const FIREBASE_AUTH_POC_PROJECT_ID_PROPERTY = 'PALURU_FIREBASE_POC_PROJECT_ID';
-const FIREBASE_AUTH_POC_WEB_API_KEY_PROPERTY = 'PALURU_FIREBASE_POC_WEB_API_KEY';
+const FIREBASE_AUTH_PROJECT_ID_PROPERTY = 'PALURU_FIREBASE_PROJECT_ID';
+const FIREBASE_AUTH_WEB_API_KEY_PROPERTY = 'PALURU_FIREBASE_WEB_API_KEY';
+const FIREBASE_AUTH_DOMAIN_PROPERTY = 'PALURU_FIREBASE_AUTH_DOMAIN';
+const FIREBASE_AUTH_APP_ID_PROPERTY = 'PALURU_FIREBASE_APP_ID';
+const FIREBASE_AUTH_GOOGLE_CLIENT_ID_PROPERTY = 'PALURU_FIREBASE_GOOGLE_CLIENT_ID';
 const FIREBASE_AUTH_TOKEN_MAX_LENGTH = 8192;
 const FIREBASE_AUTH_CLOCK_SKEW_SECONDS = 60;
 
@@ -24,12 +27,33 @@ function verifyFirebaseIdToken_(idToken, overrides) {
 
 function getFirebaseAuthVerifierConfig_() {
   const properties = PropertiesService.getScriptProperties();
-  const projectId = String(properties.getProperty(FIREBASE_AUTH_POC_PROJECT_ID_PROPERTY) || '').trim();
-  const webApiKey = String(properties.getProperty(FIREBASE_AUTH_POC_WEB_API_KEY_PROPERTY) || '').trim();
+  const projectId = String(properties.getProperty(FIREBASE_AUTH_PROJECT_ID_PROPERTY) || '').trim();
+  const webApiKey = String(properties.getProperty(FIREBASE_AUTH_WEB_API_KEY_PROPERTY) || '').trim();
   if (!/^[a-z0-9][a-z0-9-]{4,61}[a-z0-9]$/.test(projectId) || !webApiKey || webApiKey.length > 512) {
     throw firebaseAuthError_('AUTH_CONFIGURATION_ERROR');
   }
   return { projectId: projectId, webApiKey: webApiKey };
+}
+
+function getFirebasePublicAuthConfig_() {
+  const properties = PropertiesService.getScriptProperties();
+  const verifier = getFirebaseAuthVerifierConfig_();
+  const authDomain = String(properties.getProperty(FIREBASE_AUTH_DOMAIN_PROPERTY) || '').trim();
+  const appId = String(properties.getProperty(FIREBASE_AUTH_APP_ID_PROPERTY) || '').trim();
+  const googleClientId = String(properties.getProperty(FIREBASE_AUTH_GOOGLE_CLIENT_ID_PROPERTY) || '').trim();
+  if (!authDomain || authDomain.length > 253 || !appId || appId.length > 512
+      || !/^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(googleClientId)) {
+    throw firebaseAuthError_('AUTH_CONFIGURATION_ERROR');
+  }
+  return {
+    firebaseConfig: {
+      apiKey: verifier.webApiKey,
+      authDomain: authDomain,
+      projectId: verifier.projectId,
+      appId: appId,
+    },
+    googleClientId: googleClientId,
+  };
 }
 
 function validateFirebaseClaimsBeforeLookup_(claims, config, nowSeconds) {
