@@ -82,7 +82,7 @@ function request(clientRequestId) {
 function trustedActor(overrides) {
   return Object.assign({
     homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
-    capabilities: ['home.read', 'home.control'], deviceId,
+    capabilities: ['home.read', 'home.control'], authBindingKey: deviceId,
   }, overrides || {});
 }
 
@@ -166,7 +166,7 @@ test('confirmation is bound to the server actor and legacy records fail closed',
   configure();
   const issued = context.createHomeAgentActionConfirmation_(pauseCandidate(2), request(clientIds[6]), token, deps);
   const before = executeCalls;
-  const otherDevice = confirmationBody(issued, { _authenticatedActor: trustedActor({ deviceId: 'other-device' }) });
+  const otherDevice = confirmationBody(issued, { _authenticatedActor: trustedActor({ authBindingKey: 'other-identity' }) });
   const denied = context.executeHomeAgentActionConfirmation_(otherDevice, deps);
   assert(denied.error.code === 'UNAUTHORIZED_DEVICE' && executeCalls === before, 'other device executed a confirmation');
 
@@ -219,7 +219,7 @@ test('production executor revalidates room state and resume target immediately b
   context.pauseRoomAutomationSkill_ = () => { pauseWrites += 1; return { success: true, data: { activePause: { expiresAt: 'later', status: 'active' } } }; };
   context.getRoomAutomationPauseSkill_ = () => ({ success: true, data: { activePause: { pauseId: 'expected-target' } } });
   context.resumeRoomAutomationSkill_ = () => { resumeWrites += 1; return { success: true, data: { resumed: 1, status: 'cancelled' } }; };
-  const recordActor = { homeId: 'home-a', memberUserId: 'father', deviceId };
+  const recordActor = { homeId: 'home-a', memberUserId: 'father', authBindingKey: deviceId };
   context.executeSecuredHomeAgentActionRecord_({ skill: 'pauseRoomAutomation', roomId: 'bedroom', actor: recordActor, operation: { pauseExpiresAt: 'later' } }, trustedActor());
   context.executeSecuredHomeAgentActionRecord_({ skill: 'resumeRoomAutomation', roomId: 'bedroom', actor: recordActor, operation: { resumeTarget: 'expected-target' } }, trustedActor());
   assert(pauseWrites === 1 && resumeWrites === 1, 'validated operations did not execute');

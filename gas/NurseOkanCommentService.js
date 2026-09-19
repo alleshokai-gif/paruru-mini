@@ -18,8 +18,7 @@ function nurseOkanComment_(body) {
   try {
     const request = validateNurseOkanCommentRequest_(body);
     const healthContext = resolveHealthGatewayContext_({
-      deviceId: request.deviceId,
-      pairingToken: request.pairingToken,
+      auth: request.auth,
       targetMemberUserId: request.targetMemberUserId,
     });
     if (!healthContext.targetUserId) throw healthGatewayError_('INVALID_INPUT');
@@ -60,8 +59,7 @@ function validateNurseOkanCommentRequest_(body) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientRequestId)) throw healthGatewayError_('INVALID_INPUT');
   return {
     clientRequestId: clientRequestId,
-    deviceId: input.deviceId,
-    pairingToken: input.pairingToken,
+    auth: input.auth,
     targetMemberUserId: String(input.targetMemberUserId || '').trim(),
   };
 }
@@ -101,7 +99,7 @@ function buildNurseOkanCommentAgentInput_(request, actor, commentContext) {
       role: String(actor.role || '').trim().slice(0, 100),
       capabilities: Array.isArray(actor.capabilities) ? actor.capabilities.slice() : [],
       homeId: String(actor.homeId || '').trim().slice(0, 200),
-      deviceId: String(actor.deviceId || '').trim().slice(0, 200),
+      authBindingKey: String(actor.authBindingKey || '').trim().slice(0, 200),
     },
     commentContext: commentContext,
   };

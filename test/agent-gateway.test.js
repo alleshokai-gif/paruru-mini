@@ -89,7 +89,7 @@ context.resolveHomeAgentReadActor_ = () => {
   if (readActorError) throw Object.assign(new Error(readActorError), { code: readActorError });
   return readActor || {
     homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
-    capabilities: ['home.read', 'home.control'], deviceId: 'server-device',
+    capabilities: ['home.read', 'home.control'], authBindingKey: 'firebase-father',
   };
 };
 context.resolveHomeAgentControlActor_ = () => {
@@ -98,7 +98,7 @@ context.resolveHomeAgentControlActor_ = () => {
   if (typeof controlActor === 'function') return controlActor(controlActorCalls);
   return controlActor || {
     homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin',
-    capabilities: ['home.read', 'home.control'], deviceId: 'server-control-device',
+    capabilities: ['home.read', 'home.control'], authBindingKey: 'firebase-father',
   };
 };
 
@@ -179,7 +179,7 @@ test('tool-free response', () => {
     assert(options.contentType === 'text/plain;charset=utf-8', 'wrong content type');
     assert(sent.clientRequestId === clientRequestId, 'clientRequestId did not reach Agent unchanged');
     assert(!('userId' in sent) && sent.action === 'agent.chat', 'wrong upstream contract');
-    assert(sent.actor.memberUserId === 'father' && sent.actor.displayName === '父' && sent.actor.deviceId === 'server-device', 'server actor not forwarded');
+    assert(sent.actor.memberUserId === 'father' && sent.actor.displayName === '父' && sent.actor.authBindingKey === 'firebase-father', 'server actor not forwarded');
     assert(!Object.prototype.hasOwnProperty.call(sent.actor, 'userId') && !Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'client actor or pairing token leaked downstream');
   });
   const result = post(valid({ userId: 'father', userDisplayName: '父', deviceId: 'device' }));
@@ -1015,7 +1015,7 @@ test('read authorization rejects before Agent call and ignores client actor spoo
   configure();
   let calls = 0;
   mockFetch(200, agentResponse('ok'), () => { calls += 1; });
-  readActor = { homeId: 'home-a', memberUserId: 'second_son', displayName: '次男', role: 'self_record', capabilities: ['home.read'], deviceId: 'son-device' };
+  readActor = { homeId: 'home-a', memberUserId: 'second_son', displayName: '次男', role: 'self_record', capabilities: ['home.read'], authBindingKey: 'firebase-son' };
   const allowed = post(valid({ userId: 'father', userDisplayName: '父', role: 'admin', capabilities: ['home.control'], homeId: 'spoofed', pairingToken: 'spoofed-token' }));
   assert(allowed.success && calls === 1 && readActorCalls === 1, 'self_record home.read was not accepted');
 
@@ -1030,7 +1030,7 @@ test('P0-ACTOR-SERVER-RESOLVED', () => {
   configure();
   readActor = {
     homeId: 'home-a', memberUserId: 'second_son', displayName: '次男', role: 'self_record',
-    capabilities: ['home.read'], deviceId: 'server-paired-device'
+    capabilities: ['home.read'], authBindingKey: 'firebase-son'
   };
   let calls = 0;
   let sent = null;
@@ -1047,7 +1047,7 @@ test('P0-ACTOR-SERVER-RESOLVED', () => {
   assert(readActorCalls === 1, 'server actor was not resolved exactly once');
   assert(calls === 1, 'valid paired request did not reach Agent exactly once');
   assert(sent && sent.actor.memberUserId === 'second_son' && sent.actor.role === 'self_record'
-    && sent.actor.deviceId === 'server-paired-device', 'Agent actor was not resolved from pairing and Home_Members');
+    && sent.actor.authBindingKey === 'firebase-son', 'Agent actor was not resolved from Firebase and Home_Members');
   assert(JSON.stringify(sent.actor.capabilities) === JSON.stringify(['home.read']), 'client capabilities replaced the server actor capability');
   assert(sent.responsePolicyId === 'concise', 'server-resolved self_record role did not select concise response policy');
   assert(sent.requestMetadata.role === undefined, 'client role entered advisory metadata');
@@ -1062,7 +1062,7 @@ function assertServerResolvedResponsePolicy_(role, expectedPolicyId, requestOver
   configure();
   readActor = {
     homeId: 'home-a', memberUserId: 'member-' + role, displayName: 'Server Member', role: role,
-    capabilities: ['home.read'], deviceId: 'server-device-' + role
+    capabilities: ['home.read'], authBindingKey: 'firebase-' + role
   };
   let sent = null;
   mockFetch(200, agentResponse('ok'), (_url, options) => { sent = JSON.parse(options.payload); });
@@ -1342,7 +1342,7 @@ test('agentActionConfirm resolves control actor twice before calling Agent', () 
     assert(!Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'pairing token sent to Agent');
     assert(!Object.prototype.hasOwnProperty.call(sent, 'operation'), 'operation sent from browser to Agent');
     assert(sent.actor && sent.actor.homeId === 'home-a' && sent.actor.memberUserId === 'father'
-      && sent.actor.deviceId === 'server-control-device' && sent.actor.capabilities.includes('home.control'), 'server actor was not sent to Agent');
+      && sent.actor.authBindingKey === 'firebase-father' && sent.actor.capabilities.includes('home.control'), 'server actor was not sent to Agent');
     assert(!JSON.stringify(sent.actor).includes('spoofed'), 'client actor spoof reached Agent');
   });
   const result = post({
@@ -1463,7 +1463,7 @@ test('agentActionConfirm rechecks membership immediately before Agent call', () 
   context.assertHomeAgentActionsEnabled_ = () => {};
   context.CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
   controlActor = (call) => {
-    if (call === 1) return { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.control'], deviceId: 'server-control-device' };
+    if (call === 1) return { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.control'], authBindingKey: 'firebase-father' };
     throw Object.assign(new Error('MEMBERSHIP_NOT_FOUND'), { code: 'MEMBERSHIP_NOT_FOUND' });
   };
   mockFetch(200, agentResponse('must not be called'), () => { agentCalls += 1; });
@@ -1493,7 +1493,7 @@ test('agentActionCancel resolves control actor and sends only confirmation ident
     assert(sent.confirmationId === '88888888-8888-4888-8888-888888888888', 'confirmation id missing');
     assert(sent.clientRequestId === clientRequestId, 'clientRequestId missing');
     assert(sent.actor && sent.actor.homeId === 'home-a' && sent.actor.memberUserId === 'father'
-      && sent.actor.deviceId === 'server-control-device' && sent.actor.capabilities.includes('home.control'), 'server actor was not sent to Agent cancel');
+      && sent.actor.authBindingKey === 'firebase-father' && sent.actor.capabilities.includes('home.control'), 'server actor was not sent to Agent cancel');
     assert(!Object.prototype.hasOwnProperty.call(sent, 'pairingToken'), 'pairing token sent to Agent');
     ['operation', 'skill', 'roomId', 'duration', 'durationMinutes', 'confirmed', 'payload'].forEach((field) => {
       assert(!Object.prototype.hasOwnProperty.call(sent, field), field + ' leaked to Agent cancel');

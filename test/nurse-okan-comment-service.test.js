@@ -70,11 +70,11 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(fetched.map((entry) => entry.in
 assert.equal(loaded.localDate, '2026-08-23');
 
 const request = context.validateNurseOkanCommentRequest_({
-  clientRequestId: '11111111-1111-4111-8111-111111111111', deviceId: 'device', pairingToken: 'pair', targetMemberUserId: 'second_son',
+  clientRequestId: '11111111-1111-4111-8111-111111111111', auth: { provider: 'firebase', idToken: 'firebase-token' }, targetMemberUserId: 'second_son',
   homeId: 'attacker-home', actorUserId: 'attacker', commentContext: { madeBy: 'pwa' }
 });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(request)), {
-  clientRequestId: '11111111-1111-4111-8111-111111111111', deviceId: 'device', pairingToken: 'pair', targetMemberUserId: 'second_son'
+  clientRequestId: '11111111-1111-4111-8111-111111111111', auth: { provider: 'firebase', idToken: 'firebase-token' }, targetMemberUserId: 'second_son'
 });
 assert.throws(() => context.validateNurseOkanCommentOutput_('あ'.repeat(101)), (error) => error.code === 'AGENT_ERROR');
 assert.throws(() => context.validateNurseOkanCommentOutput_('一。二。三。四。'), (error) => error.code === 'AGENT_ERROR');
