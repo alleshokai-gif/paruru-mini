@@ -318,6 +318,7 @@ const splash = document.querySelector("#splash");
 const authLock = document.querySelector("#authLock");
 const authLockMessage = document.querySelector("#authLockMessage");
 const authGoogleButton = document.querySelector("#authGoogleButton");
+const authBootstrapRetry = document.querySelector("#authBootstrapRetry");
 const authRegistrationForm = document.querySelector("#authRegistrationForm");
 const authRegistrationDisplayName = document.querySelector("#authRegistrationDisplayName");
 const authRegistrationSubmit = document.querySelector("#authRegistrationSubmit");
@@ -760,7 +761,8 @@ function showAuthenticationState(message, state = "locked") {
 
 function renderAuthenticationOnboardingState_(state) {
   const value = String(state || "");
-  if (authGoogleButton) authGoogleButton.hidden = !["signed_out", "auth_error"].includes(value);
+  if (authGoogleButton) authGoogleButton.hidden = value !== "signed_out";
+  if (authBootstrapRetry) authBootstrapRetry.hidden = value !== "auth_error";
   if (authRegistrationForm) authRegistrationForm.hidden = value !== "registration_required";
   if (authLinkPendingActions) authLinkPendingActions.hidden = value !== "link_pending";
 }
@@ -822,6 +824,10 @@ function handleFirebaseAuthenticationState_(value) {
 function safeAuthenticationCode_(error) {
   return String(error?.code || "AUTH_UNAVAILABLE").replace(/[^A-Z0-9_]/g, "").slice(0, 80) || "AUTH_UNAVAILABLE";
 }
+
+authBootstrapRetry?.addEventListener("click", () => {
+  location.reload();
+});
 
 authRegistrationForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
