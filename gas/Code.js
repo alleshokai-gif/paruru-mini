@@ -76,7 +76,34 @@ function doPost(e) {
     }
 
     if (action === 'auth.session.resolve') {
-      return json_({ success: true, data: getFirebaseMembershipContext_(body), message: 'authenticated actor resolved' });
+      return authSessionResolve_(body);
+    }
+
+    if (action === 'auth.registration.create') {
+      try {
+        return json_({ success: true, data: registerPaluruUser_(body), message: 'PALURU user registered' });
+      } catch (error) {
+        const code = normalizeAuthRegistrationErrorCode_(error && error.code);
+        return json_({ success: false, data: {}, error: { code: code }, message: code });
+      }
+    }
+
+    if (action === 'auth.registration.pending.list') {
+      try {
+        return json_({ success: true, data: listPendingPaluruUserLinks_(body), message: 'pending registrations loaded' });
+      } catch (error) {
+        const code = normalizeAuthRegistrationErrorCode_(error && error.code);
+        return json_({ success: false, data: {}, error: { code: code }, message: code });
+      }
+    }
+
+    if (action === 'auth.registration.link') {
+      try {
+        return json_({ success: true, data: linkPaluruUserToMember_(body), message: 'PALURU user linked' });
+      } catch (error) {
+        const code = normalizeAuthRegistrationErrorCode_(error && error.code);
+        return json_({ success: false, data: {}, error: { code: code }, message: code });
+      }
     }
 
     if (isLegacyDeviceAuthMutationAction_(action)) {
