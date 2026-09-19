@@ -20,8 +20,8 @@ function deferred() {
 }
 async function flush() { await new Promise((resolve) => setImmediate(resolve)); }
 
-function fixture(resolveActor) {
-  const calls = { states: [], credentials: [], idTokens: [], rendered: [], disableAutoSelect: 0 };
+function fixture(resolveActor, registerUser) {
+  const calls = { states: [], credentials: [], idTokens: [], rendered: [], disableAutoSelect: 0, registrations: [] };
   let authObserver = null;
   let gisCallback = null;
   let signOutResult = Promise.resolve();
@@ -52,6 +52,7 @@ function fixture(resolveActor) {
     firebaseConfig: { apiKey: 'public-key', authDomain: 'test.firebaseapp.com', projectId: 'test-project', appId: 'public-app' },
     googleClientId: 'client.apps.googleusercontent.com',
     resolveActor,
+    registerUser: registerUser || (async (auth, profile) => { calls.registrations.push({ auth, profile }); return { status: 'pending_link' }; }),
     onState: (state) => calls.states.push(state),
   });
   return {
@@ -95,6 +96,40 @@ test('exchanges the GIS Google token through signInWithCredential without publis
   assert(f.calls.credentials[0].googleIdToken === 'google-id-token-secret', 'GIS credential was not exchanged');
   assert(f.calls.rendered[0].options.text === 'continue_with', 'official continue_with button was not rendered');
   assert(!JSON.stringify(f.calls.states).includes('google-id-token-secret'), 'Google token leaked into published state');
+});
+
+test('unmapped account enters registration state and can self-register without becoming a member', async () => {
+  const required = new Error('REGISTRATION_REQUIRED');
+  required.code = 'REGISTRATION_REQUIRED';
+  const f = fixture(async () => { throw required; });
+  await f.service.initialize();
+  f.observe({ uid: 'new-user' });
+  await flush();
+  assert(f.calls.states.some((state) => state.state === 'registration_required'), 'registration_required state was not published');
+  const result = await f.service.register('次男');
+  assert(result.status === 'pending_link', 'registration did not enter pending_link');
+  assert(f.calls.registrations.length === 1, 'registration API was not called exactly once');
+  assert(f.calls.registrations[0].profile.displayName === '次男', 'displayName was not sent to registration');
+  assert(f.calls.states.at(-1).state === 'link_pending', 'link_pending state was not published');
+});
+
+test('registered but unlinked account stays locked until admin linking is complete', async () => {
+  let linked = false;
+  const f = fixture(async () => {
+    if (!linked) {
+      const pending = new Error('MEMBER_LINK_PENDING');
+      pending.code = 'MEMBER_LINK_PENDING';
+      throw pending;
+    }
+    return { memberUserId: 'second_son', displayName: '次男', role: 'self_record', capabilities: ['home.read'], allowedViews: ['home'] };
+  });
+  await f.service.initialize();
+  f.observe({ uid: 'second-son-uid' });
+  await flush();
+  assert(f.calls.states.at(-1).state === 'link_pending', 'unlinked user was not kept in link_pending');
+  linked = true;
+  await f.service.retryResolve();
+  assert(f.service.getSafeState().actor.memberUserId === 'second_son', 'linked user did not become active');
 });
 
 test('logout clears actor context before Firebase sign-out completes', async () => {
