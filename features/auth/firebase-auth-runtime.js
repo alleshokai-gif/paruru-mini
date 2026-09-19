@@ -16,6 +16,7 @@
       firebaseConfig: config.firebaseConfig,
       googleClientId: config.googleClientId,
       resolveActor: function(auth) { return resolveActor_(gasWebAppUrl, auth); },
+      registerUser: function(auth, profile) { return registerUser_(gasWebAppUrl, auth, profile); },
       onState: settings.onState,
     });
     await service.initialize();
@@ -44,6 +45,21 @@
     });
     const payload = await parseEnvelope_(response, 'AUTHENTICATION_FAILED');
     return payload.data;
+  }
+
+  async function registerUser_(url, auth, profile) {
+    const response = await fetch(url, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'auth.registration.create',
+        auth: auth,
+        displayName: String(profile && profile.displayName || '').trim(),
+      }),
+    });
+    const payload = await parseEnvelope_(response, 'REGISTRATION_FAILED');
+    return payload.data || {};
   }
 
   async function parseEnvelope_(response, fallbackCode) {
