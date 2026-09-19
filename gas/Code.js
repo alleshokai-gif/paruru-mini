@@ -162,6 +162,10 @@ function doPost(e) {
       return json_({ success: true, data: getMembershipContext_(body), message: 'membership context loaded' });
     }
 
+    if (action === 'authPocResolve') {
+      return json_(authPocResolve_(body));
+    }
+
     if (action === 'kazOs.projects.get') {
       return kazOsProgress_(body);
     }
