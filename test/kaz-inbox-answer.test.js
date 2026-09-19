@@ -18,7 +18,7 @@ function snapshot() {
     source_label: extra.source_label || 'Operational source', entity_revision: extra.entity_revision ?? null,
     question_revision: 'question-sha256:' + id.slice(-1).repeat(64), source_revision_references: refs,
     answer_contract: { inbox_item_id: id, question_revision: 'question-sha256:' + id.slice(-1).repeat(64), question, choices },
-    recommended_option: null, recommendation_basis: null,
+    selection_mode: null, selection_options: null, recommended_option: null, recommendation_basis: null,
     expires_at: iso(600000),
   });
   const today = make('decision-' + 'd'.repeat(24), 'today_focus', '今日の先頭候補にする？', [
@@ -26,19 +26,16 @@ function snapshot() {
     { value: 'this_week', label: '今週', effect: '今週候補' },
     { value: 'later', label: 'あとで', effect: '後日候補' },
   ], { title: 'Acceptance方針', project_id: projectId, entity_ref: 'WI-10', entity_revision: workRevision, source_label: 'Notion Work Items' });
-  const event = { id: 'event-sha256:' + '1'.repeat(64), title: 'sanitized event', start: iso(300000), end: iso(360000), all_day: false };
-  const calendar = make('decision-' + 'e'.repeat(24), 'calendar_event_impact', 'この予定で、Kaz本人の時間はどれだけ拘束される？', [
-    { value: 'all', label: '全部拘束', effect: 'full event proposal' },
-    { value: 'partial', label: '一部拘束', effect: 'time range follow-up' },
-    { value: 'none', label: '拘束なし', effect: 'none proposal' },
-    { value: 'unknown', label: '不明', effect: 'unknown維持' },
-  ], { title: event.title, entity_ref: event.id, source_label: 'Family Calendar' });
-  calendar.calendar_event = { ref: event.id, title: event.title, start: event.start, end: event.end, all_day: event.all_day };
+  const calendar = make('decision-' + 'e'.repeat(24), 'calendar_impact_triage', '本人の時間を拘束する予定はある？', [
+    { value: 'some', label: 'ある', effect: 'event選択へ' },
+    { value: 'none', label: 'ない', effect: 'none proposal' },
+    { value: 'unknown', label: 'わからん', effect: 'unknown維持' },
+  ], { title: 'Family予定の本人拘束', source_label: 'Family Calendar' });
   return { schema_version: 'kaz-secretary-inbox-0.1', origin: 'real_operational_sources', mode: 'read_only_display', fixture_only: false, fixture_fallback: false,
     as_of: iso(-400), timezone: 'Asia/Tokyo', sources: { inbox: source('question-set-sha256:' + 'f'.repeat(64), 'Secretary Questions'), projects: source(refs.projects, 'Projects'), tasks: source(refs.work_items, 'Work Items'), calendar: source(refs.calendar, 'Family Calendar'), resolution: source(refs.calendar, 'Classification') },
     projects: [{ id: projectId, title: 'Project', status: 'REVIEW', source_revision: iso(-1000) }],
     work_items: [{ id: 'WI-10', title: 'Acceptance方針', state: 'READY', project_id: projectId, revision: workRevision, source_revision: workRevision, estimate_min: null, next_actor: 'kaz', blocker: '', action_instruction: '確認', dependencies: [] }],
-    calendar_events: [{ ...event, precision: 'offset_datetime', classification: 'unconfirmed', source_revision: refs.calendar }],
+    calendar_events: [{ id: 'event-sha256:' + '1'.repeat(64), title: 'sanitized event', start: iso(300000), end: iso(360000), precision: 'offset_datetime', classification: 'unconfirmed', source_revision: refs.calendar }],
     inbox_items: [today, calendar], decision_priority_evidence: {}, feedback: null,
     persistence: { kind: 'none', status: 'disabled', answers: 0, proposals: 0, followups: 0 }, writes: { notion: 0, calendar: 0, context: 0 } };
 }
@@ -100,20 +97,18 @@ test('changed source revision rejects stale answer without persistence', () => {
   const before = h.rows.Kaz_OS_Decision_Ledger.length, result = request(h, item, 'none', 'paluru-stale-0001');
   assert.equal(result.error.code, 'REVALIDATION_REQUIRED'); assert.equal(h.rows.Kaz_OS_Decision_Ledger.length, before); value = original;
 });
-test('Calendar partial creates only an event-bound time-range follow-up', () => {
-  const result = request(h, value.inbox_items[1], 'partial', 'paluru-calendar-0001');
+test('Calendar some creates only an event-selection follow-up', () => {
+  const result = request(h, value.inbox_items[1], 'some', 'paluru-calendar-0001');
   assert(result.success); assert.equal(result.data.proposal.change.kind, 'FOLLOWUP_REQUIRED');
-  const followup = result.data.inbox.inbox_items.find(item => item.kind === 'calendar_partial_window');
-  assert(followup); assert.equal(followup.entity_ref, value.calendar_events[0].id);
-  assert.equal(followup.input_contract.type, 'time_range'); assert.equal(result.data.proposal.change.constraint_creation, false);
+  const followup = result.data.inbox.inbox_items.find(item => item.kind === 'calendar_event_selection');
+  assert(followup); assert.equal(followup.selection_options.length, 1); assert.equal(result.data.proposal.change.constraint_creation, false);
 });
 test('follow-up stores only opaque event reference and no raw Calendar body', () => {
   const get = h.call(h.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
-  const followup = get.data.inbox_items.find(item => item.kind === 'calendar_partial_window');
-  const result = request(h, followup, { start: iso(315000), end: iso(345000) }, 'paluru-calendar-0002');
-  assert(result.success, JSON.stringify(result)); assert.equal(result.data.proposal.change.kind, 'CALENDAR_CLASSIFICATION_PROPOSAL');
-  assert.equal(result.data.proposal.change.coverage, 'partial_event');
-  assert.equal(result.data.inbox.inbox_items.some(item => item.kind === 'calendar_partial_window'), false);
+  const followup = get.data.inbox_items.find(item => item.kind === 'calendar_event_selection');
+  const result = request(h, followup, [followup.selection_options[0].id], 'paluru-calendar-0002');
+  assert(result.success); assert.equal(result.data.proposal.change.kind, 'CALENDAR_CLASSIFICATION_SELECTED');
+  assert.equal(result.data.inbox.inbox_items.some(item => item.kind === 'calendar_event_selection'), false);
   const persisted = JSON.stringify(h.rows.Kaz_OS_Decision_Ledger);
   assert(!persisted.includes('sanitized event')); assert(!persisted.includes('raw Calendar'));
 });
@@ -144,7 +139,7 @@ test('Calendar none is revision-bound classification proposal for opaque refs on
   noneHarness.setupDecisionLedger(); noneHarness.resetStats();
   const result = request(noneHarness, noneValue.inbox_items[1], 'none', 'paluru-none-0001');
   assert(result.success); assert.equal(result.data.proposal.change.kind, 'CALENDAR_CLASSIFICATION_PROPOSAL');
-  assert.equal(result.data.proposal.change.target_event_ref, noneValue.calendar_events[0].id);
+  assert.deepEqual(result.data.proposal.change.target_event_refs, [noneValue.calendar_events[0].id]);
   assert.equal(result.data.proposal.change.impact_on_kaz, 'none'); assert.equal(result.data.proposal.write_allowed, false);
   assert(!JSON.stringify(noneHarness.rows.Kaz_OS_Decision_Ledger).includes('sanitized event'));
 });
