@@ -39,7 +39,7 @@ const context = {
 vm.createContext(context);
 vm.runInContext(
   between('function canUseHomeControl_()', 'const NURSE_OKAN_HEALTH_ACTIONS')
-  + between('function isViewAllowed_(viewName)', 'function getHomeAgentPairingToken()'),
+  + between('function isViewAllowed_(viewName)', 'function normalizeCalendarMemberSelection(value)'),
   context
 );
 context.applyAllowedViews_();
@@ -61,7 +61,7 @@ assert.deepStrictEqual(hiddenPanels, []);
 assert.strictEqual(context.canUseHomeControl_(), false, 'home control became available');
 assert.strictEqual(context.hasMembershipCapability_('memo.self.create'), true, 'memo capability missing');
 assert.strictEqual(context.hasMembershipCapability_('pet.health.record'), true, 'Popio capability missing');
-assert(html.includes('<option value="eldest_daughter">長女の端末</option>'), 'fixed eldest daughter identity is missing');
+assert(!html.includes('homeControlMemberUserId') && !html.includes('端末を承認'), 'legacy identity/pairing UI remains visible');
 assert(source.includes('if (!hasMembershipCapability_(requiredCapability))'), 'Calendar candidate capability gate is missing');
 
 console.log('PASS eldest daughter PWA baseline views and privileged capability visibility');

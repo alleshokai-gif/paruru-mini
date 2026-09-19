@@ -76,7 +76,7 @@ const context = {
 };
 vm.createContext(context);
 new vm.Script(appSource, { filename: 'app.js' }).runInContext(context);
-vm.runInContext('appAuthenticationState = \"active_member\"; activeMembershipContext = { capabilities: [\"home.read\", \"health.self.read\"] };', context);
+vm.runInContext('appAuthenticationState = \"active_member\"; activeMembershipContext = { capabilities: [\"home.read\", \"health.self.read\"] }; firebaseAuthService = { getAuthEnvelope: async () => ({ provider: \"firebase\", idToken: \"test-firebase-token\" }) };', context);
 
 function at(value) { return Date.parse(value); }
 function call(name, ...args) { return context[name](...args); }

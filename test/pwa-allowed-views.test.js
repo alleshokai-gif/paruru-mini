@@ -20,7 +20,7 @@ function view(name) { return { dataset: { view: name }, hidden: false, classList
 function nav(name) { return { dataset: { targetView: name }, hidden: false, disabled: false, attrs: {}, setAttribute(key, value) { this.attrs[key] = value; }, classList: classList() }; }
 
 const functions = between('async function switchView(viewName)', 'async function loadInbox(options = {})')
-  + between('function isViewAllowed_(viewName)', 'function getHomeAgentPairingToken()');
+  + between('function isViewAllowed_(viewName)', 'function normalizeCalendarMemberSelection(value)');
 const views = [view('home'), view('inbox'), view('nurse-okan'), view('popio-health'), view('settings')];
 const bottom = [nav('home'), nav('inbox'), nav('settings')];
 const drawer = [nav('home'), nav('inbox'), nav('nurse-okan'), nav('popio-health'), nav('settings')];

@@ -8,7 +8,7 @@ const vm = require('vm');
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const constants = appSource.slice(
   appSource.indexOf('const PET_HEALTH_DASHBOARD_TIMEOUT_MS'),
-  appSource.indexOf('const HOME_CONTROL_POLL_MILLISECONDS'),
+  appSource.indexOf('const NOTIFICATION_CACHE_MS'),
 );
 const helpers = appSource.slice(
   appSource.indexOf('function petHealthDashboardSafeErrorCode_'),

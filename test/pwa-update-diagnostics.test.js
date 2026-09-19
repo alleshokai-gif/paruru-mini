@@ -24,7 +24,9 @@ const context = {
   Object,
   Error,
   GAS_WEB_APP_URL: 'https://example.test/exec',
+  appAuthenticationState: 'active_member',
   activeMembershipContext: { role: 'self_record' },
+  firebaseAuthService: { getAuthEnvelope: async () => ({ provider: 'firebase', idToken: 'test-firebase-token' }) },
   fetch: async (_url, options) => { requests.push(JSON.parse(options.body)); return response; },
   buildMemoCredentialPayload: (action) => ({ action, deviceId: 'device-secret', pairingToken: 'token-secret' }),
   getCurrentProfile: () => ({ deviceId: 'device-secret' }),
@@ -36,11 +38,12 @@ const context = {
 vm.createContext(context);
 vm.runInContext(between('async function updateInboxItem', 'async function answerFollowup'), context);
 vm.runInContext(between('async function parseApiResponse', 'function renderInboxLoading'), context);
+vm.runInContext(between('async function postAuthenticatedApi_', 'async function readHomeControlErrorResponse_'), context);
 
 (async () => {
   await context.updateInboxItem('inbox-123', { status: 'Done' });
   assert.deepStrictEqual(JSON.parse(JSON.stringify(requests[0])), {
-    action: 'update', deviceId: 'device-secret', pairingToken: 'token-secret', id: 'inbox-123', status: 'Done',
+    action: 'update', id: 'inbox-123', status: 'Done', auth: { provider: 'firebase', idToken: 'test-firebase-token' },
   }, 'update request changed');
 
   response = { ok: true, status: 200, json: async () => ({ success: false, error: { code: 'FORBIDDEN' }, message: 'forbidden' }) };
@@ -48,7 +51,7 @@ vm.runInContext(between('async function parseApiResponse', 'function renderInbox
   let diagnostic = logs.at(-1)[1];
   assert.deepStrictEqual(JSON.parse(JSON.stringify(diagnostic)), {
     action: 'update', httpStatus: 200, responseSuccess: false, responseErrorCode: 'FORBIDDEN', responseMessage: 'forbidden',
-    inboxId: 'inbox-456', role: 'self_record', hasDeviceId: true, hasPairingToken: true,
+    inboxId: 'inbox-456', role: 'self_record', authenticated: true,
   }, 'success:false diagnostic is incomplete or leaked a secret');
 
   response = { ok: false, status: 503, json: async () => ({}) };
