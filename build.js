@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260917-kaz-inbox-answer-v1";
+globalThis.BUILD_ID = "v20260919-registration-approval-fix-v1";
