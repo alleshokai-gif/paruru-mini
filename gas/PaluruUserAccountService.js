@@ -116,7 +116,9 @@ function linkPaluruUserToMember_(body) {
   lock.waitLock(5000);
   try {
     const accountState = getPaluruUserRowStateById_(userAccountId);
-    if (!accountState || accountState.row.status !== 'pending_link') throw paluruUserError_('REGISTRATION_NOT_PENDING');
+    if (!accountState || (accountState.row.status !== 'pending_link' && accountState.row.status !== 'linked')) {
+      throw paluruUserError_('REGISTRATION_NOT_PENDING');
+    }
 
     const member = getHomeMember_(actor.homeId, memberUserId);
     if (!member || member.status !== 'active') throw paluruUserError_('MEMBERSHIP_NOT_FOUND');
