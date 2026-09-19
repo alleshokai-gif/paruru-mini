@@ -135,7 +135,7 @@ function sanitizeKazOsInbox_(data) {
   const number = function(value, nullable) { if (nullable && value == null) return null; if (!Number.isInteger(value) || value < 0 || value > 100000) fail(); return value; };
   const list = function(value, limit, mapper) { if (!Array.isArray(value) || value.length > limit) fail(); return value.map(mapper); };
   const states = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
-  const kinds = ['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window'];
+  const kinds = ['stale_state_confirmation','calendar_impact_triage','today_focus','calendar_event_selection'];
   const source = function(value) {
     if (!value || value.status !== 'ok' || value.complete !== true) fail();
     const fetched = Date.parse(value.fetched_at), until = Date.parse(value.valid_until);
@@ -167,7 +167,7 @@ function sanitizeKazOsInbox_(data) {
   const calendarEvents = list(data.calendar_events, 200, function(value) {
     if (!value || ['offset_datetime','date_only','unresolved'].indexOf(value.precision) < 0 || value.classification !== 'unconfirmed') fail();
     return { id: text(value.id, 90), title: text(value.title, 200), start: text(value.start, 80, true),
-      end: text(value.end, 80, true), precision: value.precision, all_day: boolean(value.all_day), classification: 'unconfirmed',
+      end: text(value.end, 80, true), precision: value.precision, classification: 'unconfirmed',
       source_revision: text(value.source_revision, 120) };
   });
   const inboxItems = list(data.inbox_items, 20, function(value) {
@@ -177,26 +177,10 @@ function sanitizeKazOsInbox_(data) {
     const refs = value.source_revision_references;
     if (!refs || refs.projects !== sources.projects.source_revision
         || refs.work_items !== sources.tasks.source_revision || refs.calendar !== sources.calendar.source_revision) fail();
-    const choices = list(value.answer_contract && value.answer_contract.choices, 4, function(choice) {
+    const choices = list(value.answer_contract && value.answer_contract.choices, 3, function(choice) {
       return { value: text(choice.value, 80), label: text(choice.label, 80), effect: text(choice.effect, 300) };
     });
-    if (value.kind === 'calendar_partial_window') {
-      if (choices.length !== 1 || choices[0].value !== 'time_range'
-          || !value.input_contract || value.input_contract.type !== 'time_range'
-          || value.input_contract.timezone !== 'Asia/Tokyo'
-          || value.input_contract.start_required !== true || value.input_contract.end_required !== true
-          || value.input_contract.within_event !== true) fail();
-    } else if (choices.length < 2) fail();
-    let calendarEvent = null;
-    if (value.kind === 'calendar_event_impact' || value.kind === 'calendar_partial_window') {
-      const candidate = value.calendar_event;
-      calendarEvent = candidate && calendarEvents.find(function(event) { return event.id === candidate.ref; });
-      if (!calendarEvent || candidate.title !== calendarEvent.title || candidate.start !== calendarEvent.start
-          || candidate.end !== calendarEvent.end || candidate.all_day !== calendarEvent.all_day
-          || value.entity_ref !== calendarEvent.id) fail();
-      calendarEvent = { ref: calendarEvent.id, title: calendarEvent.title, start: calendarEvent.start,
-        end: calendarEvent.end, all_day: calendarEvent.all_day };
-    }
+    if (choices.length < 2) fail();
     return { id: text(value.id, 80), kind: value.kind, contract: value.contract,
       owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
       title: text(value.title, 200), question: text(value.question, 500), reason: text(value.reason, 500),
@@ -211,9 +195,7 @@ function sanitizeKazOsInbox_(data) {
       answer_contract: { inbox_item_id: text(value.answer_contract.inbox_item_id, 80),
         question_revision: text(value.answer_contract.question_revision, 90),
         question: text(value.answer_contract.question, 500), choices: choices },
-       calendar_event: calendarEvent,
-       input_contract: value.kind === 'calendar_partial_window' ? { type: 'time_range', timezone: 'Asia/Tokyo',
-         start_required: true, end_required: true, within_event: true } : null,
+      selection_mode: text(value.selection_mode, 30, true), selection_options: value.selection_options == null ? null : [],
       recommended_option: text(value.recommended_option, 80, true),
       recommendation_basis: value.recommendation_basis == null ? null : list(value.recommendation_basis, 8, function(item) { return text(item, 300); }) };
   });
