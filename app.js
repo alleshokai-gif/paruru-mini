@@ -440,6 +440,7 @@ let pendingHomeAgentActionCandidate = null;
 let pendingHomeAgentRetry = null;
 let pendingHomeInputIntentConfirmation = null;
 let homeControlPollTimer = null;
+let homeControlSelectedMemberUserId = "";
 let activeMembershipContext = null;
 let healthTaskCache = null;
 
@@ -1588,7 +1589,21 @@ profileForm.addEventListener("submit", async (event) => {
 });
 
 homeControlEnableButton?.addEventListener("click", () => beginHomeControlPairing());
+homeControlMemberUserId?.addEventListener("change", () => {
+  const memberUserId = readHomeControlRegistrationIdentity_();
+  if (memberUserId && homeControlMessage?.textContent === "登録する家族を選んでな。") {
+    setHomeControlMessage("");
+  }
+  syncHomeControlApprovalUi_();
+});
+homeControlApproveCode?.addEventListener("input", () => {
+  if (/^\d{6}$/.test(String(homeControlApproveCode.value || "").trim()) && homeControlMessage?.textContent === "6桁の承認コードを入力してな。") {
+    setHomeControlMessage("");
+  }
+  syncHomeControlApprovalUi_();
+});
 homeControlApproveButton?.addEventListener("click", () => approveHomeControlPairing());
+syncHomeControlApprovalUi_();
 homeControlDeviceList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-home-control-revoke]");
   if (button) revokeHomeControlDevice(button.dataset.homeControlRevoke || "");
@@ -2367,21 +2382,46 @@ function scheduleHomeControlPoll() {
   if (getHomeControlPending()) homeControlPollTimer = setTimeout(() => pollHomeControlPairing(), HOME_CONTROL_POLL_MILLISECONDS);
 }
 
+function readHomeControlRegistrationIdentity_() {
+  const selectedOption = homeControlMemberUserId?.selectedOptions?.[0];
+  const selectedValue = String(selectedOption?.value || homeControlMemberUserId?.value || "").trim();
+  if (selectedValue && HOME_CONTROL_REGISTRATION_IDENTITIES[selectedValue]) {
+    homeControlSelectedMemberUserId = selectedValue;
+    return selectedValue;
+  }
+  return HOME_CONTROL_REGISTRATION_IDENTITIES[homeControlSelectedMemberUserId]
+    ? homeControlSelectedMemberUserId
+    : "";
+}
+
+function syncHomeControlApprovalUi_() {
+  const canApprove = canApproveHomeControlPairing_();
+  const memberUserId = readHomeControlRegistrationIdentity_();
+  const code = String(homeControlApproveCode?.value || "").trim();
+  if (homeControlApproveButton) {
+    homeControlApproveButton.disabled = !canApprove || !memberUserId || !/^\d{6}$/.test(code);
+  }
+}
+
 async function approveHomeControlPairing() {
   if (!canApproveHomeControlPairing_()) {
     setHomeControlMessage("この端末では新しい端末を承認できません。", "error");
     return;
   }
-  const memberUserId = String(homeControlMemberUserId?.value || "").trim();
+  const memberUserId = readHomeControlRegistrationIdentity_();
   const displayName = String(HOME_CONTROL_REGISTRATION_IDENTITIES[memberUserId] || "");
   if (!memberUserId || !displayName) {
     setHomeControlMessage("登録する家族を選んでな。", "error");
+    homeControlMemberUserId?.focus();
+    syncHomeControlApprovalUi_();
     return;
   }
   const code = String(homeControlApproveCode?.value || "").trim();
   const profile = getCurrentProfile();
   if (!/^\d{6}$/.test(code)) {
     setHomeControlMessage("6桁の承認コードを入力してな。", "error");
+    homeControlApproveCode?.focus();
+    syncHomeControlApprovalUi_();
     return;
   }
   const clientRequestId = createUuid();
@@ -2460,7 +2500,7 @@ async function renderHomeControlSettings() {
   if (homeControlRegistered) homeControlRegistered.hidden = !token;
   const canApprove = canApproveHomeControlPairing_();
   if (homeControlApprovePanel) homeControlApprovePanel.hidden = !canApprove;
-  if (homeControlApproveButton) homeControlApproveButton.disabled = !canApprove;
+  syncHomeControlApprovalUi_();
   if (homeControlDeviceList) {
     homeControlDeviceList.hidden = !canApprove;
     if (!canApprove) homeControlDeviceList.replaceChildren();
