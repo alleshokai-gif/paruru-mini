@@ -122,7 +122,19 @@ function linkPaluruUserToMember_(body) {
     if (!member || member.status !== 'active') throw paluruUserError_('MEMBERSHIP_NOT_FOUND');
 
     const existingIdentity = getHomeIdentityMatchCount_(accountState.row.provider, accountState.row.providerSubject);
-    if (existingIdentity > 0) throw paluruUserError_('IDENTITY_MAPPING_CONFLICT');
+    if (existingIdentity > 1) throw paluruUserError_('IDENTITY_MAPPING_CONFLICT');
+    if (existingIdentity === 1) {
+      const identity = resolveHomeIdentity_(accountState.row.provider, accountState.row.providerSubject);
+      if (identity.homeId !== actor.homeId || identity.memberUserId !== memberUserId) {
+        throw paluruUserError_('IDENTITY_MAPPING_CONFLICT');
+      }
+      const now = nowTokyoString_();
+      const updated = accountState.values.slice();
+      updated[accountState.headerMap.status] = 'linked';
+      updated[accountState.headerMap.updatedAt] = now;
+      accountState.sheet.getRange(accountState.rowNumber, 1, 1, accountState.headers.length).setValues([updated]);
+      return { status: 'linked', memberUserId: memberUserId, displayName: member.displayName };
+    }
     if (hasActiveHomeIdentityForMember_(actor.homeId, memberUserId)) throw paluruUserError_('MEMBER_ALREADY_LINKED');
 
     const identitySheet = getRequiredHomeMembershipSheet_(HOME_IDENTITIES_SHEET_NAME, HOME_IDENTITIES_HEADERS);
@@ -252,6 +264,12 @@ function normalizeAuthRegistrationErrorCode_(code) {
     MEMBER_LINK_PENDING: true,
     USER_ACCOUNT_DISABLED: true,
     USER_ACCOUNT_CONFLICT: true,
+    INVALID_DISPLAY_NAME: true,
+    ALREADY_LINKED: true,
+    MEMBER_ALREADY_LINKED: true,
+    REGISTRATION_NOT_PENDING: true,
+    INVALID_INPUT: true,
+    SCHEMA_MISMATCH: true,
   });
   const normalized = String(code || 'AUTHENTICATION_FAILED');
   return allowed[normalized] ? normalized : 'AUTHENTICATION_FAILED';
