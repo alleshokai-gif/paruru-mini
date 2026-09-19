@@ -1,0 +1,14 @@
+{
+  "firebaseProjectId": "TEST_PROJECT",
+  "firebaseWebApiKey": "PUBLIC_FIREBASE_WEB_API_KEY",
+  "mappings": [
+    {
+      "firebaseUid": "FIREBASE_UID_FROM_TEST_LOGIN",
+      "homeId": "TEST_HOME",
+      "memberUserId": "father",
+      "displayName": "父",
+      "role": "admin",
+      "status": "active"
+    }
+  ]
+}
