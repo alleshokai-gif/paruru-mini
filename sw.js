@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260919-firebase-auth-p3");
-// Release: v20260919-firebase-auth-p3
+importScripts("./build.js?v=v20260919-firebase-self-registration-p3");
+// Release: v20260919-firebase-self-registration-p3
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
