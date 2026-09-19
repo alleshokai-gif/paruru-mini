@@ -54,7 +54,7 @@ function answerKazOsInbox_(body) {
       throw homeMembershipError_('REVALIDATION_REQUIRED');
     }
     const currentQuestions = current.inbox_items.slice();
-    const view = applyKazOsDecisionLedger_(current);
+    const view = applyKazOsDecisionLedger_(JSON.parse(JSON.stringify(current)));
     const question = view.inbox_items.find(function(item) { return item.id === request.decision_id; })
       || currentQuestions.find(function(item) { return item.id === request.decision_id; });
     if (!question || question.question_revision !== request.question_revision
@@ -62,9 +62,6 @@ function answerKazOsInbox_(body) {
         || !sameKazOsSourceRevisions_(currentSourceRevisions_(current), request.source_revision_references)
         || (question.expires_at && (!Number.isFinite(Date.parse(question.expires_at)) || Date.parse(question.expires_at) <= Date.now()))) {
       throw homeMembershipError_('REVALIDATION_REQUIRED');
-    }
-    if (question.kind === 'calendar_impact_triage') {
-      question.target_event_refs = current.calendar_events.map(function(event) { return event.id; });
     }
     if (question.kind === 'stale_state_confirmation') {
       const workItem = current.work_items.find(function(item) { return item.id === question.entity_ref; });
@@ -104,9 +101,9 @@ function validateKazOsAnswerRequest_(input) {
     return typeof refs[key] !== 'string' || !refs[key] || refs[key].length > 160;
   })) throw homeMembershipError_('KAZ_ANSWER_INVALID');
   let selected = input.selected_option;
-  if (Array.isArray(selected)) {
-    if (!selected.length || selected.length > 200 || new Set(selected).size !== selected.length) throw homeMembershipError_('KAZ_ANSWER_INVALID');
-    selected = selected.map(function(value) { return text(value, 120); }).sort();
+  if (selected && typeof selected === 'object' && !Array.isArray(selected)) {
+    if (Object.keys(selected).sort().join(',') !== 'end,start') throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    selected = { start: text(selected.start, 80), end: text(selected.end, 80) };
   } else {
     selected = text(selected, 80);
   }
@@ -118,13 +115,18 @@ function validateKazOsAnswerRequest_(input) {
 }
 
 function validateKazOsAnswerSelection_(question, selected) {
-  if (question.kind === 'calendar_event_selection') {
-    if (!Array.isArray(selected) || !selected.length || selected.some(function(value) {
-      return !question.selection_options.some(function(option) { return option.id === value; });
-    })) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+  if (question.kind === 'calendar_partial_window') {
+    const start = selected && Date.parse(selected.start), end = selected && Date.parse(selected.end);
+    const allDay = question.calendar_event && question.calendar_event.all_day === true;
+    const eventStart = Date.parse(question.calendar_event && question.calendar_event.start + (allDay ? 'T00:00:00+09:00' : ''));
+    const eventEnd = Date.parse(question.calendar_event && question.calendar_event.end + (allDay ? 'T00:00:00+09:00' : ''));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end
+        || (Number.isFinite(eventStart) && start < eventStart)
+        || (Number.isFinite(eventEnd) && end > eventEnd)
+        || (Number.isFinite(eventStart) && Number.isFinite(eventEnd) && start === eventStart && end === eventEnd)) throw homeMembershipError_('KAZ_ANSWER_INVALID');
     return;
   }
-  if (Array.isArray(selected) || !question.answer_contract.choices.some(function(choice) { return choice.value === selected; })) {
+  if (selected && typeof selected === 'object' || !question.answer_contract.choices.some(function(choice) { return choice.value === selected; })) {
     throw homeMembershipError_('KAZ_ANSWER_INVALID');
   }
 }
@@ -215,10 +217,15 @@ function persistKazOsAnswer_(question, request, actor) {
 function buildKazOsControlledProposal_(question, answer, proposalId) {
   const selected = answer.selected_option;
   let change;
-  if (question.kind === 'calendar_impact_triage') {
-    if (selected === 'some') change = { kind: 'FOLLOWUP_REQUIRED', follow_up: 'calendar_event_selection', constraint_creation: false };
+  if (question.kind === 'calendar_event_impact') {
+    const eventRef = question.calendar_event && question.calendar_event.ref;
+    if (!eventRef) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    if (selected === 'partial') change = { kind: 'FOLLOWUP_REQUIRED', follow_up: 'calendar_partial_window',
+      target_event_ref: eventRef, constraint_creation: false };
+    else if (selected === 'all') change = { kind: 'CALENDAR_CLASSIFICATION_PROPOSAL', target_event_ref: eventRef,
+      impact_on_kaz: 'hard_constraint', coverage: 'full_event', classification_source: 'user', constraint_creation: false };
     else if (selected === 'none') change = { kind: 'CALENDAR_CLASSIFICATION_PROPOSAL',
-      target_event_refs: question.target_event_refs || [], impact_on_kaz: 'none', classification_source: 'user' };
+      target_event_ref: eventRef, impact_on_kaz: 'none', classification_source: 'user', constraint_creation: false };
     else change = { kind: 'NO_OPERATIONAL_CHANGE', unknown_window_maintained: true };
   } else if (question.kind === 'today_focus') {
     change = { kind: 'PLANNING_PREFERENCE', work_item_id: question.entity_ref,
@@ -227,9 +234,10 @@ function buildKazOsControlledProposal_(question, answer, proposalId) {
   } else if (question.kind === 'stale_state_confirmation') {
     change = selected === 'complete' ? { kind: 'WORK_ITEM_STATE_CHANGE', work_item_id: question.entity_ref,
       expected_before: question.current_state, desired_after: 'DONE' } : { kind: 'NO_OPERATIONAL_CHANGE', state_maintained: true };
-  } else if (question.kind === 'calendar_event_selection') {
-    change = { kind: 'CALENDAR_CLASSIFICATION_SELECTED', target_event_refs: selected,
-      impact_on_kaz: 'hard_constraint', classification_source: 'user', constraint_creation: false };
+  } else if (question.kind === 'calendar_partial_window') {
+    change = { kind: 'CALENDAR_CLASSIFICATION_PROPOSAL', target_event_ref: question.calendar_event.ref,
+      impact_on_kaz: 'hard_constraint', coverage: 'partial_event', constraint_window: selected,
+      classification_source: 'user', constraint_creation: false };
   } else {
     throw homeMembershipError_('KAZ_ANSWER_INVALID');
   }
@@ -267,22 +275,29 @@ function applyKazOsDecisionLedger_(inbox) {
 }
 
 function buildKazOsCalendarFollowup_(answer, inbox) {
-  const options = inbox.calendar_events.map(function(event) {
-    return { id: event.id, label: event.title, start: event.start, end: event.end, precision: event.precision };
-  });
-  if (!options.length) throw homeMembershipError_('REVALIDATION_REQUIRED');
-  const id = 'decision-' + kazOsSha256_(answer.decision_id + '\u0000' + answer.source_revision_references.calendar).slice(0, 24);
-  const base = { id: id, kind: 'calendar_event_selection', contract: 'secretary-question-0.1', owner: 'kaz',
+  const parent = inbox.inbox_items.find(function(item) { return item.id === answer.decision_id; });
+  const event = parent && inbox.calendar_events.find(function(item) { return item.id === parent.entity_ref; });
+  if (!parent || parent.kind !== 'calendar_event_impact' || !event) throw homeMembershipError_('REVALIDATION_REQUIRED');
+  const id = 'decision-' + kazOsSha256_(answer.decision_id + '\u0000' + event.id + '\u0000' + answer.source_revision_references.calendar).slice(0, 24);
+  const base = { id: id, kind: 'calendar_partial_window', contract: 'secretary-question-0.1', owner: 'kaz',
     decision_requested: true, decision_status: 'pending', write_allowed: false,
-    title: '拘束されるFamily予定', question: 'Kaz本人の時間を使う予定を選んでな。',
-    reason: 'group回答だけでは対象eventを安全に特定できないため',
-    impact: '選択したeventだけclassification proposalへ進める', estimate_min: null,
+    title: event.title, question: 'この予定のうち、Kaz本人が拘束される開始と終了を指定してな。',
+    reason: '一部拘束の時間帯を、このeventだけに束縛して確定するため',
+    impact: 'このeventだけの部分拘束proposalを作る', estimate_min: null,
     affects_today: true, urgent_today: true, decision_date: inbox.as_of.slice(0, 10), due_at: null,
-    project_id: null, entity_ref: null, source_label: 'Family Calendar', entity_revision: null,
-    source_revision_references: answer.source_revision_references, answer_contract: null,
-    selection_mode: 'multi', selection_options: options, recommended_option: null, recommendation_basis: null,
+    project_id: null, entity_ref: event.id, source_label: 'Family Calendar', entity_revision: null,
+    source_revision_references: answer.source_revision_references,
+    answer_contract: { inbox_item_id: id, question_revision: null,
+      question: 'この予定のうち、Kaz本人が拘束される開始と終了を指定してな。',
+      choices: [{ value: 'time_range', label: '拘束時間を指定', effect: 'event単位の部分拘束proposalを作る' }] },
+    calendar_event: { ref: event.id, title: event.title, start: event.start, end: event.end, all_day: event.all_day },
+    input_contract: { type: 'time_range', timezone: 'Asia/Tokyo', start_required: true, end_required: true, within_event: true },
+    recommended_option: null, recommendation_basis: null,
     expires_at: inbox.sources.calendar.valid_until };
-  base.question_revision = 'question-sha256:' + kazOsSha256_(stableKazOsJson_(base));
+  const revisionSeed = JSON.parse(JSON.stringify(base));
+  delete revisionSeed.question_revision;
+  base.question_revision = 'question-sha256:' + kazOsSha256_(stableKazOsJson_(revisionSeed));
+  base.answer_contract.question_revision = base.question_revision;
   return base;
 }
 
