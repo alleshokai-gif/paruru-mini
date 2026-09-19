@@ -36,7 +36,7 @@ function answerKazOsInbox_(body) {
     const input = body || {};
     if (input.action !== 'kazOs.inbox.answer') throw homeMembershipError_('KAZ_READ_ONLY');
     if (!isKazOsLiveEnabled_()) throw homeMembershipError_('KAZ_NOT_CONNECTED');
-    const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken, true);
+    const actor = resolveFirebaseAuthenticatedActor_(input);
     authorizeKazOsOwner_(actor);
     if (!isKazOsInboxAnswerEnabled_()) throw homeMembershipError_('KAZ_ANSWER_DISABLED');
     const request = validateKazOsAnswerRequest_(input);

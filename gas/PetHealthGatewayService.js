@@ -7,12 +7,12 @@ const PET_HEALTH_GATEWAY_OPERATION_CAPABILITIES = Object.freeze({
   'pet.health.void': 'pet.health.record',
 });
 const PET_HEALTH_GATEWAY_ALLOWED_INPUTS = Object.freeze({
-  'pet.health.getDailySummary': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true }),
-  'pet.health.listRecentEvents': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, days: true }),
-  'pet.health.getDashboard': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, localDate: true, requestId: true }),
-  'pet.health.record': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, event: true }),
-  'pet.health.correct': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, correctionOfEventId: true, event: true }),
-  'pet.health.void': Object.freeze({ action: true, deviceId: true, pairingToken: true, petId: true, clientRequestId: true, correctionOfEventId: true }),
+  'pet.health.getDailySummary': Object.freeze({ action: true, auth: true, petId: true, localDate: true }),
+  'pet.health.listRecentEvents': Object.freeze({ action: true, auth: true, petId: true, days: true }),
+  'pet.health.getDashboard': Object.freeze({ action: true, auth: true, petId: true, localDate: true, requestId: true }),
+  'pet.health.record': Object.freeze({ action: true, auth: true, petId: true, clientRequestId: true, event: true }),
+  'pet.health.correct': Object.freeze({ action: true, auth: true, petId: true, clientRequestId: true, correctionOfEventId: true, event: true }),
+  'pet.health.void': Object.freeze({ action: true, auth: true, petId: true, clientRequestId: true, correctionOfEventId: true }),
 });
 const PET_HEALTH_GATEWAY_RECENT_EVENT_FIELDS = Object.freeze({
   meal: Object.freeze(['mealSlot', 'amountG', 'completion', 'note']),
@@ -35,7 +35,7 @@ function petHealthGateway_(body) {
   petHealthGatewayLogDashboardTiming_(dashboardTiming, 'REQUEST_RECEIVED');
   try {
     if (!PET_HEALTH_GATEWAY_OPERATION_CAPABILITIES[String(input.action || '').trim()]) throw petHealthGatewayError_('FORBIDDEN');
-    const actor = resolveAuthenticatedActor_(input.deviceId, input.pairingToken);
+    const actor = resolveFirebaseAuthenticatedActor_(input);
     petHealthGatewayLogDashboardTiming_(dashboardTiming, 'ACTOR_RESOLVED');
     const result = petHealthGatewayForTrustedActor_(input, actor, 'manual', dashboardTiming);
     petHealthGatewayLogDashboardTiming_(dashboardTiming, 'RESPONSE_SENT');

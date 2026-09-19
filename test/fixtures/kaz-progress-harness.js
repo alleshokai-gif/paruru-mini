@@ -33,11 +33,22 @@ function createHarness(options = {}) {
   };
   vm.createContext(ctx);
   ['gas/HomeMemberPolicy.js','gas/HomeMembershipService.js','gas/DevicePairingService.js','gas/Code.js','gas/KazOsInboxAnswer.js','gas/KazOsProgress.js','gas/KazOsProjects.js','gas/KazOsInbox.js'].forEach(f=>vm.runInContext(source(f),ctx,{filename:f}));
+  ctx.resolveFirebaseAuthenticatedActor_ = body => {
+    const subject = String(body && body.auth && body.auth.idToken || '');
+    const actors = {
+      'admin-local': {homeId:'local-home',memberUserId:'father',displayName:'父',role:'admin'},
+      'child-local': {homeId:'local-home',memberUserId:'second_son',displayName:'次男',role:'self_record'},
+      'guardian-local': {homeId:'local-home',memberUserId:'mother',displayName:'母',role:'guardian'},
+      'other-local': {homeId:'other-home',memberUserId:'father',displayName:'父',role:'admin'},
+    };
+    if (!actors[subject]) { const error = new Error('AUTH_TOKEN_INVALID'); error.code = 'AUTH_TOKEN_INVALID'; throw error; }
+    return Object.freeze({...actors[subject],authBindingKey:'firebase-'+subject});
+  };
   ctx.readKazOsProgress_ = () => {reads++; return options.provider();};
   ctx.readKazOsProjects_ = () => {reads++; if (!options.projectsProvider) throw Error('PROJECTS_NOT_CONFIGURED'); return options.projectsProvider();};
   ctx.readKazOsInbox_ = () => {reads++; if (!options.inboxProvider) throw Error('INBOX_NOT_CONFIGURED'); return options.inboxProvider();};
   return {ctx, props, rows, credentials, stats:()=>({writes,reads}), resetStats:()=>{writes=0;reads=0;}, setupDecisionLedger:()=>ctx.setupKazOsDecisionLedger(),
-    body:(device='admin-local', extra={})=>({action:'kazOs.progress.get',deviceId:device,pairingToken:credentials[device],...extra}),
+    body:(device='admin-local', extra={})=>({action:'kazOs.progress.get',auth:{provider:'firebase',idToken:device},...extra}),
     call:body=>ctx.doPost({postData:{contents:JSON.stringify(body)}})};
 }
 module.exports = { createHarness };

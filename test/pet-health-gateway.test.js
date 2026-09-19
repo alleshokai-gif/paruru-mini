@@ -134,8 +134,8 @@ function setup(options) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMembershipService.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HealthGatewayService.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'PetHealthGatewayService.js'), 'utf8'), context);
-  context.resolveAuthenticatedActor_ = (deviceId, pairingToken) => {
-    state.resolvedCredentials.push({ deviceId, pairingToken });
+  context.resolveFirebaseAuthenticatedActor_ = (input) => {
+    state.resolvedCredentials.push(input.auth);
     return Object.assign({}, state.actor);
   };
   const realAuthorize = context.authorizeCapability_;
@@ -149,8 +149,7 @@ function setup(options) {
 function recordInput(extra) {
   return Object.assign({
     action: 'pet.health.record',
-    deviceId: 'browser-device',
-    pairingToken: 'browser-pairing',
+    auth: { provider: 'firebase', idToken: 'firebase-token' },
     petId: 'popio',
     clientRequestId: '01234567-89ab-4def-8123-456789abcdef',
     event: { eventType: 'stool' },
@@ -160,8 +159,7 @@ function recordInput(extra) {
 function correctInput(extra) {
   return Object.assign({
     action: 'pet.health.correct',
-    deviceId: 'browser-device',
-    pairingToken: 'browser-pairing',
+    auth: { provider: 'firebase', idToken: 'firebase-token' },
     petId: 'popio',
     clientRequestId: '01234567-89ab-4def-8123-456789abcdef',
     correctionOfEventId: '01234567-89ab-4def-8123-456789abcdea',
@@ -172,8 +170,7 @@ function correctInput(extra) {
 function voidInput(extra) {
   return Object.assign({
     action: 'pet.health.void',
-    deviceId: 'browser-device',
-    pairingToken: 'browser-pairing',
+    auth: { provider: 'firebase', idToken: 'firebase-token' },
     petId: 'popio',
     clientRequestId: '01234567-89ab-4def-8123-456789abcdef',
     correctionOfEventId: '01234567-89ab-4def-8123-456789abcdea',
@@ -183,8 +180,7 @@ function voidInput(extra) {
 function summaryInput(extra) {
   return Object.assign({
     action: 'pet.health.getDailySummary',
-    deviceId: 'browser-device',
-    pairingToken: 'browser-pairing',
+    auth: { provider: 'firebase', idToken: 'firebase-token' },
     petId: 'popio',
     localDate: '2026-08-19',
   }, extra || {});
@@ -193,8 +189,7 @@ function summaryInput(extra) {
 function recentInput(extra) {
   return Object.assign({
     action: 'pet.health.listRecentEvents',
-    deviceId: 'browser-device',
-    pairingToken: 'browser-pairing',
+    auth: { provider: 'firebase', idToken: 'firebase-token' },
     petId: 'popio',
     days: 7,
   }, extra || {});
@@ -203,8 +198,7 @@ function recentInput(extra) {
 function dashboardInput(extra) {
   return Object.assign({
     action: 'pet.health.getDashboard',
-    deviceId: 'browser-device',
-    pairingToken: 'browser-pairing',
+    auth: { provider: 'firebase', idToken: 'firebase-token' },
     petId: 'popio',
     localDate: '2026-08-19',
     requestId: '12345678-1234-4234-8234-123456789abc',
@@ -291,7 +285,7 @@ test('PH-G14', 'record forwards exact trusted payload', () => {
     clientRequestId: '01234567-89ab-4def-8123-456789abcdef',
     event: { eventType: 'stool' },
   });
-  assert.deepStrictEqual(state.resolvedCredentials, [{ deviceId: 'browser-device', pairingToken: 'browser-pairing' }]);
+  assert.deepStrictEqual(state.resolvedCredentials, [{ provider: 'firebase', idToken: 'firebase-token' }]);
 });
 
 test('PH-G15', 'summary forwards exact trusted payload', () => {
@@ -369,8 +363,7 @@ test('PH-G25', 'backend unauthorized is configuration error and unknown errors a
 test('PH-G26', 'trusted internal source is separate from public input', () => {
   const { api, state } = setup();
   const input = recordInput();
-  delete input.deviceId;
-  delete input.pairingToken;
+  delete input.auth;
   assert.strictEqual(api.petHealthGatewayForTrustedActor_(input, state.actor, 'agent').success, true);
   assert.strictEqual(state.forwarded[0].source, 'agent');
 });
@@ -431,7 +424,7 @@ test('PH-RG02', 'recent events uses the server-resolved actor', () => {
   assert.strictEqual(api.petHealthGateway_(recentInput()).success, true);
   assert.strictEqual(state.forwarded[0].homeId, 'resolved-home');
   assert.strictEqual(state.forwarded[0].actorUserId, 'resolved-member');
-  assert.deepStrictEqual(state.resolvedCredentials, [{ deviceId: 'browser-device', pairingToken: 'browser-pairing' }]);
+  assert.deepStrictEqual(state.resolvedCredentials, [{ provider: 'firebase', idToken: 'firebase-token' }]);
 });
 
 test('PH-RG03', 'recent events rejects spoofed identity', () => {

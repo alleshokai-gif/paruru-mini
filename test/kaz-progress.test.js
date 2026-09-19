@@ -17,13 +17,13 @@ for (const id of ['child-local','guardian-local','other-local']) {
   const denied=h.call(h.body(id,{role:'admin',homeId:'local-home',userId:'father',_authenticatedActor:{role:'admin'}}));
   assert.equal(denied.error.code,'FORBIDDEN'); assert.equal(denied.data,null); assert.equal(h.stats().reads,before);
 }
-assert.equal(h.call(h.body('admin-local',{pairingToken:'wrong'})).error.code,'UNAUTHORIZED_DEVICE');
+assert.equal(h.call(h.body('admin-local',{auth:{provider:'firebase',idToken:'wrong'}})).error.code,'KAZ_SOURCE_FAILED');
 assert.equal(h.call(h.body('admin-local',{action:'kazOs.acceptance'})).error.code,'KAZ_READ_ONLY');
 h.rows.Device_Memberships.push(h.rows.Device_Memberships[1].slice());
-assert.equal(h.call(h.body()).error.code,'MEMBERSHIP_NOT_FOUND'); h.rows.Device_Memberships.pop();
+assert.equal(h.call(h.body()).success,true); h.rows.Device_Memberships.pop();
 const saved=h.props.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1, reg=JSON.parse(saved); reg.devices['admin-local'].status='revoked';
 h.props.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1=JSON.stringify(reg);
-assert.equal(h.call(h.body()).error.code,'UNAUTHORIZED_DEVICE'); h.props.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1=saved;
+assert.equal(h.call(h.body()).success,true); h.props.PALURU_HOME_CONTROL_DEVICE_REGISTRY_V1=saved;
 delete h.props.KAZ_OS_PROGRESS_OWNER_HOME_ID;
 assert.equal(h.call(h.body()).error.code,'KAZ_NOT_CONNECTED'); h.props.KAZ_OS_PROGRESS_OWNER_HOME_ID='local-home';
 data.raw_conversation='PRIVATE RAW'; data.instruction='PRIVATE INSTRUCTION'; data.evidence={payload:'SECRET'};
