@@ -318,9 +318,19 @@ const splash = document.querySelector("#splash");
 const authLock = document.querySelector("#authLock");
 const authLockMessage = document.querySelector("#authLockMessage");
 const authGoogleButton = document.querySelector("#authGoogleButton");
+const authRegistrationForm = document.querySelector("#authRegistrationForm");
+const authRegistrationDisplayName = document.querySelector("#authRegistrationDisplayName");
+const authRegistrationSubmit = document.querySelector("#authRegistrationSubmit");
+const authLinkPendingActions = document.querySelector("#authLinkPendingActions");
+const authLinkPendingRetry = document.querySelector("#authLinkPendingRetry");
+const authLinkPendingLogout = document.querySelector("#authLinkPendingLogout");
 const authAccountStatus = document.querySelector("#authAccountStatus");
 const authAccountSwitchButton = document.querySelector("#authAccountSwitchButton");
 const authLogoutButton = document.querySelector("#authLogoutButton");
+const authAdminLinkingSection = document.querySelector("#authAdminLinkingSection");
+const authAdminLinkingRefresh = document.querySelector("#authAdminLinkingRefresh");
+const authAdminLinkingStatus = document.querySelector("#authAdminLinkingStatus");
+const authAdminLinkingList = document.querySelector("#authAdminLinkingList");
 const buildVersion = document.querySelector("#buildVersion");
 const views = document.querySelectorAll(".app-view");
 const navItems = document.querySelectorAll(".nav-item");
@@ -718,6 +728,7 @@ function petHealthDashboardCacheFacade_() {
 
 function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
+  renderAuthenticationOnboardingState_(state);
   if (state !== "active_member") {
     try { globalThis.PALURUBus?.setActive(false); } catch { /* Bus lifecycle must not block authentication. */ }
     try { globalThis.PALURUBusHub?.setActive(false); } catch { /* Hub lifecycle must not block authentication. */ }
@@ -745,6 +756,13 @@ function showAuthenticationState(message, state = "locked") {
     authLockMessage.textContent = message;
     document.body.classList.remove("is-authenticated");
   }
+}
+
+function renderAuthenticationOnboardingState_(state) {
+  const value = String(state || "");
+  if (authGoogleButton) authGoogleButton.hidden = !["signed_out", "auth_error"].includes(value);
+  if (authRegistrationForm) authRegistrationForm.hidden = value !== "registration_required";
+  if (authLinkPendingActions) authLinkPendingActions.hidden = value !== "link_pending";
 }
 
 function initializeNormalPwaOnce() {
@@ -790,12 +808,55 @@ function handleFirebaseAuthenticationState_(value) {
     showAuthenticationState("Googleで続けてください。", "signed_out");
     return;
   }
+  if (state === "registration_required") {
+    showAuthenticationState("はじめての利用ですね。PALURUユーザー登録をしてください。", "registration_required");
+    return;
+  }
+  if (state === "link_pending") {
+    showAuthenticationState("ユーザー登録は完了しています。家族との紐付けが完了すると利用できます。", "link_pending");
+    return;
+  }
   showAuthenticationState(`認証を完了できませんでした: ${String(value?.safeCode || "AUTHENTICATION_FAILED")}`, "auth_error");
 }
 
 function safeAuthenticationCode_(error) {
   return String(error?.code || "AUTH_UNAVAILABLE").replace(/[^A-Z0-9_]/g, "").slice(0, 80) || "AUTH_UNAVAILABLE";
 }
+
+authRegistrationForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!firebaseAuthService || !authRegistrationDisplayName) return;
+  const displayName = String(authRegistrationDisplayName.value || "").trim();
+  if (!displayName) {
+    showAuthenticationState("PALURUで使う名前を入力してください。", "registration_required");
+    return;
+  }
+  if (authRegistrationSubmit) authRegistrationSubmit.disabled = true;
+  try {
+    await firebaseAuthService.register(displayName);
+  } catch (error) {
+    showAuthenticationState(`ユーザー登録できませんでした: ${safeAuthenticationCode_(error)}`, "registration_required");
+  } finally {
+    if (authRegistrationSubmit) authRegistrationSubmit.disabled = false;
+  }
+});
+
+authLinkPendingRetry?.addEventListener("click", async () => {
+  if (!firebaseAuthService) return;
+  authLinkPendingRetry.disabled = true;
+  try {
+    await firebaseAuthService.retryResolve();
+  } catch (_) {
+    // State is published by the auth service.
+  } finally {
+    authLinkPendingRetry.disabled = false;
+  }
+});
+
+authLinkPendingLogout?.addEventListener("click", async () => {
+  if (!firebaseAuthService) return;
+  await firebaseAuthService.beginAccountSwitch();
+});
 
 authLogoutButton?.addEventListener("click", async () => {
   if (!firebaseAuthService) return;
@@ -805,6 +866,73 @@ authLogoutButton?.addEventListener("click", async () => {
 authAccountSwitchButton?.addEventListener("click", async () => {
   if (!firebaseAuthService) return;
   await firebaseAuthService.beginAccountSwitch();
+});
+
+async function loadPendingPaluruUserLinks_() {
+  if (appAuthenticationState !== "active_member" || activeMembershipContext?.role !== "admin") return;
+  if (authAdminLinkingStatus) authAdminLinkingStatus.textContent = "確認中…";
+  try {
+    const data = await callHomeControlApi({ action: "auth.registration.pending.list" });
+    renderPendingPaluruUserLinks_(data);
+    if (authAdminLinkingStatus) authAdminLinkingStatus.textContent = data.users?.length ? `${data.users.length}件の登録待ち` : "登録待ちはありません。";
+  } catch (error) {
+    if (authAdminLinkingStatus) authAdminLinkingStatus.textContent = `取得できませんでした: ${String(error?.code || "UNKNOWN")}`;
+  }
+}
+
+function renderPendingPaluruUserLinks_(data) {
+  if (!authAdminLinkingList) return;
+  authAdminLinkingList.replaceChildren();
+  const users = Array.isArray(data?.users) ? data.users : [];
+  const members = Array.isArray(data?.members) ? data.members : [];
+  users.forEach((user) => {
+    const row = document.createElement("div");
+    row.className = "auth-link-row";
+
+    const label = document.createElement("strong");
+    label.textContent = String(user.displayName || "登録ユーザー");
+
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `${label.textContent}を家族memberへ紐付け`);
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "家族memberを選択";
+    select.appendChild(placeholder);
+    members.forEach((member) => {
+      const option = document.createElement("option");
+      option.value = String(member.memberUserId || "");
+      option.textContent = String(member.displayName || member.memberUserId || "");
+      select.appendChild(option);
+    });
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "紐付ける";
+    button.addEventListener("click", async () => {
+      const targetMemberUserId = String(select.value || "");
+      if (!targetMemberUserId) return;
+      button.disabled = true;
+      try {
+        await callHomeControlApi({
+          action: "auth.registration.link",
+          userAccountId: String(user.userAccountId || ""),
+          targetMemberUserId,
+        });
+        await loadPendingPaluruUserLinks_();
+      } catch (error) {
+        if (authAdminLinkingStatus) authAdminLinkingStatus.textContent = `紐付けできませんでした: ${String(error?.code || "UNKNOWN")}`;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    row.append(label, select, button);
+    authAdminLinkingList.appendChild(row);
+  });
+}
+
+authAdminLinkingRefresh?.addEventListener("click", () => {
+  void loadPendingPaluruUserLinks_();
 });
 
 const activateMembershipContext_ = function(membershipContext) {
@@ -823,6 +951,8 @@ const activateMembershipContext_ = function(membershipContext) {
   }
   appAuthenticationState = "active_member";
   initializeNormalPwaOnce();
+  if (authAdminLinkingSection) authAdminLinkingSection.hidden = membershipContext.role !== "admin";
+  if (membershipContext.role === "admin") void loadPendingPaluruUserLinks_();
   void loadNotificationCandidates({ force: true });
   applyAllowedViews_();
   applyMembershipCapabilityVisibility_();

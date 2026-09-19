@@ -28,6 +28,17 @@
       <h1>PALURUへログイン</h1>
       <p id="authLockMessage">Googleセッションを確認中…</p>
       <div id="authGoogleButton" class="auth-google-button" aria-label="Googleで続ける"></div>
+      <form id="authRegistrationForm" class="auth-registration-form" hidden>
+        <label class="field">
+          <span>PALURUで使う名前</span>
+          <input id="authRegistrationDisplayName" type="text" maxlength="40" autocomplete="name" required>
+        </label>
+        <button id="authRegistrationSubmit" type="submit">ユーザー登録</button>
+      </form>
+      <div id="authLinkPendingActions" class="account-actions" hidden>
+        <button id="authLinkPendingRetry" class="secondary-button" type="button">紐付けを再確認</button>
+        <button id="authLinkPendingLogout" class="secondary-button" type="button">別のGoogleアカウントでやり直す</button>
+      </div>
     </section>
     <button id="menuToggleButton" class="menu-toggle" type="button" aria-label="メニューを開く" aria-controls="appDrawer" aria-expanded="false">☰</button>
 
@@ -250,6 +261,17 @@
               <button id="authAccountSwitchButton" class="secondary-button" type="button">別のGoogleアカウントへ切替</button>
               <button id="authLogoutButton" class="secondary-button" type="button">ログアウト</button>
             </div>
+          </section>
+          <section id="authAdminLinkingSection" class="settings-fieldset" aria-live="polite" hidden>
+            <div class="family-inbox-review-heading">
+              <div>
+                <h2>家族との紐付け</h2>
+                <p>登録済みユーザーを既存の家族memberへ一度だけ紐付けます。</p>
+              </div>
+              <button id="authAdminLinkingRefresh" class="secondary-button" type="button">更新</button>
+            </div>
+            <p id="authAdminLinkingStatus"></p>
+            <div id="authAdminLinkingList"></div>
           </section>
           <p id="buildVersion" class="build-version">アプリVersion: 読み込み中…</p>
         </div>
@@ -482,20 +504,20 @@
       <div id="familyInboxReviewCandidates" class="family-inbox-review-candidates"></div>
     </dialog>
 
-    <script src="./build.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/auth/firebase-auth.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/auth/firebase-auth-runtime.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/nurse-okan/health-routine.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./app.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/nurse-okan/nurse-okan.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/popio-health/popio-health.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/bus/config.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/bus/bus.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/bus/journey.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/bus/hub.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/kaz-os/inbox.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/kaz-os/personal.js?v=v20260919-firebase-auth-p3" defer></script>
-    <script src="./features/kaz-os/navigation.js?v=v20260919-firebase-auth-p3" defer></script>
+    <script src="./build.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/auth/firebase-auth.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/auth/firebase-auth-runtime.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/nurse-okan/health-routine.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./app.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/nurse-okan/nurse-okan.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/popio-health/popio-health.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/bus/config.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/bus/bus.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/bus/journey.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/bus/hub.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/kaz-os/inbox.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/kaz-os/personal.js?v=v20260919-firebase-self-registration-p3" defer></script>
+    <script src="./features/kaz-os/navigation.js?v=v20260919-firebase-self-registration-p3" defer></script>
   </body>
 </html>
 
