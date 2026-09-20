@@ -131,7 +131,9 @@
       const data = await todayApi();
       if (!current()) return;
       globalThis.KazPersonalView.render(host, selection, data);
-      const until = Date.parse(data?.sources?.work_items?.valid_until);
+      const workUntil = Date.parse(data?.sources?.work_items?.valid_until);
+      const calendarUntil = Date.parse(data?.sources?.calendar?.valid_until);
+      const until = [workUntil, calendarUntil].filter(Number.isFinite).sort((a,b)=>a-b)[0];
       if (Number.isFinite(until) && until > Date.now()) {
         todayExpiry = setTimeout(() => {
           if (current()) globalThis.KazPersonalView.render(host, selection, data);
@@ -141,8 +143,8 @@
       if (!current()) return;
       const status = error?.code === 'KAZ_NOT_CONNECTED' ? 'not_connected' : 'failed';
       globalThis.KazPersonalView.render(host, selection, {
-        schema_version: 'kaz-today-work-v1',
-        origin: 'notion_official_api',
+        schema_version: 'kaz-today-plan-v1',
+        origin: 'real_operational_sources',
         mode: 'read_only',
         fixture_only: false,
         sources: { work_items: { status, complete: false } },
