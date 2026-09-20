@@ -115,7 +115,7 @@
     if (data?.fixture_only === true) add('p', '検証用fixture · 全件架空・実データではありません', 'kp-fixture');
     if (selection.page === 'today') {
       const head = part('TODAY');
-      add('p', '実Work Itemsから、いま着手する候補を整理', 'kp-subtitle', head);
+      add('p', '実Work ItemsとFamily Calendarから、いま使える時間に合わせて候補を整理', 'kp-subtitle', head);
       const workHealth = notice('work_items', head);
       if (data?.origin === 'notion_official_api' && data?.sources?.work_items) {
         const source = data.sources.work_items;
@@ -133,6 +133,9 @@
         top.append(el('span', w.state, 'kp-badge kp-' + String(w.state || '').toLowerCase()));
         if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
         add('p', `${w.project_name} · ${w.work_id} · ${estimate(w.estimate_min)}`, 'kp-muted', row);
+        if (w.plan_start && w.plan_end) add('p', `${fmt(w.plan_start)}–${fmt(w.plan_end)} · ${w.placement || '配置済み'}`, 'kp-muted', row);
+        else if (w.placement === 'ESTIMATE_REQUIRED') add('p', '所要時間未設定のため、時間枠への自動配置はしていません。', 'kp-notice', row);
+        else if (w.placement === 'NO_AVAILABLE_SLOT') add('p', '現在の空き時間には安全に配置できません。', 'kp-notice', row);
         if (w.next_action) add('p', `${label} ${w.next_action}`, 'kp-next', row);
         if (w.blocker) add('p', `BLOCKER ${w.blocker}`, 'kp-blocker', row);
       };
@@ -153,12 +156,18 @@
         (t.next?.items || []).forEach(w => renderCandidate(w, nextSection, 'NEXT'));
       }
 
+      const availability = part('AVAILABLE');
+      if (t.calendar_state?.unknown_count) add('p', `未分類/不明のCalendar予定 ${t.calendar_state.unknown_count}件は空き時間扱いしていません。`, 'kp-notice', availability);
+      if (!t.availability?.length) add('p', '現在、安全に確定できる空き時間はありません。', 'kp-muted', availability);
+      else t.availability.forEach(slot => add('p', `${fmt(slot.start)}–${fmt(slot.end)}`, 'kp-muted', availability));
+
       const waiting = part('WAITING');
       add('p', `${t.waiting_count}件 · WAITING / BLOCKED / CODEX_RUNNING`, 'kp-muted', waiting);
       (t.waiting || []).forEach(w => renderCandidate(w, waiting, 'NEXT'));
 
-      const meta = fold('TODAY v1の判定範囲');
-      add('p', 'Work Itemsの明示Status / Deadline / Priorityだけを使用。Calendar・空き時間・Energy・AI scoreはまだ使っていません。', 'kp-muted', meta);
+      const meta = fold('Dynamic Daily Planning v1の判定範囲');
+      add('p', 'Work Itemsの明示Status / Deadline / Priority / Estimateと、Human確認済みCalendar拘束・未分類Calendarを使用。Energy・AI推定時間・UI scoreは使っていません。', 'kp-muted', meta);
+      add('p', `Estimate未設定 ${t.missing_estimate_count}件 · 明示Estimateあり未配置 ${t.unplaced_explicit_estimate_count}件`, 'kp-muted', meta);
       add('p', `Active ${t.active_count} · Done ${t.done_count} · Cancelled ${t.cancelled_count}`, 'kp-muted', meta);
       return;
     }
