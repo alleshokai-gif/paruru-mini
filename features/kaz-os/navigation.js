@@ -2,8 +2,8 @@
 (() => {
   'use strict';
   const byId = id => document.getElementById(id);
-  let context = null, projectsApi = null, inboxApi = null, inboxAnswerApi = null;
-  let projectEpoch = 0, inboxEpoch = 0, projectExpiry = null, inboxExpiry = null;
+  let context = null, projectsApi = null, workApi = null, inboxApi = null, inboxAnswerApi = null;
+  let projectEpoch = 0, workEpoch = 0, inboxEpoch = 0, projectExpiry = null, workExpiry = null, inboxExpiry = null;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
   const isKazHash = () => /^#kaz-os(?:\/|$)/.test(location.hash);
   const active = () => byId('kazOsView')?.classList.contains('is-active');
@@ -21,10 +21,13 @@
 
   function clear() {
     projectEpoch++;
+    workEpoch++;
     inboxEpoch++;
     clearTimeout(projectExpiry);
+    clearTimeout(workExpiry);
     clearTimeout(inboxExpiry);
     projectExpiry = null;
+    workExpiry = null;
     inboxExpiry = null;
     globalThis.KazInboxView?.dispose(byId('kazPersonalContent'));
     byId('kazPersonalContent')?.replaceChildren();
@@ -43,17 +46,71 @@
     try {
       const data = await projectsApi();
       if (!current()) return;
-      globalThis.KazPersonalView.render(host, selection, data);
+      let projected = data;
+      if (selection.id && workApi) {
+        try {
+          const work = await workApi();
+          if (!current()) return;
+          projected = {
+            ...data,
+            sources: { ...(data.sources || {}), tasks: work?.sources?.work_items || null },
+            work_items: work?.work_items ?? null,
+          };
+        } catch (error) {
+          if (!current()) return;
+          const status = error?.code === 'KAZ_NOT_CONNECTED' ? 'not_connected' : 'failed';
+          projected = {
+            ...data,
+            sources: { ...(data.sources || {}), tasks: { status, complete: false } },
+            work_items: null,
+          };
+        }
+      }
+      globalThis.KazPersonalView.render(host, selection, projected);
       const until = Date.parse(data?.sources?.projects?.valid_until);
       if (Number.isFinite(until) && until > Date.now()) {
         projectExpiry = setTimeout(() => {
-          if (current()) globalThis.KazPersonalView.render(host, selection, data);
+          if (current()) globalThis.KazPersonalView.render(host, selection, projected);
         }, Math.max(1, until - Date.now() + 1));
       }
     } catch (error) {
       if (!current()) return;
       const status = error?.code === 'KAZ_NOT_CONNECTED' ? 'not_connected' : 'failed';
       globalThis.KazPersonalView.render(host, selection, { sources: { projects: { status } }, projects: null });
+    }
+  }
+
+  async function renderWork(selection) {
+    const host = byId('kazPersonalContent');
+    if (!host) return;
+    if (!workApi || !active()) {
+      globalThis.KazPersonalView.render(host, selection, null);
+      return;
+    }
+    const requestEpoch = workEpoch;
+    host.textContent = 'Work Itemsを確認中…';
+    const current = () => requestEpoch === workEpoch && allowed() && active() && !document.hidden;
+    try {
+      const data = await workApi();
+      if (!current()) return;
+      globalThis.KazPersonalView.render(host, selection, data);
+      const until = Date.parse(data?.sources?.work_items?.valid_until);
+      if (Number.isFinite(until) && until > Date.now()) {
+        workExpiry = setTimeout(() => {
+          if (current()) globalThis.KazPersonalView.render(host, selection, data);
+        }, Math.max(1, until - Date.now() + 1));
+      }
+    } catch (error) {
+      if (!current()) return;
+      const status = error?.code === 'KAZ_NOT_CONNECTED' ? 'not_connected' : 'failed';
+      globalThis.KazPersonalView.render(host, selection, {
+        origin: 'notion_official_api',
+        mode: 'read_only',
+        fixture_only: false,
+        sources: { work_items: { status, complete: false } },
+        work_items: null,
+        writes: { notion: 0, calendar: 0, context: 0 },
+      });
     }
   }
 
@@ -108,6 +165,7 @@
       else a.removeAttribute('aria-current');
     });
     if (selection.page === 'inbox') void renderInbox(selection);
+    else if (selection.page === 'work') void renderWork(selection);
     else void renderProjects(selection);
   }
 
@@ -119,18 +177,20 @@
     clear();
     context = event.detail?.context || null;
     projectsApi = event.detail?.kazOsProjectsApi || null;
+    workApi = event.detail?.kazOsWorkApi || null;
     inboxApi = event.detail?.kazOsInboxApi || null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = !allowed();
     const status = byId('kazOsEntryStatus');
-    if (status) status.textContent = 'Projects・Secretary Questions・READ-ONLY';
+    if (status) status.textContent = 'Projects・Work Items・Secretary Questions';
     if (allowed() && active()) render();
   });
 
   document.addEventListener('kaz-os:locked', () => {
     context = null;
     projectsApi = null;
+    workApi = null;
     inboxApi = null;
     inboxAnswerApi = null;
     clear();
