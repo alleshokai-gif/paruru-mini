@@ -17,7 +17,9 @@ const gasProgress = fs.readFileSync(path.join(root, 'gas', 'KazOsProgress.js'), 
 const gasInbox = fs.readFileSync(path.join(root, 'gas', 'KazOsInbox.js'), 'utf8');
 const gasAnswer = fs.readFileSync(path.join(root, 'gas', 'KazOsInboxAnswer.js'), 'utf8');
 
-assert(build.includes('v20260920-kaz-phase4c4-answer-rebase-v1'), 'Firebase auth P3 build ID missing');
+const buildMatch = /globalThis\.BUILD_ID\s*=\s*"([^"]+)"/.exec(build);
+assert(buildMatch, 'PWA BUILD_ID missing');
+assert(serviceWorker.includes(`importScripts("./build.js?v=${buildMatch[1]}")`), 'Service Worker build import is out of sync');
 assert(personal.includes('MAX_SOURCE_CLOCK_SKEW_MS = 60_000'), '60 second source clock skew contract regressed');
 
 assert(app.includes('kazOsInboxApi: callAuthenticatedKazOsInbox_'), 'authenticated event omits INBOX read API');
@@ -32,7 +34,7 @@ for (const [name, source] of [['app.js', app], ['gas/Code.js', gasCode], ['gas/K
 
 assert(html.includes('href="#kaz-os/inbox"'), 'INBOX navigation missing');
 assert(html.includes('features/kaz-os/inbox.js'), 'INBOX renderer not loaded');
-assert(!html.includes('href="#kaz-os/today"'), 'TODAY must remain outside this release');
+assert(html.includes('href="#kaz-os/today"'), 'TODAY navigation missing');
 assert(!html.includes('data-kaz-page="diagnostics"'), 'Diagnostics must remain outside this release');
 assert(serviceWorker.includes('versioned("features/kaz-os/inbox.js")'), 'INBOX renderer missing from app shell');
 
@@ -53,7 +55,7 @@ assert(inboxScript >= 0 && inboxScript < personalScript, 'INBOX renderer must lo
 
 function navigationHarness() {
   const listeners = {};
-  const anchors = ['projects', 'inbox'].map(page => ({
+  const anchors = ['today', 'work', 'projects', 'inbox'].map(page => ({
     dataset: { kazPage: page },
     setAttribute(name, value) { this[name] = value; },
     removeAttribute(name) { delete this[name]; },

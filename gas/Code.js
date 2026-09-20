@@ -209,6 +209,10 @@ function doPost(e) {
       return kazOsProgress_(body);
     }
 
+    if (action === 'kazOs.today.get') {
+      return kazOsProgress_(body);
+    }
+
     if (action === 'kazOs.inbox.get') {
       const trace = createKazOsInboxTrace_(body.request_id);
       if (!trace) {

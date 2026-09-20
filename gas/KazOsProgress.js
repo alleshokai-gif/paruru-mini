@@ -10,13 +10,14 @@ function verifyHomeControlDevicePairingReadOnly_(deviceId, pairingToken) {
 function kazOsProgress_(body, inboxTrace) {
   try {
     const input = body || {};
-    if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.work.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
+    if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.work.get', 'kazOs.today.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
     if (!isKazOsLiveEnabled_()) throw homeMembershipError_('KAZ_NOT_CONNECTED');
     const actor = resolveFirebaseAuthenticatedActor_(input);
     authorizeKazOsOwner_(actor);
     if (input.action === 'kazOs.inbox.get') recordKazOsInboxTrace_(inboxTrace, 'AUTH_PASSED');
     if (input.action === 'kazOs.projects.get') return json_({ success: true, data: sanitizeKazOsProjects_(readKazOsProjects_()), message: 'read only' });
     if (input.action === 'kazOs.work.get') return json_({ success: true, data: sanitizeKazOsWork_(readKazOsWork_()), message: 'read only' });
+    if (input.action === 'kazOs.today.get') return json_({ success: true, data: sanitizeKazOsToday_(readKazOsToday_()), message: 'read only' });
     if (input.action === 'kazOs.inbox.get') {
       recordKazOsInboxTrace_(inboxTrace, 'INBOX_READ_STARTED');
       const sanitized = sanitizeKazOsInbox_(readKazOsInbox_(inboxTrace));

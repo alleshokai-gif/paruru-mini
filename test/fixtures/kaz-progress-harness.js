@@ -32,7 +32,7 @@ function createHarness(options = {}) {
     ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},
   };
   vm.createContext(ctx);
-  ['gas/HomeMemberPolicy.js','gas/HomeMembershipService.js','gas/DevicePairingService.js','gas/Code.js','gas/KazOsInboxAnswer.js','gas/KazOsProgress.js','gas/KazOsProjects.js','gas/KazOsWork.js','gas/KazOsInbox.js'].forEach(f=>vm.runInContext(source(f),ctx,{filename:f}));
+  ['gas/HomeMemberPolicy.js','gas/HomeMembershipService.js','gas/DevicePairingService.js','gas/Code.js','gas/KazOsInboxAnswer.js','gas/KazOsProgress.js','gas/KazOsProjects.js','gas/KazOsWork.js','gas/KazOsToday.js','gas/KazOsInbox.js'].forEach(f=>vm.runInContext(source(f),ctx,{filename:f}));
   ctx.resolveFirebaseAuthenticatedActor_ = body => {
     const subject = String(body && body.auth && body.auth.idToken || '');
     const actors = {
@@ -47,6 +47,7 @@ function createHarness(options = {}) {
   ctx.readKazOsProgress_ = () => {reads++; return options.provider();};
   ctx.readKazOsProjects_ = () => {reads++; if (!options.projectsProvider) throw Error('PROJECTS_NOT_CONFIGURED'); return options.projectsProvider();};
   ctx.readKazOsWork_ = () => {reads++; if (!options.workProvider) throw Error('WORK_NOT_CONFIGURED'); return options.workProvider();};
+  ctx.readKazOsToday_ = () => {reads++; if (!options.todayProvider) throw Error('TODAY_NOT_CONFIGURED'); return options.todayProvider();};
   ctx.readKazOsInbox_ = () => {reads++; if (!options.inboxProvider) throw Error('INBOX_NOT_CONFIGURED'); return options.inboxProvider();};
   return {ctx, props, rows, credentials, stats:()=>({writes,reads}), resetStats:()=>{writes=0;reads=0;}, setupDecisionLedger:()=>ctx.setupKazOsDecisionLedger(),
     body:(device='admin-local', extra={})=>({action:'kazOs.progress.get',auth:{provider:'firebase',idToken:device},...extra}),

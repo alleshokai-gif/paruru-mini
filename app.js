@@ -975,6 +975,7 @@ const activateMembershipContext_ = function(membershipContext) {
       },
       kazOsProjectsApi: callAuthenticatedKazOsProjects_,
       kazOsWorkApi: callAuthenticatedKazOsWork_,
+      kazOsTodayApi: callAuthenticatedKazOsToday_,
       kazOsInboxApi: callAuthenticatedKazOsInbox_,
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
@@ -5085,6 +5086,11 @@ async function callAuthenticatedKazOsProjects_() {
 async function callAuthenticatedKazOsWork_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
   return callHomeControlApi(buildMemoCredentialPayload("kazOs.work.get"));
+}
+
+async function callAuthenticatedKazOsToday_() {
+  if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  return callHomeControlApi(buildMemoCredentialPayload("kazOs.today.get"));
 }
 
 async function callAuthenticatedKazOsInbox_() {
