@@ -260,7 +260,8 @@
           if(['calendar_event_impact','calendar_partial_window'].includes(summary.kind)){
             const event=item.calendar_event;
             const time=v=>Number.isFinite(at(v))?new Date(at(v)).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):String(v||'時刻未確認');
-            add(origin,'span',event?.all_day?`${event.start}–${event.end} · 終日`:`${time(event?.start)}–${time(event?.end)}`,'kiq-time');
+            const allDayLabel=()=>{const start=String(event?.start||'');const end=String(event?.end||'');if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(start)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(end))return '終日';const s=new Date(start+'T00:00:00+09:00'),e=new Date(end+'T00:00:00+09:00');const last=new Date(e.getTime()-86400000);const fmtDay=d=>d.toLocaleDateString('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric'});return s.getTime()===last.getTime()?`${fmtDay(s)} · 終日`:`${fmtDay(s)}–${fmtDay(last)} · 終日`;};
+            add(origin,'span',event?.all_day?allDayLabel():`${time(event?.start)}–${time(event?.end)}`,'kiq-time');
           }else if(summary.kind==='classification_required'&&Number.isFinite(at(info.entity?.start))&&Number.isFinite(at(info.entity?.end))){
             const time=v=>new Date(at(v)).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'});
             add(origin,'span',`${time(info.entity.start)}–${time(info.entity.end)}`,'kiq-time');
