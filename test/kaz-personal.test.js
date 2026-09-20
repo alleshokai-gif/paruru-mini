@@ -53,11 +53,12 @@ test('freshness permits bounded clock skew and rejects unsafe timestamps', () =>
   assert.equal(view.health(null,now),'not_connected');
 });
 test('routes preserve project IDs and unknown routes default safely', () => {
+  assert.deepEqual(view.route('#kaz-os/today'),{page:'today',id:null});
   assert.deepEqual(view.route('#kaz-os/projects/fx-p01'),{page:'projects',id:'fx-p01'});
   assert.deepEqual(view.route('#kaz-os/work'),{page:'work',id:null});
   assert.deepEqual(view.route('#kaz-os/inbox'),{page:'inbox',id:null});
   assert.deepEqual(view.route('#kaz-os/inbox/decision-1'),{page:'inbox',id:'decision-1'});
-  assert.equal(view.route('#kaz-os').page,'projects');assert.equal(view.route('#kaz-os/diagnostics').page,'projects');
+  assert.equal(view.route('#kaz-os').page,'today');assert.equal(view.route('#kaz-os/diagnostics').page,'today');
   assert.equal(view.route('#kaz-os/projects/%ZZ').id,null);
 });
 test('fixture never linked from public shell or production fallback', () => {
