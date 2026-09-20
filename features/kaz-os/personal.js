@@ -58,15 +58,15 @@
     return result;
   }
   function route(hash) {
-    const match = /^#kaz-os(?:\/(projects|work|inbox)(?:\/([^/]+))?)?$/.exec(hash || '');
-    if (!match) return { page: 'projects', id: null };
-    const page = match[1] || 'projects';
+    const match = /^#kaz-os(?:\/(today|work|projects|inbox)(?:\/([^/]+))?)?$/.exec(hash || '');
+    if (!match) return { page: 'today', id: null };
+    const page = match[1] || 'today';
     let id = null;
     try { if (match[2]) id = decodeURIComponent(match[2]); } catch { /* Invalid URL is not an entity ID. */ }
     return { page, id };
   }
   function render(host, selection, data, now = Date.now(), options = {}) {
-    if (!selection || !['projects', 'work', 'inbox'].includes(selection.page)) selection = { page: 'projects', id: null };
+    if (!selection || !['today', 'work', 'projects', 'inbox'].includes(selection.page)) selection = { page: 'today', id: null };
     todayView?.dispose(host);
     inboxView?.dispose(host);
     host.replaceChildren();
@@ -112,12 +112,56 @@
       row.append(el('span', compact && metric.known ? `${metric.accepted}/${metric.total}` : metric.label));
       row.title = metric.label;
     }
-    if (!['projects','work','inbox'].includes(selection.page)) {
-      if (todayView) todayView.render(host, data, now, { ...options, health });
-      else host.textContent = 'TODAYの表示moduleを再取得してください。';
+    if (data?.fixture_only === true) add('p', '検証用fixture · 全件架空・実データではありません', 'kp-fixture');
+    if (selection.page === 'today') {
+      const head = part('TODAY');
+      add('p', '実Work Itemsから、いま着手する候補を整理', 'kp-subtitle', head);
+      const workHealth = notice('work_items', head);
+      if (data?.origin === 'notion_official_api' && data?.sources?.work_items) {
+        const source = data.sources.work_items;
+        const fetched = Number.isFinite(stamp(source.fetched_at)) ? new Date(source.fetched_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST' : '取得時刻未確認';
+        add('p', `実データ · Notion / READ-ONLY · ${source.fetch_status} · ${fetched}`, 'kp-muted', head);
+      }
+      if (workHealth !== 'ok' || !data?.today) return;
+
+      const t = data.today;
+      const renderCandidate = (w, parent, label) => {
+        const row = add('article', '', 'kp-work-row kp-today-row', parent);
+        row.dataset.workItem = w.id;
+        const top = add('div', '', 'kp-project-head', row);
+        top.append(el('strong', w.title));
+        top.append(el('span', w.state, 'kp-badge kp-' + String(w.state || '').toLowerCase()));
+        if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
+        add('p', `${w.project_name} · ${w.work_id} · ${estimate(w.estimate_min)}`, 'kp-muted', row);
+        if (w.next_action) add('p', `${label} ${w.next_action}`, 'kp-next', row);
+        if (w.blocker) add('p', `BLOCKER ${w.blocker}`, 'kp-blocker', row);
+      };
+
+      const nowSection = part('NOW');
+      if (t.now?.kind === 'none') {
+        add('p', 'DOINGのWork Itemはありません。', 'kp-muted', nowSection);
+      } else {
+        if (t.now?.kind === 'multiple') add('p', '同順位候補が複数あります。勝手に1件へ絞っていません。', 'kp-notice', nowSection);
+        (t.now?.items || []).forEach(w => renderCandidate(w, nowSection, 'NEXT'));
+      }
+
+      const nextSection = part('NEXT');
+      if (t.next?.kind === 'none') {
+        add('p', '次候補はありません。', 'kp-muted', nextSection);
+      } else {
+        if (t.next?.kind === 'multiple') add('p', '同順位候補が複数あります。Deadline / Review / Priorityの明示値だけで比較しています。', 'kp-notice', nextSection);
+        (t.next?.items || []).forEach(w => renderCandidate(w, nextSection, 'NEXT'));
+      }
+
+      const waiting = part('WAITING');
+      add('p', `${t.waiting_count}件 · WAITING / BLOCKED / CODEX_RUNNING`, 'kp-muted', waiting);
+      (t.waiting || []).forEach(w => renderCandidate(w, waiting, 'NEXT'));
+
+      const meta = fold('TODAY v1の判定範囲');
+      add('p', 'Work Itemsの明示Status / Deadline / Priorityだけを使用。Calendar・空き時間・Energy・AI scoreはまだ使っていません。', 'kp-muted', meta);
+      add('p', `Active ${t.active_count} · Done ${t.done_count} · Cancelled ${t.cancelled_count}`, 'kp-muted', meta);
       return;
     }
-    if (data?.fixture_only === true) add('p', '検証用fixture · 全件架空・実データではありません', 'kp-fixture');
     if (selection.page === 'work') {
       const head = part('WORK');
       add('p', '全Project横断のWork Items', 'kp-subtitle', head);
