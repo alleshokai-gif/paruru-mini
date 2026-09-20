@@ -6,6 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (todayView, inboxView) {
   'use strict';
   const PROJECT_STATES = ['ACTIVE', 'REVIEW', 'BLOCKED', 'BACKLOG', 'DONE'];
+  const WORK_STATES = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
   const INBOX_KINDS = { human_review: 'Human Review', acceptance: 'Acceptance', blocked: 'Blocked解除', idea: 'Idea', context_candidate: 'Context candidate' };
   const laneLimits = { now: 1, next: 2, quick_wins: 2, waiting_preview: 2 };
   const MAX_SOURCE_CLOCK_SKEW_MS = 60_000;
@@ -57,7 +58,7 @@
     return result;
   }
   function route(hash) {
-    const match = /^#kaz-os(?:\/(projects|inbox)(?:\/([^/]+))?)?$/.exec(hash || '');
+    const match = /^#kaz-os(?:\/(projects|work|inbox)(?:\/([^/]+))?)?$/.exec(hash || '');
     if (!match) return { page: 'projects', id: null };
     const page = match[1] || 'projects';
     let id = null;
@@ -65,7 +66,7 @@
     return { page, id };
   }
   function render(host, selection, data, now = Date.now(), options = {}) {
-    if (!selection || !['projects', 'inbox'].includes(selection.page)) selection = { page: 'projects', id: null };
+    if (!selection || !['projects', 'work', 'inbox'].includes(selection.page)) selection = { page: 'projects', id: null };
     todayView?.dispose(host);
     inboxView?.dispose(host);
     host.replaceChildren();
@@ -91,11 +92,11 @@
     function workDetail(w, parent) {
       const d = fold(`${w.title} · ${w.state} · ${estimate(w.estimate_min)}`, parent);
       d.dataset.workItem = w.id;
-      add('p', `担当 ${w.next_actor || '未確認'} · ${w.action_instruction || w.title}`, '', d);
+      add('p', `担当 ${w.next_actor || '未確認'} · ${w.action_instruction || w.next_action || w.title}`, '', d);
       add('p', `Dependency: ${Array.isArray(w.dependencies) ? w.dependencies.length ? w.dependencies.join(' / ') : 'なし（取得範囲内）' : '未確認'}`, 'kp-muted', d);
       add('p', `Blocker: ${w.blocker || (w.state === 'BLOCKED' ? '理由の確認が必要' : '未記載')}`, 'kp-muted', d);
       const evidence = fold('Run / tests / Evidence', d), proof = data?.evidence?.[w.evidence_ref];
-      add('p', `Work Item ${w.id} · revision ${w.revision ?? '未確認'}`, 'kp-muted', evidence);
+      add('p', `Work Item ${w.work_id || w.id} · revision ${w.revision ?? w.source_revision ?? '未確認'}`, 'kp-muted', evidence);
       add('p', w.evidence_ref ? `Evidence ref: ${w.evidence_ref}` : 'Evidenceは未取得', 'kp-muted', evidence);
       if (proof) for (const key of ['run_id', 'execution_status', 'tests_summary', 'human_review_status', 'acceptance_status', 'git_diff_ref']) if (proof[key] != null) add('p', `${key}: ${proof[key]}`, 'kp-muted', evidence);
       const runs = sourceState('runs') === 'ok' && list(data?.active_runs);
@@ -111,12 +112,51 @@
       row.append(el('span', compact && metric.known ? `${metric.accepted}/${metric.total}` : metric.label));
       row.title = metric.label;
     }
-    if (!['projects','inbox'].includes(selection.page)) {
+    if (!['projects','work','inbox'].includes(selection.page)) {
       if (todayView) todayView.render(host, data, now, { ...options, health });
       else host.textContent = 'TODAYの表示moduleを再取得してください。';
       return;
     }
     if (data?.fixture_only === true) add('p', '検証用fixture · 全件架空・実データではありません', 'kp-fixture');
+    if (selection.page === 'work') {
+      const head = part('WORK');
+      add('p', '全Project横断のWork Items', 'kp-subtitle', head);
+      const workHealth = notice('work_items', head);
+      if (data?.origin === 'notion_official_api' && data?.sources?.work_items) {
+        const source = data.sources.work_items;
+        const fetched = Number.isFinite(stamp(source.fetched_at)) ? new Date(source.fetched_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST' : '取得時刻未確認';
+        add('p', `実データ · Notion / READ-ONLY · ${source.fetch_status} · ${fetched}`, 'kp-muted', head);
+        head.dataset.snapshotRef = source.snapshot_ref || '';
+      }
+      if (!['ok', 'partial'].includes(workHealth)) return;
+      if (!work) { add('p', 'Work Items一覧を確認できません。重複・欠落を解消してください。', 'kp-notice'); return; }
+      add('p', `${work.length} Work Items · 表示順はOperational state順。UIで独自priority scoreは付けません。`, 'kp-muted', head);
+      if (!work.length) { add('p', 'この取得範囲のWork Itemは0件です。'); return; }
+      const rows = add('div', '', 'kp-work-list');
+      const terminal = [];
+      work.forEach(w => {
+        if (!WORK_STATES.includes(w.state)) return;
+        if (['DONE','CANCELLED'].includes(w.state)) { terminal.push(w); return; }
+        const row = add('article', '', 'kp-work-row', rows); row.dataset.workItem = w.id;
+        const top = add('div', '', 'kp-project-head', row);
+        top.append(el('strong', w.title));
+        top.append(el('span', w.state, 'kp-badge kp-' + w.state.toLowerCase()));
+        if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
+        add('p', `${w.project_name} · ${w.work_id} · ${estimate(w.estimate_min)}`, 'kp-muted', row);
+        if (w.next_action) add('p', `NEXT ${w.next_action}`, 'kp-next', row);
+        if (w.blocker || w.state === 'BLOCKED') add('p', `BLOCKER ${w.blocker || '理由は未確認'}`, 'kp-blocker', row);
+      });
+      if (terminal.length) {
+        const closed = fold(`終了した項目 ${terminal.length}件`);
+        terminal.forEach(w => {
+          const row = add('div', '', 'kp-work-row', closed); row.dataset.workItem = w.id;
+          add('strong', w.title, '', row);
+          add('p', `${w.project_name} · ${w.work_id} · ${w.state}`, 'kp-muted', row);
+        });
+      }
+      return;
+    }
+
     if (selection.page === 'projects') {
       const head = part(selection.id ? 'PROJECT DETAIL' : 'PROJECTS');
       add('p', 'Kazの全活動を眺める', 'kp-subtitle', head);
