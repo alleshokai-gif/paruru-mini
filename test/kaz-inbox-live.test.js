@@ -27,6 +27,26 @@ const call=(device='admin-local',extra={})=>h.call(h.body(device,{action:'kazOs.
 function test(name,fn){fn();checks++;}
 
 test('owner receives only live read-only Secretary Questions',()=>{value.private_payload='SECRET';const r=call();assert(r.success);assert.equal(r.data.mode,'read_only_display');assert.equal(r.data.inbox_items.length,1);assert.equal(r.data.inbox_items[0].write_allowed,false);assert(!JSON.stringify(r).includes('SECRET'));});
+test('Context Gardener read-only decision passes sanitizer without enabling writes',()=>{
+  value=snapshot();
+  const revision='a'.repeat(40),id='decision-cg-'+'1'.repeat(20);
+  value.sources.context_gardener={status:'ok',complete:true,fetched_at:iso(-300),valid_until:null,source_revision:revision,scope:'Kaz Context Gardener read-only analysis'};
+  value.gardener={adapter_version:'context-gardener-inbox-adapter-0.1',status:'current',complete:true,source_revision:revision,decision_count:1};
+  value.inbox_items.push({id,kind:'CONTEXT_CANDIDATE',contract:'context-gardener-decision-0.1',owner:'kaz',decision_requested:true,decision_status:'pending',write_allowed:false,
+    title:'承認済みContext候補の昇格を確認する',reason:'APPROVED_CANDIDATE_NOT_PROMOTED',impact:'Canonical Contextの整理候補。未回答でもContextは変更されません。',estimate_min:5,
+    affects_today:false,urgent_today:false,decision_date:null,due_at:null,project_id:null,entity_ref:'inbox/candidate.md',source_label:'Kaz Context Hub',entity_revision:revision,
+    question_revision:'gardener-question:'+id,source_revision_references:[{repository:'alleshokai-gif/kaz-context',source_revision:revision,paths:['inbox/candidate.md'],finding_id:'cg-'+'1'.repeat(20)}],
+    answer_contract:{inbox_item_id:id,question_revision:'gardener-question:'+id,question:'承認済みContext候補の昇格を確認する',choices:[
+      {value:'PROMOTE',label:'PROMOTE',effect:'Human review proposal only'},{value:'KEEP_AS_CANDIDATE',label:'KEEP_AS_CANDIDATE',effect:'Human review proposal only'},{value:'DEFER',label:'DEFER',effect:'Human review proposal only'}]},
+    persisted:false,authority:'read_only_analysis'});
+  const r=call();assert(r.success);assert.equal(r.data.inbox_items.length,2);const item=r.data.inbox_items.find(x=>x.id===id);assert(item);assert.equal(item.kind,'CONTEXT_CANDIDATE');assert.equal(item.estimate_min,5);assert.equal(item.write_allowed,false);assert.equal(r.data.sources.context_gardener.source_revision,revision);assert.equal(r.data.writes.context,0);
+});
+test('blocked Context Gardener source preserves existing INBOX instead of becoming empty/failure',()=>{
+  value=snapshot();
+  value.sources.context_gardener={status:'blocked',complete:false,fetched_at:null,valid_until:null,source_revision:null,scope:'Kaz Context Gardener read-only analysis'};
+  value.gardener={adapter_version:'context-gardener-inbox-adapter-0.1',status:'blocked',complete:false,source_revision:null,decision_count:null,warning:'CONTEXT_GARDENER_SOURCE_BLOCKED'};
+  const r=call();assert(r.success);assert.equal(r.data.inbox_items.length,1);assert.equal(r.data.sources.context_gardener.status,'blocked');assert.equal(r.data.gardener.warning,'CONTEXT_GARDENER_SOURCE_BLOCKED');
+});
 test('shared Kaz OS live gate controls INBOX and deprecated INBOX read flag is ignored',()=>{
   value=snapshot();h.props.KAZ_OS_INBOX_LIVE_ENABLED='false';
   const deprecatedFlagRead=call();assert(deprecatedFlagRead.success);assert.equal(deprecatedFlagRead.data.mode,'read_only_display');
