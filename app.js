@@ -792,7 +792,10 @@ async function initializeAuthenticatedPwa() {
     });
     firebaseAuthService.renderGoogleButton(authGoogleButton);
   } catch (error) {
-    showAuthenticationState(`認証を開始できませんでした: ${safeAuthenticationCode_(error)}`, "auth_error");
+    const code = safeAuthenticationCode_(error);
+    showAuthenticationState(code === "TRANSPORT_FAILURE"
+      ? "PALURUサーバーに接続できませんでした。再試行しても復旧しませんでした。"
+      : `認証を開始できませんでした: ${code}`, "auth_error");
   }
 }
 
@@ -818,7 +821,10 @@ function handleFirebaseAuthenticationState_(value) {
     showAuthenticationState("ユーザー登録は完了しています。家族との紐付けが完了すると利用できます。", "link_pending");
     return;
   }
-  showAuthenticationState(`認証を完了できませんでした: ${String(value?.safeCode || "AUTHENTICATION_FAILED")}`, "auth_error");
+  const code = String(value?.safeCode || "AUTHENTICATION_FAILED");
+  showAuthenticationState(code === "TRANSPORT_FAILURE"
+    ? "PALURUサーバーに接続できませんでした。再試行しても復旧しませんでした。"
+    : `認証を完了できませんでした: ${code}`, "auth_error");
 }
 
 function safeAuthenticationCode_(error) {
