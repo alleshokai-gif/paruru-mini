@@ -7,7 +7,7 @@ const {createHarness} = require('./fixtures/kaz-progress-harness');
 
 const root=process.env.PALURU_TEST_ROOT || path.resolve(__dirname,'..'), baseRoot=process.env.PALURU_BASE_ROOT;
 
-const item=(id,workId,title,state,priority,projectName)=>({
+const item=(id,workId,title,state,priority,projectName,planStart=null,planEnd=null,placement=null)=>({
   id,
   work_id:workId,
   title,
@@ -17,7 +17,7 @@ const item=(id,workId,title,state,priority,projectName)=>({
     : '00000000-0000-0000-0000-000000000002',
   project_name:projectName,
   priority,
-  estimate_min:null,
+  estimate_min:30,
   deadline:null,
   scheduled:null,
   action_type:'ACTION',
@@ -25,50 +25,63 @@ const item=(id,workId,title,state,priority,projectName)=>({
   blocker:'',
   source:'CHATGPT',
   source_revision:new Date().toISOString(),
+  plan_start:planStart,
+  plan_end:planEnd,
+  placement,
 });
 
 const snapshot=()=>({
-  schema_version:'kaz-today-work-v1',
-  origin:'notion_official_api',
+  schema_version:'kaz-today-plan-v1',
+  origin:'real_operational_sources',
   mode:'read_only',
   fixture_only:false,
   policy:{
-    version:'today-work-v1',
-    dynamic_daily_planning:false,
-    calendar_used:false,
+    version:'dynamic-daily-planning-v1',
+    dynamic_daily_planning:true,
+    calendar_used:true,
+    availability_used:true,
     energy_used:false,
-    availability_used:false,
     ui_scoring_allowed:false,
   },
-  sources:{work_items:{
-    status:'ok',fetch_status:'SUCCESS',complete:true,
-    fetched_at:new Date().toISOString(),
-    valid_until:new Date(Date.now()+900000).toISOString(),
-    source_revision:'observation-sha256:work',
-    projects_source_revision:'observation-sha256:projects',
-    snapshot_ref:'observation-sha256:work',
-    scope:'Notion Work Items · read-only',
-    record_count:3,
-  }},
+  sources:{
+    work_items:{
+      status:'ok',fetch_status:'SUCCESS',complete:true,
+      fetched_at:new Date().toISOString(),
+      valid_until:new Date(Date.now()+900000).toISOString(),
+      source_revision:'observation-sha256:work',
+      projects_source_revision:'observation-sha256:projects',
+      snapshot_ref:'observation-sha256:work',
+      scope:'Notion Work Items · read-only',
+      record_count:3,
+    },
+    calendar:{
+      status:'ok',complete:true,
+      fetched_at:new Date().toISOString(),
+      valid_until:new Date(Date.now()+900000).toISOString(),
+      source_revision:'observation-sha256:calendar',
+      scope:'Family Calendar · transient read-only planning input',
+    }
+  },
   today:{
-    now:{kind:'single',items:[item('00000000-0000-0000-0000-000000000101','WI-14','Current work','DOING','HIGH','PALURU')],basis:['state=DOING','explicit_priority']},
-    next:{kind:'multiple',items:[
-      item('00000000-0000-0000-0000-000000000102','WI-18','Next A','READY','CRITICAL','Kaz OS'),
-      item('00000000-0000-0000-0000-000000000103','WI-19','Next B','READY','CRITICAL','Kaz OS'),
-    ],basis:['explicit_deadline','review_or_acceptance','explicit_priority']},
+    now:{kind:'single',items:[item('00000000-0000-0000-0000-000000000101','WI-14','Current work','DOING','HIGH','PALURU',
+      new Date(Date.now()+60000).toISOString(),new Date(Date.now()+1860000).toISOString(),'POLICY_ORDER')],
+      basis:['state=DOING','explicit_priority','availability']},
+    next:{kind:'single',items:[
+      item('00000000-0000-0000-0000-000000000102','WI-18','Next A','READY','CRITICAL','Kaz OS',
+        new Date(Date.now()+3600000).toISOString(),new Date(Date.now()+5400000).toISOString(),'POLICY_ORDER'),
+    ],basis:['availability','explicit_deadline','review_or_acceptance','explicit_priority']},
     waiting:[],
     waiting_count:0,
+    availability:[{start:new Date().toISOString(),end:new Date(Date.now()+7200000).toISOString()}],
+    calendar_state:{classification_revision_current:true,unknown_count:1,known_none_count:1,
+      unknown:[{event_ref:'event-abc',reason:'UNANSWERED'}]},
+    unplaced_explicit_estimate_count:0,
+    missing_estimate_count:1,
     active_count:3,
     done_count:0,
     cancelled_count:0,
-    needs_choice:true,
-    limitations:[
-      'dynamic_daily_planning_not_connected',
-      'calendar_not_used',
-      'availability_not_used',
-      'energy_not_used',
-      'missing_estimate_not_inferred',
-    ],
+    needs_choice:false,
+    limitations:['energy_not_used','missing_estimate_not_inferred','ui_scoring_not_used','unknown_calendar_not_treated_as_free'],
   },
   writes:{notion:0,calendar:0,context:0},
 });
@@ -82,16 +95,20 @@ const h=createHarness({
 const call=(device='admin-local',extra={})=>h.call(h.body(device,{action:'kazOs.today.get',...extra}));
 function test(name,fn){fn();checks++;}
 
-test('owner receives TODAY v1 and no invented planner fields',()=>{
+test('owner receives Dynamic Daily Planning and no invented score or energy',()=>{
   data=snapshot();data.raw_private='PRIVATE';data.today.now.items[0].raw_instruction='PRIVATE';
   const r=call();
   assert(r.success);
-  assert.equal(r.data.schema_version,'kaz-today-work-v1');
+  assert.equal(r.data.schema_version,'kaz-today-plan-v1');
+  assert.equal(r.data.origin,'real_operational_sources');
   assert.equal(r.data.today.now.kind,'single');
-  assert.equal(r.data.today.next.kind,'multiple');
-  assert.equal(r.data.policy.dynamic_daily_planning,false);
-  assert.equal(r.data.policy.calendar_used,false);
+  assert.equal(r.data.today.next.kind,'single');
+  assert.equal(r.data.policy.dynamic_daily_planning,true);
+  assert.equal(r.data.policy.calendar_used,true);
+  assert.equal(r.data.policy.availability_used,true);
+  assert.equal(r.data.policy.energy_used,false);
   assert.equal(r.data.policy.ui_scoring_allowed,false);
+  assert.equal(r.data.today.calendar_state.unknown_count,1);
   assert.deepEqual(r.data.writes,{notion:0,calendar:0,context:0});
   assert(!JSON.stringify(r).includes('PRIVATE'));
   assert(!JSON.stringify(r).includes('"score"'));
@@ -124,26 +141,33 @@ test('failed TODAY read is not empty and hides raw exception',()=>{
   fail=false;
 });
 
-test('TODAY sanitizer rejects write claims and malformed selection cardinality',()=>{
+test('TODAY sanitizer rejects write claims malformed planning slots and unsafe calendar state',()=>{
   data=snapshot();data.writes.notion=1;assert.equal(call().success,false);
   data=snapshot();data.today.now.kind='single';data.today.now.items=[];assert.equal(call().success,false);
-  data=snapshot();data.today.next.kind='multiple';data.today.next.items=[data.today.next.items[0]];assert.equal(call().success,false);
+  data=snapshot();data.today.availability[0].end=data.today.availability[0].start;assert.equal(call().success,false);
+  data=snapshot();data.today.calendar_state.unknown[0].reason='FREE_BY_AI';assert.equal(call().success,false);
 });
 
-test('gateway derives /v1/today from existing Projects URL and performs GET only',()=>{
+test('gateway derives /v1/today and POSTs bounded transient planning input',()=>{
   data=snapshot();
   h.props.KAZ_OS_PROJECTS_READ_URL='https://reader.invalid/v1/projects';
   h.props.KAZ_OS_PROGRESS_READ_TOKEN='synthetic-reader-token-01234567890123456789';
-  let calls=0;
+  let calls=0,observedPayload=null;
   h.ctx.UrlFetchApp.fetch=(url,options)=>{
     calls++;
     assert.equal(url,'https://reader.invalid/v1/today');
-    assert.equal(options.method,'get');
+    assert.equal(options.method,'post');
+    assert.equal(options.contentType,'application/json');
     assert.equal(options.followRedirects,false);
+    observedPayload=JSON.parse(options.payload);
     return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(snapshot())};
   };
   vm.runInContext(fs.readFileSync(path.join(root,'gas/KazOsToday.js'),'utf8'),h.ctx);
-  assert(call().success);
+  h.ctx.buildKazOsCalendarCapture_=()=>({selection:{},horizon:{},fetched_at:'x',response:{events:[]},connector_receipt:{}});
+  const result=h.ctx.sanitizeKazOsToday_(h.ctx.readKazOsToday_());
+  assert.equal(result.schema_version,'kaz-today-plan-v1');
+  assert.deepEqual(Object.keys(observedPayload).sort(),['calendar_capture','classifications']);
+  assert.deepEqual(observedPayload.classifications,{items:[]});
   assert.equal(calls,1);
   assert.equal(h.stats().writes,0);
 });
@@ -154,7 +178,7 @@ test('dispatcher explicitly exposes TODAY read and keeps generic Kaz writes deni
   assert(!source.includes("String(action).indexOf('kazOs.') === 0) {\n      return kazOsProgress_(body);"));
 });
 
-test('PWA exposes canonical TODAY WORK PROJECTS INBOX order and authenticated TODAY API',()=>{
+test('PWA exposes Dynamic TODAY time context without UI score',()=>{
   const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
   const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
   const nav=fs.readFileSync(path.join(root,'features/kaz-os/navigation.js'),'utf8');
@@ -166,7 +190,9 @@ test('PWA exposes canonical TODAY WORK PROJECTS INBOX order and authenticated TO
   assert(app.includes('kazOsTodayApi: callAuthenticatedKazOsToday_'));
   assert(nav.includes("location.hash !== '#kaz-os/today'"));
   assert(personal.includes("selection.page === 'today'"));
-  assert(personal.includes('Calendar・空き時間・Energy・AI scoreはまだ使っていません。'));
+  assert(personal.includes('Family Calendarから、いま使える時間'));
+  assert(personal.includes('Dynamic Daily Planning v1の判定範囲'));
+  assert(!personal.includes('UI scoreはまだ使っていません'));
 });
 
 console.log(`kaz-today-v1: ${checks}/${checks} PASS`);
