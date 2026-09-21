@@ -2,6 +2,7 @@
   'use strict';
 
   const FIREBASE_VERSION = '12.19.0';
+  const READ_ONLY_REQUEST_TIMEOUT_MS = 8000;
 
   async function createRuntime(options) {
     const settings = options || {};
@@ -63,12 +64,12 @@
     let lastError = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout_(url, {
           method: 'POST',
           cache: 'no-store',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(body),
-        });
+        }, READ_ONLY_REQUEST_TIMEOUT_MS);
         if (response.status >= 500 && response.status <= 599) {
           lastError = codedError_('TRANSPORT_FAILURE');
           if (attempt === 0) {
@@ -94,6 +95,19 @@
 
   function shortDelay_() {
     return new Promise(function(resolve) { setTimeout(resolve, 120); });
+  }
+
+  async function fetchWithTimeout_(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+    try {
+      return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+    } catch (error) {
+      if (error && error.name === 'AbortError') throw codedError_('TRANSPORT_FAILURE');
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function registerUser_(url, auth, profile) {
