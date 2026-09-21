@@ -27,7 +27,9 @@ function harness(fetchImpl) {
     Error,
     TypeError,
     Promise,
-    setTimeout: fn => { fn(); return 1; },
+    setTimeout,
+    clearTimeout,
+    AbortController,
     fetch: fetchImpl,
     document: {
       querySelector() { return null; },
@@ -45,6 +47,27 @@ function harness(fetchImpl) {
 }
 
 (async () => {
+  {
+    let calls = 0;
+    const h = harness((_url, options) => {
+      calls++;
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        }, { once: true });
+      });
+    });
+    const started = Date.now();
+    await assert.rejects(
+      () => h.PALURUFirebaseAuthRuntime.create({ gasWebAppUrl: 'https://example.invalid/exec' }),
+      error => error && error.code === 'TRANSPORT_FAILURE'
+    );
+    assert.equal(calls, 2, 'hung fetch must receive exactly one retry after timeout');
+    assert(Date.now() - started < 19000, 'bounded retry exceeded the expected total timeout window');
+  }
+
   {
     let calls = 0;
     const h = harness(async () => {
