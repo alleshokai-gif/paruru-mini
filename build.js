@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260920-kaz-inbox-semantic-fix-v1";
+globalThis.BUILD_ID = "v20260921-dynamic-daily-planning-v1";

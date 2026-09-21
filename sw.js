@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260920-kaz-inbox-semantic-fix-v1");
-// Release: v20260920-kaz-inbox-semantic-fix-v1
+importScripts("./build.js?v=v20260921-dynamic-daily-planning-v1");
+// Release: v20260921-dynamic-daily-planning-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
