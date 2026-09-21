@@ -27,6 +27,16 @@ const call=(device='admin-local',extra={})=>h.call(h.body(device,{action:'kazOs.
 function test(name,fn){fn();checks++;}
 
 test('owner receives only live read-only Secretary Questions',()=>{value.private_payload='SECRET';const r=call();assert(r.success);assert.equal(r.data.mode,'read_only_display');assert.equal(r.data.inbox_items.length,1);assert.equal(r.data.inbox_items[0].write_allowed,false);assert(!JSON.stringify(r).includes('SECRET'));});
+test('Secretary queue remains bounded at 20 even after Gardener support',()=>{
+  value=snapshot();
+  const base=value.inbox_items[0];
+  value.inbox_items=Array.from({length:21},(_,n)=>{
+    const id='decision-'+String(n+1).padStart(24,'0');
+    const qrev='question-sha256:'+String(n+1).padStart(64,'0');
+    return {...base,id,question_revision:qrev,answer_contract:{...base.answer_contract,inbox_item_id:id,question_revision:qrev}};
+  });
+  const r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);
+});
 test('Context Gardener may extend a full 20-item Secretary queue without failing the whole INBOX',()=>{
   value=snapshot();
   const base=value.inbox_items[0];
