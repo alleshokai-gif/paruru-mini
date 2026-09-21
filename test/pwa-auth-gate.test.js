@@ -17,6 +17,12 @@ assert(app.includes('appAuthenticationState = "active_member"'), 'active Firebas
 assert(app.includes('firebaseAuthService.getAuthEnvelope(false)'), 'ordinary API does not obtain a Firebase ID token');
 assert(authCore.includes('persistence: firebase.browserLocalPersistence'), 'Firebase LOCAL persistence is missing');
 assert(runtime.includes('accounts.google.com/gsi/client'), 'official GIS entry point is missing');
+assert(runtime.includes("readOnlyRequest_(url, { action: 'auth.config.get' }"), 'auth config does not use the bounded read-only transport');
+assert(runtime.includes("readOnlyRequest_(url, { action: 'auth.session.resolve', auth: auth }"), 'session resolve does not use the bounded read-only transport');
+assert(runtime.includes("for (let attempt = 0; attempt < 2; attempt += 1)"), 'read-only auth transport retry budget must be exactly one retry');
+assert(runtime.includes("response.status >= 500 && response.status <= 599"), 'transient 5xx retry boundary missing');
+assert(runtime.includes("codedError_('TRANSPORT_FAILURE')"), 'transport failure classification missing');
+assert(app.includes('PALURUサーバーに接続できませんでした。再試行しても復旧しませんでした。'), 'transport failure UI remains misclassified as authentication');
 
 [
   'membership.context.get', 'deviceRegistrationBegin', 'devicePairingApprove',
