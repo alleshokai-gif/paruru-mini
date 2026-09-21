@@ -184,11 +184,14 @@ function sanitizeKazOsInbox_(data) {
       end: text(value.end, 80, true), precision: value.precision, all_day: boolean(value.all_day), classification: 'unconfirmed',
       source_revision: text(value.source_revision, 120) };
   });
-  const inboxItems = list(data.inbox_items, 20, function(value) {
+  let secretaryItemCount = 0, gardenerItemCount = 0;
+  const inboxItems = list(data.inbox_items, 30, function(value) {
     if (!value || value.owner !== 'kaz' || value.decision_requested !== true || value.decision_status !== 'pending'
         || value.write_allowed !== false) fail();
     const isGardener = value.contract === 'context-gardener-decision-0.1';
     if (isGardener) {
+      gardenerItemCount++;
+      if (gardenerItemCount > 10) fail();
       if (!gardener || gardener.status !== 'ok' || gardener.complete !== true
           || gardenerKinds.indexOf(value.kind) < 0) fail();
       const refs = value.source_revision_references;
@@ -217,6 +220,8 @@ function sanitizeKazOsInbox_(data) {
         calendar_event: null, input_contract: null, selection_mode: null, selection_options: null,
         recommended_option: null, recommendation_basis: null };
     }
+    secretaryItemCount++;
+    if (secretaryItemCount > 20) fail();
     if (kinds.indexOf(value.kind) < 0 || value.contract !== 'secretary-question-0.1') fail();
     const refs = value.source_revision_references;
     if (!refs || refs.projects !== sources.projects.source_revision
