@@ -136,6 +136,7 @@ function sanitizeKazOsInbox_(data) {
   const list = function(value, limit, mapper) { if (!Array.isArray(value) || value.length > limit) fail(); return value.map(mapper); };
   const states = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
   const kinds = ['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window'];
+  const gardenerKinds = ['CONTEXT_CANDIDATE','CONFLICT_RESOLUTION'];
   const source = function(value) {
     if (!value || value.status !== 'ok' || value.complete !== true) fail();
     const fetched = Date.parse(value.fetched_at), until = Date.parse(value.valid_until);
@@ -149,6 +150,19 @@ function sanitizeKazOsInbox_(data) {
       || data.fixture_only !== false || data.fixture_fallback !== false) fail();
   const sources = {};
   ['inbox','projects','tasks','calendar','resolution'].forEach(function(key) { sources[key] = source(data.sources && data.sources[key]); });
+  let gardener = null;
+  if (data.sources && data.sources.context_gardener != null) {
+    const value = data.sources.context_gardener;
+    if (!value || ['ok','blocked'].indexOf(value.status) < 0 || typeof value.complete !== 'boolean') fail();
+    if (value.status === 'ok' && value.complete !== true) fail();
+    if (value.status === 'blocked' && value.complete !== false) fail();
+    gardener = {
+      status: value.status, complete: value.complete,
+      fetched_at: text(value.fetched_at, 80, true), valid_until: text(value.valid_until, 80, true),
+      source_revision: text(value.source_revision, 120, true), scope: text(value.scope, 160)
+    };
+    sources.context_gardener = gardener;
+  }
   if (!data.writes || data.writes.notion !== 0 || data.writes.calendar !== 0 || data.writes.context !== 0
       || !data.persistence || data.persistence.kind !== 'none' || data.persistence.status !== 'disabled') fail();
   const projects = list(data.projects, 20, function(value) {
@@ -171,9 +185,39 @@ function sanitizeKazOsInbox_(data) {
       source_revision: text(value.source_revision, 120) };
   });
   const inboxItems = list(data.inbox_items, 20, function(value) {
-    if (!value || kinds.indexOf(value.kind) < 0 || value.contract !== 'secretary-question-0.1'
-        || value.owner !== 'kaz' || value.decision_requested !== true || value.decision_status !== 'pending'
+    if (!value || value.owner !== 'kaz' || value.decision_requested !== true || value.decision_status !== 'pending'
         || value.write_allowed !== false) fail();
+    const isGardener = value.contract === 'context-gardener-decision-0.1';
+    if (isGardener) {
+      if (!gardener || gardener.status !== 'ok' || gardener.complete !== true
+          || gardenerKinds.indexOf(value.kind) < 0) fail();
+      const refs = value.source_revision_references;
+      if (!Array.isArray(refs) || refs.length !== 1 || refs[0].source_revision !== gardener.source_revision
+          || !Array.isArray(refs[0].paths) || !refs[0].paths.length) fail();
+      const choices = list(value.answer_contract && value.answer_contract.choices, 4, function(choice) {
+        return { value: text(choice.value, 80), label: text(choice.label, 80), effect: text(choice.effect, 300) };
+      });
+      if (choices.length < 2) fail();
+      return { id: text(value.id, 80), kind: value.kind, contract: value.contract,
+        owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
+        title: text(value.title, 200), question: text(value.answer_contract.question, 500),
+        reason: text(value.reason, 500), impact: text(value.impact, 500), estimate_min: number(value.estimate_min, true),
+        affects_today: boolean(value.affects_today), urgent_today: boolean(value.urgent_today),
+        decision_date: text(value.decision_date, 20, true), due_at: text(value.due_at, 80, true),
+        project_id: text(value.project_id, 80, true), entity_ref: text(value.entity_ref, 160, true),
+        source_label: text(value.source_label, 100), entity_revision: text(value.entity_revision, 120, true),
+        question_revision: text(value.question_revision, 100), expires_at: null,
+        source_revision_references: refs.map(function(ref) { return {
+          repository: text(ref.repository, 160), source_revision: text(ref.source_revision, 120),
+          paths: list(ref.paths, 20, function(path) { return text(path, 240); }), finding_id: text(ref.finding_id, 120)
+        }; }),
+        answer_contract: { inbox_item_id: text(value.answer_contract.inbox_item_id, 80),
+          question_revision: text(value.answer_contract.question_revision, 100),
+          question: text(value.answer_contract.question, 500), choices: choices },
+        calendar_event: null, input_contract: null, selection_mode: null, selection_options: null,
+        recommended_option: null, recommendation_basis: null };
+    }
+    if (kinds.indexOf(value.kind) < 0 || value.contract !== 'secretary-question-0.1') fail();
     const refs = value.source_revision_references;
     if (!refs || refs.projects !== sources.projects.source_revision
         || refs.work_items !== sources.tasks.source_revision || refs.calendar !== sources.calendar.source_revision) fail();
@@ -221,6 +265,12 @@ function sanitizeKazOsInbox_(data) {
     fixture_only: false, fixture_fallback: false, as_of: text(data.as_of, 80), timezone: 'Asia/Tokyo',
     sources: sources, projects: projects, work_items: workItems, calendar_events: calendarEvents,
     inbox_items: inboxItems, decision_priority_evidence: {}, feedback: null,
+    gardener: gardener && data.gardener ? {
+      status: text(data.gardener.status, 20), complete: boolean(data.gardener.complete),
+      source_revision: text(data.gardener.source_revision, 120, true),
+      decision_count: number(data.gardener.decision_count, true),
+      warning: text(data.gardener.warning, 120, true)
+    } : null,
     persistence: { kind: 'none', status: 'disabled', answers: 0, proposals: 0, followups: 0 },
     writes: { notion: 0, calendar: 0, context: 0 } };
 }
