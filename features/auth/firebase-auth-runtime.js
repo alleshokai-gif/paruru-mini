@@ -61,32 +61,47 @@
   }
 
   async function readOnlyRequest_(url, body, fallbackCode) {
+    const diagnostics = root.PALURUTransportDiagnostics;
+    const requestId = diagnostics && typeof diagnostics.requestId === 'function' ? diagnostics.requestId() : '';
+    const requestBody = Object.assign({}, body, requestId ? { request_id: requestId } : {});
+    const diagnostic = diagnostics && typeof diagnostics.start === 'function'
+      ? diagnostics.start('auth_read', body && body.action, requestId)
+      : null;
     let lastError = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      const attemptStartedAt = Date.now();
       try {
         const response = await fetchWithTimeout_(url, {
           method: 'POST',
           cache: 'no-store',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(body),
+          body: JSON.stringify(Object.assign({}, requestBody, { transport_attempt: attempt + 1 })),
         }, READ_ONLY_REQUEST_TIMEOUT_MS);
         if (response.status >= 500 && response.status <= 599) {
-          lastError = codedError_('TRANSPORT_FAILURE');
+          lastError = codedError_('TRANSPORT_FAILURE', { transportClassification: 'http', httpStatus: response.status });
           if (attempt === 0) {
+            recordDiagnostic_(diagnostics, diagnostic, attempt, attemptStartedAt, lastError, 'retry');
             await shortDelay_();
             continue;
           }
           throw lastError;
         }
-        return await parseEnvelope_(response, fallbackCode);
+        const payload = await parseEnvelope_(response, fallbackCode);
+        recordDiagnostic_(diagnostics, diagnostic, attempt, attemptStartedAt, null, 'success', response.status);
+        return payload;
       } catch (error) {
         const code = safeCode_(error);
-        if (code !== 'TRANSPORT_FAILURE' && !(error instanceof TypeError)) throw error;
-        lastError = codedError_('TRANSPORT_FAILURE');
+        if (code !== 'TRANSPORT_FAILURE' && !(error instanceof TypeError)) {
+          recordDiagnostic_(diagnostics, diagnostic, attempt, attemptStartedAt, error, 'unresolved');
+          throw error;
+        }
+        lastError = code === 'TRANSPORT_FAILURE' ? error : codedError_('TRANSPORT_FAILURE', { transportClassification: 'network' });
         if (attempt === 0) {
+          recordDiagnostic_(diagnostics, diagnostic, attempt, attemptStartedAt, lastError, 'retry');
           await shortDelay_();
           continue;
         }
+        recordDiagnostic_(diagnostics, diagnostic, attempt, attemptStartedAt, lastError, 'unresolved');
         throw lastError;
       }
     }
@@ -103,7 +118,7 @@
     try {
       return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
     } catch (error) {
-      if (error && error.name === 'AbortError') throw codedError_('TRANSPORT_FAILURE');
+      if (error && error.name === 'AbortError') throw codedError_('TRANSPORT_FAILURE', { transportClassification: 'timeout' });
       throw error;
     } finally {
       clearTimeout(timer);
@@ -127,9 +142,14 @@
 
   async function parseEnvelope_(response, fallbackCode) {
     let payload;
-    try { payload = await response.json(); } catch (_) { throw codedError_('TRANSPORT_FAILURE'); }
+    try { payload = await response.json(); } catch (_) {
+      throw codedError_('TRANSPORT_FAILURE', { transportClassification: 'parse', httpStatus: response && response.status });
+    }
     if (!response.ok || !payload || payload.success !== true) {
-      throw codedError_(payload && payload.error && payload.error.code || fallbackCode);
+      throw codedError_(payload && payload.error && payload.error.code || fallbackCode, {
+        transportClassification: 'business',
+        httpStatus: response && response.status
+      });
     }
     return payload;
   }
@@ -172,9 +192,30 @@
     return String(error && error.code || '').replace(/[^A-Z0-9_]/g, '').slice(0, 80);
   }
 
-  function codedError_(code) {
+  function recordDiagnostic_(diagnostics, context, attempt, startedAt, error, outcome, httpStatus) {
+    try {
+      if (!diagnostics || typeof diagnostics.record !== 'function' || !context) return;
+      diagnostics.record(context, {
+        attempt: attempt + 1,
+        elapsedMs: Math.max(0, Date.now() - startedAt),
+        classification: error && typeof diagnostics.classifyError === 'function' ? diagnostics.classifyError(error) : 'none',
+        httpStatus: Number.isFinite(Number(httpStatus)) ? Number(httpStatus)
+          : Number.isFinite(Number(error && error.httpStatus)) ? Number(error.httpStatus) : null,
+        backendStage: error ? 'AUTH_RESPONSE' : 'AUTH_COMPLETE',
+        outcome: outcome,
+        errorCode: error && error.code
+      });
+    } catch (_) {
+      // Diagnostics must never change authentication.
+    }
+  }
+
+  function codedError_(code, details) {
     const error = new Error(String(code || 'AUTH_UNAVAILABLE'));
     error.code = String(code || 'AUTH_UNAVAILABLE');
+    const input = details || {};
+    if (input.transportClassification) error.transportClassification = input.transportClassification;
+    if (Number.isFinite(Number(input.httpStatus))) error.httpStatus = Number(input.httpStatus);
     return error;
   }
 
