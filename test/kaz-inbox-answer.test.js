@@ -138,6 +138,31 @@ test('Calendar partial follow-up survives unrelated Project and Work source revi
   assert(second.success, JSON.stringify(second));
   assert.equal(second.data.proposal.change.coverage, 'partial_event');
 });
+test('INBOX read rebuilds Calendar follow-up without the old parent Decision being present', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const first = request(local, localValue.inbox_items[1], 'partial', 'paluru-calendar-rebuild-0001');
+  assert(first.success, JSON.stringify(first));
+
+  localValue.inbox_items = localValue.inbox_items.filter(item => item.kind !== 'calendar_event_impact');
+  localValue.sources.projects.source_revision = 'observation-sha256:' + '3'.repeat(64);
+  localValue.sources.tasks.source_revision = 'observation-sha256:' + '4'.repeat(64);
+  localValue.inbox_items.forEach(item => {
+    item.source_revision_references = {
+      projects: localValue.sources.projects.source_revision,
+      work_items: localValue.sources.tasks.source_revision,
+      calendar: localValue.sources.calendar.source_revision,
+    };
+  });
+
+  const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(refreshed.success, JSON.stringify(refreshed));
+  const followup = refreshed.data.inbox_items.find(item => item.kind === 'calendar_partial_window');
+  assert(followup);
+  assert.equal(followup.entity_ref, localValue.calendar_events[0].id);
+});
 test('Calendar partial follow-up question revision ignores unrelated Project and Work revisions', () => {
   const localValue = snapshot();
   const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
