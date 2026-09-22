@@ -1,7 +1,7 @@
 // Dynamic Daily Planning v1 client. Reads real Work Items plus transient Family Calendar context.
 // No Notion, Calendar or Context writer is introduced here.
 
-function readKazOsToday_() {
+function readKazOsToday_(transportTrace) {
   const props = PropertiesService.getScriptProperties();
   const projectsUrl = String(props.getProperty('KAZ_OS_PROJECTS_READ_URL') || '');
   const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
@@ -13,7 +13,10 @@ function readKazOsToday_() {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify({ calendar_capture: capture, classifications: { items: classifications } }),
-    headers: { Authorization: 'Bearer ' + token },
+    headers: {
+      Authorization: 'Bearer ' + token,
+      'X-Kaz-Request-Id-Suffix': transportTrace ? transportTrace.requestIdSuffix : ''
+    },
     muteHttpExceptions: true,
     followRedirects: false,
     validateHttpsCertificates: true

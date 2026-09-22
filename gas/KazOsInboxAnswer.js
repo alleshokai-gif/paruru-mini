@@ -31,19 +31,21 @@ function setupKazOsDecisionLedger() {
   return { sheet: KAZ_OS_DECISION_LEDGER_SHEET_, headers: KAZ_OS_DECISION_LEDGER_HEADERS_.length };
 }
 
-function answerKazOsInbox_(body) {
+function answerKazOsInbox_(body, transportTrace) {
   try {
     const input = body || {};
     if (input.action !== 'kazOs.inbox.answer') throw homeMembershipError_('KAZ_READ_ONLY');
     if (!isKazOsLiveEnabled_()) throw homeMembershipError_('KAZ_NOT_CONNECTED');
     const actor = resolveFirebaseAuthenticatedActor_(input);
     authorizeKazOsOwner_(actor);
+    recordKazOsAnswerTransport_(transportTrace, 'ACTOR_AUTHORIZED', { outcome: 'success' });
     if (!isKazOsInboxAnswerEnabled_()) throw homeMembershipError_('KAZ_ANSWER_DISABLED');
     const request = validateKazOsAnswerRequest_(input);
 
     // Re-read every source at answer time. Sanitization enforces completeness and freshness.
     let current, observed;
     try {
+      recordKazOsAnswerTransport_(transportTrace, 'SOURCE_REVALIDATION_STARTED', { outcome: 'success' });
       observed = readKazOsInbox_(createKazOsInboxTrace_(request.request_id));
     } catch (_) {
       throw homeMembershipError_('KAZ_SOURCE_FAILED');
@@ -71,6 +73,7 @@ function answerKazOsInbox_(body) {
     validateKazOsAnswerSelection_(question, request.selected_option);
 
     const persisted = persistKazOsAnswer_(question, request, actor);
+    recordKazOsAnswerTransport_(transportTrace, 'DURABLE_PERSISTED', { outcome: 'success' });
     const refreshed = applyKazOsDecisionLedger_(current);
     refreshed.feedback = { message: '✓ 回答したで。Operational Sourceはまだ変更してへん',
       answer_id: persisted.answer.answer_id, decision_id: persisted.answer.decision_id,
@@ -85,8 +88,15 @@ function answerKazOsInbox_(body) {
       'IDEMPOTENCY_CONFLICT', 'ANSWER_ALREADY_RECORDED', 'KAZ_PERSISTENCE_NOT_CONFIGURED',
       'KAZ_PERSISTENCE_SCHEMA_MISMATCH', 'KAZ_PERSISTENCE_FAILED', 'KAZ_SOURCE_FAILED'];
     const code = allowed.indexOf(error && error.code) >= 0 ? error.code : 'KAZ_PERSISTENCE_FAILED';
+    recordKazOsAnswerTransport_(transportTrace, 'ANSWER_FAILED', {
+      classification: 'business', outcome: 'unresolved', errorCode: code
+    });
     return json_({ success: false, data: null, error: { code: code }, message: code });
   }
+}
+
+function recordKazOsAnswerTransport_(trace, stage, values) {
+  if (typeof recordMiniTransportTrace_ === 'function') recordMiniTransportTrace_(trace, stage, values);
 }
 
 function validateKazOsAnswerRequest_(input) {

@@ -1,10 +1,13 @@
 // Invoked only after the existing Kaz OS pairing/admin/owner authorization gate.
-function readKazOsProjects_() {
+function readKazOsProjects_(transportTrace) {
   const props = PropertiesService.getScriptProperties();
   const url = String(props.getProperty('KAZ_OS_PROJECTS_READ_URL') || '');
   const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
   if (!/^https:\/\/[^\s?#]+\/v1\/projects$/.test(url) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
-  const response = UrlFetchApp.fetch(url, { method: 'get', headers: { Authorization: 'Bearer ' + token },
+  const response = UrlFetchApp.fetch(url, { method: 'get', headers: {
+    Authorization: 'Bearer ' + token,
+    'X-Kaz-Request-Id-Suffix': transportTrace ? transportTrace.requestIdSuffix : ''
+  },
     muteHttpExceptions: true, followRedirects: false, validateHttpsCertificates: true });
   if (response.getResponseCode() !== 200) throw homeMembershipError_('KAZ_SOURCE_FAILED');
   const text = response.getContentText();

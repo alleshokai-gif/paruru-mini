@@ -776,7 +776,7 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
-const PALURU_MINI_BUILD_ID = 'mini-20260917-minimal-registration-v1';
+const PALURU_MINI_BUILD_ID = 'mini-20260922-transport-diagnostics-v1';
 
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};

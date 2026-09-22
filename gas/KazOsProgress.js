@@ -7,24 +7,42 @@ function verifyHomeControlDevicePairingReadOnly_(deviceId, pairingToken) {
   return { handled: true, authorized: true };
 }
 
-function kazOsProgress_(body, inboxTrace) {
+function kazOsProgress_(body, inboxTrace, transportTrace) {
   try {
     const input = body || {};
     if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.work.get', 'kazOs.today.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
     if (!isKazOsLiveEnabled_()) throw homeMembershipError_('KAZ_NOT_CONNECTED');
     const actor = resolveFirebaseAuthenticatedActor_(input);
     authorizeKazOsOwner_(actor);
+    recordKazOsTransport_(transportTrace, 'ACTOR_AUTHORIZED', { outcome: 'success' });
     if (input.action === 'kazOs.inbox.get') recordKazOsInboxTrace_(inboxTrace, 'AUTH_PASSED');
-    if (input.action === 'kazOs.projects.get') return json_({ success: true, data: sanitizeKazOsProjects_(readKazOsProjects_()), message: 'read only' });
-    if (input.action === 'kazOs.work.get') return json_({ success: true, data: sanitizeKazOsWork_(readKazOsWork_()), message: 'read only' });
-    if (input.action === 'kazOs.today.get') return json_({ success: true, data: sanitizeKazOsToday_(readKazOsToday_()), message: 'read only' });
+    if (input.action === 'kazOs.projects.get') {
+      recordKazOsTransport_(transportTrace, 'CLOUD_RUN_READ_STARTED', { outcome: 'success' });
+      const projects = sanitizeKazOsProjects_(readKazOsProjects_(transportTrace));
+      recordKazOsTransport_(transportTrace, 'SANITIZER_OK', { outcome: 'success' });
+      return json_({ success: true, data: projects, message: 'read only' });
+    }
+    if (input.action === 'kazOs.work.get') {
+      recordKazOsTransport_(transportTrace, 'CLOUD_RUN_READ_STARTED', { outcome: 'success' });
+      const work = sanitizeKazOsWork_(readKazOsWork_(transportTrace));
+      recordKazOsTransport_(transportTrace, 'SANITIZER_OK', { outcome: 'success' });
+      return json_({ success: true, data: work, message: 'read only' });
+    }
+    if (input.action === 'kazOs.today.get') {
+      recordKazOsTransport_(transportTrace, 'CLOUD_RUN_READ_STARTED', { outcome: 'success' });
+      const today = sanitizeKazOsToday_(readKazOsToday_(transportTrace));
+      recordKazOsTransport_(transportTrace, 'SANITIZER_OK', { outcome: 'success' });
+      return json_({ success: true, data: today, message: 'read only' });
+    }
     if (input.action === 'kazOs.inbox.get') {
       recordKazOsInboxTrace_(inboxTrace, 'INBOX_READ_STARTED');
+      recordKazOsTransport_(transportTrace, 'CLOUD_RUN_READ_STARTED', { outcome: 'success' });
       const sanitized = sanitizeKazOsInbox_(readKazOsInbox_(inboxTrace));
       const projected = typeof applyKazOsDecisionLedger_ === 'function' ? applyKazOsDecisionLedger_(sanitized) : sanitized;
       const questionCount = Array.isArray(projected.inbox_items) ? projected.inbox_items.length : null;
       recordKazOsInboxTrace_(inboxTrace, 'SANITIZER_OK', { question_count: questionCount });
       recordKazOsInboxTrace_(inboxTrace, 'RESPONSE_SENT', { question_count: questionCount });
+      recordKazOsTransport_(transportTrace, 'SANITIZER_OK', { outcome: 'success' });
       return json_({ success: true, data: projected, message: projected.mode === 'controlled_proposal' ? 'controlled proposal' : 'read only' });
     }
     return json_({ success: true, data: sanitizeKazOsProgress_(readKazOsProgress_()), message: 'read only' });
@@ -32,8 +50,15 @@ function kazOsProgress_(body, inboxTrace) {
     const allowed = ['FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'KAZ_NOT_CONNECTED', 'KAZ_READ_ONLY', 'KAZ_REQUEST_ID_INVALID'];
     const code = allowed.indexOf(error && error.code) >= 0 ? error.code : 'KAZ_SOURCE_FAILED';
     if (inboxTrace) recordKazOsInboxTrace_(inboxTrace, 'RESPONSE_SENT', { error_code: code });
+    recordKazOsTransport_(transportTrace, 'KAZ_READ_FAILED', {
+      classification: 'business', outcome: 'unresolved', errorCode: code
+    });
     return json_({ success: false, data: null, error: { code: code }, message: code });
   }
+}
+
+function recordKazOsTransport_(trace, stage, values) {
+  if (typeof recordMiniTransportTrace_ === 'function') recordMiniTransportTrace_(trace, stage, values);
 }
 
 function authorizeKazOsOwner_(actor) {

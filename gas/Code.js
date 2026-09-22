@@ -63,20 +63,25 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  let transportTrace = null;
   try {
     const body = parseBody_(e);
     const action = String(body.action || '').trim();
+    transportTrace = typeof createMiniTransportTrace_ === 'function' ? createMiniTransportTrace_(body) : null;
+    recordCodeTransport_(transportTrace, 'REQUEST_RECEIVED', { outcome: 'success' });
 
     if (!action) {
       return json_({ success: false, status: 400, message: 'action is required' });
     }
 
     if (action === 'auth.config.get') {
-      return json_({ success: true, data: getFirebasePublicAuthConfig_(), message: 'Firebase auth config loaded' });
+      const config = getFirebasePublicAuthConfig_();
+      recordCodeTransport_(transportTrace, 'AUTH_CONFIG_COMPLETE', { outcome: 'success' });
+      return json_({ success: true, data: config, message: 'Firebase auth config loaded' });
     }
 
     if (action === 'auth.session.resolve') {
-      return authSessionResolve_(body);
+      return authSessionResolve_(body, transportTrace);
     }
 
     if (action === 'auth.registration.create') {
@@ -202,15 +207,15 @@ function doPost(e) {
     }
 
     if (action === 'kazOs.projects.get') {
-      return kazOsProgress_(body);
+      return kazOsProgress_(body, null, transportTrace);
     }
 
     if (action === 'kazOs.work.get') {
-      return kazOsProgress_(body);
+      return kazOsProgress_(body, null, transportTrace);
     }
 
     if (action === 'kazOs.today.get') {
-      return kazOsProgress_(body);
+      return kazOsProgress_(body, null, transportTrace);
     }
 
     if (action === 'kazOs.inbox.get') {
@@ -220,11 +225,11 @@ function doPost(e) {
       }
       recordKazOsInboxTrace_(trace, 'REQUEST_RECEIVED');
       recordKazOsInboxTrace_(trace, 'ROUTER_MATCHED');
-      return kazOsProgress_(body, trace);
+      return kazOsProgress_(body, trace, transportTrace);
     }
 
     if (action === 'kazOs.inbox.answer') {
-      return answerKazOsInbox_(body);
+      return answerKazOsInbox_(body, transportTrace);
     }
 
     if (String(action).indexOf('kazOs.') === 0) {
@@ -277,11 +282,18 @@ function doPost(e) {
 
     return json_({ success: false, status: 400, message: 'unknown action' });
   } catch (error) {
+    recordCodeTransport_(transportTrace, 'UNHANDLED_FAILURE', {
+      classification: 'business', outcome: 'unresolved', errorCode: error && error.code || 'INTERNAL_ERROR'
+    });
     return json_({
       success: false,
       message: error.message,
     });
   }
+}
+
+function recordCodeTransport_(trace, stage, values) {
+  if (typeof recordMiniTransportTrace_ === 'function') recordMiniTransportTrace_(trace, stage, values);
 }
 
 function createItem_(body) {

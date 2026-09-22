@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260922-inbox-answer-reconcile-v1");
-// Release: v20260922-inbox-answer-reconcile-v1
+importScripts("./build.js?v=v20260922-transport-diagnostics-v1");
+// Release: v20260922-transport-diagnostics-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -9,6 +9,7 @@ const APP_SHELL_RUNTIME_ASSETS = [
   "index.html",
   versioned("build.js"),
   versioned("style.css"),
+  versioned("features/transport/diagnostics.js"),
   versioned("app.js"),
   versioned("features/auth/firebase-auth.js"),
   versioned("features/auth/firebase-auth-runtime.js"),
@@ -64,6 +65,12 @@ self.addEventListener("activate", (event) => {
     )
       .then(() => warmAppShellCache())
       .then(() => self.clients.claim())
+      .then(() => notifyTransportDiagnostic({
+        action: "service_worker.update",
+        classification: "none",
+        backendStage: "ACTIVATED",
+        outcome: "updated"
+      }))
   );
 });
 
@@ -117,12 +124,24 @@ async function networkFirst(request, fallbackUrl) {
   } catch (error) {
     const cached = await cache.match(request, { ignoreSearch: shouldIgnoreSearch(request) });
     if (cached) {
+      await notifyTransportDiagnostic({
+        action: "service_worker.cache",
+        classification: "cache",
+        backendStage: "NETWORK_FIRST_CACHE_HIT",
+        outcome: "cache_fallback"
+      });
       return cached;
     }
 
     if (fallbackUrl) {
       const fallback = await cache.match(fallbackUrl, { ignoreSearch: true });
       if (fallback) {
+        await notifyTransportDiagnostic({
+          action: "service_worker.cache",
+          classification: "cache",
+          backendStage: "NAVIGATION_FALLBACK",
+          outcome: "cache_fallback"
+        });
         return fallback;
       }
     }
@@ -156,6 +175,15 @@ async function warmAppShellCache() {
       await cache.put(request, response.clone());
     }
   }));
+}
+
+async function notifyTransportDiagnostic(detail) {
+  try {
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    clients.forEach((client) => client.postMessage({ type: "PALURU_TRANSPORT_DIAGNOSTIC", detail }));
+  } catch (_) {
+    // Diagnostics never change cache behavior.
+  }
 }
 
 function debugLog(...args) {
