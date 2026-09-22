@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260921-auth-transport-timeout-v1");
-// Release: v20260921-auth-transport-timeout-v1
+importScripts("./build.js?v=v20260922-calendar-partial-window-v1");
+// Release: v20260922-calendar-partial-window-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
