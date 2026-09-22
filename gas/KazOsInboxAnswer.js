@@ -277,8 +277,8 @@ function applyKazOsDecisionLedger_(inbox) {
   const pending = inbox.inbox_items.filter(function(item) { return !answered.has(item.id + '\u0000' + item.question_revision); });
   currentAnswers.forEach(function(row) {
     if (row.proposal.change.kind === 'FOLLOWUP_REQUIRED') {
-      const followup = buildKazOsCalendarFollowup_(row.answer, inbox);
-      if (!answered.has(followup.id + '\u0000' + followup.question_revision)) pending.push(followup);
+      const followup = buildKazOsCalendarFollowup_(row, inbox);
+      if (followup && !answered.has(followup.id + '\u0000' + followup.question_revision)) pending.push(followup);
     }
   });
   const latest = currentAnswers.slice().sort(function(a, b) { return a.answer.answered_at.localeCompare(b.answer.answered_at); }).pop();
@@ -292,10 +292,12 @@ function applyKazOsDecisionLedger_(inbox) {
   return inbox;
 }
 
-function buildKazOsCalendarFollowup_(answer, inbox) {
-  const parent = inbox.inbox_items.find(function(item) { return item.id === answer.decision_id; });
-  const event = parent && inbox.calendar_events.find(function(item) { return item.id === parent.entity_ref; });
-  if (!parent || parent.kind !== 'calendar_event_impact' || !event) throw homeMembershipError_('REVALIDATION_REQUIRED');
+function buildKazOsCalendarFollowup_(row, inbox) {
+  const answer = row && row.answer;
+  const change = row && row.proposal && row.proposal.change;
+  const eventRef = String(change && change.target_event_ref || '');
+  const event = eventRef && inbox.calendar_events.find(function(item) { return item.id === eventRef; });
+  if (!answer || !event || change.kind !== 'FOLLOWUP_REQUIRED' || change.follow_up !== 'calendar_partial_window') return null;
   const currentRefs = currentSourceRevisions_(inbox);
   const id = 'decision-' + kazOsSha256_(answer.decision_id + '\u0000' + event.id + '\u0000' + currentRefs.calendar).slice(0, 24);
   const base = { id: id, kind: 'calendar_partial_window', contract: 'secretary-question-0.1', owner: 'kaz',
@@ -305,7 +307,7 @@ function buildKazOsCalendarFollowup_(answer, inbox) {
     impact: 'このeventだけの部分拘束proposalを作る', estimate_min: null,
     affects_today: true, urgent_today: true, decision_date: inbox.as_of.slice(0, 10), due_at: null,
     project_id: null, entity_ref: event.id, source_label: 'Family Calendar', entity_revision: null,
-    source_revision_references: currentSourceRevisions_(inbox),
+    source_revision_references: currentRefs,
     answer_contract: { inbox_item_id: id, question_revision: null,
       question: 'この予定のうち、Kaz本人が拘束される開始と終了を指定してな。',
       choices: [{ value: 'time_range', label: '拘束時間を指定', effect: 'event単位の部分拘束proposalを作る' }] },
