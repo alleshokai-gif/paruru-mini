@@ -58,8 +58,8 @@ function answerKazOsInbox_(body) {
     const question = view.inbox_items.find(function(item) { return item.id === request.decision_id; })
       || currentQuestions.find(function(item) { return item.id === request.decision_id; });
     if (!question || question.question_revision !== request.question_revision
-        || !sameKazOsSourceRevisions_(question.source_revision_references, request.source_revision_references)
-        || !sameKazOsSourceRevisions_(currentSourceRevisions_(current), request.source_revision_references)
+        || !sameKazOsQuestionSourceRevisions_(question, question.source_revision_references, request.source_revision_references)
+        || !sameKazOsQuestionSourceRevisions_(question, currentSourceRevisions_(current), request.source_revision_references)
         || (question.expires_at && (!Number.isFinite(Date.parse(question.expires_at)) || Date.parse(question.expires_at) <= Date.now()))) {
       throw homeMembershipError_('REVALIDATION_REQUIRED');
     }
@@ -138,6 +138,24 @@ function currentSourceRevisions_(inbox) {
 
 function sameKazOsSourceRevisions_(left, right) {
   return Boolean(left && right && ['projects', 'work_items', 'calendar'].every(function(key) { return left[key] === right[key]; }));
+}
+
+function sameKazOsQuestionSourceRevisions_(question, left, right) {
+  if (!question || !left || !right) return false;
+  const keys = ['calendar_event_impact', 'calendar_partial_window'].indexOf(question.kind) >= 0
+    ? ['calendar']
+    : ['projects', 'work_items', 'calendar'];
+  return keys.every(function(key) { return left[key] === right[key]; });
+}
+
+function sameKazOsLedgerSourceRevisions_(row, currentRefs) {
+  const change = row && row.proposal && row.proposal.change;
+  const refs = row && row.answer && row.answer.source_revision_references;
+  if (!change || !refs || !currentRefs) return false;
+  if (['FOLLOWUP_REQUIRED', 'CALENDAR_CLASSIFICATION_PROPOSAL'].indexOf(change.kind) >= 0) {
+    return refs.calendar === currentRefs.calendar;
+  }
+  return sameKazOsSourceRevisions_(refs, currentRefs);
 }
 
 function getKazOsDecisionLedger_() {
@@ -253,7 +271,7 @@ function applyKazOsDecisionLedger_(inbox) {
   const rows = readKazOsDecisionLedger_();
   const currentRefs = currentSourceRevisions_(inbox);
   const currentAnswers = rows.filter(function(row) {
-    return sameKazOsSourceRevisions_(row.answer.source_revision_references, currentRefs);
+    return sameKazOsLedgerSourceRevisions_(row, currentRefs);
   });
   const answered = new Set(currentAnswers.map(function(row) { return row.answer.decision_id + '\u0000' + row.answer.question_revision; }));
   const pending = inbox.inbox_items.filter(function(item) { return !answered.has(item.id + '\u0000' + item.question_revision); });
@@ -278,7 +296,8 @@ function buildKazOsCalendarFollowup_(answer, inbox) {
   const parent = inbox.inbox_items.find(function(item) { return item.id === answer.decision_id; });
   const event = parent && inbox.calendar_events.find(function(item) { return item.id === parent.entity_ref; });
   if (!parent || parent.kind !== 'calendar_event_impact' || !event) throw homeMembershipError_('REVALIDATION_REQUIRED');
-  const id = 'decision-' + kazOsSha256_(answer.decision_id + '\u0000' + event.id + '\u0000' + answer.source_revision_references.calendar).slice(0, 24);
+  const currentRefs = currentSourceRevisions_(inbox);
+  const id = 'decision-' + kazOsSha256_(answer.decision_id + '\u0000' + event.id + '\u0000' + currentRefs.calendar).slice(0, 24);
   const base = { id: id, kind: 'calendar_partial_window', contract: 'secretary-question-0.1', owner: 'kaz',
     decision_requested: true, decision_status: 'pending', write_allowed: false,
     title: event.title, question: 'この予定のうち、Kaz本人が拘束される開始と終了を指定してな。',
@@ -286,7 +305,7 @@ function buildKazOsCalendarFollowup_(answer, inbox) {
     impact: 'このeventだけの部分拘束proposalを作る', estimate_min: null,
     affects_today: true, urgent_today: true, decision_date: inbox.as_of.slice(0, 10), due_at: null,
     project_id: null, entity_ref: event.id, source_label: 'Family Calendar', entity_revision: null,
-    source_revision_references: answer.source_revision_references,
+    source_revision_references: currentSourceRevisions_(inbox),
     answer_contract: { inbox_item_id: id, question_revision: null,
       question: 'この予定のうち、Kaz本人が拘束される開始と終了を指定してな。',
       choices: [{ value: 'time_range', label: '拘束時間を指定', effect: 'event単位の部分拘束proposalを作る' }] },
