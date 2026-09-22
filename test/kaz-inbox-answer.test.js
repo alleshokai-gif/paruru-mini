@@ -107,6 +107,37 @@ test('Calendar partial creates only an event-bound time-range follow-up', () => 
   assert(followup); assert.equal(followup.entity_ref, value.calendar_events[0].id);
   assert.equal(followup.input_contract.type, 'time_range'); assert.equal(result.data.proposal.change.constraint_creation, false);
 });
+test('Calendar partial follow-up survives unrelated Project and Work source revision changes', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const first = request(local, localValue.inbox_items[1], 'partial', 'paluru-calendar-scope-0001');
+  assert(first.success, JSON.stringify(first));
+
+  localValue.sources.projects.source_revision = 'observation-sha256:' + '7'.repeat(64);
+  localValue.sources.tasks.source_revision = 'observation-sha256:' + '8'.repeat(64);
+  localValue.inbox_items.forEach(item => {
+    item.source_revision_references = {
+      projects: localValue.sources.projects.source_revision,
+      work_items: localValue.sources.tasks.source_revision,
+      calendar: localValue.sources.calendar.source_revision,
+    };
+  });
+
+  const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(refreshed.success, JSON.stringify(refreshed));
+  const followup = refreshed.data.inbox_items.find(item => item.kind === 'calendar_partial_window');
+  assert(followup, 'calendar follow-up disappeared after unrelated source revision change');
+  assert.equal(followup.source_revision_references.projects, localValue.sources.projects.source_revision);
+  assert.equal(followup.source_revision_references.work_items, localValue.sources.tasks.source_revision);
+
+  const start = new Date(Date.parse(localValue.calendar_events[0].start) + 10000).toISOString();
+  const end = new Date(Date.parse(localValue.calendar_events[0].end) - 10000).toISOString();
+  const second = request(local, followup, { start, end }, 'paluru-calendar-scope-0002');
+  assert(second.success, JSON.stringify(second));
+  assert.equal(second.data.proposal.change.coverage, 'partial_event');
+});
 test('follow-up stores only opaque event reference and no raw Calendar body', () => {
   const get = h.call(h.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
   const followup = get.data.inbox_items.find(item => item.kind === 'calendar_partial_window');
