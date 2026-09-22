@@ -175,6 +175,22 @@ test('INBOX read rebuilds Calendar follow-up without the old parent Decision bei
   assert(followup);
   assert.equal(followup.entity_ref, localValue.calendar_events[0].id);
 });
+test('missing follow-up target is isolated while unrelated valid Decisions remain available', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const first = request(local, localValue.inbox_items[1], 'partial', 'paluru-calendar-isolation-0001');
+  assert(first.success, JSON.stringify(first));
+
+  localValue.calendar_events = [];
+  localValue.inbox_items = localValue.inbox_items.filter(item => item.kind === 'today_focus');
+  const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(refreshed.success, JSON.stringify(refreshed));
+  assert.equal(refreshed.data.inbox_items.length, 1);
+  assert.equal(refreshed.data.inbox_items[0].kind, 'today_focus');
+  assert.equal(refreshed.data.inbox_items.some(item => item.kind === 'calendar_partial_window'), false);
+});
 test('Calendar partial follow-up question revision ignores unrelated Project and Work revisions', () => {
   const localValue = snapshot();
   const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },

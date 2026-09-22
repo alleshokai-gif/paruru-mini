@@ -6,24 +6,39 @@ function ensurePaluruUsersSheet_() {
   return ensureMembershipSheet_(SpreadsheetApp.getActiveSpreadsheet(), PALURU_USERS_SHEET_NAME, PALURU_USERS_HEADERS);
 }
 
-function authSessionResolve_(body) {
+function authSessionResolve_(body, transportTrace) {
   try {
-    return json_({ success: true, data: getFirebaseMembershipContext_(body), message: 'authenticated actor resolved' });
+    const context = getFirebaseMembershipContext_(body);
+    recordAuthTransport_(transportTrace, 'AUTH_SESSION_COMPLETE', { outcome: 'success' });
+    return json_({ success: true, data: context, message: 'authenticated actor resolved' });
   } catch (error) {
     const code = normalizeAuthRegistrationErrorCode_(error && error.code);
     if (code !== 'IDENTITY_NOT_MAPPED') {
+      recordAuthTransport_(transportTrace, 'AUTH_SESSION_REJECTED', {
+        classification: 'business', outcome: 'unresolved', errorCode: code
+      });
       return json_({ success: false, data: {}, error: { code: code }, message: code });
     }
     try {
       const verified = verifyFirebaseIdToken_(body && body.auth && body.auth.idToken);
       const account = getPaluruUserByIdentity_(verified.provider, verified.providerSubject);
       const nextCode = account && account.status === 'pending_link' ? 'MEMBER_LINK_PENDING' : 'REGISTRATION_REQUIRED';
+      recordAuthTransport_(transportTrace, 'AUTH_SESSION_REJECTED', {
+        classification: 'business', outcome: 'unresolved', errorCode: nextCode
+      });
       return json_({ success: false, data: {}, error: { code: nextCode }, message: nextCode });
     } catch (lookupError) {
       const lookupCode = normalizeAuthRegistrationErrorCode_(lookupError && lookupError.code);
+      recordAuthTransport_(transportTrace, 'AUTH_SESSION_REJECTED', {
+        classification: 'business', outcome: 'unresolved', errorCode: lookupCode
+      });
       return json_({ success: false, data: {}, error: { code: lookupCode }, message: lookupCode });
     }
   }
+}
+
+function recordAuthTransport_(trace, stage, values) {
+  if (typeof recordMiniTransportTrace_ === 'function') recordMiniTransportTrace_(trace, stage, values);
 }
 
 function registerPaluruUser_(body) {
