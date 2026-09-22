@@ -211,7 +211,7 @@ Precedence while valid:
 
 - later -> suppress from TODAY/current-week candidate pool except fixed operational obligations described below
 - today -> explicit TODAY candidate intent
-- this_week -> weekly candidate only; no automatic TODAY adoption
+- this_week -> keep as a current-week candidate but suppress flexible TODAY auto-adoption for the current day; fixed operational Scheduled obligations remain visible
 
 A newer valid preference supersedes an older valid preference for the same Work Item and overlapping planning window.
 
