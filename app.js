@@ -549,6 +549,9 @@ const NURSE_OKAN_HEALTH_ACTIONS = new Set([
   "health.profile.get",
   "health.profile.update",
 ]);
+const KAZ_OS_READ_TIMEOUT_MS = 8000;
+const KAZ_OS_READ_RETRY_DELAY_MS = 120;
+
 const PET_HEALTH_ACTIONS = new Set([
   "pet.health.record",
   "pet.health.correct",
@@ -2200,11 +2203,11 @@ async function cancelAgentActionConfirmation(candidate) {
   return parseApiResponse(response);
 }
 
-async function callHomeControlApi(payload) {
+async function callHomeControlApi(payload, options = {}) {
   if (!GAS_WEB_APP_URL) throw createHomeControlError("HOME_CONTROL_UNAVAILABLE");
   let response;
   try {
-    response = await postAuthenticatedApi_(payload);
+    response = await postAuthenticatedApi_(payload, options);
   } catch (cause) {
     throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", { cause });
   }
@@ -2221,7 +2224,7 @@ async function callHomeControlApi(payload) {
   return result.data || {};
 }
 
-async function postAuthenticatedApi_(payload) {
+async function postAuthenticatedApi_(payload, options = {}) {
   if (!firebaseAuthService || appAuthenticationState !== "active_member") {
     throw createHomeControlError("AUTHENTICATION_REQUIRED");
   }
@@ -2234,7 +2237,53 @@ async function postAuthenticatedApi_(payload) {
     cache: "no-store",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(request),
+    signal: options.signal,
   });
+}
+
+async function callHomeControlReadOnlyApi_(payload) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const startedAt = Date.now();
+    const timer = setTimeout(() => controller.abort(), KAZ_OS_READ_TIMEOUT_MS);
+    try {
+      const result = await callHomeControlApi(payload, { signal: controller.signal });
+      logKazOsReadDiagnostic_(payload?.action, attempt, Date.now() - startedAt, null);
+      return result;
+    } catch (error) {
+      lastError = error;
+      logKazOsReadDiagnostic_(payload?.action, attempt, Date.now() - startedAt, error);
+      if (attempt > 0 || !isKazOsReadRetryable_(error)) throw error;
+      await new Promise(resolve => setTimeout(resolve, KAZ_OS_READ_RETRY_DELAY_MS));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastError || createHomeControlError("HOME_CONTROL_UNAVAILABLE");
+}
+
+function isKazOsReadRetryable_(error) {
+  if (!error || error.code !== "HOME_CONTROL_UNAVAILABLE") return false;
+  if (Number.isFinite(error.httpStatus)) return error.httpStatus >= 500 || error.httpStatus === 200;
+  const name = String(error.cause?.name || "");
+  return name === "AbortError" || error.cause instanceof TypeError;
+}
+
+function logKazOsReadDiagnostic_(action, attempt, elapsedMs, error) {
+  try {
+    if (typeof console === "undefined" || typeof console.info !== "function") return;
+    console.info("[PALURU Kaz OS Read]", {
+      action: String(action || "").slice(0, 80),
+      attempt: Number(attempt) + 1,
+      elapsedMs: Math.max(0, Number(elapsedMs) || 0),
+      errorCode: error ? String(error.code || "UNKNOWN").slice(0, 80) : null,
+      httpStatus: Number.isFinite(error?.httpStatus) ? error.httpStatus : null,
+      buildId: typeof globalThis.BUILD_ID === "string" ? globalThis.BUILD_ID : "",
+    });
+  } catch (_) {
+    // Diagnostics must never affect read results.
+  }
 }
 
 async function readHomeControlErrorResponse_(response) {
@@ -5086,24 +5135,24 @@ function applyAllowedViews_() {
 
 async function callAuthenticatedKazOsProjects_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  return callHomeControlApi(buildMemoCredentialPayload("kazOs.projects.get"));
+  return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.projects.get"));
 }
 
 async function callAuthenticatedKazOsWork_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  return callHomeControlApi(buildMemoCredentialPayload("kazOs.work.get"));
+  return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.work.get"));
 }
 
 async function callAuthenticatedKazOsToday_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  return callHomeControlApi(buildMemoCredentialPayload("kazOs.today.get"));
+  return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.today.get"));
 }
 
 async function callAuthenticatedKazOsInbox_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
   const cryptoApi = globalThis.crypto;
   if (!cryptoApi || typeof cryptoApi.randomUUID !== "function") throw createHomeControlError("KAZ_TRACE_UNAVAILABLE");
-  return callHomeControlApi({
+  return callHomeControlReadOnlyApi_({
     ...buildMemoCredentialPayload("kazOs.inbox.get"),
     request_id: cryptoApi.randomUUID(),
   });
