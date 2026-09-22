@@ -319,8 +319,24 @@
             const local=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)?v+'T00:00':typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(v)?v.slice(0,16):'';
             const startInput=field(group,'開始','input');startInput.type='datetime-local';startInput.value=local(item.calendar_event?.start);
             const endInput=field(group,'終了','input');endInput.type='datetime-local';endInput.value=local(item.calendar_event?.end);
-            const submitRange=add(group,'button','拘束時間を確認','ki-button kiq-submit');submitRange.type='button';submitRange.disabled=summary.issues.length>0||data?.mode==='read_only_display';
-            submitRange.onclick=()=>answer({value:'time_range',label:'拘束時間を指定'},{start:startInput.value+':00+09:00',end:endInput.value+':00+09:00'});
+            const rangeHint=add(group,'p','一部拘束なら、予定全体より狭い開始・終了を指定してな。','kp-muted kiq-range-hint');
+            const submitRange=add(group,'button','拘束時間を確認','ki-button kiq-submit');submitRange.type='button';
+            const selectedRange=()=>({start:startInput.value?startInput.value+':00+09:00':'',end:endInput.value?endInput.value+':00+09:00':''});
+            const rangeValid=()=>{
+              const selected=selectedRange(),start=Date.parse(selected.start),end=Date.parse(selected.end),suffix=item.calendar_event?.all_day?'T00:00:00+09:00':'',
+                eventStart=Date.parse((item.calendar_event?.start||'')+suffix),eventEnd=Date.parse((item.calendar_event?.end||'')+suffix);
+              return Number.isFinite(start)&&Number.isFinite(end)&&start<end&&Number.isFinite(eventStart)&&Number.isFinite(eventEnd)
+                &&start>=eventStart&&end<=eventEnd&&(start!==eventStart||end!==eventEnd);
+            };
+            const refreshRange=()=>{
+              const enabled=Boolean(answerApi)&&summary.issues.length===0&&statusLive()&&rangeValid();
+              submitRange.disabled=!enabled;
+              rangeHint.textContent=enabled?'この時間で部分拘束として保存できるで。':'一部拘束なら、予定全体より狭い開始・終了を指定してな。';
+            };
+            startInput.addEventListener('input',refreshRange);startInput.addEventListener('change',refreshRange);
+            endInput.addEventListener('input',refreshRange);endInput.addEventListener('change',refreshRange);
+            submitRange.onclick=()=>{if(!rangeValid())return;answer({value:'time_range',label:'拘束時間を指定'},selectedRange());};
+            refreshRange();
           }
           if(summary.review)link(actions,'詳細','inbox/'+encodeURIComponent(item.id),'ki-button kiq-detail-link');
         }
