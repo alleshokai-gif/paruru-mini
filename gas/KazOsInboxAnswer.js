@@ -313,8 +313,16 @@ function buildKazOsCalendarFollowup_(answer, inbox) {
     input_contract: { type: 'time_range', timezone: 'Asia/Tokyo', start_required: true, end_required: true, within_event: true },
     recommended_option: null, recommendation_basis: null,
     expires_at: inbox.sources.calendar.valid_until };
-  const revisionSeed = JSON.parse(JSON.stringify(base));
-  delete revisionSeed.question_revision;
+  const revisionSeed = {
+    id: base.id,
+    kind: base.kind,
+    contract: base.contract,
+    entity_ref: base.entity_ref,
+    calendar_event: base.calendar_event,
+    input_contract: base.input_contract,
+    answer_contract: { question: base.answer_contract.question, choices: base.answer_contract.choices },
+    calendar_source_revision: currentRefs.calendar
+  };
   base.question_revision = 'question-sha256:' + kazOsSha256_(stableKazOsJson_(revisionSeed));
   base.answer_contract.question_revision = base.question_revision;
   return base;
