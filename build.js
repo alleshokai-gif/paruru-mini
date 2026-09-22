@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260921-auth-transport-timeout-v1";
+globalThis.BUILD_ID = "v20260922-calendar-partial-window-v1";
