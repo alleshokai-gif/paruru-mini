@@ -149,6 +149,13 @@ test('INBOX read rebuilds Calendar follow-up without the old parent Decision bei
   localValue.inbox_items = localValue.inbox_items.filter(item => item.kind !== 'calendar_event_impact');
   localValue.sources.projects.source_revision = 'observation-sha256:' + '3'.repeat(64);
   localValue.sources.tasks.source_revision = 'observation-sha256:' + '4'.repeat(64);
+  localValue.inbox_items.forEach(item => {
+    item.source_revision_references = {
+      projects: localValue.sources.projects.source_revision,
+      work_items: localValue.sources.tasks.source_revision,
+      calendar: localValue.sources.calendar.source_revision,
+    };
+  });
 
   const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
   assert(refreshed.success, JSON.stringify(refreshed));
