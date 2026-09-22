@@ -33,7 +33,11 @@ assert(app.includes('callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kaz
 assert(app.includes('callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.today.get"))'), 'TODAY read retry wrapper missing');
 assert(app.includes('return callHomeControlReadOnlyApi_({') && app.includes('buildMemoCredentialPayload("kazOs.inbox.get")'), 'INBOX read retry wrapper missing');
 assert(app.includes('if (attempt > 0 || !isKazOsReadRetryable_(error)) throw error;'), 'Kaz OS read retry must be bounded to one retry');
-assert(app.includes('return callHomeControlApi({\n    ...buildMemoCredentialPayload("kazOs.inbox.answer")'), 'INBOX answer must remain on non-retrying write path');
+const answerStart = app.indexOf('async function callAuthenticatedKazOsInboxAnswer_');
+const answerEnd = app.indexOf('function applyMembershipCapabilityVisibility_', answerStart);
+const answerSource = answerStart >= 0 && answerEnd > answerStart ? app.slice(answerStart, answerEnd) : '';
+assert(answerSource.includes('return callHomeControlApi({') && answerSource.includes('buildMemoCredentialPayload("kazOs.inbox.answer")')
+  && !answerSource.includes('callHomeControlReadOnlyApi_'), 'INBOX answer must remain on non-retrying write path');
 assert(!app.includes('buildMemoCredentialPayload("kazOs.inbox.update")'), 'mutation action must remain disabled');
 for (const [name, source] of [['app.js', app], ['gas/Code.js', gasCode], ['gas/KazOsProgress.js', gasProgress], ['gas/KazOsInbox.js', gasInbox], ['gas/KazOsInboxAnswer.js', gasAnswer]]) {
   assert(!source.includes('KAZ_OS_INBOX_LIVE_ENABLED'), `${name} must not revive the deprecated INBOX read flag`);
