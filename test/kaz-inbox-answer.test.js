@@ -79,6 +79,18 @@ test('answer persists one first-class Answer and one controlled proposal', () =>
   assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
   assert.equal(result.data.inbox.inbox_items.length, 1); assert.equal(h.rows.Kaz_OS_Decision_Ledger.length, 2);
 });
+test('controlled INBOX exposes bounded persisted-answer receipt for response-loss reconciliation', () => {
+  const item = value.inbox_items[0];
+  const result = request(h, item, 'today', 'paluru-reconcile-receipt-0001');
+  assert(result.success, JSON.stringify(result));
+  const receipts = result.data.inbox.persistence.confirmed_answers;
+  assert(Array.isArray(receipts));
+  const receipt = receipts.find(entry => entry.decision_id === item.id && entry.question_revision === item.question_revision);
+  assert(receipt);
+  assert.equal(receipt.persistence_status, 'DURABLE_PERSISTED');
+  assert.equal(result.data.inbox.feedback.decision_id, item.id);
+  assert.equal(result.data.inbox.feedback.question_revision, item.question_revision);
+});
 test('same idempotency key and request creates no duplicate', () => {
   const before = h.stats().writes, result = request(h, value.inbox_items[0], 'today');
   assert(result.success, JSON.stringify(result)); assert.equal(result.data.replayed, true); assert.equal(h.stats().writes, before);

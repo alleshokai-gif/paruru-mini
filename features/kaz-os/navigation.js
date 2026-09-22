@@ -169,9 +169,26 @@
       if (!current()) return;
       if (!readOnlyInbox(data) && !controlledInbox(data)) throw Object.assign(new Error('KAZ_READ_ONLY'), { code: 'KAZ_READ_ONLY' });
       const answerApi = controlledInbox(data) && inboxAnswerApi ? async answer => {
-        const result = await inboxAnswerApi(answer);
-        if (!result?.inbox) throw Object.assign(new Error('KAZ_PERSISTENCE_FAILED'), { code: 'KAZ_PERSISTENCE_FAILED' });
-        return result;
+        try {
+          const result = await inboxAnswerApi(answer);
+          if (!result?.inbox) throw Object.assign(new Error('KAZ_PERSISTENCE_FAILED'), { code: 'KAZ_PERSISTENCE_FAILED' });
+          return result;
+        } catch (error) {
+          if (error?.code !== 'HOME_CONTROL_UNAVAILABLE') throw error;
+          const refreshed = await inboxApi();
+          if (!readOnlyInbox(refreshed) && !controlledInbox(refreshed)) throw error;
+          const confirmed = Array.isArray(refreshed?.persistence?.confirmed_answers)
+            && refreshed.persistence.confirmed_answers.some(item =>
+              item?.decision_id === answer?.decision_id
+              && item?.question_revision === answer?.question_revision
+              && item?.persistence_status === 'DURABLE_PERSISTED');
+          if (!confirmed) throw error;
+          refreshed.feedback = {
+            ...(refreshed.feedback || {}),
+            message: '✓ 保存済みを再確認したで。Operational Sourceはまだ変更してへん'
+          };
+          return { inbox: refreshed, reconciled: true };
+        }
       } : null;
       globalThis.KazPersonalView.render(host, selection, data, Date.now(), { answerApi });
       const until = Date.parse(data?.sources?.inbox?.valid_until);

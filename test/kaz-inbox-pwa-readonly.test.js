@@ -121,8 +121,8 @@ const freshInbox = () => ({
   sources: { inbox: { status: 'ok', complete: true, valid_until: new Date(Date.now() + 600000).toISOString() } },
   inbox_items: [],
 });
-const controlledInbox = () => ({ ...freshInbox(), mode: 'controlled_proposal',
-  persistence: { kind: 'paluru_spreadsheet_append_only', status: 'enabled' } });
+const controlledInbox = (confirmedAnswers = []) => ({ ...freshInbox(), mode: 'controlled_proposal',
+  persistence: { kind: 'paluru_spreadsheet_append_only', status: 'enabled', confirmed_answers: confirmedAnswers } });
 
 (async () => {
   const denied = navigationHarness();
@@ -163,6 +163,39 @@ const controlledInbox = () => ({ ...freshInbox(), mode: 'controlled_proposal',
   assert.equal(typeof controlledRender[4].answerApi, 'function', 'controlled mode answer API missing');
   await controlledRender[4].answerApi({ decision_id: 'd' });
   assert.equal(answerCalls, 1, 'answer API was not called exactly once');
+
+  const reconciled = navigationHarness();
+  let reconcileReads = 0;
+  const decision = { decision_id: 'decision-response-lost', question_revision: 'question-sha256:response-lost' };
+  reconciled.listeners['paruru:authenticated']({ detail: {
+    context: { role: 'admin', allowedViews: ['home', 'kaz-os'] },
+    kazOsProjectsApi: async () => null,
+    kazOsInboxApi: async () => {
+      reconcileReads++;
+      if (reconcileReads === 1) return controlledInbox();
+      return controlledInbox([{ ...decision, persistence_status: 'DURABLE_PERSISTED' }]);
+    },
+    kazOsInboxAnswerApi: async () => { throw Object.assign(new Error('response lost'), { code: 'HOME_CONTROL_UNAVAILABLE' }); },
+  } });
+  await new Promise(setImmediate);
+  const reconcileRender = reconciled.renders.find(args => args[2]?.mode === 'controlled_proposal');
+  const reconcileResult = await reconcileRender[4].answerApi(decision);
+  assert.equal(reconcileResult.reconciled, true, 'ambiguous write response must reconcile by readback');
+  assert.equal(reconcileResult.inbox.feedback.message, '✓ 保存済みを再確認したで。Operational Sourceはまだ変更してへん');
+  assert.equal(reconcileReads, 2, 'reconciliation must perform exactly one readback');
+
+  const uncertain = navigationHarness();
+  let uncertainReads = 0;
+  uncertain.listeners['paruru:authenticated']({ detail: {
+    context: { role: 'admin', allowedViews: ['home', 'kaz-os'] },
+    kazOsProjectsApi: async () => null,
+    kazOsInboxApi: async () => { uncertainReads++; return controlledInbox(); },
+    kazOsInboxAnswerApi: async () => { throw Object.assign(new Error('response lost'), { code: 'HOME_CONTROL_UNAVAILABLE' }); },
+  } });
+  await new Promise(setImmediate);
+  const uncertainRender = uncertain.renders.find(args => args[2]?.mode === 'controlled_proposal');
+  await assert.rejects(() => uncertainRender[4].answerApi(decision), error => error.code === 'HOME_CONTROL_UNAVAILABLE');
+  assert.equal(uncertainReads, 2, 'unconfirmed ambiguous write must read back once and remain failed');
 
   const unsafe = navigationHarness();
   unsafe.listeners['paruru:authenticated']({ detail: {

@@ -73,7 +73,10 @@ function answerKazOsInbox_(body) {
     const persisted = persistKazOsAnswer_(question, request, actor);
     const refreshed = applyKazOsDecisionLedger_(current);
     refreshed.feedback = { message: '✓ 回答したで。Operational Sourceはまだ変更してへん',
-      answer_id: persisted.answer.answer_id, answered_at: persisted.answer.answered_at };
+      answer_id: persisted.answer.answer_id, decision_id: persisted.answer.decision_id,
+      question_revision: persisted.answer.question_revision,
+      persistence_status: persisted.answer.persistence_status,
+      answered_at: persisted.answer.answered_at };
     return json_({ success: true, data: { answer: persisted.answer, proposal: persisted.proposal,
       replayed: persisted.replayed, inbox: refreshed }, message: persisted.replayed ? 'already persisted' : 'persisted' });
   } catch (error) {
@@ -281,14 +284,22 @@ function applyKazOsDecisionLedger_(inbox) {
       if (followup && !answered.has(followup.id + '\u0000' + followup.question_revision)) pending.push(followup);
     }
   });
-  const latest = currentAnswers.slice().sort(function(a, b) { return a.answer.answered_at.localeCompare(b.answer.answered_at); }).pop();
+  const orderedAnswers = currentAnswers.slice().sort(function(a, b) { return a.answer.answered_at.localeCompare(b.answer.answered_at); });
+  const latest = orderedAnswers[orderedAnswers.length - 1];
   inbox.mode = 'controlled_proposal';
   inbox.inbox_items = pending;
   inbox.feedback = latest ? { message: '✓ 回答したで。Operational Sourceはまだ変更してへん',
-    answer_id: latest.answer.answer_id, answered_at: latest.answer.answered_at } : null;
+    answer_id: latest.answer.answer_id, decision_id: latest.answer.decision_id,
+    question_revision: latest.answer.question_revision,
+    persistence_status: latest.answer.persistence_status,
+    answered_at: latest.answer.answered_at } : null;
   inbox.persistence = { kind: 'paluru_spreadsheet_append_only', status: 'enabled',
     answers: rows.length, proposals: rows.length, followups: currentAnswers.filter(function(row) {
-      return row.proposal.change.kind === 'FOLLOWUP_REQUIRED'; }).length };
+      return row.proposal.change.kind === 'FOLLOWUP_REQUIRED'; }).length,
+    confirmed_answers: orderedAnswers.slice(Math.max(0, orderedAnswers.length - 20)).map(function(row) {
+      return { decision_id: row.answer.decision_id, question_revision: row.answer.question_revision,
+        persistence_status: row.answer.persistence_status };
+    }) };
   return inbox;
 }
 
