@@ -36,7 +36,7 @@ assert(app.includes('if (attempt > 0 || !isKazOsReadRetryable_(error)) throw err
 const answerStart = app.indexOf('async function callAuthenticatedKazOsInboxAnswer_');
 const answerEnd = app.indexOf('function applyMembershipCapabilityVisibility_', answerStart);
 const answerSource = answerStart >= 0 && answerEnd > answerStart ? app.slice(answerStart, answerEnd) : '';
-assert(answerSource.includes('return callHomeControlApi({') && answerSource.includes('buildMemoCredentialPayload("kazOs.inbox.answer")')
+assert(answerSource.includes('await callHomeControlApi({') && answerSource.includes('buildMemoCredentialPayload("kazOs.inbox.answer")')
   && !answerSource.includes('callHomeControlReadOnlyApi_'), 'INBOX answer must remain on non-retrying write path');
 assert(!app.includes('buildMemoCredentialPayload("kazOs.inbox.update")'), 'mutation action must remain disabled');
 for (const [name, source] of [['app.js', app], ['gas/Code.js', gasCode], ['gas/KazOsProgress.js', gasProgress], ['gas/KazOsInbox.js', gasInbox], ['gas/KazOsInboxAnswer.js', gasAnswer]]) {

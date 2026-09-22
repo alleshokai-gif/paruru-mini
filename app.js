@@ -333,6 +333,8 @@ const authAdminLinkingRefresh = document.querySelector("#authAdminLinkingRefresh
 const authAdminLinkingStatus = document.querySelector("#authAdminLinkingStatus");
 const authAdminLinkingList = document.querySelector("#authAdminLinkingList");
 const buildVersion = document.querySelector("#buildVersion");
+const transportDiagnosticsPanel = document.querySelector("#transportDiagnosticsPanel");
+const transportDiagnosticsOutput = document.querySelector("#transportDiagnosticsOutput");
 const views = document.querySelectorAll(".app-view");
 const navItems = document.querySelectorAll(".nav-item");
 const viewNavigationItems = document.querySelectorAll("[data-target-view]");
@@ -492,6 +494,22 @@ setParuruState("loading");
 if ("serviceWorker" in navigator) {
   let refreshingForNewServiceWorker = false;
 
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event?.data?.type !== "PALURU_TRANSPORT_DIAGNOSTIC") return;
+    const detail = event.data.detail || {};
+    const diagnostics = globalThis.PALURUTransportDiagnostics;
+    if (!diagnostics) return;
+    const context = diagnostics.start("service_worker", detail.action || "service_worker.update");
+    diagnostics.record(context, {
+      attempt: 1,
+      elapsedMs: 0,
+      classification: detail.classification || "unknown",
+      backendStage: detail.backendStage || "SERVICE_WORKER",
+      outcome: detail.outcome || "unresolved",
+      errorCode: detail.errorCode || null,
+    });
+  });
+
   debugLog("[Paruru] build version", { appVersion: APP_VERSION, buildId: globalThis.BUILD_ID });
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -511,6 +529,7 @@ if ("serviceWorker" in navigator) {
         updateViaCache: "none",
       })
       .then((registration) => {
+        recordServiceWorkerDiagnostic_("service_worker.register", "REGISTERED", "success", null);
         debugLog("[Paruru] Service Worker registered", {
           scope: registration.scope,
           updateViaCache: registration.updateViaCache,
@@ -519,7 +538,8 @@ if ("serviceWorker" in navigator) {
         updateServiceWorker(registration);
         registration.update();
       })
-      .catch(() => {
+      .catch((error) => {
+        recordServiceWorkerDiagnostic_("service_worker.register", "REGISTRATION_FAILED", "unresolved", error);
         // PWA registration failure should not block memo submission.
       });
   });
@@ -551,6 +571,44 @@ const NURSE_OKAN_HEALTH_ACTIONS = new Set([
 ]);
 const KAZ_OS_READ_TIMEOUT_MS = 8000;
 const KAZ_OS_READ_RETRY_DELAY_MS = 120;
+
+function transportDiagnostics_() {
+  return globalThis.PALURUTransportDiagnostics || null;
+}
+
+function recordServiceWorkerDiagnostic_(action, stage, outcome, error) {
+  try {
+    const diagnostics = transportDiagnostics_();
+    if (!diagnostics) return;
+    const context = diagnostics.start("service_worker", action);
+    diagnostics.record(context, {
+      attempt: 1,
+      elapsedMs: 0,
+      classification: error ? diagnostics.classifyError(error) : "none",
+      backendStage: stage,
+      outcome,
+      errorCode: error?.code || null,
+    });
+  } catch (_) {
+    // Diagnostics never change service-worker behavior.
+  }
+}
+
+function renderTransportDiagnostics_() {
+  if (!transportDiagnosticsOutput) return;
+  const diagnostics = transportDiagnostics_();
+  const records = diagnostics ? diagnostics.list().slice(-20).reverse() : [];
+  transportDiagnosticsOutput.textContent = records.length
+    ? records.map((record) => JSON.stringify(record)).join("\n")
+    : "診断はまだありません。";
+}
+
+transportDiagnosticsPanel?.addEventListener("toggle", () => {
+  if (transportDiagnosticsPanel.open) renderTransportDiagnostics_();
+});
+document.addEventListener?.("paluru:transport-diagnostic", () => {
+  if (transportDiagnosticsPanel?.open) renderTransportDiagnostics_();
+});
 
 const PET_HEALTH_ACTIONS = new Set([
   "pet.health.record",
@@ -2209,17 +2267,33 @@ async function callHomeControlApi(payload, options = {}) {
   try {
     response = await postAuthenticatedApi_(payload, options);
   } catch (cause) {
-    throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", { cause });
+    throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", {
+      cause,
+      transportClassification: String(cause?.name || "") === "AbortError" ? "timeout" : "network",
+    });
   }
-  if (!response.ok) throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", { httpStatus: response.status, response: await readHomeControlErrorResponse_(response) });
+  if (!response.ok) throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", {
+    httpStatus: response.status,
+    response: await readHomeControlErrorResponse_(response),
+    transportClassification: "http",
+  });
   let result;
   try {
     result = await response.json();
   } catch (error) {
-    throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", { httpStatus: response.status, cause: error });
+    throw createHomeControlError("HOME_CONTROL_UNAVAILABLE", {
+      httpStatus: response.status,
+      cause: error,
+      transportClassification: "parse",
+    });
   }
   if (!result || result.success !== true) {
-    throw createHomeControlError(String(result?.error?.code || "HOME_CONTROL_FAILED"), { httpStatus: response.status, response: result, message: result?.message });
+    throw createHomeControlError(String(result?.error?.code || "HOME_CONTROL_FAILED"), {
+      httpStatus: response.status,
+      response: result,
+      message: result?.message,
+      transportClassification: "business",
+    });
   }
   return result.data || {};
 }
@@ -2242,18 +2316,23 @@ async function postAuthenticatedApi_(payload, options = {}) {
 }
 
 async function callHomeControlReadOnlyApi_(payload) {
+  const diagnostics = transportDiagnostics_();
+  const requestId = String(payload?.request_id || diagnostics?.requestId() || "");
+  const requestPayload = requestId ? { ...payload, request_id: requestId } : payload;
+  const diagnostic = diagnostics?.start("kaz_read", requestPayload?.action, requestId);
   let lastError = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const controller = new AbortController();
     const startedAt = Date.now();
     const timer = setTimeout(() => controller.abort(), KAZ_OS_READ_TIMEOUT_MS);
     try {
-      const result = await callHomeControlApi(payload, { signal: controller.signal });
-      logKazOsReadDiagnostic_(payload?.action, attempt, Date.now() - startedAt, null);
+      const result = await callHomeControlApi({ ...requestPayload, transport_attempt: attempt + 1 }, { signal: controller.signal });
+      logKazOsReadDiagnostic_(diagnostic, requestPayload?.action, attempt, Date.now() - startedAt, null, "success");
       return result;
     } catch (error) {
       lastError = error;
-      logKazOsReadDiagnostic_(payload?.action, attempt, Date.now() - startedAt, error);
+      const retryable = attempt === 0 && isKazOsReadRetryable_(error);
+      logKazOsReadDiagnostic_(diagnostic, requestPayload?.action, attempt, Date.now() - startedAt, error, retryable ? "retry" : "unresolved");
       if (attempt > 0 || !isKazOsReadRetryable_(error)) throw error;
       await new Promise(resolve => setTimeout(resolve, KAZ_OS_READ_RETRY_DELAY_MS));
     } finally {
@@ -2270,8 +2349,21 @@ function isKazOsReadRetryable_(error) {
   return name === "AbortError" || error.cause instanceof TypeError;
 }
 
-function logKazOsReadDiagnostic_(action, attempt, elapsedMs, error) {
+function logKazOsReadDiagnostic_(diagnostic, action, attempt, elapsedMs, error, outcome) {
   try {
+    const diagnostics = transportDiagnostics_();
+    if (diagnostics && diagnostic) {
+      diagnostics.record(diagnostic, {
+        attempt: Number(attempt) + 1,
+        elapsedMs,
+        classification: error ? diagnostics.classifyError(error) : "none",
+        httpStatus: Number.isFinite(error?.httpStatus) ? error.httpStatus : null,
+        backendStage: error ? "MINI_RESPONSE" : "MINI_COMPLETE",
+        outcome,
+        errorCode: error?.code || null,
+      });
+      return;
+    }
     if (typeof console === "undefined" || typeof console.info !== "function") return;
     console.info("[PALURU Kaz OS Read]", {
       action: String(action || "").slice(0, 80),
@@ -2280,6 +2372,7 @@ function logKazOsReadDiagnostic_(action, attempt, elapsedMs, error) {
       errorCode: error ? String(error.code || "UNKNOWN").slice(0, 80) : null,
       httpStatus: Number.isFinite(error?.httpStatus) ? error.httpStatus : null,
       buildId: typeof globalThis.BUILD_ID === "string" ? globalThis.BUILD_ID : "",
+      outcome: String(outcome || "unresolved"),
     });
   } catch (_) {
     // Diagnostics must never affect read results.
@@ -2296,6 +2389,7 @@ function createHomeControlError(code, details = {}) {
   if (Number.isFinite(Number(details.httpStatus))) error.httpStatus = Number(details.httpStatus);
   if (Object.prototype.hasOwnProperty.call(details, "response")) error.response = details.response;
   if (details.cause) error.cause = details.cause;
+  if (details.transportClassification) error.transportClassification = String(details.transportClassification);
   return error;
 }
 
@@ -5162,16 +5256,47 @@ async function callAuthenticatedKazOsInboxAnswer_(answer) {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
   const cryptoApi = globalThis.crypto;
   if (!cryptoApi || typeof cryptoApi.randomUUID !== "function") throw createHomeControlError("KAZ_TRACE_UNAVAILABLE");
-  return callHomeControlApi({
-    ...buildMemoCredentialPayload("kazOs.inbox.answer"),
-    request_id: cryptoApi.randomUUID(),
-    decision_id: answer?.decision_id,
-    question_revision: answer?.question_revision,
-    source_revision_references: answer?.source_revision_references,
-    selected_option: answer?.selected_option,
-    reason: answer?.reason ?? null,
-    idempotency_key: answer?.idempotency_key,
-  });
+  const requestId = cryptoApi.randomUUID();
+  const diagnostics = transportDiagnostics_();
+  const diagnostic = diagnostics?.start("kaz_answer", "kazOs.inbox.answer", requestId);
+  const startedAt = Date.now();
+  try {
+    const result = await callHomeControlApi({
+      ...buildMemoCredentialPayload("kazOs.inbox.answer"),
+      request_id: requestId,
+      transport_attempt: 1,
+      decision_id: answer?.decision_id,
+      question_revision: answer?.question_revision,
+      source_revision_references: answer?.source_revision_references,
+      selected_option: answer?.selected_option,
+      reason: answer?.reason ?? null,
+      idempotency_key: answer?.idempotency_key,
+    });
+    diagnostics?.record(diagnostic, {
+      attempt: 1,
+      elapsedMs: Date.now() - startedAt,
+      classification: "none",
+      backendStage: "ANSWER_COMPLETE",
+      outcome: "success",
+    });
+    return result;
+  } catch (error) {
+    if (error?.code === "HOME_CONTROL_UNAVAILABLE") {
+      error.transportDiagnosticContext = diagnostic;
+      error.transportDiagnosticElapsedMs = Math.max(0, Date.now() - startedAt);
+    } else {
+      diagnostics?.record(diagnostic, {
+        attempt: 1,
+        elapsedMs: Date.now() - startedAt,
+        classification: diagnostics.classifyError(error),
+        httpStatus: Number.isFinite(error?.httpStatus) ? error.httpStatus : null,
+        backendStage: "ANSWER_REJECTED",
+        outcome: "unresolved",
+        errorCode: error?.code || null,
+      });
+    }
+    throw error;
+  }
 }
 
 function applyMembershipCapabilityVisibility_() {

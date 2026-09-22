@@ -1643,6 +1643,26 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.transport-diagnostics summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.transport-diagnostics pre {
+  max-width: 100%;
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  font-size: 0.78rem;
+}
+
 .home-control-code {
   margin: 0;
   font-size: 2rem;

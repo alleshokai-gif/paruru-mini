@@ -95,6 +95,10 @@ test('missing or malformed request id is rejected before source read',()=>{
   assert.equal(h.stats().reads,before);
 });
 test('failed or stale source never becomes an empty queue',()=>{fail=true;let r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);fail=false;value=snapshot();value.sources.inbox.valid_until=iso(-1);r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);});
+test('genuinely malformed upstream Decision fails closed instead of returning a partial unsafe source',()=>{
+  value=snapshot();value.inbox_items.push({...value.inbox_items[0],id:'decision-malformed-upstream',owner:'other'});
+  const r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);
+});
 test('missing explicit owner member fails closed',()=>{value=snapshot();delete h.props.KAZ_OS_PROGRESS_OWNER_MEMBER_ID;const before=h.stats().reads,r=call();assert.equal(r.error.code,'KAZ_NOT_CONNECTED');assert.equal(h.stats().reads,before);h.props.KAZ_OS_PROGRESS_OWNER_MEMBER_ID='father';});
 test('GAS calendar read sends one transient bounded capture and no raw IDs',()=>{
   value=snapshot();h.props.KAZ_OS_INBOX_READ_URL='https://reader.invalid/v1/inbox';h.props.KAZ_OS_PROGRESS_READ_TOKEN='synthetic-reader-token-01234567890123456789';

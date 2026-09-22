@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260922-inbox-answer-reconcile-v1";
+globalThis.BUILD_ID = "v20260922-transport-diagnostics-v1";

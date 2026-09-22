@@ -182,7 +182,28 @@
               item?.decision_id === answer?.decision_id
               && item?.question_revision === answer?.question_revision
               && item?.persistence_status === 'DURABLE_PERSISTED');
-          if (!confirmed) throw error;
+          const diagnostics = globalThis.PALURUTransportDiagnostics;
+          if (!confirmed) {
+            diagnostics?.record(error?.transportDiagnosticContext, {
+              attempt: 1,
+              elapsedMs: error?.transportDiagnosticElapsedMs,
+              classification: diagnostics.classifyError(error),
+              httpStatus: Number.isFinite(error?.httpStatus) ? error.httpStatus : null,
+              backendStage: 'ANSWER_READBACK_UNCONFIRMED',
+              outcome: 'unresolved',
+              errorCode: error?.code || null,
+            });
+            throw error;
+          }
+          diagnostics?.record(error?.transportDiagnosticContext, {
+            attempt: 1,
+            elapsedMs: error?.transportDiagnosticElapsedMs,
+            classification: diagnostics.classifyError(error),
+            httpStatus: Number.isFinite(error?.httpStatus) ? error.httpStatus : null,
+            backendStage: 'ANSWER_READBACK_CONFIRMED',
+            outcome: 'reconciled',
+            errorCode: error?.code || null,
+          });
           refreshed.feedback = {
             ...(refreshed.feedback || {}),
             message: '✓ 保存済みを再確認したで。Operational Sourceはまだ変更してへん'
