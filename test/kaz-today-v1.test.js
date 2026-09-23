@@ -181,6 +181,11 @@ test('gateway derives /v1/today and POSTs bounded transient planning input',()=>
     observedPayload=JSON.parse(options.payload);
     return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(snapshot())};
   };
+  h.ctx.Utilities.formatDate=(date,timezone,format)=>{
+    assert.equal(timezone,'Asia/Tokyo');
+    assert.equal(format,'yyyy-MM-dd');
+    return new Date(date.getTime()+9*3600000).toISOString().slice(0,10);
+  };
   vm.runInContext(fs.readFileSync(path.join(root,'gas/KazOsToday.js'),'utf8'),h.ctx);
   h.ctx.buildKazOsCalendarCapture_=()=>({selection:{},horizon:{},fetched_at:'x',response:{events:[]},connector_receipt:{}});
   const result=h.ctx.sanitizeKazOsToday_(h.ctx.readKazOsToday_());
@@ -188,7 +193,7 @@ test('gateway derives /v1/today and POSTs bounded transient planning input',()=>
   assert.deepEqual(Object.keys(observedPayload).sort(),['calendar_capture','classifications','planning']);
   assert.deepEqual(observedPayload.classifications,{items:[]});
   assert.equal(observedPayload.planning.timezone,'Asia/Tokyo');
-  assert(/^\\d{4}-\\d{2}-\\d{2}$/.test(observedPayload.planning.planning_date));
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(observedPayload.planning.planning_date));
   assert.deepEqual(observedPayload.planning.preferences,[]);
   assert.deepEqual(observedPayload.planning.daily_estimates,[]);
   assert.equal(calls,1);
