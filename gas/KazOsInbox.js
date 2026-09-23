@@ -56,8 +56,15 @@ function readKazOsInbox_(trace) {
   recordKazOsInboxTrace_(trace, 'GATEWAY_POST_STARTED', { event_count: eventCount });
   let response;
   try {
+    const classifications = typeof buildKazOsTodayPlanningClassifications_ === 'function'
+      ? buildKazOsTodayPlanningClassifications_() : [];
+    const planning = typeof buildKazOsTodayPlanningEvidence_ === 'function'
+      ? buildKazOsTodayPlanningEvidence_() : { timezone: 'Asia/Tokyo',
+        planning_date: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd'),
+        preferences: [], daily_estimates: [] };
     response = UrlFetchApp.fetch(url, {
-      method: 'post', contentType: 'application/json', payload: JSON.stringify(capture),
+      method: 'post', contentType: 'application/json',
+      payload: JSON.stringify({ calendar_capture: capture, classifications: { items: classifications }, planning: planning }),
       headers: { Authorization: 'Bearer ' + token, 'X-Kaz-Request-Id': trace.request_id }, muteHttpExceptions: true,
       followRedirects: false, validateHttpsCertificates: true
     });
@@ -135,7 +142,7 @@ function sanitizeKazOsInbox_(data) {
   const number = function(value, nullable) { if (nullable && value == null) return null; if (!Number.isInteger(value) || value < 0 || value > 100000) fail(); return value; };
   const list = function(value, limit, mapper) { if (!Array.isArray(value) || value.length > limit) fail(); return value.map(mapper); };
   const states = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
-  const kinds = ['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window'];
+  const kinds = ['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window','daily_estimate'];
   const gardenerKinds = ['CONTEXT_CANDIDATE','CONFLICT_RESOLUTION'];
   const source = function(value) {
     if (!value || value.status !== 'ok' || value.complete !== true) fail();
@@ -235,6 +242,11 @@ function sanitizeKazOsInbox_(data) {
           || value.input_contract.timezone !== 'Asia/Tokyo'
           || value.input_contract.start_required !== true || value.input_contract.end_required !== true
           || value.input_contract.within_event !== true) fail();
+    } else if (value.kind === 'daily_estimate') {
+      if (choices.length !== 0 || !value.input_contract || value.input_contract.type !== 'integer_minutes'
+          || value.input_contract.unit !== 'minutes' || value.input_contract.min !== 1
+          || !Number.isInteger(value.input_contract.max) || value.input_contract.max < 1
+          || value.input_contract.max > 100000) fail();
     } else if (choices.length < 2) fail();
     let calendarEvent = null;
     if (value.kind === 'calendar_event_impact' || value.kind === 'calendar_partial_window') {
@@ -257,6 +269,12 @@ function sanitizeKazOsInbox_(data) {
       const seed = entityRef + '\\u0000' + entityRevision + '\\u0000' + decisionDate + '\\u0000' + choiceSeed;
       decisionId = 'decision-' + kazOsSha256_('daily-planning-preference\\u0000' + seed).slice(0, 24);
       questionRevision = 'question-sha256:' + kazOsSha256_('daily-planning-preference-question\\u0000' + seed);
+    } else if (value.kind === 'daily_estimate') {
+      if (!entityRef || !entityRevision || !decisionDate) fail();
+      const inputSeed = value.input_contract.type + ':' + value.input_contract.min + ':' + value.input_contract.max;
+      const seed = entityRef + '\\u0000' + entityRevision + '\\u0000' + decisionDate + '\\u0000' + inputSeed;
+      decisionId = 'decision-' + kazOsSha256_('daily-estimate\\u0000' + seed).slice(0, 24);
+      questionRevision = 'question-sha256:' + kazOsSha256_('daily-estimate-question\\u0000' + seed);
     }
     return { id: decisionId, kind: value.kind, contract: value.contract,
       owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
@@ -274,7 +292,9 @@ function sanitizeKazOsInbox_(data) {
         question: text(value.answer_contract.question, 500), choices: choices },
        calendar_event: calendarEvent,
        input_contract: value.kind === 'calendar_partial_window' ? { type: 'time_range', timezone: 'Asia/Tokyo',
-         start_required: true, end_required: true, within_event: true } : null,
+         start_required: true, end_required: true, within_event: true }
+         : value.kind === 'daily_estimate' ? { type: 'integer_minutes', min: value.input_contract.min,
+           max: value.input_contract.max, unit: 'minutes' } : null,
       recommended_option: text(value.recommended_option, 80, true),
       recommendation_basis: value.recommendation_basis == null ? null : list(value.recommendation_basis, 8, function(item) { return text(item, 300); }) };
   });
