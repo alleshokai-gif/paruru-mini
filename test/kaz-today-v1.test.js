@@ -166,10 +166,20 @@ test('gateway derives /v1/today and POSTs bounded transient planning input',()=>
   h.ctx.buildKazOsCalendarCapture_=()=>({selection:{},horizon:{},fetched_at:'x',response:{events:[]},connector_receipt:{}});
   const result=h.ctx.sanitizeKazOsToday_(h.ctx.readKazOsToday_());
   assert.equal(result.schema_version,'kaz-today-plan-v1');
-  assert.deepEqual(Object.keys(observedPayload).sort(),['calendar_capture','classifications']);
+  assert.deepEqual(Object.keys(observedPayload).sort(),['calendar_capture','classifications','planning']);
   assert.deepEqual(observedPayload.classifications,{items:[]});
+  assert.equal(observedPayload.planning.timezone,'Asia/Tokyo');
+  assert(/^\\d{4}-\\d{2}-\\d{2}$/.test(observedPayload.planning.planning_date));
+  assert.deepEqual(observedPayload.planning.preferences,[]);
+  assert.deepEqual(observedPayload.planning.daily_estimates,[]);
   assert.equal(calls,1);
   assert.equal(h.stats().writes,0);
+});
+
+test('TODAY sanitizer keeps V1 readable during rolling V2 deploy',()=>{
+  data=snapshot();
+  const result=h.ctx.sanitizeKazOsToday_(data);
+  assert.equal(result.schema_version,'kaz-today-plan-v1');
 });
 
 test('dispatcher explicitly exposes TODAY read and keeps generic Kaz writes denied',()=>{
