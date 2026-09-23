@@ -298,10 +298,15 @@ function sanitizeKazOsInbox_(data) {
       recommended_option: text(value.recommended_option, 80, true),
       recommendation_basis: value.recommendation_basis == null ? null : list(value.recommendation_basis, 8, function(item) { return text(item, 300); }) };
   });
+  const activeInboxItems = inboxItems.filter(function(item) {
+    if (item.expires_at == null) return true;
+    const expires = Date.parse(item.expires_at);
+    return Number.isFinite(expires) && expires > Date.now();
+  });
   return { schema_version: data.schema_version, origin: data.origin, mode: data.mode,
     fixture_only: false, fixture_fallback: false, as_of: text(data.as_of, 80), timezone: 'Asia/Tokyo',
     sources: sources, projects: projects, work_items: workItems, calendar_events: calendarEvents,
-    inbox_items: inboxItems, decision_priority_evidence: {}, feedback: null,
+    inbox_items: activeInboxItems, decision_priority_evidence: {}, feedback: null,
     gardener: gardener && data.gardener ? {
       status: text(data.gardener.status, 20), complete: boolean(data.gardener.complete),
       source_revision: text(data.gardener.source_revision, 120, true),
