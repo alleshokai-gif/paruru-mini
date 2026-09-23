@@ -1,17 +1,49 @@
 const FIREBASE_READ_ACTOR_CACHE_TTL_SECONDS = 8;
 const FIREBASE_READ_ACTOR_CACHE_PREFIX = 'firebase-read-actor-v1:';
 
-function resolveFirebaseAuthenticatedActor_(body, overrides) {
+function resolveFirebaseAuthenticatedActor_(body, overrides, transportTrace) {
   const input = body || {};
   const auth = input.auth && typeof input.auth === 'object' ? input.auth : {};
   if (String(auth.provider || '') !== 'firebase') throw firebaseAuthError_('AUTH_PROVIDER_NOT_ALLOWED');
-  const verified = verifyFirebaseIdToken_(auth.idToken, overrides && overrides.verifier);
-  const identity = (overrides && typeof overrides.resolveIdentity === 'function')
-    ? overrides.resolveIdentity(verified.provider, verified.providerSubject)
-    : resolveHomeIdentity_(verified.provider, verified.providerSubject);
-  const member = (overrides && typeof overrides.getMember === 'function')
-    ? overrides.getMember(identity.homeId, identity.memberUserId)
-    : getHomeMember_(identity.homeId, identity.memberUserId);
+  recordAuthenticatedActorStage_(transportTrace, 'FIREBASE_VERIFY_START', { outcome: 'progress' });
+  let verified;
+  try {
+    verified = verifyFirebaseIdToken_(auth.idToken, overrides && overrides.verifier);
+    recordAuthenticatedActorStage_(transportTrace, 'FIREBASE_VERIFY_END', { outcome: 'progress' });
+  } catch (error) {
+    recordAuthenticatedActorStage_(transportTrace, 'FIREBASE_VERIFY_END', {
+      classification: 'business', outcome: 'unresolved', errorCode: error && error.code
+    });
+    throw error;
+  }
+  // USER_ACCOUNT_SHEET measures the persisted Home_Identities account mapping.
+  // Only timing metadata is logged; provider subjects and row values never are.
+  recordAuthenticatedActorStage_(transportTrace, 'USER_ACCOUNT_SHEET_START', { outcome: 'progress' });
+  let identity;
+  try {
+    identity = (overrides && typeof overrides.resolveIdentity === 'function')
+      ? overrides.resolveIdentity(verified.provider, verified.providerSubject)
+      : resolveHomeIdentity_(verified.provider, verified.providerSubject);
+    recordAuthenticatedActorStage_(transportTrace, 'USER_ACCOUNT_SHEET_END', { outcome: 'progress' });
+  } catch (error) {
+    recordAuthenticatedActorStage_(transportTrace, 'USER_ACCOUNT_SHEET_END', {
+      classification: 'business', outcome: 'unresolved', errorCode: error && error.code
+    });
+    throw error;
+  }
+  recordAuthenticatedActorStage_(transportTrace, 'MEMBERSHIP_SHEET_START', { outcome: 'progress' });
+  let member;
+  try {
+    member = (overrides && typeof overrides.getMember === 'function')
+      ? overrides.getMember(identity.homeId, identity.memberUserId)
+      : getHomeMember_(identity.homeId, identity.memberUserId);
+    recordAuthenticatedActorStage_(transportTrace, 'MEMBERSHIP_SHEET_END', { outcome: 'progress' });
+  } catch (error) {
+    recordAuthenticatedActorStage_(transportTrace, 'MEMBERSHIP_SHEET_END', {
+      classification: 'business', outcome: 'unresolved', errorCode: error && error.code
+    });
+    throw error;
+  }
   if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member) || !isHomeMemberAccessRole_(member.role)) {
     throw homeMembershipError_('MEMBERSHIP_NOT_FOUND');
   }
@@ -25,7 +57,12 @@ function resolveFirebaseAuthenticatedActor_(body, overrides) {
     authBindingKey: firebaseAuthBindingKey_(verified.provider, verified.providerSubject),
     authTime: verified.authTime,
   };
+  recordAuthenticatedActorStage_(transportTrace, 'ACTOR_RESOLVE_END', { outcome: 'progress' });
   return Object.freeze(actor);
+}
+
+function recordAuthenticatedActorStage_(trace, stage, values) {
+  if (typeof recordMiniTransportTrace_ === 'function') recordMiniTransportTrace_(trace, stage, values);
 }
 
 function resolveFirebaseAuthenticatedActorForRead_(body, overrides) {
@@ -190,8 +227,8 @@ function normalizeAuthPocErrorCode_(code) {
   return allowed[normalized] ? normalized : 'AUTHENTICATION_FAILED';
 }
 
-function getFirebaseMembershipContext_(body, overrides) {
-  const actor = resolveFirebaseAuthenticatedActor_(body, overrides);
+function getFirebaseMembershipContext_(body, overrides, transportTrace) {
+  const actor = resolveFirebaseAuthenticatedActor_(body, overrides, transportTrace);
   authorizeCapability_(actor, 'home.read');
   const policy = getHomeMemberPolicy_(actor.memberUserId);
   return {

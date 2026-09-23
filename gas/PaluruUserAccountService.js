@@ -8,9 +8,10 @@ function ensurePaluruUsersSheet_() {
 
 function authSessionResolve_(body, transportTrace, overrides) {
   try {
-    const context = getFirebaseMembershipContext_(body, overrides);
-    recordAuthTransport_(transportTrace, 'AUTH_SESSION_COMPLETE', { outcome: 'success' });
-    return json_({ success: true, data: context, message: 'authenticated actor resolved' });
+    const context = getFirebaseMembershipContext_(body, overrides, transportTrace);
+    const response = json_({ success: true, data: context, message: 'authenticated actor resolved' });
+    recordAuthTransport_(transportTrace, 'RESPONSE_READY', { outcome: 'success' });
+    return response;
   } catch (error) {
     invalidateFirebaseAuthenticatedActorReadCache_(body, overrides);
     const code = normalizeAuthRegistrationErrorCode_(error && error.code);
@@ -18,7 +19,11 @@ function authSessionResolve_(body, transportTrace, overrides) {
       recordAuthTransport_(transportTrace, 'AUTH_SESSION_REJECTED', {
         classification: 'business', outcome: 'unresolved', errorCode: code
       });
-      return json_({ success: false, data: {}, error: { code: code }, message: code });
+      const response = json_({ success: false, data: {}, error: { code: code }, message: code });
+      recordAuthTransport_(transportTrace, 'RESPONSE_READY', {
+        classification: 'business', outcome: 'unresolved', errorCode: code
+      });
+      return response;
     }
     try {
       const verified = verifyFirebaseIdToken_(body && body.auth && body.auth.idToken, overrides && overrides.verifier);
@@ -27,13 +32,21 @@ function authSessionResolve_(body, transportTrace, overrides) {
       recordAuthTransport_(transportTrace, 'AUTH_SESSION_REJECTED', {
         classification: 'business', outcome: 'unresolved', errorCode: nextCode
       });
-      return json_({ success: false, data: {}, error: { code: nextCode }, message: nextCode });
+      const response = json_({ success: false, data: {}, error: { code: nextCode }, message: nextCode });
+      recordAuthTransport_(transportTrace, 'RESPONSE_READY', {
+        classification: 'business', outcome: 'unresolved', errorCode: nextCode
+      });
+      return response;
     } catch (lookupError) {
       const lookupCode = normalizeAuthRegistrationErrorCode_(lookupError && lookupError.code);
       recordAuthTransport_(transportTrace, 'AUTH_SESSION_REJECTED', {
         classification: 'business', outcome: 'unresolved', errorCode: lookupCode
       });
-      return json_({ success: false, data: {}, error: { code: lookupCode }, message: lookupCode });
+      const response = json_({ success: false, data: {}, error: { code: lookupCode }, message: lookupCode });
+      recordAuthTransport_(transportTrace, 'RESPONSE_READY', {
+        classification: 'business', outcome: 'unresolved', errorCode: lookupCode
+      });
+      return response;
     }
   }
 }
