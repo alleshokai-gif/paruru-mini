@@ -299,9 +299,16 @@ function sanitizeKazOsInbox_(data) {
       recommendation_basis: value.recommendation_basis == null ? null : list(value.recommendation_basis, 8, function(item) { return text(item, 300); }) };
   });
   const activeInboxItems = inboxItems.filter(function(item) {
+    if (item.kind === 'daily_estimate') {
+      const target = workItems.find(function(workItem) { return workItem.id === item.entity_ref; });
+      if (!target || target.source_revision !== item.entity_revision
+          || ['BACKLOG','READY','SCHEDULED','DOING'].indexOf(target.state) < 0
+          || (Number.isInteger(target.estimate_min) && target.estimate_min > 0)) return false;
+    }
     if (item.expires_at == null) return true;
     const expires = Date.parse(item.expires_at);
-    return Number.isFinite(expires) && expires > Date.now();
+    if (!Number.isFinite(expires) || expires <= Date.now()) return false;
+    return true;
   });
   return { schema_version: data.schema_version, origin: data.origin, mode: data.mode,
     fixture_only: false, fixture_fallback: false, as_of: text(data.as_of, 80), timezone: 'Asia/Tokyo',

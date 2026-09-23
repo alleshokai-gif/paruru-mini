@@ -270,6 +270,25 @@ test('daily estimate rejects an answer after the target Work Item revision chang
   assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 1);
 });
 
+test('stale daily estimate questions disappear after target closure or revision change', () => {
+  for (const mode of ['DONE', 'CANCELLED', 'revision']) {
+    const localValue = estimateSnapshot();
+    if (mode === 'revision') {
+      const changedRevision = iso(-50);
+      localValue.work_items[0].revision = changedRevision;
+      localValue.work_items[0].source_revision = changedRevision;
+    } else {
+      localValue.work_items[0].state = mode;
+    }
+    const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+      projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+    local.setupDecisionLedger(); local.resetStats();
+    const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+    assert(read.success, JSON.stringify(read));
+    assert.equal(read.data.inbox_items.some(item => item.kind === 'daily_estimate'), false, mode);
+  }
+});
+
 test('daily estimate persists integer minutes only as date-scoped planning evidence', () => {
   const localValue = estimateSnapshot();
   const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
@@ -324,6 +343,28 @@ test('daily estimate receipt survives question disappearance for response-loss r
     entry.decision_id === question.id && entry.question_revision === question.question_revision);
   assert(receipt);
   assert.equal(receipt.persistence_status, 'DURABLE_PERSISTED');
+});
+
+test('expired planning evidence stays append-only in the Decision Ledger', () => {
+  const localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  const saved = request(local, question, 45, 'paluru-estimate-expired-ledger-0001');
+  assert(saved.success, JSON.stringify(saved));
+  const rows = local.rows.Kaz_OS_Decision_Ledger;
+  const proposalIndex = rows[0].indexOf('proposalJson');
+  const proposal = JSON.parse(rows[1][proposalIndex]);
+  proposal.change.expires_at = iso(-1);
+  rows[1][proposalIndex] = JSON.stringify(proposal);
+  const rowCount = rows.length;
+  const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(refreshed.success, JSON.stringify(refreshed));
+  assert.equal(rows.length, rowCount);
+  assert.equal(refreshed.data.persistence.answers, 1);
+  assert.equal(refreshed.data.persistence.confirmed_answers.length, 0);
 });
 
 test('changed source revision rejects stale answer without persistence', () => {
