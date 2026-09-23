@@ -179,8 +179,9 @@ function sameKazOsLedgerSourceRevisions_(row, inbox) {
     return refs.calendar === currentRefs.calendar;
   }
   if (change.kind === 'DAILY_PLANNING_PREFERENCE' || change.kind === 'DAILY_ESTIMATE') {
+    if (!Number.isFinite(Date.parse(change.expires_at)) || Date.parse(change.expires_at) <= Date.now()) return false;
     const item = inbox.work_items.find(function(value) { return value.id === change.work_item_id; });
-    return Boolean(item && item.source_revision === change.work_item_source_revision);
+    return !item || item.source_revision === change.work_item_source_revision;
   }
   return sameKazOsSourceRevisions_(refs, currentRefs);
 }
