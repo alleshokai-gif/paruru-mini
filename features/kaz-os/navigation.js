@@ -4,6 +4,7 @@
   const byId = id => document.getElementById(id);
   let context = null, projectsApi = null, workApi = null, todayApi = null, inboxApi = null, inboxAnswerApi = null;
   let projectEpoch = 0, workEpoch = 0, todayEpoch = 0, inboxEpoch = 0, projectExpiry = null, workExpiry = null, todayExpiry = null, inboxExpiry = null;
+  let targetViewHashChangePending = false;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
   const isKazHash = () => /^#kaz-os(?:\/|$)/.test(location.hash);
   const active = () => byId('kazOsView')?.classList.contains('is-active');
@@ -285,13 +286,21 @@
 
   document.querySelectorAll('[data-target-view="kaz-os"]').forEach(button => button.addEventListener('click', () => {
     if (!allowed()) return;
-    if (location.hash !== '#kaz-os/today') location.hash = '#kaz-os/today';
+    if (location.hash !== '#kaz-os/today') {
+      targetViewHashChangePending = true;
+      location.hash = '#kaz-os/today';
+    }
   }, true));
   window.addEventListener('hashchange', () => {
     if (isKazHash()) {
-      requestView();
+      const openedByTargetViewRequest = targetViewHashChangePending && active();
+      targetViewHashChangePending = false;
+      if (!openedByTargetViewRequest) requestView();
       if (allowed()) window.scrollTo(0, 0);
-    } else clear();
+    } else {
+      targetViewHashChangePending = false;
+      clear();
+    }
   });
   document.querySelectorAll('[data-target-view]').forEach(button => button.addEventListener('click', () => {
     if (button.dataset.targetView !== 'kaz-os') clear();
