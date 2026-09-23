@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { createHarness } = require('./fixtures/kaz-progress-harness');
 const root = path.resolve(__dirname, '..');
 
@@ -26,6 +27,13 @@ function snapshot() {
     { value: 'this_week', label: '今週', effect: '今週候補' },
     { value: 'later', label: 'あとで', effect: '後日候補' },
   ], { title: 'Acceptance方針', project_id: projectId, entity_ref: 'WI-10', entity_revision: workRevision, source_label: 'Notion Work Items' });
+  const choiceSeed = today.answer_contract.choices.map(choice => choice.value).join(',');
+  const planningSeed = today.entity_ref + '\\u0000' + today.entity_revision + '\\u0000' + today.decision_date + '\\u0000' + choiceSeed;
+  const sha = value => crypto.createHash('sha256').update(value).digest('hex');
+  today.id = 'decision-' + sha('daily-planning-preference\\u0000' + planningSeed).slice(0, 24);
+  today.question_revision = 'question-sha256:' + sha('daily-planning-preference-question\\u0000' + planningSeed);
+  today.answer_contract.inbox_item_id = today.id;
+  today.answer_contract.question_revision = today.question_revision;
   const event = { id: 'event-sha256:' + '1'.repeat(64), title: 'sanitized event', start: iso(300000), end: iso(360000), all_day: false };
   const calendar = make('decision-' + 'e'.repeat(24), 'calendar_event_impact', 'この予定で、Kaz本人の時間はどれだけ拘束される？', [
     { value: 'all', label: '全部拘束', effect: 'full event proposal' },
@@ -76,6 +84,12 @@ test('answer persists one first-class Answer and one controlled proposal', () =>
   assert.equal(result.data.answer.persistence_status, 'DURABLE_PERSISTED');
   assert.equal(result.data.proposal.status, 'PROPOSED'); assert.equal(result.data.proposal.write_allowed, false);
   assert.equal(result.data.proposal.requires_separate_write_approval, true);
+  assert.equal(result.data.proposal.change.kind, 'DAILY_PLANNING_PREFERENCE');
+  assert.equal(result.data.proposal.change.preference, 'today');
+  assert.equal(result.data.proposal.change.timezone, 'Asia/Tokyo');
+  assert.equal(result.data.proposal.change.source, 'human');
+  assert.equal(result.data.proposal.change.work_item_id, value.work_items[0].id);
+  assert.equal(result.data.proposal.change.work_item_source_revision, value.work_items[0].source_revision);
   assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
   assert.equal(result.data.inbox.inbox_items.length, 1); assert.equal(h.rows.Kaz_OS_Decision_Ledger.length, 2);
 });
@@ -106,6 +120,57 @@ test('reload and process restart restore the answered state', () => {
   assert(result.success); assert.equal(result.data.mode, 'controlled_proposal');
   assert.equal(result.data.persistence.answers, 1); assert.equal(result.data.inbox_items.length, 1);
 });
+test('today preference survives unrelated Calendar revision change', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const original = structuredClone(localValue.inbox_items[0]);
+  localValue.sources.calendar.source_revision = 'observation-sha256:' + '8'.repeat(64);
+  localValue.sources.resolution.source_revision = localValue.sources.calendar.source_revision;
+  localValue.inbox_items.forEach(item => {
+    item.source_revision_references = {
+      projects: localValue.sources.projects.source_revision,
+      work_items: localValue.sources.tasks.source_revision,
+      calendar: localValue.sources.calendar.source_revision,
+    };
+  });
+  const result = request(local, original, 'today', 'paluru-planning-calendar-scope-0001');
+  assert(result.success, JSON.stringify(result));
+  assert.equal(result.data.proposal.change.kind, 'DAILY_PLANNING_PREFERENCE');
+});
+
+test('today preference rejects changed target Work Item revision', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const original = structuredClone(localValue.inbox_items[0]);
+  const changedRevision = iso(-100);
+  localValue.work_items[0].revision = changedRevision;
+  localValue.work_items[0].source_revision = changedRevision;
+  localValue.inbox_items[0].entity_revision = changedRevision;
+  const result = request(local, original, 'today', 'paluru-planning-work-scope-0001');
+  assert.equal(result.error.code, 'REVALIDATION_REQUIRED');
+  assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 1);
+});
+
+test('this_week preference gets bounded weekly expiry without permanent mutation', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const result = request(local, localValue.inbox_items[0], 'this_week', 'paluru-planning-week-0001');
+  assert(result.success, JSON.stringify(result));
+  const change = result.data.proposal.change;
+  assert.equal(change.kind, 'DAILY_PLANNING_PREFERENCE');
+  assert.equal(change.preference, 'this_week');
+  assert.equal(change.permanent_priority_change, false);
+  assert.equal(change.permanent_status_change, false);
+  const lifetime = Date.parse(change.expires_at) - Date.parse(change.valid_from);
+  assert(lifetime > 0 && lifetime <= 7 * 86400000);
+});
+
 test('changed source revision rejects stale answer without persistence', () => {
   const original = value, changed = snapshot(), item = changed.inbox_items[1];
   changed.sources.tasks.source_revision = 'observation-sha256:' + '9'.repeat(64); value = changed;
