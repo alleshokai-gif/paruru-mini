@@ -51,6 +51,34 @@ function snapshot() {
     persistence: { kind: 'none', status: 'disabled', answers: 0, proposals: 0, followups: 0 }, writes: { notion: 0, calendar: 0, context: 0 } };
 }
 
+function estimateSnapshot() {
+  const value = snapshot(), target = value.work_items[0];
+  const expires = nextJstDayBoundary(new Date().toISOString());
+  value.inbox_items = [{
+    id: 'decision-' + '7'.repeat(24), kind: 'daily_estimate', contract: 'secretary-question-0.1',
+    owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
+    title: target.title, question: 'これ何分くらい？',
+    reason: 'TODAY candidateをCalendar空き時間へ配置するため', impact: '当日だけ使うDaily Estimate',
+    estimate_min: null, affects_today: true, urgent_today: true,
+    decision_date: new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10),
+    due_at: expires, project_id: target.project_id, entity_ref: target.id,
+    source_label: 'Notion Work Items', entity_revision: target.source_revision,
+    question_revision: 'question-sha256:' + '7'.repeat(64),
+    source_revision_references: {
+      projects: value.sources.projects.source_revision,
+      work_items: value.sources.tasks.source_revision,
+      calendar: value.sources.calendar.source_revision,
+    },
+    answer_contract: { inbox_item_id: 'decision-' + '7'.repeat(24),
+      question_revision: 'question-sha256:' + '7'.repeat(64), question: 'これ何分くらい？', choices: [] },
+    calendar_event: null,
+    input_contract: { type: 'integer_minutes', min: 1, max: 100000, unit: 'minutes' },
+    recommended_option: null, recommendation_basis: null, expires_at: expires,
+  }];
+  value.calendar_events = [];
+  return value;
+}
+
 let value = snapshot();
 function harness(rows) {
   const h = createHarness({ root, answerEnabled: true, decisionLedgerRows: rows,
@@ -205,6 +233,79 @@ test('this_week and later expire at next Monday 00:00 JST without permanent muta
     assert.equal(change.permanent_priority_change, false);
     assert.equal(change.permanent_status_change, false);
   }
+});
+
+test('daily estimate identity ignores unrelated Calendar revision changes', () => {
+  let localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const first = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(first.success, JSON.stringify(first));
+  const before = first.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  localValue = structuredClone(localValue);
+  localValue.sources.calendar.source_revision = 'observation-sha256:' + '2'.repeat(64);
+  localValue.sources.resolution.source_revision = localValue.sources.calendar.source_revision;
+  localValue.inbox_items[0].source_revision_references.calendar = localValue.sources.calendar.source_revision;
+  const second = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const after = second.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  assert.equal(after.id, before.id);
+  assert.equal(after.question_revision, before.question_revision);
+});
+
+test('daily estimate persists integer minutes only as date-scoped planning evidence', () => {
+  const localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  const result = request(local, question, 30, 'paluru-estimate-0001');
+  assert(result.success, JSON.stringify(result));
+  const change = result.data.proposal.change;
+  assert.equal(change.kind, 'DAILY_ESTIMATE');
+  assert.equal(change.estimate_min, 30);
+  assert.equal(change.source, 'human');
+  assert.equal(change.timezone, 'Asia/Tokyo');
+  assert.equal(change.work_item_id, question.entity_ref);
+  assert.equal(change.work_item_source_revision, question.entity_revision);
+  assert.equal(change.planning_date, question.decision_date);
+  assert.equal(change.expires_at, question.expires_at);
+  assert.equal(change.permanent_estimate_change, false);
+  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
+});
+
+test('daily estimate rejects zero non-integer and text', () => {
+  for (const [selected, suffix] of [[0,'zero'],[1.5,'fraction'],['30','text']]) {
+    const localValue = estimateSnapshot();
+    const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+      projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+    local.setupDecisionLedger(); local.resetStats();
+    const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+    const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+    const result = request(local, question, selected, 'paluru-estimate-invalid-' + suffix);
+    assert.equal(result.error.code, 'KAZ_ANSWER_INVALID');
+    assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 1);
+  }
+});
+
+test('daily estimate receipt survives question disappearance for response-loss reconcile', () => {
+  let localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  const saved = request(local, question, 45, 'paluru-estimate-reconcile-0001');
+  assert(saved.success, JSON.stringify(saved));
+  localValue = structuredClone(localValue);
+  localValue.inbox_items = [];
+  localValue.work_items = [];
+  const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const receipt = refreshed.data.persistence.confirmed_answers.find(entry =>
+    entry.decision_id === question.id && entry.question_revision === question.question_revision);
+  assert(receipt);
+  assert.equal(receipt.persistence_status, 'DURABLE_PERSISTED');
 });
 
 test('changed source revision rejects stale answer without persistence', () => {
