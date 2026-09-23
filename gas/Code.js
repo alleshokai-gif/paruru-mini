@@ -84,6 +84,10 @@ function doPost(e) {
       return authSessionResolve_(body, transportTrace);
     }
 
+    if (action === 'auth.session.invalidate') {
+      return authSessionInvalidate_(body);
+    }
+
     if (action === 'auth.registration.create') {
       try {
         return json_({ success: true, data: registerPaluruUser_(body), message: 'PALURU user registered' });

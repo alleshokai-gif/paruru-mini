@@ -20,8 +20,8 @@ function deferred() {
 }
 async function flush() { await new Promise((resolve) => setImmediate(resolve)); }
 
-function fixture(resolveActor, registerUser) {
-  const calls = { states: [], credentials: [], idTokens: [], rendered: [], disableAutoSelect: 0, registrations: [] };
+function fixture(resolveActor, registerUser, options = {}) {
+  const calls = { states: [], credentials: [], idTokens: [], rendered: [], disableAutoSelect: 0, registrations: [], invalidations: [] };
   let authObserver = null;
   let gisCallback = null;
   let signOutResult = Promise.resolve();
@@ -53,7 +53,11 @@ function fixture(resolveActor, registerUser) {
     googleClientId: 'client.apps.googleusercontent.com',
     resolveActor,
     registerUser: registerUser || (async (auth, profile) => { calls.registrations.push({ auth, profile }); return { status: 'pending_link' }; }),
-    onState: (state) => calls.states.push(state),
+    invalidateSession: async (auth) => { calls.invalidations.push(auth); },
+    onState: (state) => {
+      calls.states.push(state);
+      if (typeof options.onState === 'function') options.onState(state);
+    },
   });
   return {
     calls,
@@ -121,6 +125,65 @@ test('transient token re-resolution failure keeps the active actor and does not 
     'transient refresh failure must not lock or re-resolve the visible UI');
 });
 
+test('transient refresh keeps Bus and Hub active while explicit signed out still deactivates them', async () => {
+  let transient = false;
+  let activePublished = false;
+  const lifecycle = { busDeactivated: 0, hubDeactivated: 0 };
+  const f = fixture(async () => {
+    if (transient) throw Object.assign(new Error('network'), { code: 'auth/network-request-failed' });
+    return { memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.read'], allowedViews: ['home', 'bus'] };
+  }, null, {
+    onState(state) {
+      if (state.state === 'active') activePublished = true;
+      else if (activePublished) {
+        lifecycle.busDeactivated++;
+        lifecycle.hubDeactivated++;
+      }
+    },
+  });
+  await f.service.initialize();
+  const user = { uid: 'father-uid' };
+  f.observe(user);
+  await flush();
+  transient = true;
+  f.observe(user);
+  await flush();
+  assert(lifecycle.busDeactivated === 0 && lifecycle.hubDeactivated === 0, 'transient auth refresh deactivated Bus or Hub');
+  await f.service.logout();
+  assert(lifecycle.busDeactivated === 1 && lifecycle.hubDeactivated === 1, 'explicit signed_out no longer deactivates Bus and Hub');
+});
+
+test('different Firebase user never reuses the previous actor on transient failure', async () => {
+  const f = fixture(async ({ idToken }) => {
+    if (idToken.includes('new-uid')) throw Object.assign(new Error('TRANSPORT_FAILURE'), { code: 'TRANSPORT_FAILURE' });
+    return { memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.read'], allowedViews: ['home'] };
+  });
+  await f.service.initialize();
+  f.observe({ uid: 'old-uid' });
+  await flush();
+  f.observe({ uid: 'new-uid' });
+  await flush();
+  assert(f.service.getSafeState().actor === null, 'different user retained the previous actor');
+  assert(f.calls.states.at(-1).state === 'error', 'different-user failure did not fail closed');
+});
+
+test('confirmed auth failure clears a retained actor and locks the session', async () => {
+  let revoked = false;
+  const f = fixture(async () => {
+    if (revoked) throw Object.assign(new Error('AUTH_SESSION_REVOKED'), { code: 'AUTH_SESSION_REVOKED' });
+    return { memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.read'], allowedViews: ['home'] };
+  });
+  await f.service.initialize();
+  const user = { uid: 'father-uid' };
+  f.observe(user);
+  await flush();
+  revoked = true;
+  f.observe(user);
+  await flush();
+  assert(f.service.getSafeState().actor === null, 'confirmed auth loss retained the actor');
+  assert(f.calls.states.at(-1).state === 'error' && f.calls.states.at(-1).safeCode === 'AUTH_SESSION_REVOKED', 'confirmed auth loss did not lock');
+});
+
 test('unmapped account enters registration state and can self-register without becoming a member', async () => {
   const required = new Error('REGISTRATION_REQUIRED');
   required.code = 'REGISTRATION_REQUIRED';
@@ -167,6 +230,7 @@ test('logout clears actor context before Firebase sign-out completes', async () 
   pending.resolve();
   await signingOut;
   assert(f.calls.disableAutoSelect === 1, 'GIS auto-select was not disabled');
+  assert(f.calls.invalidations.length === 1 && f.calls.invalidations[0].idToken.includes('father-uid'), 'logout did not invalidate the read actor cache');
 });
 
 test('account switch rejects a stale actor response and accepts only the new account', async () => {
@@ -180,6 +244,7 @@ test('account switch rejects a stale actor response and accepts only the new acc
   await flush();
   await f.service.beginAccountSwitch();
   assert(f.service.getSafeState().actor === null, 'account switch retained old actor');
+  assert(f.calls.invalidations.length === 1 && f.calls.invalidations[0].idToken.includes('old-uid'), 'account switch did not invalidate the previous read actor cache');
   oldResolution.resolve({ memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.control'], allowedViews: ['home'] });
   await flush();
   assert(f.service.getSafeState().actor === null, 'stale old-account response restored actor');

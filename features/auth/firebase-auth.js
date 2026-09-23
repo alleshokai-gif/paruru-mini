@@ -19,6 +19,7 @@
     const googleClientId = String(settings.googleClientId || '').trim();
     const resolveActor = typeof settings.resolveActor === 'function' ? settings.resolveActor : null;
     const registerUser = typeof settings.registerUser === 'function' ? settings.registerUser : null;
+    const invalidateSession = typeof settings.invalidateSession === 'function' ? settings.invalidateSession : null;
     const onState = typeof settings.onState === 'function' ? settings.onState : function() {};
     if (!firebase || !gis || !resolveActor || !registerUser) throw authError_('AUTH_CONFIGURATION_ERROR');
     if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId || !firebaseConfig.appId || !googleClientId) {
@@ -148,18 +149,32 @@
       return resolveCurrentUser_(currentUser);
     }
 
+    async function invalidateCurrentReadSession_(user) {
+      if (!user || !invalidateSession) return;
+      try {
+        const idToken = await firebase.getIdToken(user);
+        await invalidateSession({ provider: 'firebase', idToken: idToken });
+      } catch (_) {
+        // The server cache is bounded to eight seconds; logout must continue if invalidation transport fails.
+      }
+    }
+
     async function logout() {
+      const invalidation = invalidateCurrentReadSession_(currentUser);
       clearActor_();
       currentUser = null;
       publish_(AUTH_STATES.SIGNED_OUT);
+      await invalidation;
       await firebase.signOut(auth);
       gis.disableAutoSelect();
     }
 
     async function beginAccountSwitch() {
+      const invalidation = invalidateCurrentReadSession_(currentUser);
       clearActor_();
       currentUser = null;
       publish_(AUTH_STATES.SIGNED_OUT);
+      await invalidation;
       await firebase.signOut(auth);
       gis.disableAutoSelect();
     }

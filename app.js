@@ -548,6 +548,7 @@ if ("serviceWorker" in navigator) {
 let appAuthenticationState = "booting";
 let normalPwaInitialized = false;
 let firebaseAuthService = null;
+let authenticatedBackgroundReadsTimerId = null;
 
 function canUseHomeControl_() {
   return hasMembershipCapability_("home.control");
@@ -792,6 +793,10 @@ function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
   renderAuthenticationOnboardingState_(state);
   if (state !== "active_member") {
+    if (authenticatedBackgroundReadsTimerId !== null) {
+      window.clearTimeout(authenticatedBackgroundReadsTimerId);
+      authenticatedBackgroundReadsTimerId = null;
+    }
     try { globalThis.PALURUBus?.setActive(false); } catch { /* Bus lifecycle must not block authentication. */ }
     try { globalThis.PALURUBusHub?.setActive(false); } catch { /* Hub lifecycle must not block authentication. */ }
     activeMembershipContext = null;
@@ -840,7 +845,6 @@ function initializeNormalPwaOnce() {
     buildVersion.textContent = `アプリVersion: ${APP_VERSION} / Build: ${globalThis.BUILD_ID}`;
   }
   splash?.classList.add("is-hidden");
-  loadNotificationCandidates({ force: true });
 }
 
 async function initializeAuthenticatedPwa() {
@@ -1008,6 +1012,22 @@ authAdminLinkingRefresh?.addEventListener("click", () => {
   void loadPendingPaluruUserLinks_();
 });
 
+function scheduleAuthenticatedBackgroundReads_(membershipContext, initialViewLoad) {
+  const expectedMemberUserId = String(membershipContext?.memberUserId || "");
+  return Promise.resolve(initialViewLoad).catch(() => null).then(() => {
+    if (authenticatedBackgroundReadsTimerId !== null) {
+      window.clearTimeout(authenticatedBackgroundReadsTimerId);
+    }
+    authenticatedBackgroundReadsTimerId = window.setTimeout(() => {
+      authenticatedBackgroundReadsTimerId = null;
+      if (appAuthenticationState !== "active_member"
+          || activeMembershipContext?.memberUserId !== expectedMemberUserId) return;
+      if (activeView !== "home") void loadNotificationCandidates({ force: true });
+      if (activeMembershipContext.role === "admin") void loadPendingPaluruUserLinks_();
+    }, 0);
+  });
+}
+
 const activateMembershipContext_ = function(membershipContext) {
   activeMembershipContext = {
     memberUserId: membershipContext.memberUserId,
@@ -1025,8 +1045,6 @@ const activateMembershipContext_ = function(membershipContext) {
   appAuthenticationState = "active_member";
   initializeNormalPwaOnce();
   if (authAdminLinkingSection) authAdminLinkingSection.hidden = membershipContext.role !== "admin";
-  if (membershipContext.role === "admin") void loadPendingPaluruUserLinks_();
-  void loadNotificationCandidates({ force: true });
   applyAllowedViews_();
   applyMembershipCapabilityVisibility_();
   document.dispatchEvent(new CustomEvent("paruru:authenticated", {
@@ -1054,7 +1072,9 @@ const activateMembershipContext_ = function(membershipContext) {
   if (/^#kaz-os(?:\/|$)/.test(globalThis.location?.hash || "")) activeView = "kaz-os";
   const restoredView = consumeViewAfterControllerChange_();
   if (restoredView) activeView = restoredView;
-  void switchView(activeView);
+  const initialViewLoad = switchView(activeView);
+  void scheduleAuthenticatedBackgroundReads_(membershipContext, initialViewLoad);
+  return initialViewLoad;
 };
 
 window.addEventListener("load", () => {
@@ -1722,7 +1742,15 @@ async function switchView(viewName) {
   showMessage("", "");
 
   if (resolvedView === "kaz-os") {
-    document.dispatchEvent(new CustomEvent("kaz-os:opened"));
+    const initialReads = [];
+    document.dispatchEvent(new CustomEvent("kaz-os:opened", {
+      detail: {
+        waitUntil(promise) {
+          if (promise && typeof promise.then === "function") initialReads.push(Promise.resolve(promise));
+        },
+      },
+    }));
+    if (initialReads.length > 0) await Promise.allSettled(initialReads);
     return;
   }
 
@@ -2708,7 +2736,7 @@ async function fetchInboxItems() {
 async function loadNotificationCandidates(options = {}) {
   if (!hasMembershipCapability_("home.read")) return [];
   const now = Date.now();
-  if (!options.force && notificationCandidatesState.inFlight) {
+  if (notificationCandidatesState.inFlight) {
     return notificationCandidatesState.inFlight;
   }
 

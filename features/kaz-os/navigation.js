@@ -230,7 +230,7 @@
     }
   }
 
-  function render() {
+  async function render() {
     if (!allowed()) {
       clear();
       return;
@@ -242,10 +242,10 @@
       if (a.dataset.kazPage === selection.page) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
     });
-    if (selection.page === 'today') void renderToday(selection);
-    else if (selection.page === 'inbox') void renderInbox(selection);
-    else if (selection.page === 'work') void renderWork(selection);
-    else void renderProjects(selection);
+    if (selection.page === 'today') await renderToday(selection);
+    else if (selection.page === 'inbox') await renderInbox(selection);
+    else if (selection.page === 'work') await renderWork(selection);
+    else await renderProjects(selection);
   }
 
   function requestView() {
@@ -264,7 +264,7 @@
     if (entry) entry.hidden = !allowed();
     const status = byId('kazOsEntryStatus');
     if (status) status.textContent = 'TODAY・Work Items・Projects・Secretary Questions';
-    if (allowed() && active()) render();
+    if (allowed() && active()) void render();
   });
 
   document.addEventListener('kaz-os:locked', () => {
@@ -278,7 +278,10 @@
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = true;
   });
-  document.addEventListener('kaz-os:opened', render);
+  document.addEventListener('kaz-os:opened', event => {
+    const initialRead = render();
+    if (event?.detail && typeof event.detail.waitUntil === 'function') event.detail.waitUntil(initialRead);
+  });
 
   document.querySelectorAll('[data-target-view="kaz-os"]').forEach(button => button.addEventListener('click', () => {
     if (!allowed()) return;

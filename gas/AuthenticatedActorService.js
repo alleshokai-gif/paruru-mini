@@ -1,3 +1,6 @@
+const FIREBASE_READ_ACTOR_CACHE_TTL_SECONDS = 8;
+const FIREBASE_READ_ACTOR_CACHE_PREFIX = 'firebase-read-actor-v1:';
+
 function resolveFirebaseAuthenticatedActor_(body, overrides) {
   const input = body || {};
   const auth = input.auth && typeof input.auth === 'object' ? input.auth : {};
@@ -23,6 +26,108 @@ function resolveFirebaseAuthenticatedActor_(body, overrides) {
     authTime: verified.authTime,
   };
   return Object.freeze(actor);
+}
+
+function resolveFirebaseAuthenticatedActorForRead_(body, overrides) {
+  const input = body || {};
+  const auth = input.auth && typeof input.auth === 'object' ? input.auth : {};
+  if (String(auth.provider || '') !== 'firebase') throw firebaseAuthError_('AUTH_PROVIDER_NOT_ALLOWED');
+  const token = String(auth.idToken || '').trim();
+  if (!token || token.length > FIREBASE_AUTH_TOKEN_MAX_LENGTH) throw firebaseAuthError_('AUTH_TOKEN_INVALID');
+  const claims = decodeFirebaseJwtPayload_(token);
+  const nowSeconds = readActorCacheNowSeconds_(overrides);
+  const tokenExpiresAt = Number(claims.exp);
+  if (!Number.isFinite(tokenExpiresAt) || tokenExpiresAt <= nowSeconds) throw firebaseAuthError_('AUTH_TOKEN_EXPIRED');
+  const cache = getFirebaseReadActorCache_(overrides);
+  const key = firebaseReadActorCacheKey_(token);
+  const cached = readFirebaseActorCacheEntry_(cache, key, nowSeconds, tokenExpiresAt);
+  if (cached) return cached;
+
+  const actor = resolveFirebaseAuthenticatedActor_(input, overrides);
+  const expiresAt = Math.min(nowSeconds + FIREBASE_READ_ACTOR_CACHE_TTL_SECONDS, tokenExpiresAt);
+  writeFirebaseActorCacheEntry_(cache, key, actor, expiresAt, nowSeconds);
+  return actor;
+}
+
+function invalidateFirebaseAuthenticatedActorReadCache_(body, overrides) {
+  const input = body || {};
+  const auth = input.auth && typeof input.auth === 'object' ? input.auth : {};
+  const token = String(auth.idToken || '').trim();
+  if (String(auth.provider || '') !== 'firebase' || !token || token.length > FIREBASE_AUTH_TOKEN_MAX_LENGTH) return false;
+  const cache = getFirebaseReadActorCache_(overrides);
+  if (!cache || typeof cache.remove !== 'function') return false;
+  try {
+    cache.remove(firebaseReadActorCacheKey_(token));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function getFirebaseReadActorCache_(overrides) {
+  if (overrides && overrides.cache) return overrides.cache;
+  try {
+    return typeof CacheService !== 'undefined' && CacheService.getScriptCache
+      ? CacheService.getScriptCache()
+      : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function readActorCacheNowSeconds_(overrides) {
+  return overrides && typeof overrides.nowSeconds === 'function'
+    ? Number(overrides.nowSeconds())
+    : Math.floor(Date.now() / 1000);
+}
+
+function firebaseReadActorCacheKey_(token) {
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(token || ''),
+    Utilities.Charset.UTF_8
+  );
+  const fingerprint = bytes.map(function(value) { return ('0' + ((value + 256) % 256).toString(16)).slice(-2); }).join('');
+  return FIREBASE_READ_ACTOR_CACHE_PREFIX + fingerprint;
+}
+
+function readFirebaseActorCacheEntry_(cache, key, nowSeconds, tokenExpiresAt) {
+  if (!cache || typeof cache.get !== 'function') return null;
+  try {
+    const raw = cache.get(key);
+    if (!raw) return null;
+    const entry = JSON.parse(raw);
+    const actor = entry && entry.actor;
+    const expiresAt = Number(entry && entry.expiresAt);
+    if (!actor || !Number.isFinite(expiresAt) || expiresAt <= nowSeconds || tokenExpiresAt <= nowSeconds
+        || !actor.homeId || !actor.memberUserId || !actor.authBindingKey
+        || !Array.isArray(actor.capabilities) || !Array.isArray(actor.allowedViews)) {
+      if (typeof cache.remove === 'function') cache.remove(key);
+      return null;
+    }
+    return Object.freeze({
+      homeId: String(actor.homeId),
+      memberUserId: String(actor.memberUserId),
+      displayName: String(actor.displayName || ''),
+      role: String(actor.role || ''),
+      capabilities: actor.capabilities.map(String),
+      allowedViews: actor.allowedViews.map(String),
+      authBindingKey: String(actor.authBindingKey),
+      authTime: Number(actor.authTime),
+    });
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeFirebaseActorCacheEntry_(cache, key, actor, expiresAt, nowSeconds) {
+  if (!cache || typeof cache.put !== 'function' || expiresAt <= nowSeconds) return;
+  const ttl = Math.max(1, Math.min(FIREBASE_READ_ACTOR_CACHE_TTL_SECONDS, Math.floor(expiresAt - nowSeconds)));
+  try {
+    cache.put(key, JSON.stringify({ actor: actor, expiresAt: expiresAt }), ttl);
+  } catch (_) {
+    // Cache failure must fall back to the freshly verified actor, never to an auth bypass.
+  }
 }
 
 function authPocResolve_(body, overrides) {

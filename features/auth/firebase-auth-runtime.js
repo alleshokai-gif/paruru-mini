@@ -39,6 +39,7 @@
         googleClientId: config.googleClientId,
         resolveActor: function(auth) { return resolveActor_(gasWebAppUrl, auth); },
         registerUser: function(auth, profile) { return registerUser_(gasWebAppUrl, auth, profile); },
+        invalidateSession: function(auth) { return invalidateSession_(gasWebAppUrl, auth); },
         onState: settings.onState,
       });
       await service.initialize();
@@ -138,6 +139,16 @@
     });
     const payload = await parseEnvelope_(response, 'REGISTRATION_FAILED');
     return payload.data || {};
+  }
+
+  async function invalidateSession_(url, auth) {
+    const response = await fetchWithTimeout_(url, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'auth.session.invalidate', auth: auth }),
+    }, READ_ONLY_REQUEST_TIMEOUT_MS);
+    await parseEnvelope_(response, 'AUTHENTICATION_FAILED');
   }
 
   async function parseEnvelope_(response, fallbackCode) {
