@@ -354,6 +354,8 @@ function buildKazOsCalendarFollowup_(row, inbox) {
   const eventRef = String(change && change.target_event_ref || '');
   const event = eventRef && inbox.calendar_events.find(function(item) { return item.id === eventRef; });
   if (!answer || !event || change.kind !== 'FOLLOWUP_REQUIRED' || change.follow_up !== 'calendar_partial_window') return null;
+  const eventEnd = Date.parse(String(event.end || '') + (event.all_day ? 'T00:00:00+09:00' : ''));
+  if (!Number.isFinite(eventEnd) || eventEnd <= Date.now()) return null;
   const currentRefs = currentSourceRevisions_(inbox);
   const id = 'decision-' + kazOsSha256_(answer.decision_id + '\u0000' + event.id + '\u0000' + currentRefs.calendar).slice(0, 24);
   const base = { id: id, kind: 'calendar_partial_window', contract: 'secretary-question-0.1', owner: 'kaz',
@@ -370,7 +372,7 @@ function buildKazOsCalendarFollowup_(row, inbox) {
     calendar_event: { ref: event.id, title: event.title, start: event.start, end: event.end, all_day: event.all_day },
     input_contract: { type: 'time_range', timezone: 'Asia/Tokyo', start_required: true, end_required: true, within_event: true },
     recommended_option: null, recommendation_basis: null,
-    expires_at: inbox.sources.calendar.valid_until };
+    expires_at: new Date(eventEnd).toISOString() };
   const revisionSeed = {
     id: base.id,
     kind: base.kind,
