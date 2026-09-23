@@ -46,14 +46,21 @@
     }
 
     async function resolveCurrentUser_(user) {
+      const previousUser = currentUser;
+      const retainedActor = user && previousUser && previousUser.uid === user.uid && actorContext
+        ? cloneActor_(actorContext)
+        : null;
       const expectedGeneration = ++generation;
       currentUser = user || null;
-      actorContext = null;
       if (!currentUser) {
+        actorContext = null;
         publish_(AUTH_STATES.SIGNED_OUT);
         return null;
       }
-      publish_(AUTH_STATES.RESOLVING);
+      if (!retainedActor) {
+        actorContext = null;
+        publish_(AUTH_STATES.RESOLVING);
+      }
       try {
         const idToken = await firebase.getIdToken(currentUser);
         const resolved = await resolveActor({ provider: 'firebase', idToken: idToken });
@@ -63,6 +70,10 @@
         return cloneActor_(actorContext);
       } catch (error) {
         if (expectedGeneration !== generation) return null;
+        if (retainedActor && isTransientAuthError_(error) && currentUser && currentUser.uid === user.uid) {
+          actorContext = retainedActor;
+          return cloneActor_(actorContext);
+        }
         actorContext = null;
         const code = safeCode_(error);
         if (code === 'REGISTRATION_REQUIRED') {
@@ -196,6 +207,14 @@
       allowedViews: actor.allowedViews.slice(),
       canHomeControl: actor.canHomeControl === true,
     };
+  }
+
+  function isTransientAuthError_(error) {
+    const rawCode = String(error && error.code || '');
+    const code = safeCode_(error);
+    return code === 'TRANSPORT_FAILURE'
+      || rawCode === 'auth/network-request-failed'
+      || rawCode === 'auth/internal-error';
   }
 
   function safeCode_(error) {
