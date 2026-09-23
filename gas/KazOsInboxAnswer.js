@@ -155,18 +155,24 @@ function sameKazOsSourceRevisions_(left, right) {
 
 function sameKazOsQuestionSourceRevisions_(question, left, right) {
   if (!question || !left || !right) return false;
+  if (question.kind === 'today_focus') return true;
   const keys = ['calendar_event_impact', 'calendar_partial_window'].indexOf(question.kind) >= 0
     ? ['calendar']
     : ['projects', 'work_items', 'calendar'];
   return keys.every(function(key) { return left[key] === right[key]; });
 }
 
-function sameKazOsLedgerSourceRevisions_(row, currentRefs) {
+function sameKazOsLedgerSourceRevisions_(row, inbox) {
   const change = row && row.proposal && row.proposal.change;
   const refs = row && row.answer && row.answer.source_revision_references;
-  if (!change || !refs || !currentRefs) return false;
+  if (!change || !refs || !inbox) return false;
+  const currentRefs = currentSourceRevisions_(inbox);
   if (['FOLLOWUP_REQUIRED', 'CALENDAR_CLASSIFICATION_PROPOSAL'].indexOf(change.kind) >= 0) {
     return refs.calendar === currentRefs.calendar;
+  }
+  if (change.kind === 'DAILY_PLANNING_PREFERENCE') {
+    const item = inbox.work_items.find(function(value) { return value.id === change.work_item_id; });
+    return Boolean(item && item.source_revision === change.work_item_source_revision);
   }
   return sameKazOsSourceRevisions_(refs, currentRefs);
 }
@@ -259,9 +265,23 @@ function buildKazOsControlledProposal_(question, answer, proposalId) {
       target_event_ref: eventRef, impact_on_kaz: 'none', classification_source: 'user', constraint_creation: false };
     else change = { kind: 'NO_OPERATIONAL_CHANGE', unknown_window_maintained: true };
   } else if (question.kind === 'today_focus') {
-    change = { kind: 'PLANNING_PREFERENCE', work_item_id: question.entity_ref,
-      planning_preference: selected === 'today' ? 'today' : selected === 'this_week' ? 'this_week' : 'later',
-      permanent_priority_change: false };
+    if (!question.entity_ref || !question.entity_revision || !question.decision_date) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    const preference = selected === 'today' ? 'today' : selected === 'this_week' ? 'this_week' : 'later';
+    const validFrom = answer.answered_at;
+    const answeredJst = new Date(Date.parse(answer.answered_at) + 9 * 60 * 60 * 1000);
+    let expires;
+    if (preference === 'today') {
+      expires = new Date(Date.UTC(answeredJst.getUTCFullYear(), answeredJst.getUTCMonth(), answeredJst.getUTCDate() + 1) - 9 * 60 * 60 * 1000);
+    } else {
+      const day = answeredJst.getUTCDay();
+      const daysUntilMonday = day === 0 ? 1 : 8 - day;
+      expires = new Date(Date.UTC(answeredJst.getUTCFullYear(), answeredJst.getUTCMonth(), answeredJst.getUTCDate() + daysUntilMonday) - 9 * 60 * 60 * 1000);
+    }
+    change = { kind: 'DAILY_PLANNING_PREFERENCE', work_item_id: question.entity_ref,
+      planning_date: question.decision_date, timezone: 'Asia/Tokyo', preference: preference, source: 'human',
+      work_item_source_revision: question.entity_revision, project_source_revision: null,
+      valid_from: validFrom, expires_at: expires.toISOString(),
+      permanent_priority_change: false, permanent_status_change: false };
   } else if (question.kind === 'stale_state_confirmation') {
     change = selected === 'complete' ? { kind: 'WORK_ITEM_STATE_CHANGE', work_item_id: question.entity_ref,
       expected_before: question.current_state, desired_after: 'DONE' } : { kind: 'NO_OPERATIONAL_CHANGE', state_maintained: true };
@@ -282,9 +302,8 @@ function buildKazOsControlledProposal_(question, answer, proposalId) {
 function applyKazOsDecisionLedger_(inbox) {
   if (!isKazOsInboxAnswerEnabled_()) return inbox;
   const rows = readKazOsDecisionLedger_();
-  const currentRefs = currentSourceRevisions_(inbox);
   const currentAnswers = rows.filter(function(row) {
-    return sameKazOsLedgerSourceRevisions_(row, currentRefs);
+    return sameKazOsLedgerSourceRevisions_(row, inbox);
   });
   const answered = new Set(currentAnswers.map(function(row) { return row.answer.decision_id + '\u0000' + row.answer.question_revision; }));
   const pending = inbox.inbox_items.filter(function(item) { return !answered.has(item.id + '\u0000' + item.question_revision); });
