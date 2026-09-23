@@ -86,6 +86,25 @@ const snapshot=()=>({
   writes:{notion:0,calendar:0,context:0},
 });
 
+const snapshotV2=()=>{
+  const base=snapshot();
+  const decorate=w=>({...w,planning_preference:null,waiting_reason:null});
+  const nowItems=base.today.now.items.map(decorate), nextItems=base.today.next.items.map(decorate);
+  return {
+    schema_version:'kaz-today-plan-v2',origin:'real_operational_sources',mode:'read_only',fixture_only:false,
+    planning_date:new Date(Date.now()+9*3600000).toISOString().slice(0,10),timezone:'Asia/Tokyo',
+    policy:{version:'dynamic-daily-planning-v2',dynamic_daily_planning:true,calendar_used:true,availability_used:true,
+      human_preference_used:true,daily_estimate_used:true,energy_used:false,ui_scoring_allowed:false,duration_inference_allowed:false},
+    sources:base.sources,
+    today:{now:{...base.today.now,items:nowItems},next:{...base.today.next,items:nextItems},
+      scheduled:[...nowItems,...nextItems],waiting:[],waiting_count:0,not_fit_today:[],not_fit_today_count:0,
+      availability:base.today.availability,calendar_state:base.today.calendar_state,preference_count:0,daily_estimate_count:0,
+      missing_estimate_count:0,active_count:3,done_count:0,cancelled_count:0,needs_input:true,
+      limitations:['energy_not_used','missing_estimate_not_inferred','ui_scoring_not_used','automatic_carry_over_not_used','unknown_calendar_not_treated_as_free']},
+    writes:{notion:0,calendar:0,context:0},
+  };
+};
+
 let data=snapshot(), fail=false, checks=0;
 const h=createHarness({
   root,baseRoot,
@@ -174,6 +193,15 @@ test('gateway derives /v1/today and POSTs bounded transient planning input',()=>
   assert.deepEqual(observedPayload.planning.daily_estimates,[]);
   assert.equal(calls,1);
   assert.equal(h.stats().writes,0);
+});
+
+test('TODAY sanitizer accepts bounded V2 sections and preserves NOW/NEXT limits',()=>{
+  const result=h.ctx.sanitizeKazOsToday_(snapshotV2());
+  assert.equal(result.schema_version,'kaz-today-plan-v2');
+  assert.equal(result.policy.duration_inference_allowed,false);
+  assert.equal(result.today.now.items.length,1);
+  assert.equal(result.today.next.items.length,1);
+  assert.deepEqual(result.today.not_fit_today,[]);
 });
 
 test('TODAY sanitizer keeps V1 readable during rolling V2 deploy',()=>{
