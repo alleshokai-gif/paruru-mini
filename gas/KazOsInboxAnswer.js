@@ -114,7 +114,9 @@ function validateKazOsAnswerRequest_(input) {
     return typeof refs[key] !== 'string' || !refs[key] || refs[key].length > 160;
   })) throw homeMembershipError_('KAZ_ANSWER_INVALID');
   let selected = input.selected_option;
-  if (selected && typeof selected === 'object' && !Array.isArray(selected)) {
+  if (Number.isInteger(selected)) {
+    if (selected <= 0 || selected > 100000) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+  } else if (selected && typeof selected === 'object' && !Array.isArray(selected)) {
     if (Object.keys(selected).sort().join(',') !== 'end,start') throw homeMembershipError_('KAZ_ANSWER_INVALID');
     selected = { start: text(selected.start, 80), end: text(selected.end, 80) };
   } else {
@@ -128,6 +130,12 @@ function validateKazOsAnswerRequest_(input) {
 }
 
 function validateKazOsAnswerSelection_(question, selected) {
+  if (question.kind === 'daily_estimate') {
+    const contract = question.input_contract;
+    if (!contract || contract.type !== 'integer_minutes' || !Number.isInteger(selected)
+        || selected < contract.min || selected > contract.max) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    return;
+  }
   if (question.kind === 'calendar_partial_window') {
     const start = selected && Date.parse(selected.start), end = selected && Date.parse(selected.end);
     const allDay = question.calendar_event && question.calendar_event.all_day === true;
@@ -155,7 +163,7 @@ function sameKazOsSourceRevisions_(left, right) {
 
 function sameKazOsQuestionSourceRevisions_(question, left, right) {
   if (!question || !left || !right) return false;
-  if (question.kind === 'today_focus') return true;
+  if (question.kind === 'today_focus' || question.kind === 'daily_estimate') return true;
   const keys = ['calendar_event_impact', 'calendar_partial_window'].indexOf(question.kind) >= 0
     ? ['calendar']
     : ['projects', 'work_items', 'calendar'];
@@ -170,7 +178,7 @@ function sameKazOsLedgerSourceRevisions_(row, inbox) {
   if (['FOLLOWUP_REQUIRED', 'CALENDAR_CLASSIFICATION_PROPOSAL'].indexOf(change.kind) >= 0) {
     return refs.calendar === currentRefs.calendar;
   }
-  if (change.kind === 'DAILY_PLANNING_PREFERENCE') {
+  if (change.kind === 'DAILY_PLANNING_PREFERENCE' || change.kind === 'DAILY_ESTIMATE') {
     const item = inbox.work_items.find(function(value) { return value.id === change.work_item_id; });
     return Boolean(item && item.source_revision === change.work_item_source_revision);
   }
@@ -282,6 +290,13 @@ function buildKazOsControlledProposal_(question, answer, proposalId) {
       work_item_source_revision: question.entity_revision, project_source_revision: null,
       valid_from: validFrom, expires_at: expires.toISOString(),
       permanent_priority_change: false, permanent_status_change: false };
+  } else if (question.kind === 'daily_estimate') {
+    if (!question.entity_ref || !question.entity_revision || !question.decision_date
+        || !Number.isInteger(selected) || selected <= 0) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    change = { kind: 'DAILY_ESTIMATE', work_item_id: question.entity_ref,
+      planning_date: question.decision_date, timezone: 'Asia/Tokyo', estimate_min: selected, source: 'human',
+      work_item_source_revision: question.entity_revision, valid_from: answer.answered_at,
+      expires_at: question.expires_at, permanent_estimate_change: false };
   } else if (question.kind === 'stale_state_confirmation') {
     change = selected === 'complete' ? { kind: 'WORK_ITEM_STATE_CHANGE', work_item_id: question.entity_ref,
       expected_before: question.current_state, desired_after: 'DONE' } : { kind: 'NO_OPERATIONAL_CHANGE', state_maintained: true };
