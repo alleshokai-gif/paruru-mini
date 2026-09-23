@@ -253,6 +253,23 @@ test('daily estimate identity ignores unrelated Calendar revision changes', () =
   assert.equal(after.question_revision, before.question_revision);
 });
 
+test('daily estimate rejects an answer after the target Work Item revision changes', () => {
+  let localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const original = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  localValue = structuredClone(localValue);
+  const changedRevision = iso(-50);
+  localValue.work_items[0].revision = changedRevision;
+  localValue.work_items[0].source_revision = changedRevision;
+  localValue.inbox_items[0].entity_revision = changedRevision;
+  const result = request(local, original, 30, 'paluru-estimate-work-revision-0001');
+  assert.equal(result.error.code, 'REVALIDATION_REQUIRED');
+  assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 1);
+});
+
 test('daily estimate persists integer minutes only as date-scoped planning evidence', () => {
   const localValue = estimateSnapshot();
   const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
@@ -270,6 +287,7 @@ test('daily estimate persists integer minutes only as date-scoped planning evide
   assert.equal(change.work_item_id, question.entity_ref);
   assert.equal(change.work_item_source_revision, question.entity_revision);
   assert.equal(change.planning_date, question.decision_date);
+  assert.equal(change.valid_from, result.data.answer.answered_at);
   assert.equal(change.expires_at, question.expires_at);
   assert.equal(change.permanent_estimate_change, false);
   assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);

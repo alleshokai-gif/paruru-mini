@@ -100,7 +100,7 @@ test('genuinely malformed upstream Decision fails closed instead of returning a 
   const r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);
 });
 test('missing explicit owner member fails closed',()=>{value=snapshot();delete h.props.KAZ_OS_PROGRESS_OWNER_MEMBER_ID;const before=h.stats().reads,r=call();assert.equal(r.error.code,'KAZ_NOT_CONNECTED');assert.equal(h.stats().reads,before);h.props.KAZ_OS_PROGRESS_OWNER_MEMBER_ID='father';});
-test('GAS calendar read sends one transient bounded capture and no raw IDs',()=>{
+test('GAS INBOX read sends one bounded V2 envelope and no raw IDs',()=>{
   value=snapshot();h.props.KAZ_OS_INBOX_READ_URL='https://reader.invalid/v1/inbox';h.props.KAZ_OS_PROGRESS_READ_TOKEN='synthetic-reader-token-01234567890123456789';
   const start=new Date(),end=new Date(start.getTime()+3600000),event={getId:()=> 'raw-event-id',getTitle:()=> '家族予定',getStartTime:()=>start,getEndTime:()=>end,getTransparency:()=> 'OPAQUE',isAllDayEvent:()=>false};
   h.ctx.CalendarApp={EventTransparency:{TRANSPARENT:'TRANSPARENT'}};
@@ -112,9 +112,11 @@ test('GAS calendar read sends one transient bounded capture and no raw IDs',()=>
   vm.runInContext(fs.readFileSync(path.join(root,'gas/KazOsInbox.js'),'utf8'),h.ctx,{filename:'gas/KazOsInbox.js'});
   const r=call();assert(r.success);assert.equal(request.url,h.props.KAZ_OS_INBOX_READ_URL);assert.equal(request.options.method,'post');assert.equal(request.options.followRedirects,false);
   assert.equal(request.options.headers['X-Kaz-Request-Id'],requestId);
-  const capture=JSON.parse(request.options.payload);assert.equal(capture.connector_receipt.calendar_write_requests,0);assert.equal(capture.connector_receipt.event_read_requests,1);assert.equal(capture.response.events.length,1);
-  const encoded=JSON.stringify(capture);assert(!encoded.includes('raw-event-id'));assert(!encoded.includes('private-calendar-id'));assert(!encoded.includes(h.props.KAZ_OS_PROGRESS_READ_TOKEN));
-  assert(!Object.hasOwn(capture,'request_id'),'request id must not alter the Calendar capture contract');
+  const payload=JSON.parse(request.options.payload);assert.deepEqual(Object.keys(payload).sort(),['calendar_capture','classifications','planning']);
+  const capture=payload.calendar_capture;assert.equal(capture.connector_receipt.calendar_write_requests,0);assert.equal(capture.connector_receipt.event_read_requests,1);assert.equal(capture.response.events.length,1);
+  assert.deepEqual(payload.classifications,{items:[]});assert.equal(payload.planning.timezone,'Asia/Tokyo');assert.match(payload.planning.planning_date,/^\d{4}-\d{2}-\d{2}$/);assert.deepEqual(payload.planning.preferences,[]);assert.deepEqual(payload.planning.daily_estimates,[]);
+  const encoded=JSON.stringify(payload);assert(!encoded.includes('raw-event-id'));assert(!encoded.includes('private-calendar-id'));assert(!encoded.includes(h.props.KAZ_OS_PROGRESS_READ_TOKEN));
+  assert(!Object.hasOwn(payload,'request_id'),'request id must not alter the INBOX envelope contract');
   const entries=logs.map(line=>JSON.parse(line.replace(/^\[KAZ_OS_INBOX_TRACE\] /,'')));
   assert.deepEqual(entries.map(entry=>entry.stage),['REQUEST_RECEIVED','ROUTER_MATCHED','AUTH_PASSED','INBOX_READ_STARTED','CALENDAR_CAPTURE_OK','GATEWAY_POST_STARTED','GATEWAY_RESPONSE','SANITIZER_OK','RESPONSE_SENT']);
   const allowed=['elapsed_ms','error_code','event_count','gas_version','http_status','question_count','request_id','stage','timestamp'].sort();
