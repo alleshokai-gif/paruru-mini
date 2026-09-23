@@ -338,7 +338,23 @@ test('Calendar partial creates only an event-bound time-range follow-up', () => 
   const followup = result.data.inbox.inbox_items.find(item => item.kind === 'calendar_partial_window');
   assert(followup); assert.equal(followup.entity_ref, value.calendar_events[0].id);
   assert.equal(followup.input_contract.type, 'time_range'); assert.equal(result.data.proposal.change.constraint_creation, false);
+  assert.equal(followup.expires_at, new Date(Date.parse(value.calendar_events[0].end)).toISOString());
 });
+test('Calendar partial follow-up disappears at event end even if source remains fresh', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const first = request(local, localValue.inbox_items[1], 'partial', 'paluru-calendar-expiry-0001');
+  assert(first.success, JSON.stringify(first));
+  assert(first.data.inbox.inbox_items.some(item => item.kind === 'calendar_partial_window'));
+  localValue.calendar_events[0].end = iso(-1);
+  localValue.inbox_items[1].calendar_event.end = localValue.calendar_events[0].end;
+  const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(refreshed.success, JSON.stringify(refreshed));
+  assert.equal(refreshed.data.inbox_items.some(item => item.kind === 'calendar_partial_window'), false);
+});
+
 test('Calendar partial follow-up survives unrelated Project and Work source revision changes', () => {
   const localValue = snapshot();
   const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
