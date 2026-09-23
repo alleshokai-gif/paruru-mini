@@ -246,19 +246,31 @@ function sanitizeKazOsInbox_(data) {
       calendarEvent = { ref: calendarEvent.id, title: calendarEvent.title, start: calendarEvent.start,
         end: calendarEvent.end, all_day: calendarEvent.all_day };
     }
-    return { id: text(value.id, 80), kind: value.kind, contract: value.contract,
+    const decisionDate = text(value.decision_date, 20, true);
+    const entityRef = text(value.entity_ref, 80, true);
+    const entityRevision = text(value.entity_revision, 80, true);
+    let decisionId = text(value.id, 80);
+    let questionRevision = text(value.question_revision, 90);
+    if (value.kind === 'today_focus') {
+      if (!entityRef || !entityRevision || !decisionDate) fail();
+      const choiceSeed = choices.map(function(choice) { return choice.value; }).join(',');
+      const seed = entityRef + '\\u0000' + entityRevision + '\\u0000' + decisionDate + '\\u0000' + choiceSeed;
+      decisionId = 'decision-' + kazOsSha256_('daily-planning-preference\\u0000' + seed).slice(0, 24);
+      questionRevision = 'question-sha256:' + kazOsSha256_('daily-planning-preference-question\\u0000' + seed);
+    }
+    return { id: decisionId, kind: value.kind, contract: value.contract,
       owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
       title: text(value.title, 200), question: text(value.question, 500), reason: text(value.reason, 500),
       impact: text(value.impact, 500), estimate_min: number(value.estimate_min, true),
       affects_today: boolean(value.affects_today), urgent_today: boolean(value.urgent_today),
-      decision_date: text(value.decision_date, 20, true), due_at: text(value.due_at, 80, true),
-      project_id: text(value.project_id, 80, true), entity_ref: text(value.entity_ref, 80, true),
-      source_label: text(value.source_label, 100), entity_revision: text(value.entity_revision, 80, true),
-      question_revision: text(value.question_revision, 90),
+      decision_date: decisionDate, due_at: text(value.due_at, 80, true),
+      project_id: text(value.project_id, 80, true), entity_ref: entityRef,
+      source_label: text(value.source_label, 100), entity_revision: entityRevision,
+      question_revision: questionRevision,
       expires_at: text(value.expires_at, 80, true),
       source_revision_references: { projects: refs.projects, work_items: refs.work_items, calendar: refs.calendar },
-      answer_contract: { inbox_item_id: text(value.answer_contract.inbox_item_id, 80),
-        question_revision: text(value.answer_contract.question_revision, 90),
+      answer_contract: { inbox_item_id: decisionId,
+        question_revision: questionRevision,
         question: text(value.answer_contract.question, 500), choices: choices },
        calendar_event: calendarEvent,
        input_contract: value.kind === 'calendar_partial_window' ? { type: 'time_range', timezone: 'Asia/Tokyo',
