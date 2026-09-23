@@ -98,6 +98,29 @@ test('exchanges the GIS Google token through signInWithCredential without publis
   assert(!JSON.stringify(f.calls.states).includes('google-id-token-secret'), 'Google token leaked into published state');
 });
 
+test('transient token re-resolution failure keeps the active actor and does not publish an auth error', async () => {
+  let failTransiently = false;
+  const transient = new Error('TRANSPORT_FAILURE');
+  transient.code = 'TRANSPORT_FAILURE';
+  const f = fixture(async () => {
+    if (failTransiently) throw transient;
+    return { memberUserId: 'father', displayName: '父', role: 'admin', capabilities: ['home.read'], allowedViews: ['home', 'bus'] };
+  });
+  await f.service.initialize();
+  const user = { uid: 'father-uid' };
+  f.observe(user);
+  await flush();
+  assert(f.service.getSafeState().actor.memberUserId === 'father', 'initial actor resolution failed');
+  const stateCount = f.calls.states.length;
+  failTransiently = true;
+  f.observe(user);
+  await flush();
+  assert(f.service.getSafeState().actor.memberUserId === 'father', 'transient refresh failure cleared active actor');
+  assert(f.calls.states.length === stateCount, 'transient refresh failure published a new auth state');
+  assert(!f.calls.states.slice(stateCount).some((state) => state.state === 'error' || state.state === 'resolving'),
+    'transient refresh failure must not lock or re-resolve the visible UI');
+});
+
 test('unmapped account enters registration state and can self-register without becoming a member', async () => {
   const required = new Error('REGISTRATION_REQUIRED');
   required.code = 'REGISTRATION_REQUIRED';
