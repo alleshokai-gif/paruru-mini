@@ -209,6 +209,21 @@ test('TODAY sanitizer accepts bounded V2 sections and preserves NOW/NEXT limits'
   assert.deepEqual(result.today.not_fit_today,[]);
 });
 
+test('V2 TODAY fixture exposes all five Human-facing planning sections',()=>{
+  const v=snapshotV2();
+  const a={...v.today.scheduled[0],placement:'ADOPTED_SCHEDULE',plan_start:new Date(Date.now()+7200000).toISOString(),plan_end:new Date(Date.now()+9000000).toISOString()};
+  const b={...v.today.scheduled[0],id:'00000000-0000-0000-0000-000000000103',work_id:'WI-19',title:'Estimate wait',plan_start:null,plan_end:null,placement:'ESTIMATE_REQUIRED',waiting_reason:'ESTIMATE_REQUIRED',estimate_min:null};
+  const c={...v.today.scheduled[0],id:'00000000-0000-0000-0000-000000000104',work_id:'WI-20',title:'Not fit',plan_start:null,plan_end:null,placement:'NO_AVAILABLE_SLOT',waiting_reason:null};
+  v.today.scheduled=[a];v.today.waiting=[b];v.today.waiting_count=1;v.today.not_fit_today=[c];v.today.not_fit_today_count=1;v.today.missing_estimate_count=1;
+  const result=h.ctx.sanitizeKazOsToday_(v);
+  assert.equal(result.today.now.items.length,1);
+  assert.equal(result.today.next.items.length,1);
+  assert.equal(result.today.scheduled.length,1);
+  assert.equal(result.today.waiting[0].waiting_reason,'ESTIMATE_REQUIRED');
+  assert.equal(result.today.not_fit_today[0].placement,'NO_AVAILABLE_SLOT');
+  assert.equal(result.today.not_fit_today_count,1);
+});
+
 test('TODAY sanitizer keeps V1 readable during rolling V2 deploy',()=>{
   data=snapshot();
   const result=h.ctx.sanitizeKazOsToday_(data);
@@ -235,6 +250,13 @@ test('PWA exposes Dynamic TODAY time context without UI score',()=>{
   assert(personal.includes("selection.page === 'today'"));
   assert(personal.includes('Family Calendarから、いま使える時間'));
   assert(personal.includes('Dynamic Daily Planning v1の判定範囲'));
+  assert(personal.includes('Dynamic Daily Planning v2の判定範囲'));
+  assert(personal.includes("const t = data.today, v2 = data.schema_version === 'kaz-today-plan-v2'"));
+  for(const lane of ["part('NOW')","part('NEXT')","part('SCHEDULED')","part('WAITING')","part('NOT FIT TODAY')"])assert(personal.includes(lane));
+  assert(personal.includes('今日の3つ'));
+  assert(personal.includes('INBOXで分数を答えると配置できます'));
+  assert(personal.includes('Human preference'));
+  assert(personal.includes('Daily Estimate'));
   assert(!personal.includes('UI scoreはまだ使っていません'));
 });
 
