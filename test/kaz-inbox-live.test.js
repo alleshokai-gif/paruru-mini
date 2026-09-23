@@ -95,6 +95,23 @@ test('missing or malformed request id is rejected before source read',()=>{
   assert.equal(h.stats().reads,before);
 });
 test('failed or stale source never becomes an empty queue',()=>{fail=true;let r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);fail=false;value=snapshot();value.sources.inbox.valid_until=iso(-1);r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);});
+test('expired Secretary Decisions are hidden from the live INBOX projection',()=>{
+  value=snapshot();
+  value.inbox_items[0].expires_at=iso(-1);
+  value.inbox_items[0].due_at=iso(-1);
+  const r=call();
+  assert(r.success,JSON.stringify(r));
+  assert.equal(r.data.inbox_items.length,0);
+});
+test('non-expiring Human decisions remain visible',()=>{
+  value=snapshot();
+  value.inbox_items[0].expires_at=null;
+  value.inbox_items[0].due_at=null;
+  const r=call();
+  assert(r.success,JSON.stringify(r));
+  assert.equal(r.data.inbox_items.length,1);
+});
+
 test('genuinely malformed upstream Decision fails closed instead of returning a partial unsafe source',()=>{
   value=snapshot();value.inbox_items.push({...value.inbox_items[0],id:'decision-malformed-upstream',owner:'other'});
   const r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);
