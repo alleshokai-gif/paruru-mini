@@ -212,6 +212,11 @@
         if(Array.isArray(gate.packet.changed_files))add(trace,'p',`変更: ${gate.packet.changed_files.join(' / ')||'0件（取得範囲内）'}`,'kp-muted');
         add(trace,'p',`Human Review ${gate.packet.human_review_status} · Run revision ${gate.packet.source_revision}`,'kp-muted');
         for(const [key,ref] of Object.entries(gate.packet.refs||{}))add(trace,'p',`${key}: ${ref.ref} · SHA-256 ${ref.sha256}`,'kp-muted');}
+      if(k==='daily_estimate'){
+        add(parent,'p','所要時間は「今日の質問」から分数を入力して保存できます。Notion Estimate Minは変更しません。','kp-notice');
+        link(parent,'← 今日の質問で回答','inbox');
+        return;
+      }
       const form=add(parent,'form','','ki-form');add(form,'h4','判断案を作る（未保存）');
       const select=field(form,'判断','select');add(select,'option','選択してください').value='';
       Object.entries(OUTCOMES[k]).forEach(([value,label])=>{add(select,'option',label).value=value;});
