@@ -49,8 +49,10 @@ Direct transport was selected only when the active server-owned membership had
 role `admin` and the existing owner-only `home.control` capability. A member ID
 was neither committed nor logged. The first real-browser set failed closed with
 `HTTP 401 / AUTH_TOKEN_INVALID` for both Projects and Work, with no silent GAS
-fallback and no dual read. The PWA flag was therefore returned to explicit
-`GAS` mode pending authentication-boundary RCA.
+fallback and no dual read. The PWA flag was returned to explicit `GAS` mode.
+The dedicated service configuration was then aligned with the measured PoC by
+adding the non-secret Firebase quota project required by revoked-token checks;
+the owner-only canary is enabled again for a bounded acceptance retry.
 
 The backend release target is the dedicated Cloud Run service
 `paluru-read-transport-v2`, not the measured PoC service and not the existing
@@ -58,7 +60,7 @@ The backend release target is the dedicated Cloud Run service
 `tools/kaz-os/deploy/read-transport-v2-canary.json`. Direct-only mode exposes
 health plus Projects/Work GET and CORS preflight only; legacy `/v1/*` and the
 PoC route are unavailable. The manifest pins the immutable release image
-digest. The actual revision remains empty until the Human deploy step; a tag
+digest. The dedicated service revision is recorded at deployment time; a tag
 or old PoC image cannot be treated as the production candidate.
 
 Canary acceptance matrix:
@@ -101,11 +103,10 @@ fallback, credential change, or data mutation.
 
 ## Current release state
 
-- Production deployment: not performed.
-- Immutable backend image: built and pinned in the deployment manifest;
-  dedicated service revision: not created because deploy has not occurred.
+- Dedicated direct-read deployment: `paluru-read-transport-v2-canary-authquota`.
+- Immutable backend image: built and pinned in the deployment manifest.
 - Production route: unchanged.
-- PWA rollback release: `GAS` for all members after the first owner-canary set
-  failed closed at the direct backend authentication boundary.
+- PWA release: owner/admin members with the server-owned `home.control`
+  capability select `DIRECT_V2`; other members remain on `GAS`.
 - Dynamic Daily Planning V2: unchanged and
   `BLOCKED_BY_TRANSPORT_BASELINE`.
