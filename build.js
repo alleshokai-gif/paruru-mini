@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260924-read-transport-v2-owner-canary-authquota";
+globalThis.BUILD_ID = "v20260924-read-transport-v2-authquota-rollback";

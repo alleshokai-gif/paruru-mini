@@ -51,8 +51,10 @@ was neither committed nor logged. The first real-browser set failed closed with
 `HTTP 401 / AUTH_TOKEN_INVALID` for both Projects and Work, with no silent GAS
 fallback and no dual read. The PWA flag was returned to explicit `GAS` mode.
 The dedicated service configuration was then aligned with the measured PoC by
-adding the non-secret Firebase quota project required by revoked-token checks;
-the owner-only canary is enabled again for a bounded acceptance retry.
+adding the non-secret Firebase quota project required by revoked-token checks.
+That removed the direct 401: Projects and Work both returned 200 in the first
+real-browser set. The same set then hit two legacy GAS INBOX timeouts, so the
+acceptance matrix failed and the PWA flag was returned to `GAS`.
 
 The backend release target is the dedicated Cloud Run service
 `paluru-read-transport-v2`, not the measured PoC service and not the existing
@@ -106,7 +108,7 @@ fallback, credential change, or data mutation.
 - Dedicated direct-read deployment: `paluru-read-transport-v2-canary-authquota`.
 - Immutable backend image: built and pinned in the deployment manifest.
 - Production route: unchanged.
-- PWA release: owner/admin members with the server-owned `home.control`
-  capability select `DIRECT_V2`; other members remain on `GAS`.
+- PWA rollback release: `GAS` for all members after the full acceptance matrix
+  failed on the unchanged legacy GAS INBOX route.
 - Dynamic Daily Planning V2: unchanged and
   `BLOCKED_BY_TRANSPORT_BASELINE`.

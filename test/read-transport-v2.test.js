@@ -79,9 +79,9 @@ async function main() {
     context.globalThis = context;
     vm.createContext(context);
     vm.runInContext(configSource, context, { filename: 'features/transport/read-v2-config.js' });
-    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.mode, 'DIRECT_V2', 'owner canary must explicitly select direct transport');
-    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.baseUrl, 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app');
-    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.canaryCapability, 'home.control');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.mode, 'GAS', 'failed acceptance must explicitly select the rollback transport');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.baseUrl, '');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.canaryCapability, 'kaz.read.direct_v2.canary');
   }
 
   {
