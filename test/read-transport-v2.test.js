@@ -108,6 +108,18 @@ async function main() {
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.work, 'DIRECT_V2');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.today, 'GAS');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.inbox, 'GAS');
+
+    const canaryContext = { globalThis: null, Object,
+      location: { search: '?paluru_read_transport_phase2_canary=1' } };
+    canaryContext.globalThis = canaryContext;
+    vm.createContext(canaryContext);
+    vm.runInContext(configSource, canaryContext, { filename: 'features/transport/read-v2-config.js' });
+    assert.equal(canaryContext.PALURU_READ_TRANSPORT_V2_CONFIG.baseUrl,
+      'https://phase2-canary-20260925---paluru-read-transport-v2-jwnmkrlyha-an.a.run.app');
+    assert.equal(canaryContext.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.projects, 'DIRECT_V2');
+    assert.equal(canaryContext.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.work, 'DIRECT_V2');
+    assert.equal(canaryContext.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.today, 'DIRECT_V2');
+    assert.equal(canaryContext.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.inbox, 'DIRECT_V2');
   }
 
   {
@@ -193,6 +205,12 @@ async function main() {
     ]);
     assert(calls.every(item => item.options.method === 'GET'));
     assert(harness.records.every(item => item.values.transportType === 'DIRECT_V2'));
+
+    const multipleNow = todayDto();
+    multipleNow.today.now = [{ id: 'now-one' }, { id: 'now-two' }];
+    assert.deepEqual(await harness.create({ fetchImpl: async () => response(200, multipleNow),
+      config: phase2Config }).today(), multipleNow,
+    'Direct V1 validator must preserve the legacy V1 multiple-NOW contract');
   }
 
   {
@@ -232,7 +250,10 @@ async function main() {
   assert(appSource.includes('capabilities: Array.isArray(activeMembershipContext?.capabilities)'), 'optional cohort selector must use membership capability');
   assert(appSource.includes('selectedKazOsReadTransport_("today") === "DIRECT_V2"'), 'TODAY route selector missing');
   assert(appSource.includes('selectedKazOsReadTransport_("inbox") === "DIRECT_V2"'), 'INBOX route selector missing');
-  assert(configSource.includes("today: 'GAS'") && configSource.includes("inbox: 'GAS'"), 'Phase 2 production defaults must remain GAS');
+  assert(configSource.includes('baseUrl: phase2Canary ? phase2CanaryBaseUrl : stableBaseUrl')
+    && configSource.includes("today: phase2Canary ? 'DIRECT_V2' : 'GAS'")
+    && configSource.includes("inbox: phase2Canary ? 'DIRECT_V2' : 'GAS'"),
+  'Phase 2 routes must default to GAS and require the explicit canary query flag');
   const answer = appSource.slice(appSource.indexOf('async function callAuthenticatedKazOsInboxAnswer_'), appSource.indexOf('function applyMembershipCapabilityVisibility_'));
   assert(answer.includes('callHomeControlApi') && !answer.includes('callDirectKazOsRead_'), 'write path must remain on GAS');
 

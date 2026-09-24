@@ -95,7 +95,7 @@
         || value.fixture_only !== false || !zeroWrites_(value)
         || !healthySource_(sources && sources.work_items)
         || !healthySource_(sources && sources.calendar)
-        || !today || !Array.isArray(today.now) || today.now.length > 1
+        || !today || !Array.isArray(today.now)
         || !Array.isArray(today.next) || today.next.length > 2
         || !Array.isArray(today.waiting) || !Array.isArray(today.availability)
         || !today.calendar_state || !Array.isArray(today.calendar_state.unknown)) {
