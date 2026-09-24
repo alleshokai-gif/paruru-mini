@@ -44,15 +44,13 @@ acceptance.
 
 ## Canary design
 
-The owner-canary PWA flag sets `mode=DIRECT_V2` and the dedicated direct-read
-base URL. Direct transport is selected only when the active server-owned
-membership has role `admin` and the existing owner-only `home.control`
-capability. A member ID is neither committed nor logged. An admin without that
-capability and every non-admin member stay on GAS. Missing direct configuration
-fails explicitly for the selected canary; there is no silent GAS fallback and
-no dual read. This reuses an existing server-owned owner boundary for the
-single-user canary; it does not grant the capability or use it for read API
-authorization, which the direct service rechecks independently.
+The owner canary used `mode=DIRECT_V2` and the dedicated direct-read base URL.
+Direct transport was selected only when the active server-owned membership had
+role `admin` and the existing owner-only `home.control` capability. A member ID
+was neither committed nor logged. The first real-browser set failed closed with
+`HTTP 401 / AUTH_TOKEN_INVALID` for both Projects and Work, with no silent GAS
+fallback and no dual read. The PWA flag was therefore returned to explicit
+`GAS` mode pending authentication-boundary RCA.
 
 The backend release target is the dedicated Cloud Run service
 `paluru-read-transport-v2`, not the measured PoC service and not the existing
@@ -107,7 +105,7 @@ fallback, credential change, or data mutation.
 - Immutable backend image: built and pinned in the deployment manifest;
   dedicated service revision: not created because deploy has not occurred.
 - Production route: unchanged.
-- PWA owner-canary release: `DIRECT_V2` for the existing server-owned
-  `admin + home.control` cohort; all other members remain on `GAS`.
+- PWA rollback release: `GAS` for all members after the first owner-canary set
+  failed closed at the direct backend authentication boundary.
 - Dynamic Daily Planning V2: unchanged and
   `BLOCKED_BY_TRANSPORT_BASELINE`.

@@ -1,13 +1,11 @@
 (function(root) {
   'use strict';
 
-  // Phase 1 owner canary. The existing server-owned admin + home.control
-  // boundary selects the single Kaz owner without committing a member ID.
-  // GAS remains the explicit rollback mode; DIRECT_V2 never silently falls
-  // back within a request.
+  // Phase 1 owner canary rollback. Direct reads failed closed at the backend
+  // authentication boundary; GAS is selected explicitly for subsequent reads.
   root.PALURU_READ_TRANSPORT_V2_CONFIG = Object.freeze({
-    mode: 'DIRECT_V2',
-    baseUrl: 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app',
-    canaryCapability: 'home.control'
+    mode: 'GAS',
+    baseUrl: '',
+    canaryCapability: 'kaz.read.direct_v2.canary'
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
