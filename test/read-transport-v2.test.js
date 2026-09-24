@@ -61,7 +61,8 @@ function load(fetchImpl, records = []) {
     classifyError: error => error.transportClassification || 'unknown',
   };
   const create = overrides => context.PALURUReadTransportV2.create({
-    config: { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test' },
+    config: { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+      canaryCapability: 'kaz.read.direct_v2.canary' },
     fetchImpl,
     getAuthEnvelope: async () => ({ provider: 'firebase', idToken: 'private-token' }),
     diagnostics,
@@ -80,6 +81,25 @@ async function main() {
     vm.runInContext(configSource, context, { filename: 'features/transport/read-v2-config.js' });
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.mode, 'GAS', 'Phase 1 must ship without cutover');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.baseUrl, '');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.canaryCapability, 'kaz.read.direct_v2.canary');
+  }
+
+  {
+    const harness = load(async () => response(200, projectsDto()));
+    const direct = { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+      canaryCapability: 'kaz.read.direct_v2.canary' };
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(direct, {
+      role: 'admin', capabilities: ['kaz.read.direct_v2.canary']
+    }), 'DIRECT_V2');
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(direct, {
+      role: 'admin', capabilities: []
+    }), 'GAS', 'non-canary admin must remain on GAS');
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(direct, {
+      role: 'self_record', capabilities: ['kaz.read.direct_v2.canary']
+    }), 'GAS', 'non-admin member must remain on GAS');
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode({
+      mode: 'GAS', baseUrl: '', canaryCapability: 'kaz.read.direct_v2.canary'
+    }, { role: 'admin', capabilities: ['kaz.read.direct_v2.canary'] }), 'GAS');
   }
 
   {
@@ -126,7 +146,8 @@ async function main() {
     await assert.rejects(harness.create().work(), error => error.code === 'WORK_CONTRACT_INVALID');
   }
 
-  assert(appSource.includes('PALURU_READ_TRANSPORT_V2_CONFIG?.mode === "DIRECT_V2"'), 'Projects/Work feature flag missing');
+  assert(appSource.includes('selectedKazOsReadTransport_() === "DIRECT_V2"'), 'Projects/Work canary selector missing');
+  assert(appSource.includes('capabilities: Array.isArray(activeMembershipContext?.capabilities)'), 'canary selector must use membership capability');
   assert(appSource.includes('return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.today.get"))'), 'TODAY must remain on GAS');
   assert(appSource.includes('buildMemoCredentialPayload("kazOs.inbox.get")'), 'INBOX must remain on GAS');
   const answer = appSource.slice(appSource.indexOf('async function callAuthenticatedKazOsInboxAnswer_'), appSource.indexOf('function applyMembershipCapabilityVisibility_'));

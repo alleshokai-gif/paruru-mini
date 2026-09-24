@@ -31,27 +31,36 @@ writes, and Dynamic Daily Planning V2 are outside this phase.
 
 ## Performance gate
 
-The earlier Projects PoC evidence is warm median 1030.7 ms, p95 1738.6 ms,
-and 0/30 failures. It proves the architecture direction, not the Phase 1 Work
-endpoint.
+The Human-authorized non-production measurements passed the Phase 1 gate:
 
-Before production canary approval, use one Human-authorized non-production
-deployment and real Firebase sessions to record:
-
-| Route | Samples | Median target | p95 target | Failure target |
+| Route | Samples | Browser median | Browser p95 | Failures |
 |---|---:|---:|---:|---:|
-| Projects | 30 warm | <= 1.2 s | <= 2.0 s | 0 |
-| Work | 30 warm | <= 1.2 s | <= 2.0 s | 0 |
+| Projects | 30 warm | 683.9 ms | 965.2 ms | 0 |
+| Work | 60 warm | 301.7 ms | 567.1 ms | 0 |
 
-Actor/membership target: p95 below 750 ms and zero events above 3 seconds per
-30 warm requests. Cold samples are recorded separately.
+Both routes are `GO` against median <= 1.2 seconds, p95 <= 2.0 seconds, and
+zero failures. This evidence is non-production and is not production browser
+acceptance.
 
 ## Canary design
 
-The production configuration must select a specific server-authorized canary
-cohort without logging identity. Until that implementation and review exist,
-the static PWA flag remains `GAS`; a global `DIRECT_V2` selection is not an
-approved canary mechanism.
+The committed PWA flag remains `GAS`. A canary release may set
+`mode=DIRECT_V2` and the dedicated direct-read base URL, but direct transport
+is selected only when the active server-owned membership has role `admin` and
+capability `kaz.read.direct_v2.canary`. A member ID is neither committed nor
+logged. An admin without that capability and every non-admin member stay on
+GAS. Missing direct configuration fails explicitly for the selected canary;
+there is no silent GAS fallback and no dual read.
+
+The backend release target is the dedicated Cloud Run service
+`paluru-read-transport-v2`, not the measured PoC service and not the existing
+`kaz-os-read-gateway`. Its deployment contract is
+`tools/kaz-os/deploy/read-transport-v2-canary.json`. Direct-only mode exposes
+health plus Projects/Work GET and CORS preflight only; legacy `/v1/*` and the
+PoC route are unavailable. The manifest intentionally has no revision or
+image digest until an immutable release image is built. Deployment is blocked
+until those two values are recorded; this prevents a tag or old PoC image from
+being treated as the production candidate.
 
 Canary acceptance matrix:
 
@@ -63,6 +72,22 @@ Canary acceptance matrix:
 - request correlation visible without token, identity, or private payload;
 - TODAY, INBOX, and all writes still use their unchanged legacy route;
 - Notion, Calendar, Context, Sheets, and Decision Ledger writes remain zero.
+
+Run at least three real-browser sets in this order: auth, Projects, Work,
+TODAY, INBOX, and Diagnostics. Projects and Work must report `DIRECT_V2`;
+TODAY and INBOX must report `GAS`; writes remain `GAS`. Projects and Work each
+require p95 below 2 seconds, zero failures, and zero timeouts.
+
+## Fixed release order
+
+1. Deploy the immutable image to the dedicated direct-read service.
+2. Run backend health, authentication, authorization, CORS, and method smoke.
+3. Deploy the PWA release while its committed/default mode is still `GAS`.
+4. Run the default GAS regression smoke.
+5. Assign the server-owned canary capability to the one approved Kaz owner and
+   release the explicit `DIRECT_V2` configuration.
+6. Run Projects and Work real-browser acceptance and performance measurement.
+7. Continue the canary only while the acceptance gate stays green.
 
 ## Rollback
 
@@ -77,9 +102,10 @@ fallback, credential change, or data mutation.
 
 ## Current release state
 
-- Production deployment: not authorized and not performed.
+- Production deployment: not performed.
+- Dedicated service revision and immutable image digest: not created; both are
+  mandatory pre-deploy fields rather than guessed values.
 - Production route: unchanged.
+- PWA default: `GAS`; no canary capability assignment has been made.
 - Dynamic Daily Planning V2: unchanged and
   `BLOCKED_BY_TRANSPORT_BASELINE`.
-- Real Work 30-sample performance gate: pending a separately authorized
-  non-production deployment.

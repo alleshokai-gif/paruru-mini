@@ -5258,7 +5258,7 @@ function applyAllowedViews_() {
 
 async function callAuthenticatedKazOsProjects_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  if (globalThis.PALURU_READ_TRANSPORT_V2_CONFIG?.mode === "DIRECT_V2") {
+  if (selectedKazOsReadTransport_() === "DIRECT_V2") {
     return callDirectKazOsRead_("projects");
   }
   return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.projects.get"));
@@ -5266,10 +5266,24 @@ async function callAuthenticatedKazOsProjects_() {
 
 async function callAuthenticatedKazOsWork_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  if (globalThis.PALURU_READ_TRANSPORT_V2_CONFIG?.mode === "DIRECT_V2") {
+  if (selectedKazOsReadTransport_() === "DIRECT_V2") {
     return callDirectKazOsRead_("work");
   }
   return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.work.get"));
+}
+
+function selectedKazOsReadTransport_() {
+  const config = globalThis.PALURU_READ_TRANSPORT_V2_CONFIG;
+  if (config?.mode !== "DIRECT_V2") return "GAS";
+  const adapter = globalThis.PALURUReadTransportV2;
+  if (!adapter || typeof adapter.selectMode !== "function") {
+    throw createHomeControlError("DIRECT_READ_UNAVAILABLE");
+  }
+  return adapter.selectMode(config, {
+    role: activeMembershipContext?.role,
+    capabilities: Array.isArray(activeMembershipContext?.capabilities)
+      ? activeMembershipContext.capabilities : [],
+  });
 }
 
 async function callDirectKazOsRead_(kind) {
