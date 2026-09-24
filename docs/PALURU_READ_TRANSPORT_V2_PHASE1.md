@@ -81,6 +81,48 @@ TODAY, INBOX, and Diagnostics. Projects and Work must report `DIRECT_V2`;
 TODAY and INBOX must report `GAS`; writes remain `GAS`. Projects and Work each
 require p95 below 2 seconds, zero failures, and zero timeouts.
 
+## 2026-09-24 owner canary acceptance
+
+The owner-only canary was re-enabled with Build
+`v20260924-read-transport-v2-owner-canary-3x3`. The browser diagnostics used
+the deployed transport label and the existing safe request suffix; no identity
+or private payload was recorded.
+
+| Route | Set | Browser samples | p95 (nearest rank) | HTTP | Transport | Failures / timeouts |
+|---|---|---:|---:|---|---|---|
+| Projects | Initial 3 | 3444, 735, 645 ms | 3444 ms | 200 (3/3) | `DIRECT_V2` | 0 / 0 |
+| Projects | Required extra 3 | 1182, 1073, 1044 ms | 1182 ms | 200 (3/3) | `DIRECT_V2` | 0 / 0 |
+| Work | Initial 3 | 1312, 1338, 1193 ms | 1338 ms | 200 (3/3) | `DIRECT_V2` | 0 / 0 |
+
+The 3444 ms first Projects sample triggered the specified one-time extra
+three-sample check. It did not recur; all three confirmation samples were
+below 2 seconds. There was no additional sampling loop. This canary is accepted
+under that explicit tail-sample rule. The initial 3444 ms observation remains
+part of the evidence and is not represented as meeting the 2-second gate by
+itself.
+
+The one-time legacy observations remained on GAS: TODAY timed out after
+8012 ms on attempt 1 and succeeded in 6079 ms on the existing bounded attempt
+2; INBOX succeeded in 6805 ms on attempt 1. These known legacy timings do not
+change the direct-read canary verdict. No answer or other write action was
+performed, and the read DTO write counters remained zero.
+
+## Formal Phase 1 cutover plan
+
+The next separately authorized release may change only the read selection:
+
+- Projects and Work: `DIRECT_V2` for the approved Phase 1 population.
+- TODAY and INBOX: unchanged `GAS` transport.
+- Answer and every write/admin operation: unchanged `GAS` transport.
+- No silent fallback and no dual read.
+- Rollback flag: explicit `GAS`, followed by one Projects/Work GAS smoke.
+
+The dedicated `paluru-read-transport-v2` service remains the direct-read
+backend. The existing `kaz-os-read-gateway`, GAS deployment, and all write
+routes are outside the cutover. Rollback does not delete the dedicated service
+or mutate data. The formal population-wide cutover is a later release action;
+this record does not perform it.
+
 ## Fixed release order
 
 1. Deploy the immutable image to the dedicated direct-read service.
@@ -107,8 +149,10 @@ fallback, credential change, or data mutation.
 
 - Dedicated direct-read deployment: `paluru-read-transport-v2-canary-authquota`.
 - Immutable backend image: built and pinned in the deployment manifest.
-- Production route: unchanged.
-- PWA rollback release: `GAS` for all members after the full acceptance matrix
-  failed on the unchanged legacy GAS INBOX route.
+- Existing `kaz-os-read-gateway`, GAS deployment, and write routes: unchanged.
+- PWA owner canary: active for Projects and Work only; all other members remain
+  on `GAS` because selection requires the server-owned owner capability.
+- Current canary Build: `v20260924-read-transport-v2-owner-canary-3x3`.
+- Formal population-wide Phase 1 cutover: planned above, not executed.
 - Dynamic Daily Planning V2: unchanged and
   `BLOCKED_BY_TRANSPORT_BASELINE`.
