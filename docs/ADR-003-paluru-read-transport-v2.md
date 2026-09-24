@@ -1,6 +1,6 @@
 # ADR-003: PALURU / Kaz OS Transport Architecture V2
 
-- Status: PROPOSED — PoC evidence required before adoption
+- Status: ACCEPTED FOR PHASE 1 IMPLEMENTATION — production cutover not approved
 - Date: 2026-09-23
 - Scope: latency-critical read transport only
 - Production impact of this ADR: none
@@ -28,17 +28,24 @@ Dynamic Daily Planning V2 remains frozen at
 `BLOCKED_BY_TRANSPORT_BASELINE`. This ADR does not authorize production
 traffic, a timeout change, a retry change, or a write-path migration.
 
-## 2. Decision under evaluation
+## 2. Decision
 
-Use **Option B, direct authenticated Cloud Run reads**, as the first PoC.
-This is a PoC direction, not a production adoption decision. Production
-adoption requires the security gates and latency gate in this ADR.
+Use **Option B, direct authenticated Cloud Run reads**, as the PALURU read
+transport target. The Projects PoC recorded a warm browser median of 1030.7
+ms, p95 of 1738.6 ms, and 0 failures in 30 requests, a 75–83 percent reduction
+from the observed GAS Projects baseline. This is sufficient to proceed with
+Phase 1 implementation for Projects and Work, but it does not approve a
+production cutover.
 
-GAS remains in scope for writes, administration, and Google-native operations
-that have not passed an independent migration review. Option C remains a valid
-later boundary if edge policy or multi-backend aggregation becomes necessary;
-it is not added to the first PoC because that would introduce an extra hop
-before direct-read latency is measured.
+**GAS is not a read transit layer in the target architecture.** Latency-critical
+reads go from PWA directly to Cloud Run or a separately approved Worker/BFF.
+GAS remains an endpoint for Google-native integration, persistence, writes,
+and administration. If a future aggregate needs a GAS-only Google source, the
+read gateway may call a bounded GAS integration endpoint as an upstream; GAS
+must not proxy the request onward to Cloud Run or select another read backend.
+
+Option C remains a valid later boundary if edge policy or multi-backend
+aggregation becomes necessary. It is not part of Phase 1.
 
 ## 3. Options and trade-offs
 
@@ -85,12 +92,12 @@ flowchart LR
   PWA[PWA]
   READ[Authenticated Cloud Run read API]
   SOURCE[Projects / Work / planner sources]
-  GAS[GAS write/admin and Google-native service]
+  GAS[GAS Google-native integration and persistence endpoint]
   GOOGLE[Calendar / Sheets]
 
   PWA -->|Firebase ID token; read only| READ
   READ -->|least-privilege reads| SOURCE
-  PWA -->|existing write contract| GAS
+  PWA -->|existing write and Google-native contract| GAS
   GAS --> GOOGLE
   GAS -->|prepare / confirm / execute| SOURCE
 ```
@@ -104,8 +111,10 @@ The candidate read surface is:
 - INBOX.
 
 This list is a migration target, not one cutover unit. TODAY and INBOX remain
-on GAS until their Calendar, Decision Ledger, and actor dependencies have an
-approved replacement. GAS removal is explicitly not a goal.
+on their legacy route during Phase 1, but no new read design may use GAS as a
+transit proxy. Their later migration must terminate at Cloud Run/Worker and
+treat any required GAS Google operation as a bounded upstream integration.
+GAS removal is explicitly not a goal.
 
 ## 5. Trust boundaries
 
@@ -234,17 +243,22 @@ request suffix; emitting a logging API call alone is insufficient.
 - Fix the confirmed duplicate TODAY navigation read in an isolated commit.
 - Preserve timeout, retry, write, and planner contracts.
 
-### Phase 1 — Non-production Projects PoC
+### Phase 1 — Projects and Work direct-read foundation
 
-- Implement the endpoint and client probe outside production routing.
-- Complete auth/authz negative tests and at least 30 real authenticated reads.
-- Decide whether Option B remains viable from measured evidence.
+- Promote the successful Projects PoC contract to `/v2/read/projects`.
+- Add `/v2/read/work` using the same auth and actor boundary.
+- Add a PWA `GAS` / `DIRECT_V2` adapter for Projects and Work only.
+- Keep production selection at `GAS`; no deploy or cutover is authorized.
+- Bound successful actor/membership reuse to a short per-instance TTL. Verify
+  Firebase revocation/disabled state on every request and never cache failures.
+- Measure Projects and Work independently before canary approval.
 
-### Phase 2 — Read security foundation
+### Phase 2 — Canary and production evidence
 
 - Approve actor-source access, CORS, rate limits, safe errors, and operational
   logging.
-- Add explicit route selection with GAS as the unchanged production route.
+- Select `DIRECT_V2` only for an explicit canary cohort. `GAS` is the rollback
+  selection for legacy reads, not a target-architecture transit.
 - No same-request fallback and no shadow double-read of private production
   sources.
 
@@ -318,9 +332,32 @@ reads for the same user request.
 - Production writes, production route changes, and Dynamic Planning V2 changes
   remain zero until separately approved.
 
-## 12. Current decision state
+## 12. PALURU migration template
 
-This ADR authorizes design and a non-production read-only PoC plan only. It
-does not authorize implementation in the Cloud Run repository, production
-deployment, production route cutover, main merge, or Dynamic Daily Planning V2
-traffic. Step 9 remains `BLOCKED_BY_TRANSPORT_BASELINE`.
+Every PALURU read-domain migration follows this sequence:
+
+1. Inventory the read DTO, server-owned authorization, upstreams, freshness,
+   writes, retry budget, and observable safe fields.
+2. Add one direct Cloud Run/Worker endpoint that fails closed and performs no
+   writes. GAS may be an upstream only for an irreducibly Google-native
+   operation; it may not relay the request to another read backend.
+3. Add a client adapter with explicit `GAS` and `DIRECT_V2` selection. Never
+   dual execute and never silently fall back within a request.
+4. Prove DTO/sanitizer compatibility, source completeness, actor isolation,
+   revocation/disabled handling, exact-origin CORS, rate limiting, write zero,
+   and safe correlated timing.
+5. Run cold and at least 30 warm authenticated samples. Compare browser total,
+   server total, auth, actor, upstream, serialization, and network overhead.
+6. Canary one explicit cohort. Roll back by selecting the prior transport for
+   subsequent requests; do not retry or replay writes.
+7. Expand only after real-browser acceptance and operational monitoring pass.
+
+This template applies to KazOS first and then to other PALURU read domains.
+Write/admin migrations require separate ADRs and safety gates.
+
+## 13. Current decision state
+
+This ADR authorizes local Phase 1 implementation for Projects and Work. It does
+not authorize production deployment, production route cutover, main merge, or
+Dynamic Daily Planning V2 traffic. The PWA ships with `GAS` selected until a
+separate cutover approval. Step 9 remains `BLOCKED_BY_TRANSPORT_BASELINE`.

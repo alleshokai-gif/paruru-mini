@@ -11,9 +11,11 @@
   ]);
   const CLASSIFICATIONS = new Set(['none', 'timeout', 'network', 'http', 'parse', 'business', 'cache', 'unknown']);
   const OUTCOMES = new Set(['success', 'retry', 'reconciled', 'unresolved', 'cache_fallback', 'updated']);
+  const TRANSPORT_TYPES = new Set(['GAS', 'DIRECT_V2']);
   const SAFE_KEYS = Object.freeze([
     'at', 'requestClass', 'action', 'requestIdSuffix', 'attempt', 'elapsedMs', 'classification',
-    'httpStatus', 'backendStage', 'buildId', 'outcome', 'errorCode'
+    'httpStatus', 'backendStage', 'buildId', 'outcome', 'errorCode', 'transportType',
+    'serverTotalMs', 'firebaseVerifyMs', 'actorResolveMs', 'upstreamMs', 'serializeMs'
   ]);
 
   function safeEnum_(value, allowed, fallback) {
@@ -60,7 +62,13 @@
       backendStage: safeStage_(value.backendStage),
       buildId: String(value.buildId || '').replace(/[^A-Za-z0-9._-]/g, '').slice(0, 100),
       outcome: safeEnum_(value.outcome, OUTCOMES, 'unresolved'),
-      errorCode: safeCode_(value.errorCode)
+      errorCode: safeCode_(value.errorCode),
+      transportType: value.transportType == null ? null : safeEnum_(value.transportType, TRANSPORT_TYPES, null),
+      serverTotalMs: value.serverTotalMs == null ? null : safeInteger_(Math.round(Number(value.serverTotalMs)), 0, 600000, null),
+      firebaseVerifyMs: value.firebaseVerifyMs == null ? null : safeInteger_(Math.round(Number(value.firebaseVerifyMs)), 0, 600000, null),
+      actorResolveMs: value.actorResolveMs == null ? null : safeInteger_(Math.round(Number(value.actorResolveMs)), 0, 600000, null),
+      upstreamMs: value.upstreamMs == null ? null : safeInteger_(Math.round(Number(value.upstreamMs)), 0, 600000, null),
+      serializeMs: value.serializeMs == null ? null : safeInteger_(Math.round(Number(value.serializeMs)), 0, 600000, null)
     };
     return Object.fromEntries(SAFE_KEYS.map(function(key) { return [key, record[key]]; }));
   }
@@ -115,7 +123,13 @@
         backendStage: input.backendStage,
         buildId: typeof root.BUILD_ID === 'string' ? root.BUILD_ID : '',
         outcome: input.outcome,
-        errorCode: input.errorCode
+        errorCode: input.errorCode,
+        transportType: input.transportType,
+        serverTotalMs: input.serverTotalMs,
+        firebaseVerifyMs: input.firebaseVerifyMs,
+        actorResolveMs: input.actorResolveMs,
+        upstreamMs: input.upstreamMs,
+        serializeMs: input.serializeMs
       });
       if (!safe) return null;
       const records = read_();

@@ -2387,6 +2387,7 @@ function logKazOsReadDiagnostic_(diagnostic, action, attempt, elapsedMs, error, 
         classification: error ? diagnostics.classifyError(error) : "none",
         httpStatus: Number.isFinite(error?.httpStatus) ? error.httpStatus : null,
         backendStage: error ? "MINI_RESPONSE" : "MINI_COMPLETE",
+        transportType: "GAS",
         outcome,
         errorCode: error?.code || null,
       });
@@ -5257,12 +5258,36 @@ function applyAllowedViews_() {
 
 async function callAuthenticatedKazOsProjects_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  if (globalThis.PALURU_READ_TRANSPORT_V2_CONFIG?.mode === "DIRECT_V2") {
+    return callDirectKazOsRead_("projects");
+  }
   return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.projects.get"));
 }
 
 async function callAuthenticatedKazOsWork_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  if (globalThis.PALURU_READ_TRANSPORT_V2_CONFIG?.mode === "DIRECT_V2") {
+    return callDirectKazOsRead_("work");
+  }
   return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.work.get"));
+}
+
+async function callDirectKazOsRead_(kind) {
+  const adapter = globalThis.PALURUReadTransportV2;
+  if (!adapter || typeof adapter.create !== "function" || !firebaseAuthService) {
+    throw createHomeControlError("DIRECT_READ_UNAVAILABLE");
+  }
+  const client = adapter.create({
+    config: globalThis.PALURU_READ_TRANSPORT_V2_CONFIG,
+    fetchImpl: globalThis.fetch.bind(globalThis),
+    getAuthEnvelope: forceRefresh => firebaseAuthService.getAuthEnvelope(forceRefresh),
+    diagnostics: transportDiagnostics_(),
+    timeoutMs: KAZ_OS_READ_TIMEOUT_MS,
+    retryDelayMs: KAZ_OS_READ_RETRY_DELAY_MS,
+  });
+  if (kind === "projects") return client.projects();
+  if (kind === "work") return client.work();
+  throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
 }
 
 async function callAuthenticatedKazOsToday_() {

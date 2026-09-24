@@ -28,8 +28,8 @@ assert(app.includes('request_id: cryptoApi.randomUUID()'), 'opaque INBOX request
 assert(app.includes('typeof cryptoApi.randomUUID !== "function"'), 'request id generation must fail closed');
 assert(app.includes('buildMemoCredentialPayload("kazOs.inbox.answer")'), 'answer action missing');
 assert(app.includes('const KAZ_OS_READ_TIMEOUT_MS = 8000'), 'Kaz OS read timeout missing');
-assert(app.includes('callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.projects.get"))'), 'Projects read retry wrapper missing');
-assert(app.includes('callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.work.get"))'), 'Work read retry wrapper missing');
+assert(app.includes('return callDirectKazOsRead_("projects")') && app.includes('callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.projects.get"))'), 'Projects transport switch missing');
+assert(app.includes('return callDirectKazOsRead_("work")') && app.includes('callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.work.get"))'), 'Work transport switch missing');
 assert(app.includes('callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.today.get"))'), 'TODAY read retry wrapper missing');
 assert(app.includes('return callHomeControlReadOnlyApi_({') && app.includes('buildMemoCredentialPayload("kazOs.inbox.get")'), 'INBOX read retry wrapper missing');
 assert(app.includes('if (attempt > 0 || !isKazOsReadRetryable_(error)) throw error;'), 'Kaz OS read retry must be bounded to one retry');

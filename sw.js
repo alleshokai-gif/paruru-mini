@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260922-transport-diagnostics-v1");
-// Release: v20260922-transport-diagnostics-v1
+importScripts("./build.js?v=v20260924-read-transport-v2-phase1-rc");
+// Release: v20260924-read-transport-v2-phase1-rc
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -10,6 +10,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("build.js"),
   versioned("style.css"),
   versioned("features/transport/diagnostics.js"),
+  versioned("features/transport/read-v2-config.js"),
+  versioned("features/transport/read-v2.js"),
   versioned("app.js"),
   versioned("features/auth/firebase-auth.js"),
   versioned("features/auth/firebase-auth-runtime.js"),
