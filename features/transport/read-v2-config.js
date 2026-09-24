@@ -1,12 +1,13 @@
 (function(root) {
   'use strict';
 
-  // Phase 1 ships disabled. Production cohort selection and endpoint activation
-  // are a separate cutover step. GAS remains available only as the explicit
-  // rollback mode; DIRECT_V2 never silently falls back within a request.
+  // Phase 1 owner canary. The existing server-owned admin + home.control
+  // boundary selects the single Kaz owner without committing a member ID.
+  // GAS remains the explicit rollback mode; DIRECT_V2 never silently falls
+  // back within a request.
   root.PALURU_READ_TRANSPORT_V2_CONFIG = Object.freeze({
-    mode: 'GAS',
-    baseUrl: '',
-    canaryCapability: 'kaz.read.direct_v2.canary'
+    mode: 'DIRECT_V2',
+    baseUrl: 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app',
+    canaryCapability: 'home.control'
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

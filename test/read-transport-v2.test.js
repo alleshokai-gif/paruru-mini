@@ -79,13 +79,25 @@ async function main() {
     context.globalThis = context;
     vm.createContext(context);
     vm.runInContext(configSource, context, { filename: 'features/transport/read-v2-config.js' });
-    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.mode, 'GAS', 'Phase 1 must ship without cutover');
-    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.baseUrl, '');
-    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.canaryCapability, 'kaz.read.direct_v2.canary');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.mode, 'DIRECT_V2', 'owner canary must explicitly select direct transport');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.baseUrl, 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.canaryCapability, 'home.control');
   }
 
   {
     const harness = load(async () => response(200, projectsDto()));
+    const ownerCanary = { mode: 'DIRECT_V2',
+      baseUrl: 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app',
+      canaryCapability: 'home.control' };
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(ownerCanary, {
+      role: 'admin', capabilities: ['home.control']
+    }), 'DIRECT_V2');
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(ownerCanary, {
+      role: 'guardian', capabilities: ['home.control']
+    }), 'GAS', 'non-admin member must remain on GAS');
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(ownerCanary, {
+      role: 'admin', capabilities: []
+    }), 'GAS', 'admin without the server-owned cohort capability must remain on GAS');
     const direct = { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
       canaryCapability: 'kaz.read.direct_v2.canary' };
     assert.equal(harness.context.PALURUReadTransportV2.selectMode(direct, {

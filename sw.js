@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260924-read-transport-v2-phase1-rc");
-// Release: v20260924-read-transport-v2-phase1-rc
+importScripts("./build.js?v=v20260924-read-transport-v2-owner-canary");
+// Release: v20260924-read-transport-v2-owner-canary
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
