@@ -208,6 +208,14 @@ Phase 1は、Weather read → Calendar read → Home read → multi-tool → Hom
 
 実装後は、実際に変わった内容だけを記録する。
 
+## Human操作最小化（Mandatory）
+
+- ユーザーに要求してよい通常作業は、GAS Web Appのdeployment作成・更新と、実ブラウザ・実PWAでの最終Acceptanceだけ。
+- Gitのstage、commit分割、commit、push、branch作成・切替、merge準備、remote同期はCodexが行う。
+- PWA / GitHub Pages publish、Cloud Run、Cloudflare Worker等の非GAS deploy、`clasp push`、smoke、rollbackはCodexが行う。
+- 「一部だけcommitして」「全部pushしないで」「このコマンドを貼って」等、Codexが実行可能な操作をユーザーへ委譲しない。
+- GAS Web Appのdeployment作成・更新が必要な場合だけ、Humanが行う最小手順を提示する。
+
 ## 8A. Git運用（全Repository共通・必須）
 
 Gitの状態確認、変更分離、commit、branch統合、push前監査までを開発タスクの一部として扱う。人間が最後にまとめてcommitする前提で未commit差分を蓄積してはならない。
