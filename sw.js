@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260924-read-transport-v2-authquota-rollback");
-// Release: v20260924-read-transport-v2-authquota-rollback
+importScripts("./build.js?v=v20260924-read-transport-v2-owner-canary-3x3");
+// Release: v20260924-read-transport-v2-owner-canary-3x3
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
