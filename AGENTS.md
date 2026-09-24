@@ -26,7 +26,7 @@ AIは修正対象以外を変更してはならない。修正範囲を広げる
 - 設計・計測なしに無制限のAgent Loop、Tool再投入、Responses APIループ、モデル／Tool呼出しを導入しない
 - Agent URL / Script Propertiesを勝手に変更しない
 - Apps Script Web Editorでコードを修正しない
-- Codexはデプロイを実行しない。`clasp push`、Apps Scriptのデプロイ作成・更新、ライブラリ版の公開・更新、GitHub Pages等の公開操作はすべてユーザー本人が行う
+- Apps Script / GAS Web App の公開操作はユーザー本人専用とする。Codexは `clasp push`、Apps Script Web App のデプロイ作成・更新、Apps Scriptライブラリ版の公開・更新を実行しない。Cloud Run、Cloudflare Worker、PWA、GitHub Pagesその他の非GASデプロイは、ユーザーが当該作業内で明示許可した場合に限りCodexが実行してよい。デプロイはGit commitと分離し、対象・rollback・受入条件を事前に明示する
 - 実ブラウザ受入前に「完了」と報告しない
 - PWAだけ直してMiniとの契約を変更しない
 - 推測だけで実装修正しない
@@ -38,7 +38,7 @@ AIは修正対象以外を変更してはならない。修正範囲を広げる
 ↓
 テスト
 ↓
-ユーザー本人によるdeploy
+deploy（GAS Web Appはユーザー本人。非GASは当該作業内で明示許可があればCodex実行可）
 ↓
 実ブラウザ受入
 ↓
@@ -114,7 +114,7 @@ PALURUは設計が正本であり、AIは設計者ではなく実装者である
 2. 構文チェックPASS
 3. 既存テストPASS
 4. 対象Repository全体テストPASS
-5. ユーザー本人によるデプロイ
+5. デプロイ（GAS Web Appはユーザー本人が実施。非GASは当該作業内でユーザーが明示許可した場合にCodex実施可）
 6. 接続済み実ブラウザ・実PWA・実デプロイでの確認
 7. 受入試験PASS
 
