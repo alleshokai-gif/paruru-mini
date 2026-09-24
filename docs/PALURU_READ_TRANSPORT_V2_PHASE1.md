@@ -123,6 +123,26 @@ routes are outside the cutover. Rollback does not delete the dedicated service
 or mutate data. The formal population-wide cutover is a later release action;
 this record does not perform it.
 
+## 2026-09-24 formal Phase 1 cutover
+
+Build `v20260924-read-transport-v2-phase1-cutover` removed the owner-canary
+transport capability gate. The existing Kaz admin/allowed-view check in the
+PWA and the server-side authentication, actor mapping, membership, and
+authorization checks remain mandatory. Only Projects and Work select
+`DIRECT_V2`; TODAY, INBOX, Answer, and every write/admin route remain on GAS.
+
+The required production browser smoke used one request per direct route:
+
+| Route | HTTP | Browser elapsed | Attempt | Transport | Outcome |
+|---|---:|---:|---:|---|---|
+| Projects | 200 | 1233 ms | 1 | `DIRECT_V2` | success |
+| Work | 200 | 1222 ms | 1 | `DIRECT_V2` | success |
+
+Both requests completed without timeout or failure. The Work DTO passed the
+zero-write contract, no write action was invoked, and there was no silent GAS
+fallback or dual read. Rollback was not required. The rollback remains an
+explicit release of the same configuration with `mode: GAS`.
+
 ## Fixed release order
 
 1. Deploy the immutable image to the dedicated direct-read service.
@@ -150,9 +170,10 @@ fallback, credential change, or data mutation.
 - Dedicated direct-read deployment: `paluru-read-transport-v2-canary-authquota`.
 - Immutable backend image: built and pinned in the deployment manifest.
 - Existing `kaz-os-read-gateway`, GAS deployment, and write routes: unchanged.
-- PWA owner canary: active for Projects and Work only; all other members remain
-  on `GAS` because selection requires the server-owned owner capability.
-- Current canary Build: `v20260924-read-transport-v2-owner-canary-3x3`.
-- Formal population-wide Phase 1 cutover: planned above, not executed.
+- Phase 1 production selection: Projects and Work use `DIRECT_V2` for every
+  existing authorized Kaz admin; no owner-canary transport capability gate.
+- TODAY, INBOX, Answer, and every write/admin operation: `GAS`.
+- Current PWA Build: `v20260924-read-transport-v2-phase1-cutover`.
+- Formal Phase 1 production smoke: PASS; rollback not performed.
 - Dynamic Daily Planning V2: unchanged and
   `BLOCKED_BY_TRANSPORT_BASELINE`.
