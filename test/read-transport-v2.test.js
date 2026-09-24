@@ -79,13 +79,22 @@ async function main() {
     context.globalThis = context;
     vm.createContext(context);
     vm.runInContext(configSource, context, { filename: 'features/transport/read-v2-config.js' });
-    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.mode, 'DIRECT_V2', 'owner canary must explicitly select direct transport');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.mode, 'DIRECT_V2', 'production cutover must explicitly select direct transport');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.baseUrl, 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app');
-    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.canaryCapability, 'home.control');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.canaryCapability, '');
   }
 
   {
     const harness = load(async () => response(200, projectsDto()));
+    const production = { mode: 'DIRECT_V2',
+      baseUrl: 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app',
+      canaryCapability: '' };
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(production, {
+      role: 'admin', capabilities: []
+    }), 'DIRECT_V2', 'authorized Kaz admin must use production direct transport');
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(production, {
+      role: 'guardian', capabilities: ['home.control']
+    }), 'GAS', 'production cutover must not bypass the existing Kaz admin boundary');
     const ownerCanary = { mode: 'DIRECT_V2',
       baseUrl: 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app',
       canaryCapability: 'home.control' };
@@ -158,8 +167,8 @@ async function main() {
     await assert.rejects(harness.create().work(), error => error.code === 'WORK_CONTRACT_INVALID');
   }
 
-  assert(appSource.includes('selectedKazOsReadTransport_() === "DIRECT_V2"'), 'Projects/Work canary selector missing');
-  assert(appSource.includes('capabilities: Array.isArray(activeMembershipContext?.capabilities)'), 'canary selector must use membership capability');
+  assert(appSource.includes('selectedKazOsReadTransport_() === "DIRECT_V2"'), 'Projects/Work production selector missing');
+  assert(appSource.includes('capabilities: Array.isArray(activeMembershipContext?.capabilities)'), 'optional cohort selector must use membership capability');
   assert(appSource.includes('return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.today.get"))'), 'TODAY must remain on GAS');
   assert(appSource.includes('buildMemoCredentialPayload("kazOs.inbox.get")'), 'INBOX must remain on GAS');
   const answer = appSource.slice(appSource.indexOf('async function callAuthenticatedKazOsInboxAnswer_'), appSource.indexOf('function applyMembershipCapabilityVisibility_'));

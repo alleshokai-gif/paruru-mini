@@ -1174,7 +1174,7 @@ test('agentChat logs API_ERROR and FETCH_FAILED with the same request context', 
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260924-read-transport-v2-owner-canary-3x3';
+  const expected = 'v20260924-read-transport-v2-phase1-cutover';
   const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
   assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID must have one definition');
   assert(appSource.includes('Build: ${globalThis.BUILD_ID}') && !/const\s+(?:ASSET_VERSION|BUILD_VERSION|BUILD_ID)\s*=/.test(appSource), 'app does not use BUILD_ID as the only Build display source');

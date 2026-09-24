@@ -25,7 +25,8 @@
     if (mode === MODES.DIRECT_V2 && !/^https:\/\/[^/]+(?:\/[^?#]*)?$/.test(baseUrl)) {
       throw codedError_('DIRECT_READ_CONFIG_INVALID', { transportClassification: 'business' });
     }
-    if (mode === MODES.DIRECT_V2 && !/^[a-z][a-z0-9_.-]{2,79}$/.test(canaryCapability)) {
+    if (mode === MODES.DIRECT_V2 && canaryCapability
+        && !/^[a-z][a-z0-9_.-]{2,79}$/.test(canaryCapability)) {
       throw codedError_('DIRECT_READ_CONFIG_INVALID', { transportClassification: 'business' });
     }
     return Object.freeze({ mode, baseUrl, canaryCapability });
@@ -36,7 +37,8 @@
     const context = membership && typeof membership === 'object' ? membership : {};
     const capabilities = Array.isArray(context.capabilities) ? context.capabilities : [];
     if (config.mode !== MODES.DIRECT_V2) return MODES.GAS;
-    return context.role === 'admin' && capabilities.includes(config.canaryCapability)
+    return context.role === 'admin'
+      && (!config.canaryCapability || capabilities.includes(config.canaryCapability))
       ? MODES.DIRECT_V2 : MODES.GAS;
   }
 
