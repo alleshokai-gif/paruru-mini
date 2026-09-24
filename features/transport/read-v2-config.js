@@ -7,6 +7,12 @@
   root.PALURU_READ_TRANSPORT_V2_CONFIG = Object.freeze({
     mode: 'DIRECT_V2',
     baseUrl: 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app',
-    canaryCapability: ''
+    canaryCapability: '',
+    routeModes: Object.freeze({
+      projects: 'DIRECT_V2',
+      work: 'DIRECT_V2',
+      today: 'GAS',
+      inbox: 'GAS'
+    })
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

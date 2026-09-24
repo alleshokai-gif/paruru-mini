@@ -1,0 +1,80 @@
+{
+  "contract": "paluru-read-transport-phase2-revision-vectors-0.1",
+  "calendar": {
+    "calendar_id": "family-calendar@example.test",
+    "fetched_at": "2026-09-24T09:15:00+09:00",
+    "horizon": {
+      "start": "2026-09-24T00:00:00+09:00",
+      "end": "2026-09-25T12:00:00+09:00"
+    },
+    "event": {
+      "raw_id": "opaque-event-1@example.test",
+      "summary": "Family appointment",
+      "start": "2026-09-24T10:00:00+09:00",
+      "end": "2026-09-24T11:30:00+09:00",
+      "all_day": false,
+      "transparency": "opaque"
+    },
+    "expected_selection_id": "calendar-sha256:abbf44fd29c6a94a2e3eee96a53172c603988bdf2b73510f16cda17092d2600f",
+    "expected_capture_event_id": "event-sha256:0ade23ea3204e03e3720ab21ee691fcc396302bc6f0694bcaeef8ff04f3ee6d0",
+    "expected_normalized_event_id": "event-ba1a05210df19a09025d0358",
+    "expected_source_revision": "observation-sha256:9f39591dd04f277d4a76c82d9dbe54689f2f5e32abef653a5e46a63b46822708"
+  },
+  "ledger": {
+    "current_refs": {
+      "projects": "observation-sha256:projects-vector",
+      "work_items": "observation-sha256:work-vector",
+      "calendar": "observation-sha256:calendar-vector"
+    },
+    "calendar_event": {
+      "id": "event-0123456789abcdef01234567",
+      "title": "Family appointment",
+      "start": "2026-09-24T10:00:00+09:00",
+      "end": "2026-09-24T11:30:00+09:00",
+      "all_day": false
+    },
+    "answer": {
+      "answer_id": "answer-sha256:vector",
+      "decision_id": "decision-parent-vector",
+      "question_revision": "question-sha256:parent-vector",
+      "source_revision_references": {
+        "projects": "observation-sha256:old-projects",
+        "work_items": "observation-sha256:old-work",
+        "calendar": "observation-sha256:calendar-vector"
+      },
+      "actor": "Kaz",
+      "selected_option": "partial",
+      "reason": null,
+      "answered_at": "2026-09-24T08:30:00.000Z",
+      "resulting_proposal_id": "proposal-sha256:vector",
+      "persistence_status": "DURABLE_PERSISTED",
+      "idempotency_key": "phase2-vector-answer"
+    },
+    "proposal": {
+      "proposal_id": "proposal-sha256:vector",
+      "answer_id": "answer-sha256:vector",
+      "decision_id": "decision-parent-vector",
+      "question_revision": "question-sha256:parent-vector",
+      "source_revision_references": {
+        "projects": "observation-sha256:old-projects",
+        "work_items": "observation-sha256:old-work",
+        "calendar": "observation-sha256:calendar-vector"
+      },
+      "created_at": "2026-09-24T08:30:00.000Z",
+      "status": "PROPOSED",
+      "write_allowed": false,
+      "requires_separate_write_approval": true,
+      "notion_write": 0,
+      "calendar_write": 0,
+      "context_write": 0,
+      "change": {
+        "kind": "FOLLOWUP_REQUIRED",
+        "follow_up": "calendar_partial_window",
+        "target_event_ref": "event-0123456789abcdef01234567",
+        "constraint_creation": false
+      }
+    },
+    "expected_followup_id": "decision-91479be7722f4e567494f7e1",
+    "expected_followup_revision": "question-sha256:6d90779bae0a74bb7a323937760a29d9a220bfaf342d30efeb333f48618da10e"
+  }
+}

@@ -21,6 +21,28 @@ function workDto() {
     writes: { notion: 0, calendar: 0, context: 0 } };
 }
 
+function healthy(revision) {
+  return { status: 'ok', complete: true, source_revision: revision };
+}
+
+function todayDto() {
+  return { schema_version: 'kaz-today-plan-v1', origin: 'real_operational_sources',
+    mode: 'read_only', fixture_only: false,
+    sources: { work_items: healthy('work-revision'), calendar: healthy('calendar-revision') },
+    today: { now: [], next: [], waiting: [], availability: [],
+      calendar_state: { unknown: [], classification_revision_current: true } },
+    writes: { notion: 0, calendar: 0, context: 0 } };
+}
+
+function inboxDto() {
+  const sources = Object.fromEntries(['inbox','projects','tasks','calendar','resolution']
+    .map((key) => [key, healthy(key + '-revision')]));
+  return { schema_version: 'kaz-secretary-inbox-0.1', origin: 'real_operational_sources',
+    mode: 'controlled_proposal', fixture_only: false, fixture_fallback: false,
+    sources, projects: [], work_items: [], calendar_events: [], inbox_items: [],
+    writes: { notion: 0, calendar: 0, context: 0 } };
+}
+
 function response(status, body, timing = 'firebase;dur=10, actor;dur=20, upstream;dur=30, serialize;dur=1, total;dur=61') {
   return {
     ok: status >= 200 && status < 300,
@@ -82,6 +104,10 @@ async function main() {
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.mode, 'DIRECT_V2', 'production cutover must explicitly select direct transport');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.baseUrl, 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.canaryCapability, '');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.projects, 'DIRECT_V2');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.work, 'DIRECT_V2');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.today, 'GAS');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.inbox, 'GAS');
   }
 
   {
@@ -91,7 +117,13 @@ async function main() {
       canaryCapability: '' };
     assert.equal(harness.context.PALURUReadTransportV2.selectMode(production, {
       role: 'admin', capabilities: []
-    }), 'DIRECT_V2', 'authorized Kaz admin must use production direct transport');
+    }, 'projects'), 'DIRECT_V2', 'authorized Kaz admin must use production direct transport');
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(production, {
+      role: 'admin', capabilities: []
+    }, 'today'), 'GAS', 'TODAY must default to GAS without an explicit route flag');
+    assert.equal(harness.context.PALURUReadTransportV2.selectMode(production, {
+      role: 'admin', capabilities: []
+    }, 'inbox'), 'GAS', 'INBOX must default to GAS without an explicit route flag');
     assert.equal(harness.context.PALURUReadTransportV2.selectMode(production, {
       role: 'guardian', capabilities: ['home.control']
     }), 'GAS', 'production cutover must not bypass the existing Kaz admin boundary');
@@ -145,6 +177,34 @@ async function main() {
   }
 
   {
+    const calls = [];
+    const harness = load(async (url, options) => {
+      calls.push({ url, options });
+      return response(200, url.endsWith('/today') ? todayDto() : inboxDto());
+    });
+    const phase2Config = { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+      canaryCapability: '', routeModes: { projects: 'DIRECT_V2', work: 'DIRECT_V2',
+        today: 'DIRECT_V2', inbox: 'DIRECT_V2' } };
+    assert.deepEqual(await harness.create({ config: phase2Config }).today(), todayDto());
+    assert.deepEqual(await harness.create({ config: phase2Config }).inbox(), inboxDto());
+    assert.deepEqual(calls.map(item => item.url), [
+      'https://reader.example.test/poc/read-v2/today',
+      'https://reader.example.test/poc/read-v2/inbox'
+    ]);
+    assert(calls.every(item => item.options.method === 'GET'));
+    assert(harness.records.every(item => item.values.transportType === 'DIRECT_V2'));
+  }
+
+  {
+    let calls = 0;
+    const harness = load(async () => { calls += 1; return response(403, { error: { code: 'FORBIDDEN' } }); });
+    const phase2Config = { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+      canaryCapability: '', routeModes: { today: 'DIRECT_V2' } };
+    await assert.rejects(harness.create({ config: phase2Config }).today(), error => error.code === 'FORBIDDEN');
+    assert.equal(calls, 1, 'TODAY direct authorization failure must not retry or fall back to GAS');
+  }
+
+  {
     let calls = 0;
     const harness = load(async () => { calls += 1; return response(403, { error: { code: 'FORBIDDEN' } }); });
     await assert.rejects(harness.create().projects(), error => error.code === 'FORBIDDEN');
@@ -167,10 +227,12 @@ async function main() {
     await assert.rejects(harness.create().work(), error => error.code === 'WORK_CONTRACT_INVALID');
   }
 
-  assert(appSource.includes('selectedKazOsReadTransport_() === "DIRECT_V2"'), 'Projects/Work production selector missing');
+  assert(appSource.includes('selectedKazOsReadTransport_("projects") === "DIRECT_V2"'), 'Projects selector missing');
+  assert(appSource.includes('selectedKazOsReadTransport_("work") === "DIRECT_V2"'), 'Work selector missing');
   assert(appSource.includes('capabilities: Array.isArray(activeMembershipContext?.capabilities)'), 'optional cohort selector must use membership capability');
-  assert(appSource.includes('return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.today.get"))'), 'TODAY must remain on GAS');
-  assert(appSource.includes('buildMemoCredentialPayload("kazOs.inbox.get")'), 'INBOX must remain on GAS');
+  assert(appSource.includes('selectedKazOsReadTransport_("today") === "DIRECT_V2"'), 'TODAY route selector missing');
+  assert(appSource.includes('selectedKazOsReadTransport_("inbox") === "DIRECT_V2"'), 'INBOX route selector missing');
+  assert(configSource.includes("today: 'GAS'") && configSource.includes("inbox: 'GAS'"), 'Phase 2 production defaults must remain GAS');
   const answer = appSource.slice(appSource.indexOf('async function callAuthenticatedKazOsInboxAnswer_'), appSource.indexOf('function applyMembershipCapabilityVisibility_'));
   assert(answer.includes('callHomeControlApi') && !answer.includes('callDirectKazOsRead_'), 'write path must remain on GAS');
 

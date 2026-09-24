@@ -5258,7 +5258,7 @@ function applyAllowedViews_() {
 
 async function callAuthenticatedKazOsProjects_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  if (selectedKazOsReadTransport_() === "DIRECT_V2") {
+  if (selectedKazOsReadTransport_("projects") === "DIRECT_V2") {
     return callDirectKazOsRead_("projects");
   }
   return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.projects.get"));
@@ -5266,13 +5266,13 @@ async function callAuthenticatedKazOsProjects_() {
 
 async function callAuthenticatedKazOsWork_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  if (selectedKazOsReadTransport_() === "DIRECT_V2") {
+  if (selectedKazOsReadTransport_("work") === "DIRECT_V2") {
     return callDirectKazOsRead_("work");
   }
   return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.work.get"));
 }
 
-function selectedKazOsReadTransport_() {
+function selectedKazOsReadTransport_(kind) {
   const config = globalThis.PALURU_READ_TRANSPORT_V2_CONFIG;
   if (config?.mode !== "DIRECT_V2") return "GAS";
   const adapter = globalThis.PALURUReadTransportV2;
@@ -5283,7 +5283,7 @@ function selectedKazOsReadTransport_() {
     role: activeMembershipContext?.role,
     capabilities: Array.isArray(activeMembershipContext?.capabilities)
       ? activeMembershipContext.capabilities : [],
-  });
+  }, kind);
 }
 
 async function callDirectKazOsRead_(kind) {
@@ -5301,16 +5301,24 @@ async function callDirectKazOsRead_(kind) {
   });
   if (kind === "projects") return client.projects();
   if (kind === "work") return client.work();
+  if (kind === "today") return client.today();
+  if (kind === "inbox") return client.inbox();
   throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
 }
 
 async function callAuthenticatedKazOsToday_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  if (selectedKazOsReadTransport_("today") === "DIRECT_V2") {
+    return callDirectKazOsRead_("today");
+  }
   return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.today.get"));
 }
 
 async function callAuthenticatedKazOsInbox_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  if (selectedKazOsReadTransport_("inbox") === "DIRECT_V2") {
+    return callDirectKazOsRead_("inbox");
+  }
   const cryptoApi = globalThis.crypto;
   if (!cryptoApi || typeof cryptoApi.randomUUID !== "function") throw createHomeControlError("KAZ_TRACE_UNAVAILABLE");
   return callHomeControlReadOnlyApi_({

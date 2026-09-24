@@ -3,8 +3,10 @@
 
   const MODES = Object.freeze({ GAS: 'GAS', DIRECT_V2: 'DIRECT_V2' });
   const ROUTES = Object.freeze({
-    projects: Object.freeze({ path: '/v2/read/projects', action: 'kazOs.projects.get' }),
-    work: Object.freeze({ path: '/v2/read/work', action: 'kazOs.work.get' })
+    projects: Object.freeze({ key: 'projects', path: '/v2/read/projects', action: 'kazOs.projects.get' }),
+    work: Object.freeze({ key: 'work', path: '/v2/read/work', action: 'kazOs.work.get' }),
+    today: Object.freeze({ key: 'today', path: '/poc/read-v2/today', action: 'kazOs.today.get' }),
+    inbox: Object.freeze({ key: 'inbox', path: '/poc/read-v2/inbox', action: 'kazOs.inbox.get' })
   });
 
   function codedError_(code, details) {
@@ -29,14 +31,24 @@
         && !/^[a-z][a-z0-9_.-]{2,79}$/.test(canaryCapability)) {
       throw codedError_('DIRECT_READ_CONFIG_INVALID', { transportClassification: 'business' });
     }
-    return Object.freeze({ mode, baseUrl, canaryCapability });
+    const requestedRoutes = source.routeModes && typeof source.routeModes === 'object'
+      ? source.routeModes : {};
+    const routeModes = Object.freeze({
+      projects: requestedRoutes.projects === MODES.GAS ? MODES.GAS : mode,
+      work: requestedRoutes.work === MODES.GAS ? MODES.GAS : mode,
+      today: requestedRoutes.today === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      inbox: requestedRoutes.inbox === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
+    });
+    return Object.freeze({ mode, baseUrl, canaryCapability, routeModes });
   }
 
-  function selectMode(input, membership) {
+  function selectMode(input, membership, routeKey) {
     const config = normalizeConfig_(input);
     const context = membership && typeof membership === 'object' ? membership : {};
     const capabilities = Array.isArray(context.capabilities) ? context.capabilities : [];
-    if (config.mode !== MODES.DIRECT_V2) return MODES.GAS;
+    const selected = routeKey && Object.hasOwn(config.routeModes, routeKey)
+      ? config.routeModes[routeKey] : config.mode;
+    if (selected !== MODES.DIRECT_V2) return MODES.GAS;
     return context.role === 'admin'
       && (!config.canaryCapability || capabilities.includes(config.canaryCapability))
       ? MODES.DIRECT_V2 : MODES.GAS;
@@ -61,6 +73,56 @@
     if (!validateSource_(value, 'work_items') || !writes
         || writes.notion !== 0 || writes.calendar !== 0 || writes.context !== 0) {
       throw codedError_('WORK_CONTRACT_INVALID', { transportClassification: 'parse' });
+    }
+    return value;
+  }
+
+  function zeroWrites_(value) {
+    const writes = value && value.writes;
+    return writes && writes.notion === 0 && writes.calendar === 0 && writes.context === 0;
+  }
+
+  function healthySource_(value) {
+    return value && value.status === 'ok' && value.complete === true
+      && typeof value.source_revision === 'string' && value.source_revision;
+  }
+
+  function validateToday_(value) {
+    const sources = value && value.sources;
+    const today = value && value.today;
+    if (!value || value.schema_version !== 'kaz-today-plan-v1'
+        || value.origin !== 'real_operational_sources' || value.mode !== 'read_only'
+        || value.fixture_only !== false || !zeroWrites_(value)
+        || !healthySource_(sources && sources.work_items)
+        || !healthySource_(sources && sources.calendar)
+        || !today || !Array.isArray(today.now) || today.now.length > 1
+        || !Array.isArray(today.next) || today.next.length > 2
+        || !Array.isArray(today.waiting) || !Array.isArray(today.availability)
+        || !today.calendar_state || !Array.isArray(today.calendar_state.unknown)) {
+      throw codedError_('TODAY_CONTRACT_INVALID', { transportClassification: 'parse' });
+    }
+    return value;
+  }
+
+  function validateInbox_(value) {
+    const sources = value && value.sources;
+    const sourceKeys = ['inbox', 'projects', 'tasks', 'calendar', 'resolution'];
+    if (!value || value.schema_version !== 'kaz-secretary-inbox-0.1'
+        || value.origin !== 'real_operational_sources'
+        || !['read_only_display', 'controlled_proposal'].includes(value.mode)
+        || value.fixture_only !== false || value.fixture_fallback !== false
+        || !zeroWrites_(value) || !sources
+        || sourceKeys.some(key => !healthySource_(sources[key]))
+        || !Array.isArray(value.projects) || value.projects.length > 20
+        || !Array.isArray(value.work_items) || value.work_items.length > 50
+        || !Array.isArray(value.calendar_events) || value.calendar_events.length > 200
+        || !Array.isArray(value.inbox_items) || value.inbox_items.length > 30
+        || value.inbox_items.some(item => !item || item.owner !== 'kaz'
+          || item.decision_requested !== true || item.decision_status !== 'pending'
+          || item.write_allowed !== false || typeof item.question_revision !== 'string'
+          || !item.source_revision_references || !item.answer_contract
+          || item.answer_contract.question_revision !== item.question_revision)) {
+      throw codedError_('INBOX_CONTRACT_INVALID', { transportClassification: 'parse' });
     }
     return value;
   }
@@ -96,7 +158,7 @@
     }
 
     async function read_(route, validator) {
-      if (config.mode !== MODES.DIRECT_V2) {
+      if (config.mode !== MODES.DIRECT_V2 || config.routeModes[route.key] !== MODES.DIRECT_V2) {
         throw codedError_('DIRECT_READ_NOT_SELECTED', { transportClassification: 'business' });
       }
       const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');
@@ -177,7 +239,9 @@
     return Object.freeze({
       mode: config.mode,
       projects: function() { return read_(ROUTES.projects, validateProjects_); },
-      work: function() { return read_(ROUTES.work, validateWork_); }
+      work: function() { return read_(ROUTES.work, validateWork_); },
+      today: function() { return read_(ROUTES.today, validateToday_); },
+      inbox: function() { return read_(ROUTES.inbox, validateInbox_); }
     });
   }
 
