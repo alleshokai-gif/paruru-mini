@@ -57,10 +57,9 @@ The backend release target is the dedicated Cloud Run service
 `kaz-os-read-gateway`. Its deployment contract is
 `tools/kaz-os/deploy/read-transport-v2-canary.json`. Direct-only mode exposes
 health plus Projects/Work GET and CORS preflight only; legacy `/v1/*` and the
-PoC route are unavailable. The manifest intentionally has no revision or
-image digest until an immutable release image is built. Deployment is blocked
-until those two values are recorded; this prevents a tag or old PoC image from
-being treated as the production candidate.
+PoC route are unavailable. The manifest pins the immutable release image
+digest. The actual revision remains empty until the Human deploy step; a tag
+or old PoC image cannot be treated as the production candidate.
 
 Canary acceptance matrix:
 
@@ -103,8 +102,8 @@ fallback, credential change, or data mutation.
 ## Current release state
 
 - Production deployment: not performed.
-- Dedicated service revision and immutable image digest: not created; both are
-  mandatory pre-deploy fields rather than guessed values.
+- Immutable backend image: built and pinned in the deployment manifest;
+  dedicated service revision: not created because deploy has not occurred.
 - Production route: unchanged.
 - PWA default: `GAS`; no canary capability assignment has been made.
 - Dynamic Daily Planning V2: unchanged and
