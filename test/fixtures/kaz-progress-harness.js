@@ -44,6 +44,7 @@ function createHarness(options = {}) {
     if (!actors[subject]) { const error = new Error('AUTH_TOKEN_INVALID'); error.code = 'AUTH_TOKEN_INVALID'; throw error; }
     return Object.freeze({...actors[subject],authBindingKey:'firebase-'+subject});
   };
+  ctx.resolveFirebaseAuthenticatedActorForRead_ = ctx.resolveFirebaseAuthenticatedActor_;
   ctx.readKazOsProgress_ = () => {reads++; return options.provider();};
   ctx.readKazOsProjects_ = () => {reads++; if (!options.projectsProvider) throw Error('PROJECTS_NOT_CONFIGURED'); return options.projectsProvider();};
   ctx.readKazOsWork_ = () => {reads++; if (!options.workProvider) throw Error('WORK_NOT_CONFIGURED'); return options.workProvider();};

@@ -26,7 +26,7 @@ AIは修正対象以外を変更してはならない。修正範囲を広げる
 - 設計・計測なしに無制限のAgent Loop、Tool再投入、Responses APIループ、モデル／Tool呼出しを導入しない
 - Agent URL / Script Propertiesを勝手に変更しない
 - Apps Script Web Editorでコードを修正しない
-- Codexはデプロイを実行しない。`clasp push`、Apps Scriptのデプロイ作成・更新、ライブラリ版の公開・更新、GitHub Pages等の公開操作はすべてユーザー本人が行う
+- Human専用操作はApps Script / GAS Web Appのdeployment作成・更新だけとする。CodexはGAS Web Appのdeployment作成・更新を実行しない。それ以外の開発・公開操作はCodexが担当する。これにはGitのbranch作成・stage・commit・push・必要なmain統合、`clasp push`によるApps Scriptソース反映、Cloud Run deploy、Cloudflare Worker deploy、PWA / GitHub Pages publish、smoke test、rollbackが含まれる。ユーザーへGit操作やCLI deployを委譲しない
 - 実ブラウザ受入前に「完了」と報告しない
 - PWAだけ直してMiniとの契約を変更しない
 - 推測だけで実装修正しない
@@ -38,7 +38,7 @@ AIは修正対象以外を変更してはならない。修正範囲を広げる
 ↓
 テスト
 ↓
-ユーザー本人によるdeploy
+deploy（GAS Web Appのdeployment作成・更新のみユーザー本人。それ以外はCodexが実行）
 ↓
 実ブラウザ受入
 ↓
@@ -114,7 +114,7 @@ PALURUは設計が正本であり、AIは設計者ではなく実装者である
 2. 構文チェックPASS
 3. 既存テストPASS
 4. 対象Repository全体テストPASS
-5. ユーザー本人によるデプロイ
+5. デプロイ（GAS Web Appのdeployment作成・更新のみユーザー本人。それ以外はCodexが実施）
 6. 接続済み実ブラウザ・実PWA・実デプロイでの確認
 7. 受入試験PASS
 
@@ -208,6 +208,15 @@ Phase 1は、Weather read → Calendar read → Home read → multi-tool → Hom
 
 実装後は、実際に変わった内容だけを記録する。
 
+## Human操作最小化（Mandatory）
+
+- ユーザーに要求してよい通常作業は、GAS Web Appのdeployment作成・更新と、実ブラウザ・実PWAでの最終Acceptanceだけ。
+- Gitのstage、commit分割、commit、push、branch作成・切替、merge、main反映、remote同期はCodexが行う。
+- PWA / GitHub Pages publish、Cloud Run、Cloudflare Worker等の非GAS deploy、`clasp push`、smoke、rollbackはCodexが行う。これらはPALURU開発タスクに対する恒久許可であり、タスクごとの追加許可文をユーザーへ要求しない。
+- release plan上必要なcanary flag・公開設定変更も、設計済みscope・rollback・Acceptance条件の範囲内ならCodexが実施する。
+- 「一部だけcommitして」「全部pushしないで」「このコマンドを貼って」「このタスクに限り許可すると宣言して」等、Codexが実行可能な操作をユーザーへ委譲しない。
+- GAS Web Appのdeployment作成・更新が必要な場合だけ、Humanが行う最小手順を提示する。
+
 ## 8A. Git運用（全Repository共通・必須）
 
 Gitの状態確認、変更分離、commit、branch統合、push前監査までを開発タスクの一部として扱う。人間が最後にまとめてcommitする前提で未commit差分を蓄積してはならない。
@@ -235,7 +244,7 @@ Gitの状態確認、変更分離、commit、branch統合、push前監査まで�
 - PWA、API、GCP等のdeployはGit commitと別フェーズとして扱う。
 - `origin/main`とdivergeした汚れたworktree上でpullまたはrebaseしない。
 - diverge時は最新`origin/main`を基点とするclean worktreeまたはclean branchで安全に統合する。
-- mainへの直接pushは原則禁止する。
+- mainへの未検証・場当たり的な直接pushは禁止する。release plan上main反映が必要で、targeted/full test・secret scan・`git diff --check`・unrelated差分非混入を確認済みなら、Codexがfeature branchをmainへ安全に統合しpushしてよい。ユーザーへmain merge/pushを依頼しない。
 - force pushは禁止する。
 - approval capacity等でcommit操作だけ拒否された場合、index直操作、Git plumbing、別経路で迂回しない。未commit状態を保持し、拒否された操作と理由を報告する。
 - push前にbranch差分、targeted/full test、必要なsecret scan、`git diff --check`、unrelated差分の非混入を最終確認する。

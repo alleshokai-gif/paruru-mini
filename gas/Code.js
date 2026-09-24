@@ -68,20 +68,27 @@ function doPost(e) {
     const body = parseBody_(e);
     const action = String(body.action || '').trim();
     transportTrace = typeof createMiniTransportTrace_ === 'function' ? createMiniTransportTrace_(body) : null;
-    recordCodeTransport_(transportTrace, 'REQUEST_RECEIVED', { outcome: 'success' });
+    recordCodeTransport_(transportTrace, 'GAS_EXECUTION_START', { outcome: 'progress' });
 
     if (!action) {
       return json_({ success: false, status: 400, message: 'action is required' });
     }
 
     if (action === 'auth.config.get') {
+      recordCodeTransport_(transportTrace, 'CONFIG_READ_START', { outcome: 'progress' });
       const config = getFirebasePublicAuthConfig_();
-      recordCodeTransport_(transportTrace, 'AUTH_CONFIG_COMPLETE', { outcome: 'success' });
-      return json_({ success: true, data: config, message: 'Firebase auth config loaded' });
+      recordCodeTransport_(transportTrace, 'CONFIG_READ_END', { outcome: 'progress' });
+      const response = json_({ success: true, data: config, message: 'Firebase auth config loaded' });
+      recordCodeTransport_(transportTrace, 'RESPONSE_READY', { outcome: 'success' });
+      return response;
     }
 
     if (action === 'auth.session.resolve') {
       return authSessionResolve_(body, transportTrace);
+    }
+
+    if (action === 'auth.session.invalidate') {
+      return authSessionInvalidate_(body);
     }
 
     if (action === 'auth.registration.create') {

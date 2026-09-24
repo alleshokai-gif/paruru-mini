@@ -5,12 +5,28 @@ function readKazOsWork_(transportTrace) {
   const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
   if (!/^https:\/\/[^\s?#]+\/v1\/projects$/.test(projectsUrl) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
   const url = projectsUrl.replace(/\/v1\/projects$/, '/v1/work');
-  const response = UrlFetchApp.fetch(url, { method: 'get', headers: {
-    Authorization: 'Bearer ' + token,
-    'X-Kaz-Request-Id-Suffix': transportTrace ? transportTrace.requestIdSuffix : ''
-  },
-    muteHttpExceptions: true, followRedirects: false, validateHttpsCertificates: true });
-  if (response.getResponseCode() !== 200) throw homeMembershipError_('KAZ_SOURCE_FAILED');
+  recordKazOsTransport_(transportTrace, 'CLOUD_RUN_START', { outcome: 'progress' });
+  let response;
+  try {
+    response = UrlFetchApp.fetch(url, { method: 'get', headers: {
+      Authorization: 'Bearer ' + token,
+      'X-Kaz-Request-Id-Suffix': transportTrace ? transportTrace.requestIdSuffix : ''
+    },
+      muteHttpExceptions: true, followRedirects: false, validateHttpsCertificates: true });
+  } catch (error) {
+    recordKazOsTransport_(transportTrace, 'CLOUD_RUN_END', {
+      classification: 'unknown', outcome: 'unresolved', errorCode: 'KAZ_SOURCE_FAILED'
+    });
+    throw error;
+  }
+  const httpStatus = response.getResponseCode();
+  recordKazOsTransport_(transportTrace, 'CLOUD_RUN_END', {
+    classification: httpStatus === 200 ? 'none' : 'http',
+    outcome: httpStatus === 200 ? 'progress' : 'unresolved',
+    httpStatus: httpStatus,
+    errorCode: httpStatus === 200 ? null : 'KAZ_SOURCE_FAILED'
+  });
+  if (httpStatus !== 200) throw homeMembershipError_('KAZ_SOURCE_FAILED');
   const text = response.getContentText();
   if (text.length > 262144) throw homeMembershipError_('KAZ_SOURCE_FAILED');
   return JSON.parse(text);

@@ -39,21 +39,27 @@ function safeKazOsInboxTraceErrorCode_(error) {
   return KAZ_OS_INBOX_TRACE_ERROR_CODES_.indexOf(code) >= 0 ? code : 'KAZ_SOURCE_FAILED';
 }
 
-function readKazOsInbox_(trace) {
+function readKazOsInbox_(trace, transportTrace) {
   const props = PropertiesService.getScriptProperties();
   const url = String(props.getProperty('KAZ_OS_INBOX_READ_URL') || '');
   const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
   if (!/^https:\/\/[^\s?#]+\/v1\/inbox$/.test(url) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
   let capture;
+  recordKazOsTransport_(transportTrace, 'CALENDAR_CAPTURE_START', { outcome: 'progress' });
   try {
     capture = buildKazOsCalendarCapture_();
+    recordKazOsTransport_(transportTrace, 'CALENDAR_CAPTURE_END', { outcome: 'progress' });
     recordKazOsInboxTrace_(trace, 'CALENDAR_CAPTURE_OK', { event_count: capture.response.events.length });
   } catch (error) {
+    recordKazOsTransport_(transportTrace, 'CALENDAR_CAPTURE_END', {
+      classification: 'business', outcome: 'unresolved', errorCode: 'KAZ_SOURCE_FAILED'
+    });
     recordKazOsInboxTrace_(trace, 'CALENDAR_CAPTURE_FAILED', { error_code: safeKazOsInboxTraceErrorCode_(error) });
     throw error;
   }
   const eventCount = capture.response.events.length;
   recordKazOsInboxTrace_(trace, 'GATEWAY_POST_STARTED', { event_count: eventCount });
+  recordKazOsTransport_(transportTrace, 'CLOUD_RUN_START', { outcome: 'progress' });
   let response;
   try {
     response = UrlFetchApp.fetch(url, {
@@ -62,10 +68,19 @@ function readKazOsInbox_(trace) {
       followRedirects: false, validateHttpsCertificates: true
     });
   } catch (_) {
+    recordKazOsTransport_(transportTrace, 'CLOUD_RUN_END', {
+      classification: 'unknown', outcome: 'unresolved', errorCode: 'KAZ_SOURCE_FAILED'
+    });
     recordKazOsInboxTrace_(trace, 'GATEWAY_RESPONSE', { event_count: eventCount, error_code: 'KAZ_SOURCE_FAILED' });
     throw homeMembershipError_('KAZ_SOURCE_FAILED');
   }
   const httpStatus = response.getResponseCode();
+  recordKazOsTransport_(transportTrace, 'CLOUD_RUN_END', {
+    classification: httpStatus === 200 ? 'none' : 'http',
+    outcome: httpStatus === 200 ? 'progress' : 'unresolved',
+    httpStatus: httpStatus,
+    errorCode: httpStatus === 200 ? null : 'KAZ_SOURCE_FAILED'
+  });
   recordKazOsInboxTrace_(trace, 'GATEWAY_RESPONSE', { event_count: eventCount, http_status: httpStatus,
     error_code: httpStatus === 200 ? null : 'KAZ_SOURCE_FAILED' });
   if (httpStatus !== 200) throw homeMembershipError_('KAZ_SOURCE_FAILED');

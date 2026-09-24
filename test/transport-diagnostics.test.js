@@ -64,7 +64,8 @@ const saved = cold.api.record(auth, {
 });
 assert.deepEqual(Object.keys(saved), [
   'at', 'requestClass', 'action', 'requestIdSuffix', 'attempt', 'elapsedMs', 'classification',
-  'httpStatus', 'backendStage', 'buildId', 'outcome', 'errorCode'
+  'httpStatus', 'backendStage', 'buildId', 'outcome', 'errorCode', 'transportType',
+  'serverTotalMs', 'firebaseVerifyMs', 'actorResolveMs', 'upstreamMs', 'serializeMs'
 ]);
 assert.equal(saved.requestIdSuffix, '5678abcd');
 assert.equal(saved.outcome, 'retry');
@@ -81,11 +82,12 @@ for (let index = 0; index < 70; index += 1) {
   warm.api.record(request, { attempt: 1, elapsedMs: index, classification: 'none', outcome: 'success' });
 }
 assert.equal(warm.api.list().length, 64, 'diagnostic ledger is not bounded');
-assert(warm.api.list().every(entry => Object.keys(entry).length === 12), 'diagnostic record shape drifted');
+assert(warm.api.list().every(entry => Object.keys(entry).length === 18), 'diagnostic record shape drifted');
 
 assert(htmlSource.indexOf('features/transport/diagnostics.js') < htmlSource.indexOf('features/auth/firebase-auth-runtime.js'), 'diagnostics must load before auth runtime');
 assert(htmlSource.includes('transportDiagnosticsOutput') && htmlSource.includes('安全なメタデータのみ'), 'read-only Settings diagnostics are missing');
 assert(swSource.includes('versioned("features/transport/diagnostics.js")'), 'diagnostics module is missing from the app shell');
+assert(swSource.includes('versioned("features/transport/read-v2.js")'), 'direct read adapter is missing from the app shell');
 assert(swSource.includes('PALURU_TRANSPORT_DIAGNOSTIC') && swSource.includes('NETWORK_FIRST_CACHE_HIT') && swSource.includes('NAVIGATION_FALLBACK'), 'service-worker transition/cache diagnostics are incomplete');
 assert(appSource.includes('navigator.serviceWorker.addEventListener("message"') && appSource.includes('recordServiceWorkerDiagnostic_'), 'service-worker diagnostics are not retained by the page');
 assert(swSource.includes('self.skipWaiting()') && swSource.includes('self.clients.claim()'), 'service-worker version transition safeguards changed');

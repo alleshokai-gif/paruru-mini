@@ -548,6 +548,7 @@ if ("serviceWorker" in navigator) {
 let appAuthenticationState = "booting";
 let normalPwaInitialized = false;
 let firebaseAuthService = null;
+let authenticatedBackgroundReadsTimerId = null;
 
 function canUseHomeControl_() {
   return hasMembershipCapability_("home.control");
@@ -792,6 +793,10 @@ function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
   renderAuthenticationOnboardingState_(state);
   if (state !== "active_member") {
+    if (authenticatedBackgroundReadsTimerId !== null) {
+      window.clearTimeout(authenticatedBackgroundReadsTimerId);
+      authenticatedBackgroundReadsTimerId = null;
+    }
     try { globalThis.PALURUBus?.setActive(false); } catch { /* Bus lifecycle must not block authentication. */ }
     try { globalThis.PALURUBusHub?.setActive(false); } catch { /* Hub lifecycle must not block authentication. */ }
     activeMembershipContext = null;
@@ -840,7 +845,6 @@ function initializeNormalPwaOnce() {
     buildVersion.textContent = `アプリVersion: ${APP_VERSION} / Build: ${globalThis.BUILD_ID}`;
   }
   splash?.classList.add("is-hidden");
-  loadNotificationCandidates({ force: true });
 }
 
 async function initializeAuthenticatedPwa() {
@@ -1008,6 +1012,22 @@ authAdminLinkingRefresh?.addEventListener("click", () => {
   void loadPendingPaluruUserLinks_();
 });
 
+function scheduleAuthenticatedBackgroundReads_(membershipContext, initialViewLoad) {
+  const expectedMemberUserId = String(membershipContext?.memberUserId || "");
+  return Promise.resolve(initialViewLoad).catch(() => null).then(() => {
+    if (authenticatedBackgroundReadsTimerId !== null) {
+      window.clearTimeout(authenticatedBackgroundReadsTimerId);
+    }
+    authenticatedBackgroundReadsTimerId = window.setTimeout(() => {
+      authenticatedBackgroundReadsTimerId = null;
+      if (appAuthenticationState !== "active_member"
+          || activeMembershipContext?.memberUserId !== expectedMemberUserId) return;
+      if (activeView !== "home") void loadNotificationCandidates({ force: true });
+      if (activeMembershipContext.role === "admin") void loadPendingPaluruUserLinks_();
+    }, 0);
+  });
+}
+
 const activateMembershipContext_ = function(membershipContext) {
   activeMembershipContext = {
     memberUserId: membershipContext.memberUserId,
@@ -1025,8 +1045,6 @@ const activateMembershipContext_ = function(membershipContext) {
   appAuthenticationState = "active_member";
   initializeNormalPwaOnce();
   if (authAdminLinkingSection) authAdminLinkingSection.hidden = membershipContext.role !== "admin";
-  if (membershipContext.role === "admin") void loadPendingPaluruUserLinks_();
-  void loadNotificationCandidates({ force: true });
   applyAllowedViews_();
   applyMembershipCapabilityVisibility_();
   document.dispatchEvent(new CustomEvent("paruru:authenticated", {
@@ -1054,7 +1072,9 @@ const activateMembershipContext_ = function(membershipContext) {
   if (/^#kaz-os(?:\/|$)/.test(globalThis.location?.hash || "")) activeView = "kaz-os";
   const restoredView = consumeViewAfterControllerChange_();
   if (restoredView) activeView = restoredView;
-  void switchView(activeView);
+  const initialViewLoad = switchView(activeView);
+  void scheduleAuthenticatedBackgroundReads_(membershipContext, initialViewLoad);
+  return initialViewLoad;
 };
 
 window.addEventListener("load", () => {
@@ -1722,7 +1742,15 @@ async function switchView(viewName) {
   showMessage("", "");
 
   if (resolvedView === "kaz-os") {
-    document.dispatchEvent(new CustomEvent("kaz-os:opened"));
+    const initialReads = [];
+    document.dispatchEvent(new CustomEvent("kaz-os:opened", {
+      detail: {
+        waitUntil(promise) {
+          if (promise && typeof promise.then === "function") initialReads.push(Promise.resolve(promise));
+        },
+      },
+    }));
+    if (initialReads.length > 0) await Promise.allSettled(initialReads);
     return;
   }
 
@@ -2359,6 +2387,7 @@ function logKazOsReadDiagnostic_(diagnostic, action, attempt, elapsedMs, error, 
         classification: error ? diagnostics.classifyError(error) : "none",
         httpStatus: Number.isFinite(error?.httpStatus) ? error.httpStatus : null,
         backendStage: error ? "MINI_RESPONSE" : "MINI_COMPLETE",
+        transportType: "GAS",
         outcome,
         errorCode: error?.code || null,
       });
@@ -2708,7 +2737,7 @@ async function fetchInboxItems() {
 async function loadNotificationCandidates(options = {}) {
   if (!hasMembershipCapability_("home.read")) return [];
   const now = Date.now();
-  if (!options.force && notificationCandidatesState.inFlight) {
+  if (notificationCandidatesState.inFlight) {
     return notificationCandidatesState.inFlight;
   }
 
@@ -5229,12 +5258,50 @@ function applyAllowedViews_() {
 
 async function callAuthenticatedKazOsProjects_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  if (selectedKazOsReadTransport_() === "DIRECT_V2") {
+    return callDirectKazOsRead_("projects");
+  }
   return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.projects.get"));
 }
 
 async function callAuthenticatedKazOsWork_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
+  if (selectedKazOsReadTransport_() === "DIRECT_V2") {
+    return callDirectKazOsRead_("work");
+  }
   return callHomeControlReadOnlyApi_(buildMemoCredentialPayload("kazOs.work.get"));
+}
+
+function selectedKazOsReadTransport_() {
+  const config = globalThis.PALURU_READ_TRANSPORT_V2_CONFIG;
+  if (config?.mode !== "DIRECT_V2") return "GAS";
+  const adapter = globalThis.PALURUReadTransportV2;
+  if (!adapter || typeof adapter.selectMode !== "function") {
+    throw createHomeControlError("DIRECT_READ_UNAVAILABLE");
+  }
+  return adapter.selectMode(config, {
+    role: activeMembershipContext?.role,
+    capabilities: Array.isArray(activeMembershipContext?.capabilities)
+      ? activeMembershipContext.capabilities : [],
+  });
+}
+
+async function callDirectKazOsRead_(kind) {
+  const adapter = globalThis.PALURUReadTransportV2;
+  if (!adapter || typeof adapter.create !== "function" || !firebaseAuthService) {
+    throw createHomeControlError("DIRECT_READ_UNAVAILABLE");
+  }
+  const client = adapter.create({
+    config: globalThis.PALURU_READ_TRANSPORT_V2_CONFIG,
+    fetchImpl: globalThis.fetch.bind(globalThis),
+    getAuthEnvelope: forceRefresh => firebaseAuthService.getAuthEnvelope(forceRefresh),
+    diagnostics: transportDiagnostics_(),
+    timeoutMs: KAZ_OS_READ_TIMEOUT_MS,
+    retryDelayMs: KAZ_OS_READ_RETRY_DELAY_MS,
+  });
+  if (kind === "projects") return client.projects();
+  if (kind === "work") return client.work();
+  throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
 }
 
 async function callAuthenticatedKazOsToday_() {

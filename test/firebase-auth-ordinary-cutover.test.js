@@ -23,13 +23,15 @@ function functionSource(source, name, nextMarker) {
   'gas/FamilyInboxGatewayService.js',
   'gas/HealthGatewayService.js',
   'gas/PetHealthGatewayService.js',
-  'gas/KazOsProgress.js',
   'gas/KazOsInboxAnswer.js',
 ].forEach((relative) => {
   const source = read(relative);
   assert(source.includes('resolveFirebaseAuthenticatedActor_'), `${relative} does not use the Firebase actor resolver`);
   assert(!source.includes('resolveAuthenticatedActor_'), `${relative} still uses the device actor resolver`);
 });
+const kazRead = read('gas/KazOsProgress.js');
+assert(kazRead.includes('resolveFirebaseAuthenticatedActorForRead_'), 'Kaz read does not use the Firebase read actor resolver');
+assert(!kazRead.includes('resolveAuthenticatedActor_'), 'Kaz read still uses the device actor resolver');
 
 const readActor = functionSource(membership, 'resolveHomeAgentReadActor_', 'function resolveHomeAgentControlActor_');
 const controlActor = functionSource(membership, 'resolveHomeAgentControlActor_', 'function getMembershipContext_');

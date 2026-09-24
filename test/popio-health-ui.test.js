@@ -607,7 +607,7 @@ async function run() {
   assert(!cacheSlice.includes('pairingToken') && !cacheSlice.includes('deviceId'), 'PH-DU03 Dashboard cache stores credentials');
   assert(appSource.includes('const PET_HEALTH_DASHBOARD_TIMEOUT_MS = 30000;') && appSource.includes('withPetHealthDashboardTimeout_'), 'PH-TIME01/03 Dashboard Read timeout must be 30 seconds');
   assert(appSource.includes('logPetHealthDashboardDiagnostic_') && appSource.includes('petHealthRequestIdSuffix'), 'PH-OBS02 Dashboard correlation is not retained safely');
-  assert(appSource.indexOf('document.dispatchEvent(new CustomEvent("paruru:authenticated"') < appSource.indexOf('void switchView(activeView);'), 'PH-DU01 authenticated Pet facade is installed after view opening');
+  assert(appSource.indexOf('document.dispatchEvent(new CustomEvent("paruru:authenticated"') < appSource.indexOf('const initialViewLoad = switchView(activeView);'), 'PH-DU01 authenticated Pet facade is installed after view opening');
 
   assert(htmlSource.includes('id="popioHealthView"') && htmlSource.includes('id="popioHealthMount"'), 'Pet Health view/mount missing');
   assert(htmlSource.includes('data-target-view="popio-health"'), 'Pet Health drawer navigation missing');

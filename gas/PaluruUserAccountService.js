@@ -6,34 +6,60 @@ function ensurePaluruUsersSheet_() {
   return ensureMembershipSheet_(SpreadsheetApp.getActiveSpreadsheet(), PALURU_USERS_SHEET_NAME, PALURU_USERS_HEADERS);
 }
 
-function authSessionResolve_(body, transportTrace) {
+function authSessionResolve_(body, transportTrace, overrides) {
   try {
-    const context = getFirebaseMembershipContext_(body);
-    recordAuthTransport_(transportTrace, 'AUTH_SESSION_COMPLETE', { outcome: 'success' });
-    return json_({ success: true, data: context, message: 'authenticated actor resolved' });
+    const context = getFirebaseMembershipContext_(body, overrides, transportTrace);
+    const response = json_({ success: true, data: context, message: 'authenticated actor resolved' });
+    recordAuthTransport_(transportTrace, 'RESPONSE_READY', { outcome: 'success' });
+    return response;
   } catch (error) {
+    invalidateFirebaseAuthenticatedActorReadCache_(body, overrides);
     const code = normalizeAuthRegistrationErrorCode_(error && error.code);
     if (code !== 'IDENTITY_NOT_MAPPED') {
       recordAuthTransport_(transportTrace, 'AUTH_SESSION_REJECTED', {
         classification: 'business', outcome: 'unresolved', errorCode: code
       });
-      return json_({ success: false, data: {}, error: { code: code }, message: code });
+      const response = json_({ success: false, data: {}, error: { code: code }, message: code });
+      recordAuthTransport_(transportTrace, 'RESPONSE_READY', {
+        classification: 'business', outcome: 'unresolved', errorCode: code
+      });
+      return response;
     }
     try {
-      const verified = verifyFirebaseIdToken_(body && body.auth && body.auth.idToken);
+      const verified = verifyFirebaseIdToken_(body && body.auth && body.auth.idToken, overrides && overrides.verifier);
       const account = getPaluruUserByIdentity_(verified.provider, verified.providerSubject);
       const nextCode = account && account.status === 'pending_link' ? 'MEMBER_LINK_PENDING' : 'REGISTRATION_REQUIRED';
       recordAuthTransport_(transportTrace, 'AUTH_SESSION_REJECTED', {
         classification: 'business', outcome: 'unresolved', errorCode: nextCode
       });
-      return json_({ success: false, data: {}, error: { code: nextCode }, message: nextCode });
+      const response = json_({ success: false, data: {}, error: { code: nextCode }, message: nextCode });
+      recordAuthTransport_(transportTrace, 'RESPONSE_READY', {
+        classification: 'business', outcome: 'unresolved', errorCode: nextCode
+      });
+      return response;
     } catch (lookupError) {
       const lookupCode = normalizeAuthRegistrationErrorCode_(lookupError && lookupError.code);
       recordAuthTransport_(transportTrace, 'AUTH_SESSION_REJECTED', {
         classification: 'business', outcome: 'unresolved', errorCode: lookupCode
       });
-      return json_({ success: false, data: {}, error: { code: lookupCode }, message: lookupCode });
+      const response = json_({ success: false, data: {}, error: { code: lookupCode }, message: lookupCode });
+      recordAuthTransport_(transportTrace, 'RESPONSE_READY', {
+        classification: 'business', outcome: 'unresolved', errorCode: lookupCode
+      });
+      return response;
     }
+  }
+}
+
+function authSessionInvalidate_(body, overrides) {
+  try {
+    resolveFirebaseAuthenticatedActor_(body || {}, overrides);
+    invalidateFirebaseAuthenticatedActorReadCache_(body, overrides);
+    return json_({ success: true, data: {}, message: 'authenticated read cache invalidated' });
+  } catch (error) {
+    const code = normalizeAuthRegistrationErrorCode_(error && error.code);
+    invalidateFirebaseAuthenticatedActorReadCache_(body, overrides);
+    return json_({ success: false, data: {}, error: { code: code }, message: code });
   }
 }
 

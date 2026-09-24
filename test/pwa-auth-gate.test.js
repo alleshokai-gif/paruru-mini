@@ -9,6 +9,7 @@ const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const runtime = fs.readFileSync(path.join(root, 'features', 'auth', 'firebase-auth-runtime.js'), 'utf8');
 const authCore = fs.readFileSync(path.join(root, 'features', 'auth', 'firebase-auth.js'), 'utf8');
+const gasCode = fs.readFileSync(path.join(root, 'gas', 'Code.js'), 'utf8');
 
 assert(html.includes('id="authGoogleButton"'), 'GIS Google button host is missing');
 assert(html.includes('id="authLogoutButton"') && html.includes('id="authAccountSwitchButton"'), 'logout/account switch controls are missing');
@@ -22,6 +23,12 @@ assert(runtime.includes("readOnlyRequest_(url, { action: 'auth.session.resolve',
 assert(runtime.includes("for (let attempt = 0; attempt < 2; attempt += 1)"), 'read-only auth transport retry budget must be exactly one retry');
 assert(runtime.includes("response.status >= 500 && response.status <= 599"), 'transient 5xx retry boundary missing');
 assert(runtime.includes("codedError_('TRANSPORT_FAILURE')"), 'transport failure classification missing');
+assert(runtime.includes("action: 'auth.session.invalidate'"), 'logout cache invalidation route missing');
+const invalidateStart = runtime.indexOf('async function invalidateSession_');
+const invalidateEnd = runtime.indexOf('async function parseEnvelope_', invalidateStart);
+const invalidateSource = runtime.slice(invalidateStart, invalidateEnd);
+assert(invalidateStart >= 0 && invalidateSource.includes('fetchWithTimeout_') && !invalidateSource.includes('for (let attempt'), 'logout invalidation must remain non-retrying');
+assert(gasCode.includes("action === 'auth.session.invalidate'"), 'Mini logout invalidation route missing');
 assert(app.includes('PALURUサーバーに接続できませんでした。再試行しても復旧しませんでした。'), 'transport failure UI remains misclassified as authentication');
 
 [

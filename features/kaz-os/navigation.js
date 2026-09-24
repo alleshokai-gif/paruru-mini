@@ -4,6 +4,7 @@
   const byId = id => document.getElementById(id);
   let context = null, projectsApi = null, workApi = null, todayApi = null, inboxApi = null, inboxAnswerApi = null;
   let projectEpoch = 0, workEpoch = 0, todayEpoch = 0, inboxEpoch = 0, projectExpiry = null, workExpiry = null, todayExpiry = null, inboxExpiry = null;
+  let targetViewHashChangePending = false;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
   const isKazHash = () => /^#kaz-os(?:\/|$)/.test(location.hash);
   const active = () => byId('kazOsView')?.classList.contains('is-active');
@@ -230,7 +231,7 @@
     }
   }
 
-  function render() {
+  async function render() {
     if (!allowed()) {
       clear();
       return;
@@ -242,10 +243,10 @@
       if (a.dataset.kazPage === selection.page) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
     });
-    if (selection.page === 'today') void renderToday(selection);
-    else if (selection.page === 'inbox') void renderInbox(selection);
-    else if (selection.page === 'work') void renderWork(selection);
-    else void renderProjects(selection);
+    if (selection.page === 'today') await renderToday(selection);
+    else if (selection.page === 'inbox') await renderInbox(selection);
+    else if (selection.page === 'work') await renderWork(selection);
+    else await renderProjects(selection);
   }
 
   function requestView() {
@@ -264,7 +265,7 @@
     if (entry) entry.hidden = !allowed();
     const status = byId('kazOsEntryStatus');
     if (status) status.textContent = 'TODAY・Work Items・Projects・Secretary Questions';
-    if (allowed() && active()) render();
+    if (allowed() && active()) void render();
   });
 
   document.addEventListener('kaz-os:locked', () => {
@@ -278,17 +279,28 @@
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = true;
   });
-  document.addEventListener('kaz-os:opened', render);
+  document.addEventListener('kaz-os:opened', event => {
+    const initialRead = render();
+    if (event?.detail && typeof event.detail.waitUntil === 'function') event.detail.waitUntil(initialRead);
+  });
 
   document.querySelectorAll('[data-target-view="kaz-os"]').forEach(button => button.addEventListener('click', () => {
     if (!allowed()) return;
-    if (location.hash !== '#kaz-os/today') location.hash = '#kaz-os/today';
+    if (location.hash !== '#kaz-os/today') {
+      targetViewHashChangePending = true;
+      location.hash = '#kaz-os/today';
+    }
   }, true));
   window.addEventListener('hashchange', () => {
     if (isKazHash()) {
-      requestView();
+      const openedByTargetViewRequest = targetViewHashChangePending && active();
+      targetViewHashChangePending = false;
+      if (!openedByTargetViewRequest) requestView();
       if (allowed()) window.scrollTo(0, 0);
-    } else clear();
+    } else {
+      targetViewHashChangePending = false;
+      clear();
+    }
   });
   document.querySelectorAll('[data-target-view]').forEach(button => button.addEventListener('click', () => {
     if (button.dataset.targetView !== 'kaz-os') clear();

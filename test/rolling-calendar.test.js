@@ -34,7 +34,7 @@ function classList() {
 function element(selector) {
   if (elements.has(selector)) return elements.get(selector);
   const value = {
-    value: '', textContent: '', innerHTML: '', dataset: {}, checked: false, disabled: false,
+    value: '', textContent: '', innerHTML: '', dataset: {}, checked: false, disabled: false, options: [],
     classList: classList(),
     addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; },
     closest() { return null; }, setAttribute() {}, getAttribute() { return ''; },
@@ -49,7 +49,7 @@ function element(selector) {
 const storage = new Map();
 const context = {
   console, Date, Intl, JSON, Math, Number, Object, Array, String, RegExp, Error,
-  Uint8Array, URL, Promise,
+  Uint8Array, URL, Promise, AbortController, setTimeout, clearTimeout,
   crypto: { randomUUID: () => '11111111-1111-4111-8111-111111111111', getRandomValues: (bytes) => bytes.fill(1) },
   localStorage: {
     getItem: (key) => storage.get(key) || null,
@@ -65,11 +65,14 @@ const context = {
   },
   document: {
     visibilityState: 'hidden',
+    body: { classList: classList() },
     documentElement: { clientHeight: 800 },
     querySelector: element,
     querySelectorAll: () => [],
     addEventListener: (type, handler) => { documentHandlers[type] = handler; },
+    dispatchEvent: event => documentHandlers[event.type]?.(event),
   },
+  CustomEvent: class CustomEvent { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
   requestAnimationFrame: (handler) => handler(),
   FormData: function() { return { get: () => 'Normal' }; },
   fetch: (...args) => fetchImpl(...args),
@@ -272,6 +275,89 @@ test('today failure preserves previous display and retry UI', async () => {
   assert(items.length === 1 && items[0].id === 'previous-task', 'previous state was cleared');
   assert(element('#todayParuruList').innerHTML.includes('previous-task'), 'previous card was not restored');
   assert(element('#todayParuruList').innerHTML.includes('data-notification-refresh'), 'retry UI missing');
+});
+
+test('forced notification reads share one in-flight request and expose before/after call counts', async () => {
+  vm.runInContext('notificationCandidatesState = { lastFetchedAt: 0, inFlight: null, items: [], totalCount: 0, includeTomorrow: false, warnings: [] }', context);
+  requests.length = 0;
+  let release;
+  fetchImpl = (url, options) => {
+    requests.push(JSON.stringify({ url: String(url), body: options && options.body || '' }));
+    return new Promise(resolve => { release = () => resolve(response({ success: true, items: [], count: 0, warnings: [] })); });
+  };
+  const first = call('loadNotificationCandidates', { force: true });
+  const second = call('loadNotificationCandidates', { force: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert(requests.length === 1, 'duplicate forced notification calls did not single-flight');
+  release();
+  await Promise.all([first, second]);
+  assert(requests.length === 1, 'notification call count after single-flight was not one');
+  console.log('PASS notification call-count evidence before=2 after=1');
+});
+
+test('failed notification in-flight clears and a later forced call retries fresh', async () => {
+  vm.runInContext('notificationCandidatesState = { lastFetchedAt: 0, inFlight: null, items: [], totalCount: 0, includeTomorrow: false, warnings: [] }', context);
+  let calls = 0;
+  fetchImpl = async () => {
+    calls++;
+    if (calls === 1) throw new Error('synthetic failure');
+    return response({ success: true, items: [], count: 0, warnings: [] });
+  };
+  await call('loadNotificationCandidates', { force: true });
+  await call('loadNotificationCandidates', { force: true });
+  assert(calls === 2, 'failed in-flight state blocked the next fresh request');
+});
+
+test('visibility resume reuses an already in-flight forced notification read', async () => {
+  vm.runInContext('normalPwaInitialized = true; notificationCandidatesState = { lastFetchedAt: 0, inFlight: null, items: [], totalCount: 0, includeTomorrow: false, warnings: [] }', context);
+  let calls = 0;
+  let release;
+  fetchImpl = () => {
+    calls++;
+    return new Promise(resolve => { release = () => resolve(response({ success: true, items: [], count: 0, warnings: [] })); });
+  };
+  const pending = call('loadNotificationCandidates', { force: true });
+  await new Promise(resolve => setImmediate(resolve));
+  context.document.visibilityState = 'visible';
+  documentHandlers.visibilitychange();
+  assert(calls === 1, 'visibility resume bypassed the in-flight notification read');
+  release();
+  await pending;
+});
+
+test('cold authenticated Kaz start prioritizes one active read before notification and admin background reads', async () => {
+  requests.length = 0;
+  scheduled.length = 0;
+  context.location.hash = '#kaz-os/today';
+  vm.runInContext('normalPwaInitialized = false; activeView = "home"; notificationCandidatesState = { lastFetchedAt: 0, inFlight: null, items: [], totalCount: 0, includeTomorrow: false, warnings: [] }', context);
+  fetchImpl = async (url, options) => {
+    const body = JSON.parse(options?.body || '{}');
+    requests.push(JSON.stringify({ url: String(url), body: options?.body || '' }));
+    if (body.action === 'kazOs.today.get') return response({ success: true, data: { schema_version: 'kaz-today-plan-v1' } });
+    if (body.action === 'auth.registration.pending.list') return response({ success: true, data: { users: [], members: [] } });
+    return response({ success: true, items: [], count: 0, warnings: [] });
+  };
+  documentHandlers['kaz-os:opened'] = event => {
+    const read = call('callAuthenticatedKazOsToday_');
+    read.catch(error => { context.testKazReadError = String(error?.code || error?.message || error); });
+    event.detail.waitUntil(read);
+  };
+  context.testMembershipContext = {
+    memberUserId: 'father', displayName: '父', role: 'admin', calendarSuffix: '（父）', addressTerms: {},
+    capabilities: ['home.read'], allowedViews: ['home', 'kaz-os'],
+  };
+  await vm.runInContext('activateMembershipContext_(testMembershipContext)', context);
+  const initialActions = requests.map(raw => JSON.parse(JSON.parse(raw).body).action);
+  assert(JSON.stringify(initialActions) === JSON.stringify(['kazOs.today.get']), `background reads started before the active Kaz initial read completed: ${JSON.stringify(initialActions)} error=${context.testKazReadError || ''}`);
+  await new Promise(resolve => setImmediate(resolve));
+  const backgroundTimer = scheduled.find(item => item.delay === 0);
+  assert(backgroundTimer, 'authenticated background reads were not scheduled');
+  backgroundTimer.handler();
+  await new Promise(resolve => setImmediate(resolve));
+  const allActions = requests.map(raw => JSON.parse(JSON.parse(raw).body).action);
+  assert(allActions.filter(action => action === 'kazOs.today.get').length === 1, 'active Kaz view made duplicate initial reads');
+  assert(allActions.filter(action => action === 'todayParuruContext').length === 1, 'notification background read count was not one');
+  assert(allActions.filter(action => action === 'auth.registration.pending.list').length === 1, 'admin background read count was not one');
 });
 
 test('visibility resume forces one aggregate refetch', async () => {
