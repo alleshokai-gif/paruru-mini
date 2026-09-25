@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260925-memo-compact-v6");
-// Release: v20260925-memo-compact-v6
+importScripts("./build.js?v=v20260925-navigation-final-v7");
+// Release: v20260925-navigation-final-v7
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
