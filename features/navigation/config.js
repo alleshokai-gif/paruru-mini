@@ -10,7 +10,7 @@
 
   const items = Object.freeze([
     { id: "inbox", label: "Inbox", note: "保存した項目", icon: "📥", view: "inbox", menu: true, section: "毎日のこと" },
-    { id: "infection", label: "感染症ウォッチ", note: "川崎市の感染症情報", icon: "🦠", href: infectionWatchUrl.toString(), external: true, home: true, menu: true, section: "地域の情報" },
+    { id: "infection", label: "感染症ウォッチ", note: "川崎市の感染症情報", icon: "🦠", view: "infection", src: infectionWatchUrl.toString(), home: true, menu: true, section: "地域の情報" },
     { id: "bus", label: "バス", note: "バスの情報", icon: "🚌", view: "bus", home: true, menu: true, section: "地域の情報" },
     { id: "nurse", label: "ナースおかん", note: "健康記録", icon: "🌿", view: "nurse-okan", home: true, menu: true, section: "暮らし" },
     { id: "popio", label: "ぽぴお", note: "ペットの健康", icon: "🐶", view: "popio-health", home: true, menu: true, section: "暮らし" },
