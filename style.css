@@ -3465,26 +3465,6 @@ body:not(.is-authenticated) .drawer-overlay {
 .paw-close-button:focus-visible img {
   filter: drop-shadow(0 0 2px var(--accent-dark)) drop-shadow(0 0 2px var(--accent-dark));
 }
-#homeView > .paruru-hero {
-  grid-template-columns: 96px minmax(0, 1fr);
-  min-height: 100px;
-  align-items: center;
-  overflow: visible;
-}
-#homeView > .paruru-hero .paruru-character {
-  width: 96px;
-  min-height: 100px;
-  overflow: visible;
-}
-#homeView > .paruru-hero .paruru-image {
-  display: block;
-  width: 88px;
-  max-width: 88px;
-  height: auto;
-  max-height: none;
-  aspect-ratio: auto;
-  object-fit: contain;
-}
 .home-feature-grid {
   column-gap: 10px;
   row-gap: 10px;
