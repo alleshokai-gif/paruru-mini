@@ -793,6 +793,7 @@ function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
   renderAuthenticationOnboardingState_(state);
   if (state !== "active_member") {
+    try { globalThis.PALURUInfectionWatchCard?.setVisible(false); } catch { /* Public summary must not block auth lock. */ }
     if (authenticatedBackgroundReadsTimerId !== null) {
       window.clearTimeout(authenticatedBackgroundReadsTimerId);
       authenticatedBackgroundReadsTimerId = null;
@@ -5383,6 +5384,7 @@ async function callAuthenticatedKazOsInboxAnswer_(answer) {
 
 function applyMembershipCapabilityVisibility_() {
   const canReadHome = hasMembershipCapability_("home.read");
+  try { globalThis.PALURUInfectionWatchCard?.setVisible(canReadHome && document.body.classList.contains("is-authenticated")); } catch { /* Public summary is isolated from PALURU home state. */ }
   const canSubmitFamilyInbox = hasMembershipCapability_("family.inbox.submit");
   if (todayParuru) todayParuru.hidden = !canReadHome;
   const consultOption = askPaluruButton && typeof askPaluruButton.closest === "function"
