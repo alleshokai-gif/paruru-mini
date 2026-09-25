@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./assets/icons/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./style.css?v=v20260925-navigation-polish-v5">
+  <link rel="stylesheet" href="./style.css?v=v20260925-memo-compact-v6">
   <link rel="stylesheet" href="./features/bus/bus.css">
   <link rel="stylesheet" href="./features/bus/hub.css">
   <link rel="stylesheet" href="./features/bus/journey.css">
@@ -98,75 +98,33 @@
 
         <section id="homeMemoQuick" class="home-memo-quick" aria-labelledby="homeMemoQuickTitle">
           <h2 id="homeMemoQuickTitle">ぱるるメモ</h2>
-          <div class="home-memo-quick-entry">
-            <input id="homeMemoQuickInput" type="text" placeholder="思いついたことを書く…" aria-label="ぱるるメモの下書き">
-            <button id="homeMemoQuickOpen" type="button" aria-label="ぱるるメモを書く" aria-controls="homeMemoDetails">メモ</button>
-          </div>
-        </section>
-
-        <details id="homeMemoDetails" class="home-memo-details">
-          <summary>ぱるるメモを書く</summary>
-          <form id="inboxForm" class="inbox-form">
-          <label class="field">
-            <span>&#24605;&#12356;&#12388;&#12356;&#12383;&#12371;&#12392;&#12434;&#26360;&#12367;</span>
-            <textarea id="memo" name="memo" rows="7" placeholder="&#29275;&#20083;&#36023;&#12358;" required></textarea>
-          </label>
-
-          <label class="field">
-            <span>&#12459;&#12486;&#12468;&#12522;</span>
-            <select id="category" name="category">
-              <option value="">AI&#12395;&#12362;&#12414;&#12363;&#12379;</option>
-              <option value="&#26410;&#20998;&#39006;">&#26410;&#20998;&#39006;</option>
-              <option value="&#23478;">&#23478;</option>
-              <option value="&#20181;&#20107;">&#20181;&#20107;</option>
-              <option value="&#36023;&#12356;&#29289;">&#36023;&#12356;&#29289;</option>
-              <option value="&#23398;&#26657;">&#23398;&#26657;</option>
-              <option value="&#34220;&#23616;">&#34220;&#23616;</option>
-              <option value="&#38283;&#30330;">&#38283;&#30330;</option>
-              <option value="&#12362;&#37329;">&#12362;&#37329;</option>
-            </select>
-          </label>
-
-          <fieldset class="priority-group">
-            <legend>&#20778;&#20808;&#24230;</legend>
-            <label>
-              <input type="radio" name="priority" value="" checked>
-              <span>AI&#12395;&#12362;&#12414;&#12363;&#12379;</span>
+          <form id="inboxForm" class="inbox-form home-memo-inline">
+            <label class="field home-memo-inline-field">
+              <span class="sr-only">思いついたことを書く</span>
+              <textarea id="memo" name="memo" rows="3" placeholder="思いついたことを書く…" required></textarea>
             </label>
-            <label>
-              <input type="radio" name="priority" value="Low">
-              <span>Low</span>
-            </label>
-            <label>
-              <input type="radio" name="priority" value="Normal">
-              <span>Normal</span>
-            </label>
-            <label>
-              <input type="radio" name="priority" value="High">
-              <span>High</span>
-            </label>
-          </fieldset>
-
-          <div class="paluru-action-buttons">
-            <div class="paluru-action-option">
-              <button id="askPaluruButton" class="secondary-button" type="button" data-home-input-route="consult"></button>
-              <p id="consultActionHint" class="paluru-action-hint"></p>
+            <input id="category" name="category" type="hidden" value="">
+            <input type="hidden" name="priority" value="" checked>
+            <div class="paluru-action-buttons home-memo-actions">
+              <div class="paluru-action-option">
+                <button id="askPaluruButton" class="secondary-button" type="button" data-home-input-route="consult">💭 相談する</button>
+                <p id="consultActionHint" class="paluru-action-hint"></p>
+              </div>
+              <div class="paluru-action-option">
+                <button id="saveToPaluruButton" type="button" data-home-input-route="register">📝 登録する</button>
+                <p id="registerActionHint" class="paluru-action-hint"></p>
+              </div>
             </div>
-            <div class="paluru-action-option">
-              <button id="saveToPaluruButton" type="button" data-home-input-route="register"></button>
-              <p id="registerActionHint" class="paluru-action-hint"></p>
-            </div>
-          </div>
-          <section id="homeIntentConfirm" class="home-intent-confirm is-hidden" aria-live="polite" aria-label="入力内容の確認">
-            <p id="homeIntentConfirmMessage"></p>
-            <div class="home-intent-confirm-actions">
-              <button id="homeIntentConfirmSwitch" type="button"></button>
-              <button id="homeIntentConfirmKeep" class="secondary-button" type="button"></button>
-              <button id="homeIntentConfirmCancel" class="secondary-button" type="button">キャンセル</button>
-            </div>
-          </section>
+            <section id="homeIntentConfirm" class="home-intent-confirm is-hidden" aria-live="polite" aria-label="入力内容の確認">
+              <p id="homeIntentConfirmMessage"></p>
+              <div class="home-intent-confirm-actions">
+                <button id="homeIntentConfirmSwitch" type="button"></button>
+                <button id="homeIntentConfirmKeep" class="secondary-button" type="button"></button>
+                <button id="homeIntentConfirmCancel" class="secondary-button" type="button">キャンセル</button>
+              </div>
+            </section>
           </form>
-        </details>
+        </section>
 
         <section id="homeFollowup" class="followup-panel is-hidden" aria-live="polite">
           <p class="followup-label">&#30906;&#35469;&#12375;&#12383;&#12356;&#12371;&#12392;</p>
@@ -529,16 +487,16 @@
       <div id="familyInboxReviewCandidates" class="family-inbox-review-candidates"></div>
     </dialog>
 
-    <script src="./build.js?v=v20260925-navigation-polish-v5" defer></script>
-    <script src="./features/navigation/config.js?v=v20260925-navigation-polish-v5" defer></script>
+    <script src="./build.js?v=v20260925-memo-compact-v6" defer></script>
+    <script src="./features/navigation/config.js?v=v20260925-memo-compact-v6" defer></script>
     <script src="./features/transport/diagnostics.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/transport/read-v2-config.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/transport/read-v2.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/auth/firebase-auth.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/auth/firebase-auth-runtime.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/nurse-okan/health-routine.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
-    <script src="./app.js?v=v20260925-navigation-polish-v5" defer></script>
-    <script src="./features/nurse-okan/nurse-okan.js?v=v20260925-navigation-polish-v5" defer></script>
+    <script src="./app.js?v=v20260925-memo-compact-v6" defer></script>
+    <script src="./features/nurse-okan/nurse-okan.js?v=v20260925-memo-compact-v6" defer></script>
     <script src="./features/popio-health/popio-health.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/bus/config.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/bus/bus.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
