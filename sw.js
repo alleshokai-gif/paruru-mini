@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260925-navigation-redesign-v3");
-// Release: v20260925-navigation-redesign-v3
+importScripts("./build.js?v=v20260925-navigation-redesign-v4");
+// Release: v20260925-navigation-redesign-v4
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

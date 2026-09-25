@@ -80,7 +80,7 @@ const htmlIds = [...index.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 assert.equal(new Set(htmlIds).size, htmlIds.length, 'duplicate HTML IDs introduced');
 assert.equal(new Set(config.map(item => item.id)).size, config.length, 'navigation config has duplicate item IDs');
 assert(index.includes('data-target-view="home"') && index.includes('data-target-view="inbox"') && index.includes('data-target-view="settings"'), 'bottom navigation contract changed');
-assert(index.includes('data-target-view="inbox">Inbox</button>') && byId('inbox').label === 'Inbox', 'Inbox label is inconsistent');
+assert(index.includes('data-target-view="inbox">Inbox</button>') && index.includes('<h1>Inbox</h1>') && !index.includes('受信箱') && byId('inbox').label === 'Inbox', 'Inbox label is inconsistent');
 assert(byId('today').anchor === 'todayParuru' && byId('kaz-today').page === 'today' && byId('kaz-today').label !== byId('today').label, 'distinct Today routes were incorrectly conflated');
 
 const infection = byId('infection');
@@ -104,7 +104,7 @@ assert(style.includes('width: min(90vw, 360px)') && style.includes('body.drawer-
 assert(style.includes('overflow-x: clip'), 'mobile horizontal overflow guard missing');
 assert(app.includes('Build: ${globalThis.BUILD_ID}'), 'Build ID display is missing');
 const buildId = build.match(/BUILD_ID\s*=\s*"([^"]+)"/)?.[1];
-assert(buildId === 'v20260925-navigation-redesign-v3', 'Build ID not updated for the navigation/SW change');
+assert(buildId === 'v20260925-navigation-redesign-v4', 'Build ID not updated for the navigation/SW change');
 assert(sw.includes(`importScripts("./build.js?v=${buildId}")`), 'Service Worker still uses an old Build ID');
 assert(sw.includes('versioned("assets/icons/paw-menu.svg")') && sw.includes('versioned("assets/icons/paw-close.svg")'), 'paw assets are missing from offline cache');
 assert(index.includes(`./style.css?v=${buildId}`) && index.includes(`./features/navigation/config.js?v=${buildId}`), 'updated UI assets are not versioned consistently');
