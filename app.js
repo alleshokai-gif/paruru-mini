@@ -5286,7 +5286,7 @@ function selectedKazOsReadTransport_(kind) {
   }, kind);
 }
 
-async function callDirectKazOsRead_(kind) {
+async function callDirectKazOsRead_(kind, requestId) {
   const adapter = globalThis.PALURUReadTransportV2;
   if (!adapter || typeof adapter.create !== "function" || !firebaseAuthService) {
     throw createHomeControlError("DIRECT_READ_UNAVAILABLE");
@@ -5302,7 +5302,7 @@ async function callDirectKazOsRead_(kind) {
   if (kind === "projects") return client.projects();
   if (kind === "work") return client.work();
   if (kind === "today") return client.today();
-  if (kind === "inbox") return client.inbox();
+  if (kind === "inbox") return client.inbox(requestId ? { requestId } : undefined);
   throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
 }
 
@@ -5316,15 +5316,22 @@ async function callAuthenticatedKazOsToday_() {
 
 async function callAuthenticatedKazOsInbox_() {
   if (!isViewAllowed_("kaz-os") || activeMembershipContext?.role !== "admin") throw createHomeControlError("FORBIDDEN");
-  if (selectedKazOsReadTransport_("inbox") === "DIRECT_V2") {
-    return callDirectKazOsRead_("inbox");
-  }
   const cryptoApi = globalThis.crypto;
   if (!cryptoApi || typeof cryptoApi.randomUUID !== "function") throw createHomeControlError("KAZ_TRACE_UNAVAILABLE");
-  return callHomeControlReadOnlyApi_({
-    ...buildMemoCredentialPayload("kazOs.inbox.get"),
-    request_id: cryptoApi.randomUUID(),
-  });
+  const requestId = cryptoApi.randomUUID();
+  const diagnostics = transportDiagnostics_();
+  const diagnostic = diagnostics?.start("kaz_read", "kazOs.inbox.get", requestId);
+  const transportType = selectedKazOsReadTransport_("inbox");
+  const result = transportType === "DIRECT_V2"
+    ? await callDirectKazOsRead_("inbox", requestId)
+    : await callHomeControlReadOnlyApi_({
+      ...buildMemoCredentialPayload("kazOs.inbox.get"),
+      request_id: requestId,
+    });
+  if (diagnostics?.recordInboxRevisionFingerprints) {
+    await diagnostics.recordInboxRevisionFingerprints(diagnostic, result, transportType);
+  }
+  return result;
 }
 
 async function callAuthenticatedKazOsInboxAnswer_(answer) {

@@ -206,6 +206,12 @@ async function main() {
     ]);
     assert(calls.every(item => item.options.method === 'GET'));
     assert(harness.records.every(item => item.values.transportType === 'DIRECT_V2'));
+    await harness.create({ fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return response(200, inboxDto());
+    }, config: phase2Config }).inbox({ requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-12345678abcd' });
+    assert.equal(calls.at(-1).options.headers['X-Paluru-Request-Id'],
+      'aaaaaaaa-aaaa-4aaa-8aaa-12345678abcd', 'INBOX correlation ID must be supplied by the caller when available');
 
     const multipleNow = todayDto();
     multipleNow.today.now = { kind: 'multiple', items: [{ id: 'now-one' }, { id: 'now-two' }],
@@ -272,7 +278,9 @@ async function main() {
   assert(appSource.includes('selectedKazOsReadTransport_("work") === "DIRECT_V2"'), 'Work selector missing');
   assert(appSource.includes('capabilities: Array.isArray(activeMembershipContext?.capabilities)'), 'optional cohort selector must use membership capability');
   assert(appSource.includes('selectedKazOsReadTransport_("today") === "DIRECT_V2"'), 'TODAY route selector missing');
-  assert(appSource.includes('selectedKazOsReadTransport_("inbox") === "DIRECT_V2"'), 'INBOX route selector missing');
+  assert(appSource.includes('const transportType = selectedKazOsReadTransport_("inbox")'), 'INBOX route selector missing');
+  assert(appSource.includes('recordInboxRevisionFingerprints') && appSource.includes('callDirectKazOsRead_("inbox", requestId)'),
+    'INBOX revision fingerprints must use the safe diagnostic helper and shared request correlation');
   assert(configSource.includes('baseUrl: phase2Canary ? phase2CanaryBaseUrl : stableBaseUrl')
     && configSource.includes("today: phase2Canary ? 'DIRECT_V2' : 'GAS'")
     && configSource.includes("inbox: phase2Canary ? 'DIRECT_V2' : 'GAS'"),

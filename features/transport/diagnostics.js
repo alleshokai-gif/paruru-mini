@@ -15,7 +15,9 @@
   const SAFE_KEYS = Object.freeze([
     'at', 'requestClass', 'action', 'requestIdSuffix', 'attempt', 'elapsedMs', 'classification',
     'httpStatus', 'backendStage', 'buildId', 'outcome', 'errorCode', 'transportType',
-    'serverTotalMs', 'firebaseVerifyMs', 'actorResolveMs', 'upstreamMs', 'serializeMs'
+    'serverTotalMs', 'firebaseVerifyMs', 'actorResolveMs', 'upstreamMs', 'serializeMs',
+    'questionIdFingerprint', 'questionRevisionFingerprint', 'projectsRevisionFingerprint',
+    'workItemsRevisionFingerprint', 'calendarRevisionFingerprint'
   ]);
 
   function safeEnum_(value, allowed, fallback) {
@@ -43,6 +45,21 @@
     return Number.isInteger(number) && number >= min && number <= max ? number : fallback;
   }
 
+  function safeFingerprint_(value) {
+    const normalized = String(value || '').toLowerCase();
+    return /^[a-f0-9]{8,12}$/.test(normalized) ? normalized : null;
+  }
+
+  async function sha256Prefix_(value) {
+    const cryptoApi = root.crypto;
+    if (!cryptoApi || !cryptoApi.subtle || typeof cryptoApi.subtle.digest !== 'function'
+        || typeof root.TextEncoder !== 'function') return null;
+    const digest = await cryptoApi.subtle.digest('SHA-256', new root.TextEncoder().encode(value));
+    return Array.from(new Uint8Array(digest), function(byte) {
+      return byte.toString(16).padStart(2, '0');
+    }).join('').slice(0, 12);
+  }
+
   function sanitizeRecord_(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const at = String(value.at || '');
@@ -68,7 +85,12 @@
       firebaseVerifyMs: value.firebaseVerifyMs == null ? null : safeInteger_(Math.round(Number(value.firebaseVerifyMs)), 0, 600000, null),
       actorResolveMs: value.actorResolveMs == null ? null : safeInteger_(Math.round(Number(value.actorResolveMs)), 0, 600000, null),
       upstreamMs: value.upstreamMs == null ? null : safeInteger_(Math.round(Number(value.upstreamMs)), 0, 600000, null),
-      serializeMs: value.serializeMs == null ? null : safeInteger_(Math.round(Number(value.serializeMs)), 0, 600000, null)
+      serializeMs: value.serializeMs == null ? null : safeInteger_(Math.round(Number(value.serializeMs)), 0, 600000, null),
+      questionIdFingerprint: safeFingerprint_(value.questionIdFingerprint),
+      questionRevisionFingerprint: safeFingerprint_(value.questionRevisionFingerprint),
+      projectsRevisionFingerprint: safeFingerprint_(value.projectsRevisionFingerprint),
+      workItemsRevisionFingerprint: safeFingerprint_(value.workItemsRevisionFingerprint),
+      calendarRevisionFingerprint: safeFingerprint_(value.calendarRevisionFingerprint)
     };
     return Object.fromEntries(SAFE_KEYS.map(function(key) { return [key, record[key]]; }));
   }
@@ -129,7 +151,12 @@
         firebaseVerifyMs: input.firebaseVerifyMs,
         actorResolveMs: input.actorResolveMs,
         upstreamMs: input.upstreamMs,
-        serializeMs: input.serializeMs
+        serializeMs: input.serializeMs,
+        questionIdFingerprint: input.questionIdFingerprint,
+        questionRevisionFingerprint: input.questionRevisionFingerprint,
+        projectsRevisionFingerprint: input.projectsRevisionFingerprint,
+        workItemsRevisionFingerprint: input.workItemsRevisionFingerprint,
+        calendarRevisionFingerprint: input.calendarRevisionFingerprint
       });
       if (!safe) return null;
       const records = read_();
@@ -146,6 +173,39 @@
       return safe;
     } catch (_) {
       return null;
+    }
+  }
+
+  async function recordInboxRevisionFingerprints(context, value, transportType) {
+    try {
+      if (!context || context.action !== 'kazOs.inbox.get'
+          || !TRANSPORT_TYPES.has(String(transportType || ''))) return 0;
+      const items = value && Array.isArray(value.inbox_items) ? value.inbox_items.slice(0, 30) : [];
+      let recorded = 0;
+      for (const item of items) {
+        const refs = item && item.source_revision_references;
+        const raw = [item && item.id, item && item.question_revision,
+          refs && refs.projects, refs && refs.work_items, refs && refs.calendar];
+        if (!raw.every(entry => typeof entry === 'string' && entry.length > 0)) continue;
+        const fingerprints = await Promise.all(raw.map(sha256Prefix_));
+        if (!fingerprints.every(Boolean)) return recorded;
+        const safe = record(context, {
+          attempt: 1,
+          elapsedMs: 0,
+          classification: 'none',
+          outcome: 'success',
+          transportType,
+          questionIdFingerprint: fingerprints[0],
+          questionRevisionFingerprint: fingerprints[1],
+          projectsRevisionFingerprint: fingerprints[2],
+          workItemsRevisionFingerprint: fingerprints[3],
+          calendarRevisionFingerprint: fingerprints[4]
+        });
+        if (safe) recorded += 1;
+      }
+      return recorded;
+    } catch (_) {
+      return 0;
     }
   }
 
@@ -170,6 +230,7 @@
   root.PALURUTransportDiagnostics = Object.freeze({
     start,
     record,
+    recordInboxRevisionFingerprints,
     classifyError,
     list,
     clear,

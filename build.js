@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260925-phase2-today-selection-contract-v1";
+globalThis.BUILD_ID = "v20260925-inbox-revision-fingerprint-v1";

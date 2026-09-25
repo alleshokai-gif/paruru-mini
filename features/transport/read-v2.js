@@ -172,11 +172,11 @@
       throw codedError_('DIRECT_READ_CONFIG_INVALID', { transportClassification: 'business' });
     }
 
-    async function read_(route, validator) {
+    async function read_(route, validator, suppliedRequestId) {
       if (config.mode !== MODES.DIRECT_V2 || config.routeModes[route.key] !== MODES.DIRECT_V2) {
         throw codedError_('DIRECT_READ_NOT_SELECTED', { transportClassification: 'business' });
       }
-      const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');
+      const requestId = String(suppliedRequestId || (diagnostics && diagnostics.requestId ? diagnostics.requestId() : ''));
       if (!requestId) throw codedError_('DIRECT_READ_REQUEST_ID_UNAVAILABLE', { transportClassification: 'business' });
       const diagnostic = diagnostics && diagnostics.start
         ? diagnostics.start('kaz_read', route.action, requestId)
@@ -256,7 +256,7 @@
       projects: function() { return read_(ROUTES.projects, validateProjects_); },
       work: function() { return read_(ROUTES.work, validateWork_); },
       today: function() { return read_(ROUTES.today, validateToday_); },
-      inbox: function() { return read_(ROUTES.inbox, validateInbox_); }
+      inbox: function(options) { return read_(ROUTES.inbox, validateInbox_, options && options.requestId); }
     });
   }
 
