@@ -172,7 +172,7 @@ html.drawer-open {
   position: fixed;
   top: 0;
   bottom: 0;
-  left: 0;
+  right: 0;
   z-index: 21;
   display: flex;
   flex-direction: column;
@@ -180,8 +180,8 @@ html.drawer-open {
   padding: max(18px, env(safe-area-inset-top)) 18px 0;
   overflow: hidden;
   background: var(--surface);
-  box-shadow: 12px 0 30px rgba(32, 34, 54, 0.22);
-  transform: translateX(-105%);
+  box-shadow: -12px 0 30px rgba(32, 34, 54, 0.22);
+  transform: translateX(105%);
   transition: transform 180ms ease;
 }
 
@@ -650,29 +650,6 @@ main,
   box-shadow: 0 12px 26px rgba(68, 81, 150, 0.12);
   box-sizing: border-box;
   overflow-wrap: anywhere;
-}
-
-#homeView > .paruru-hero {
-  grid-template-columns: minmax(74px, 92px) minmax(0, 1fr);
-  gap: 10px;
-  margin: 14px auto 6px;
-  padding: 0 8px;
-}
-
-#homeView > .paruru-hero .paruru-image {
-  width: min(90px, 100%);
-  max-height: none;
-  aspect-ratio: auto;
-}
-
-#homeView > .paruru-hero .paruru-bubble {
-  min-height: 66px;
-  padding: 11px 14px;
-  box-shadow: 0 6px 18px rgba(68, 81, 150, 0.08);
-}
-
-#homeView > .paruru-hero .paruru-line {
-  font-size: 0.92rem;
 }
 
 .paruru-bubble::before,
@@ -3645,4 +3622,11 @@ body:not(.is-authenticated) .drawer-overlay {
 }
 .home-memo-inline-field > span {
   display: none;
+}
+
+
+.today-paruru-refresh img {
+  display: block;
+  width: 24px;
+  height: 24px;
 }
