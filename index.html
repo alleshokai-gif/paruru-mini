@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./assets/icons/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=v20260925-navigation-redesign-v3">
   <link rel="stylesheet" href="./features/bus/bus.css">
   <link rel="stylesheet" href="./features/bus/hub.css">
   <link rel="stylesheet" href="./features/bus/journey.css">
@@ -41,7 +41,13 @@
         <button id="authLinkPendingLogout" class="secondary-button" type="button">別のGoogleアカウントでやり直す</button>
       </div>
     </section>
-    <button id="menuToggleButton" class="menu-toggle" type="button" aria-label="メニューを開く" aria-controls="appDrawer" aria-expanded="false">☰</button>
+    <header class="app-topbar" aria-label="PALURU">
+      <div class="app-topbar-inner">
+        <button id="menuToggleButton" class="menu-toggle" type="button" aria-label="メニューを開く" aria-controls="appDrawer" aria-expanded="false"><img src="./assets/icons/paw-menu.svg" alt="" aria-hidden="true"></button>
+        <span class="home-wordmark">PALURU</span>
+        <span aria-hidden="true"></span>
+      </div>
+    </header>
 
     <main class="app-shell">
       <section id="homeView" class="app-view is-active" data-view="home">
@@ -72,8 +78,6 @@
           </div>
         </section>
 
-        <button id="homeMemoOpenButton" class="home-consult-button secondary-button" type="button" aria-controls="homeMemoDetails" aria-expanded="false">ぱるるに相談・メモを書く</button>
-
         <section id="homeAgentCard" class="home-agent-card is-hidden" aria-live="polite" aria-busy="false">
           <div class="home-agent-header">
             <p class="home-agent-eyebrow">&#12401;&#12427;&#12427;</p>
@@ -88,9 +92,16 @@
         <section class="home-feature-launcher" aria-labelledby="homeFeatureLauncherTitle">
           <div class="home-feature-launcher-heading">
             <h2 id="homeFeatureLauncherTitle">機能メニュー</h2>
-            <p>よく使う機能</p>
           </div>
           <div id="homeFeatureLauncher" class="home-feature-grid"></div>
+        </section>
+
+        <section id="homeMemoQuick" class="home-memo-quick" aria-labelledby="homeMemoQuickTitle">
+          <h2 id="homeMemoQuickTitle">ぱるるメモ</h2>
+          <div class="home-memo-quick-entry">
+            <input id="homeMemoQuickInput" type="text" placeholder="思いついたことを書く…" aria-label="ぱるるメモの下書き">
+            <button id="homeMemoQuickOpen" type="button" aria-label="メモの保存画面を開く" aria-controls="homeMemoDetails">＋</button>
+          </div>
         </section>
 
         <details id="homeMemoDetails" class="home-memo-details">
@@ -320,17 +331,19 @@
 
     <nav class="bottom-nav" aria-label="&#12513;&#12452;&#12531;&#12490;&#12499;&#12466;&#12540;&#12471;&#12519;&#12531;">
       <button class="nav-item is-active" type="button" data-target-view="home">&#12507;&#12540;&#12512;</button>
-      <button class="nav-item" type="button" data-target-view="inbox">受信箱</button>
+      <button class="nav-item" type="button" data-target-view="inbox">Inbox</button>
       <button class="nav-item" type="button" data-target-view="settings">&#35373;&#23450;</button>
     </nav>
 
     <button id="drawerOverlay" class="drawer-overlay" type="button" aria-label="メニューを閉じる" hidden></button>
-    <aside id="appDrawer" class="app-drawer" aria-label="メニュー" aria-hidden="true">
+    <aside id="appDrawer" class="app-drawer" aria-label="メニュー" aria-hidden="true" inert>
       <div class="app-drawer-header">
-        <p>メニュー</p>
-        <button id="drawerCloseButton" class="icon-button" type="button" aria-label="メニューを閉じる">×</button>
+        <div>
+          <p class="drawer-brand">PALURU</p>
+          <p class="drawer-subtitle">メニュー</p>
+        </div>
+        <button id="drawerCloseButton" class="paw-close-button" type="button" aria-label="メニューを閉じる"><img src="./assets/icons/paw-close.svg" alt="" aria-hidden="true"></button>
       </div>
-      <p class="drawer-brand">PALURU</p>
       <nav id="drawerFeatureMenu" class="drawer-menu" aria-label="PALURUの機能"></nav>
     </aside>
 
@@ -516,16 +529,16 @@
       <div id="familyInboxReviewCandidates" class="family-inbox-review-candidates"></div>
     </dialog>
 
-    <script src="./build.js?v=v20260925-home-menu-redesign-v1" defer></script>
-    <script src="./features/navigation/config.js?v=v20260925-home-menu-redesign-v1" defer></script>
+    <script src="./build.js?v=v20260925-navigation-redesign-v3" defer></script>
+    <script src="./features/navigation/config.js?v=v20260925-navigation-redesign-v3" defer></script>
     <script src="./features/transport/diagnostics.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/transport/read-v2-config.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/transport/read-v2.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/auth/firebase-auth.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/auth/firebase-auth-runtime.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/nurse-okan/health-routine.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
-    <script src="./app.js?v=v20260925-home-menu-redesign-v1" defer></script>
-    <script src="./features/nurse-okan/nurse-okan.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
+    <script src="./app.js?v=v20260925-navigation-redesign-v3" defer></script>
+    <script src="./features/nurse-okan/nurse-okan.js?v=v20260925-navigation-redesign-v3" defer></script>
     <script src="./features/popio-health/popio-health.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/bus/config.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/bus/bus.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>

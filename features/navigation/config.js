@@ -9,19 +9,19 @@
   }).toString();
 
   const items = Object.freeze([
-    { id: "today", label: "今日の予定", note: "今日の予定・お知らせ", icon: "☀️", view: "home", anchor: "todayParuru", home: true, menu: true, section: "毎日のこと" },
-    { id: "memo", label: "ぱるるメモ", note: "思いついたことを残す", icon: "✍️", view: "home", openMemo: true, menu: true, section: "毎日のこと" },
-    { id: "inbox", label: "受信箱", note: "保存した項目", icon: "📥", view: "inbox", menu: true, section: "毎日のこと" },
-    { id: "infection", label: "感染症ウォッチ", note: "川崎市の公表情報", icon: "＋", href: infectionWatchUrl.toString(), external: true, home: true, menu: true, section: "地域の情報" },
+    { id: "home", label: "ホーム", icon: "⌂", view: "home", menu: true, section: "" },
+    { id: "today", label: "今日の予定", note: "今日の予定・お知らせ", icon: "📅", view: "home", anchor: "todayParuru", capability: "home.read", home: true, menu: true, section: "毎日のこと" },
+    { id: "inbox", label: "Inbox", note: "保存した項目", icon: "📥", view: "inbox", menu: true, section: "毎日のこと" },
+    { id: "infection", label: "感染症ウォッチ", note: "川崎市の感染症情報", icon: "🦠", href: infectionWatchUrl.toString(), external: true, home: true, menu: true, section: "地域の情報" },
     { id: "bus", label: "バス", note: "バスの情報", icon: "🚌", view: "bus", home: true, menu: true, section: "地域の情報" },
-    { id: "nurse", label: "ナースおかん", note: "健康記録", icon: "🌿", view: "nurse-okan", menu: true, section: "暮らしの機能" },
-    { id: "popio", label: "ぽぴお", note: "ペットの健康", icon: "🐶", view: "popio-health", home: true, menu: true, section: "暮らしの機能" },
-    { id: "kaz-today", label: "今日・予定", note: "今日のやること", icon: "📅", view: "kaz-os", page: "today", menu: true, section: "やること・確認" },
+    { id: "nurse", label: "ナースおかん", note: "健康記録", icon: "🌿", view: "nurse-okan", menu: true, section: "暮らし" },
+    { id: "popio", label: "ぽぴお", note: "ペットの健康", icon: "🐶", view: "popio-health", home: true, menu: true, section: "暮らし" },
+    { id: "kaz-today", label: "今日の仕事", note: "仕事の予定・やること", icon: "📅", view: "kaz-os", page: "today", menu: true, section: "やること・確認" },
     { id: "kaz-work", label: "やること", note: "全体のタスク一覧", icon: "✓", view: "kaz-os", page: "work", menu: true, section: "やること・確認" },
     { id: "kaz-projects", label: "プロジェクト", note: "進行中の取り組み", icon: "▦", view: "kaz-os", page: "projects", menu: true, section: "やること・確認" },
-    { id: "kaz-questions", label: "確認待ち", note: "質問・確認事項", icon: "？", view: "kaz-os", page: "inbox", menu: true, section: "やること・確認" },
-    { id: "home", label: "ホーム", icon: "⌂", view: "home", menu: true, section: "アプリ" },
-    { id: "settings", label: "設定", icon: "⚙️", view: "settings", menu: true, section: "アプリ" },
+    { id: "kaz-questions", label: "確認・質問", note: "質問・確認事項", icon: "💬", view: "kaz-os", page: "inbox", menu: true, section: "やること・確認" },
+    { id: "memo", label: "ぱるるメモ", note: "思いついたことを残す", icon: "📝", view: "home", capability: "memo.self.create", openMemo: true, menu: true, section: "その他" },
+    { id: "settings", label: "設定", icon: "⚙️", view: "settings", menu: true, section: "その他" },
   ]);
 
   function makeButton(item, className) {
@@ -30,8 +30,12 @@
     button.className = className;
     button.dataset.navigationId = item.id;
     button.dataset.targetView = item.view;
+    if (item.capability) button.dataset.requiredCapability = item.capability;
     if (item.anchor) button.dataset.homeAnchor = item.anchor;
-    if (item.openMemo) button.dataset.openHomeMemo = "true";
+    if (item.openMemo) {
+      button.dataset.openHomeMemo = "true";
+      button.setAttribute("aria-controls", "homeMemoDetails");
+    }
     if (item.page) {
       button.dataset.kazPage = item.page;
       button.dataset.kazPageLaunch = "true";
@@ -45,7 +49,7 @@
     label.className = "navigation-item-label";
     label.textContent = item.label;
     button.append(icon, label);
-    if (item.note) {
+    if (item.note && className === "home-feature-item") {
       const note = document.createElement("span");
       note.className = "navigation-item-note";
       note.textContent = item.note;
@@ -62,8 +66,9 @@
     items.filter(item => item.home).forEach(item => {
       if (item.external) {
         const link = document.createElement("a");
-        link.className = "home-feature-item";
+        link.className = "home-feature-item is-external";
         link.dataset.navigationId = item.id;
+        link.dataset.visibilityView = "home";
         link.href = item.href;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
@@ -77,7 +82,7 @@
         label.textContent = item.label;
         const note = document.createElement("span");
         note.className = "navigation-item-note";
-        note.textContent = `${item.note} ↗`;
+        note.textContent = item.note;
         link.append(icon, label, note);
         launcher.append(link);
       } else {
@@ -91,15 +96,17 @@
       }
     });
 
-    let currentSection = "";
+    let currentSection = null;
     let sectionNav = null;
     items.filter(item => item.menu).forEach(item => {
       if (item.section !== currentSection) {
         currentSection = item.section;
-        const heading = document.createElement("h2");
-        heading.className = "drawer-menu-section-title";
-        heading.textContent = currentSection;
-        menu.append(heading);
+        if (currentSection) {
+          const heading = document.createElement("h2");
+          heading.className = "drawer-menu-section-title";
+          heading.textContent = currentSection;
+          menu.append(heading);
+        }
         sectionNav = document.createElement("div");
         sectionNav.className = "drawer-menu-section";
         menu.append(sectionNav);
@@ -108,6 +115,7 @@
         const link = document.createElement("a");
         link.className = "drawer-menu-item is-external";
         link.dataset.navigationId = item.id;
+        link.dataset.visibilityView = "home";
         link.href = item.href;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
@@ -119,11 +127,7 @@
         const label = document.createElement("span");
         label.className = "navigation-item-label";
         label.textContent = item.label;
-        const marker = document.createElement("span");
-        marker.className = "external-link-marker";
-        marker.setAttribute("aria-hidden", "true");
-        marker.textContent = "↗";
-        link.append(icon, label, marker);
+        link.append(icon, label);
         sectionNav.append(link);
       } else {
         sectionNav.append(makeButton(item, "drawer-menu-item"));

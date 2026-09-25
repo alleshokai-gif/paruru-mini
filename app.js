@@ -300,6 +300,8 @@ function consumeViewAfterControllerChange_() {
 
 const form = document.querySelector("#inboxForm");
 const memoInput = document.querySelector("#memo");
+const homeMemoQuickInput = document.querySelector("#homeMemoQuickInput");
+const homeMemoQuickOpen = document.querySelector("#homeMemoQuickOpen");
 const categoryInput = document.querySelector("#category");
 const priorityInputs = document.querySelectorAll('input[name="priority"]');
 const paruruImage = document.querySelector("#paruruImage");
@@ -337,7 +339,6 @@ const transportDiagnosticsPanel = document.querySelector("#transportDiagnosticsP
 const transportDiagnosticsOutput = document.querySelector("#transportDiagnosticsOutput");
 const views = document.querySelectorAll(".app-view");
 const navItems = document.querySelectorAll(".nav-item");
-const viewNavigationItems = document.querySelectorAll("[data-target-view]");
 const inboxList = document.querySelector("#inboxList");
 const refreshInboxButton = document.querySelector("#refreshInboxButton");
 const familyInboxForm = document.querySelector("#familyInboxForm");
@@ -415,7 +416,6 @@ const todayParuruLine = document.querySelector("#todayParuruLine");
 const todayParuruList = document.querySelector("#todayParuruList");
 const todayParuruAllButton = document.querySelector("#todayParuruAllButton");
 const homeMemoDetails = document.querySelector("#homeMemoDetails");
-const homeMemoOpenButton = document.querySelector("#homeMemoOpenButton");
 const refreshNotificationsButton = document.querySelector("#refreshNotificationsButton");
 const homeAgentCard = document.querySelector("#homeAgentCard");
 const homeAgentContent = document.querySelector("#homeAgentContent");
@@ -1168,6 +1168,26 @@ saveToPaluruButton.addEventListener("click", async () => {
   await submitHomeInput("register");
 });
 
+function openHomeMemoFromQuick_() {
+  if (!isViewAllowed_("home") || !hasMembershipCapability_("memo.self.create")) return;
+  const draft = String(homeMemoQuickInput?.value || "").trim();
+  if (draft) {
+    memoInput.value = memoInput.value.trim() ? `${memoInput.value.trimEnd()}\n${draft}` : draft;
+    homeMemoQuickInput.value = "";
+  }
+  homeMemoDetails.open = true;
+  memoInput.focus({ preventScroll: true });
+  homeMemoDetails.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+homeMemoQuickOpen?.addEventListener("click", openHomeMemoFromQuick_);
+homeMemoQuickInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    openHomeMemoFromQuick_();
+  }
+});
+
 homeIntentConfirmSwitch.addEventListener("click", async () => {
   const pending = pendingHomeInputIntentConfirmation;
   if (!pending) return;
@@ -1389,6 +1409,7 @@ if (typeof document.addEventListener === "function") {
     if (detail.navigationId) setCurrentNavigation_(detail.navigationId);
     if (detail.openMemo) {
       if (homeMemoDetails) homeMemoDetails.open = true;
+      memoInput?.focus({ preventScroll: true });
     }
     if (detail.openMemo || detail.anchorId) {
       const target = detail.openMemo ? document.querySelector("#homeMemoDetails") : document.getElementById(detail.anchorId);
@@ -1396,17 +1417,6 @@ if (typeof document.addEventListener === "function") {
     }
   });
 }
-
-homeMemoOpenButton?.addEventListener("click", () => {
-  if (!homeMemoDetails) return;
-  homeMemoDetails.open = true;
-  homeMemoOpenButton.setAttribute("aria-expanded", "true");
-  homeMemoDetails.scrollIntoView?.({ behavior: "smooth", block: "start" });
-  memoInput?.focus({ preventScroll: true });
-});
-homeMemoDetails?.addEventListener("toggle", () => {
-  homeMemoOpenButton?.setAttribute("aria-expanded", String(homeMemoDetails.open));
-});
 
 refreshInboxButton.addEventListener("click", loadInboxView_);
 
@@ -5267,8 +5277,12 @@ function isViewAllowed_(viewName) {
     && activeMembershipContext.allowedViews.includes(String(viewName || ""));
 }
 
+function getViewNavigationItems_() {
+  return document.querySelectorAll("[data-target-view], [data-visibility-view]");
+}
+
 function setCurrentNavigation_(navigationId) {
-  viewNavigationItems.forEach((item) => {
+  getViewNavigationItems_().forEach((item) => {
     const isBottomTab = item.classList?.contains("nav-item");
     const selected = item.dataset.navigationId
       ? item.dataset.navigationId === navigationId
@@ -5283,11 +5297,17 @@ function normalizeAllowedView_(viewName) {
 }
 
 function applyAllowedViews_() {
-  viewNavigationItems.forEach((item) => {
-    const allowed = isViewAllowed_(item.dataset.targetView);
+  getViewNavigationItems_().forEach((item) => {
+    const allowed = isViewAllowed_(item.dataset.visibilityView || item.dataset.targetView)
+      && (!item.dataset.requiredCapability || hasMembershipCapability_(item.dataset.requiredCapability));
     item.hidden = !allowed;
-    item.disabled = !allowed;
     item.setAttribute("aria-hidden", String(!allowed));
+  });
+  document.querySelectorAll("#drawerFeatureMenu .drawer-menu-section").forEach((section) => {
+    const hasVisibleItem = Array.from(section.querySelectorAll(".drawer-menu-item")).some((item) => !item.hidden);
+    section.hidden = !hasVisibleItem;
+    const heading = section.previousElementSibling;
+    if (heading?.classList.contains("drawer-menu-section-title")) heading.hidden = !hasVisibleItem;
   });
   views.forEach((view) => { view.hidden = !isViewAllowed_(view.dataset.view); });
 }
@@ -5423,6 +5443,8 @@ function applyMembershipCapabilityVisibility_() {
   if (todayParuru) todayParuru.hidden = !canReadHome;
   const homeFeatureLauncher = document.querySelector(".home-feature-launcher");
   if (homeFeatureLauncher) homeFeatureLauncher.hidden = !canReadHome;
+  const homeMemoQuick = document.querySelector("#homeMemoQuick");
+  if (homeMemoQuick) homeMemoQuick.hidden = !hasMembershipCapability_("memo.self.create");
   const consultOption = askPaluruButton && typeof askPaluruButton.closest === "function"
     ? askPaluruButton.closest(".paluru-action-option")
     : null;

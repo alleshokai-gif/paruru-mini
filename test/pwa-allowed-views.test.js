@@ -24,20 +24,23 @@ const functions = between('async function switchView(viewName)', 'async function
 const views = [view('home'), view('inbox'), view('nurse-okan'), view('popio-health'), view('settings')];
 const bottom = [nav('home'), nav('inbox'), nav('settings')];
 const drawer = [nav('home'), nav('inbox'), nav('nurse-okan'), nav('popio-health'), nav('settings')];
+const settingsHeading = { hidden: false, classList: { contains: (name) => name === 'drawer-menu-section-title' } };
+const settingsSection = { hidden: false, previousElementSibling: settingsHeading, querySelectorAll: () => [drawer.at(-1)] };
 const context = {
   appAuthenticationState: 'active_member',
   activeMembershipContext: { allowedViews: ['home', 'inbox', 'nurse-okan', 'popio-health'] },
   activeView: 'settings', views, navItems: bottom, viewNavigationItems: bottom.concat(drawer),
   showMessage() {}, setParuruState() {}, loadNotificationCandidates: async () => {}, loadInbox: async () => {},
-  renderProfileForm() {}, renderHomeControlSettings: async () => {}, document: { dispatchEvent() {} }, Array, String,
+  renderProfileForm() {}, renderHomeControlSettings: async () => {}, document: { dispatchEvent() {}, querySelectorAll: selector => selector.includes('data-target-view') ? bottom.concat(drawer) : [settingsSection] }, Array, String,
 };
 vm.createContext(context);
 vm.runInContext(functions, context);
 context.applyAllowedViews_();
 assert(views.find((item) => item.dataset.view === 'settings').hidden, 'guardian settings view remained visible');
 assert(bottom.find((item) => item.dataset.targetView === 'settings').hidden, 'guardian bottom settings remained visible');
-assert(drawer.find((item) => item.dataset.targetView === 'settings').disabled, 'guardian drawer settings remained enabled');
-assert(!drawer.find((item) => item.dataset.targetView === 'popio-health').disabled, 'guardian Pet Health view was disabled');
+assert(drawer.find((item) => item.dataset.targetView === 'settings').hidden, 'guardian drawer settings remained visible');
+assert(settingsSection.hidden && settingsHeading.hidden, 'empty restricted drawer group remained visible');
+assert(!drawer.find((item) => item.dataset.targetView === 'popio-health').hidden, 'guardian Pet Health view was hidden');
 
 (async () => {
   await context.switchView('settings');
@@ -46,6 +49,7 @@ assert(!drawer.find((item) => item.dataset.targetView === 'popio-health').disabl
   assert.strictEqual(context.activeView, 'home', 'unknown route was not normalized');
   context.activeMembershipContext = { allowedViews: ['home', 'inbox', 'nurse-okan', 'popio-health', 'settings'] };
   context.applyAllowedViews_();
+  assert(!settingsSection.hidden && !settingsHeading.hidden, 'restored permission did not reveal the drawer group');
   await context.switchView('settings');
   assert.strictEqual(context.activeView, 'settings', 'admin settings route was rejected');
   assert(!bottom.find((item) => item.dataset.targetView === 'settings').hidden, 'admin settings remained hidden');
