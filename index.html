@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./assets/icons/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./style.css?v=v20260925-memo-compact-v6">
+  <link rel="stylesheet" href="./style.css?v=v20260925-navigation-final-v7">
   <link rel="stylesheet" href="./features/bus/bus.css">
   <link rel="stylesheet" href="./features/bus/hub.css">
   <link rel="stylesheet" href="./features/bus/journey.css">
@@ -44,8 +44,8 @@
     <header class="app-topbar" aria-label="PALURU">
       <div class="app-topbar-inner">
         <button id="menuToggleButton" class="menu-toggle" type="button" aria-label="メニューを開く" aria-controls="appDrawer" aria-expanded="false"><img src="./assets/icons/paw-menu.svg" alt="" aria-hidden="true"></button>
-        <span class="home-wordmark">PALURU</span>
         <span aria-hidden="true"></span>
+        <span class="home-wordmark">PALURU</span>
       </div>
     </header>
 
@@ -71,7 +71,7 @@
 
         <section class="paruru-hero" aria-label="&#12401;&#12427;&#12427;&#20250;&#35441;">
           <div class="paruru-character">
-        <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_stand.png" alt="&#12401;&#12427;&#12427;">
+        <img id="paruruImage" class="paruru-image" src="./assets/character/paluru/official/paruru_bust.png" alt="&#12401;&#12427;&#12427;">
           </div>
           <div class="paruru-speech-column">
             <div id="paruruSpeech" class="paruru-bubble paruru-line">&#8230;&#8230;&#12513;&#12514;&#12375;&#12392;&#12367;&#65311;</div>
@@ -89,10 +89,7 @@
           <div id="homeAgentContent" class="home-agent-content"></div>
         </section>
 
-        <section class="home-feature-launcher" aria-labelledby="homeFeatureLauncherTitle">
-          <div class="home-feature-launcher-heading">
-            <h2 id="homeFeatureLauncherTitle">機能メニュー</h2>
-          </div>
+        <section class="home-feature-launcher" aria-label="よく使う機能">
           <div id="homeFeatureLauncher" class="home-feature-grid"></div>
         </section>
 
@@ -100,7 +97,6 @@
           <h2 id="homeMemoQuickTitle">ぱるるメモ</h2>
           <form id="inboxForm" class="inbox-form home-memo-inline">
             <label class="field home-memo-inline-field">
-              <span class="sr-only">思いついたことを書く</span>
               <textarea id="memo" name="memo" rows="3" placeholder="思いついたことを書く…" required></textarea>
             </label>
             <input id="category" name="category" type="hidden" value="">
@@ -487,16 +483,16 @@
       <div id="familyInboxReviewCandidates" class="family-inbox-review-candidates"></div>
     </dialog>
 
-    <script src="./build.js?v=v20260925-memo-compact-v6" defer></script>
-    <script src="./features/navigation/config.js?v=v20260925-memo-compact-v6" defer></script>
+    <script src="./build.js?v=v20260925-navigation-final-v7" defer></script>
+    <script src="./features/navigation/config.js?v=v20260925-navigation-final-v7" defer></script>
     <script src="./features/transport/diagnostics.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/transport/read-v2-config.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/transport/read-v2.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/auth/firebase-auth.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/auth/firebase-auth-runtime.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/nurse-okan/health-routine.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
-    <script src="./app.js?v=v20260925-memo-compact-v6" defer></script>
-    <script src="./features/nurse-okan/nurse-okan.js?v=v20260925-memo-compact-v6" defer></script>
+    <script src="./app.js?v=v20260925-navigation-final-v7" defer></script>
+    <script src="./features/nurse-okan/nurse-okan.js?v=v20260925-navigation-final-v7" defer></script>
     <script src="./features/popio-health/popio-health.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/bus/config.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/bus/bus.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
