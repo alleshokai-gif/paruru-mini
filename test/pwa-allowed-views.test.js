@@ -17,7 +17,7 @@ function classList() {
   return { toggle: (name, enabled) => enabled ? values.add(name) : values.delete(name), contains: (name) => values.has(name) };
 }
 function view(name) { return { dataset: { view: name }, hidden: false, classList: classList() }; }
-function nav(name) { return { dataset: { targetView: name }, hidden: false, disabled: false, attrs: {}, setAttribute(key, value) { this.attrs[key] = value; }, classList: classList() }; }
+function nav(name) { return { dataset: { targetView: name }, hidden: false, disabled: false, attrs: {}, setAttribute(key, value) { this.attrs[key] = value; }, removeAttribute(key) { delete this.attrs[key]; }, classList: classList() }; }
 
 const functions = between('async function switchView(viewName)', 'async function loadInbox(options = {})')
   + between('function isViewAllowed_(viewName)', 'function normalizeCalendarMemberSelection(value)');

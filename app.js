@@ -414,6 +414,8 @@ const todayParuru = document.querySelector("#todayParuru");
 const todayParuruLine = document.querySelector("#todayParuruLine");
 const todayParuruList = document.querySelector("#todayParuruList");
 const todayParuruAllButton = document.querySelector("#todayParuruAllButton");
+const homeMemoDetails = document.querySelector("#homeMemoDetails");
+const homeMemoOpenButton = document.querySelector("#homeMemoOpenButton");
 const refreshNotificationsButton = document.querySelector("#refreshNotificationsButton");
 const homeAgentCard = document.querySelector("#homeAgentCard");
 const homeAgentContent = document.querySelector("#homeAgentContent");
@@ -793,7 +795,6 @@ function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
   renderAuthenticationOnboardingState_(state);
   if (state !== "active_member") {
-    try { globalThis.PALURUInfectionWatchCard?.setVisible(false); } catch { /* Public summary must not block auth lock. */ }
     if (authenticatedBackgroundReadsTimerId !== null) {
       window.clearTimeout(authenticatedBackgroundReadsTimerId);
       authenticatedBackgroundReadsTimerId = null;
@@ -1381,11 +1382,31 @@ navItems.forEach((item) => {
 });
 
 if (typeof document.addEventListener === "function") {
-  document.addEventListener("paruru:view-request", (event) => {
+  document.addEventListener("paruru:view-request", async (event) => {
     const viewName = event && event.detail && event.detail.viewName;
-    switchView(viewName);
+    await switchView(viewName);
+    const detail = event?.detail || {};
+    if (detail.navigationId) setCurrentNavigation_(detail.navigationId);
+    if (detail.openMemo) {
+      if (homeMemoDetails) homeMemoDetails.open = true;
+    }
+    if (detail.openMemo || detail.anchorId) {
+      const target = detail.openMemo ? document.querySelector("#homeMemoDetails") : document.getElementById(detail.anchorId);
+      if (target && typeof target.scrollIntoView === "function") target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
 }
+
+homeMemoOpenButton?.addEventListener("click", () => {
+  if (!homeMemoDetails) return;
+  homeMemoDetails.open = true;
+  homeMemoOpenButton.setAttribute("aria-expanded", "true");
+  homeMemoDetails.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  memoInput?.focus({ preventScroll: true });
+});
+homeMemoDetails?.addEventListener("toggle", () => {
+  homeMemoOpenButton?.setAttribute("aria-expanded", String(homeMemoDetails.open));
+});
 
 refreshInboxButton.addEventListener("click", loadInboxView_);
 
@@ -1740,6 +1761,9 @@ async function switchView(viewName) {
     view.classList.toggle("is-active", allowed && view.dataset.view === resolvedView);
   });
   navItems.forEach((item) => item.classList.toggle("is-active", item.dataset.targetView === resolvedView));
+  setCurrentNavigation_(resolvedView === "kaz-os"
+    ? `kaz-${String(globalThis.location?.hash || "").split("/")[1] || "today"}`
+    : resolvedView);
   showMessage("", "");
 
   if (resolvedView === "kaz-os") {
@@ -5243,6 +5267,17 @@ function isViewAllowed_(viewName) {
     && activeMembershipContext.allowedViews.includes(String(viewName || ""));
 }
 
+function setCurrentNavigation_(navigationId) {
+  viewNavigationItems.forEach((item) => {
+    const isBottomTab = item.classList?.contains("nav-item");
+    const selected = item.dataset.navigationId
+      ? item.dataset.navigationId === navigationId
+      : isBottomTab && item.dataset.targetView === activeView;
+    if (selected) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+}
+
 function normalizeAllowedView_(viewName) {
   return isViewAllowed_(viewName) ? viewName : isViewAllowed_("home") ? "home" : "";
 }
@@ -5384,9 +5419,10 @@ async function callAuthenticatedKazOsInboxAnswer_(answer) {
 
 function applyMembershipCapabilityVisibility_() {
   const canReadHome = hasMembershipCapability_("home.read");
-  try { globalThis.PALURUInfectionWatchCard?.setVisible(canReadHome && document.body.classList.contains("is-authenticated")); } catch { /* Public summary is isolated from PALURU home state. */ }
   const canSubmitFamilyInbox = hasMembershipCapability_("family.inbox.submit");
   if (todayParuru) todayParuru.hidden = !canReadHome;
+  const homeFeatureLauncher = document.querySelector(".home-feature-launcher");
+  if (homeFeatureLauncher) homeFeatureLauncher.hidden = !canReadHome;
   const consultOption = askPaluruButton && typeof askPaluruButton.closest === "function"
     ? askPaluruButton.closest(".paluru-action-option")
     : null;

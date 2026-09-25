@@ -45,7 +45,7 @@
       return;
     }
     const requestEpoch = projectEpoch;
-    host.textContent = 'Projectsを確認中…';
+    host.textContent = 'プロジェクトを確認中…';
     const current = () => requestEpoch === projectEpoch && allowed() && active() && !document.hidden;
     try {
       const data = await projectsApi();
@@ -92,7 +92,7 @@
       return;
     }
     const requestEpoch = workEpoch;
-    host.textContent = 'Work Itemsを確認中…';
+    host.textContent = 'やることを確認中…';
     const current = () => requestEpoch === workEpoch && allowed() && active() && !document.hidden;
     try {
       const data = await workApi();
@@ -126,7 +126,7 @@
       return;
     }
     const requestEpoch = todayEpoch;
-    host.textContent = 'TODAYを確認中…';
+    host.textContent = '今日の予定を確認中…';
     const current = () => requestEpoch === todayEpoch && allowed() && active() && !document.hidden;
     try {
       const data = await todayApi();
@@ -163,7 +163,7 @@
       return;
     }
     const requestEpoch = inboxEpoch;
-    host.textContent = 'Secretary Questionsを確認中…';
+    host.textContent = '確認待ちを確認中…';
     const current = () => requestEpoch === inboxEpoch && allowed() && active() && !document.hidden;
     try {
       const data = await inboxApi();
@@ -238,10 +238,15 @@
     }
     clear();
     const selection = globalThis.KazPersonalView.route(location.hash);
-    byId('kazOsView')?.setAttribute('aria-label', `Kaz OS ${selection.page.toUpperCase()}`);
+    const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', inbox: '確認待ち' }[selection.page] || 'やること・確認';
+    byId('kazOsView')?.setAttribute('aria-label', pageLabel);
     document.querySelectorAll('#kazOsNav a').forEach(a => {
       if (a.dataset.kazPage === selection.page) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('[data-kaz-page-launch]').forEach(item => {
+      if (item.dataset.kazPage === selection.page) item.setAttribute('aria-current', 'page');
+      else item.removeAttribute('aria-current');
     });
     if (selection.page === 'today') await renderToday(selection);
     else if (selection.page === 'inbox') await renderInbox(selection);
@@ -264,7 +269,7 @@
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = !allowed();
     const status = byId('kazOsEntryStatus');
-    if (status) status.textContent = 'TODAY・Work Items・Projects・Secretary Questions';
+    if (status) status.textContent = '今日の予定・やること・確認待ち';
     if (allowed() && active()) void render();
   });
 

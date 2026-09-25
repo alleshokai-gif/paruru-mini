@@ -33,6 +33,7 @@ const context = {
   askPaluruButton: { closest: (selector) => selector === '.paluru-action-option' ? consultOption : null },
   familyInboxForm: { hidden: false },
   familyInboxReviewSection: { hidden: false },
+  document: { querySelector: () => null },
   hideCalendarSyncPanel: (target) => hiddenPanels.push(target),
   Array, String,
 };

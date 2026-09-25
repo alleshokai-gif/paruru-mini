@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260925-infection-watch-card-v1";
+globalThis.BUILD_ID = "v20260925-home-menu-redesign-v1";

@@ -610,7 +610,7 @@ async function run() {
   assert(appSource.indexOf('document.dispatchEvent(new CustomEvent("paruru:authenticated"') < appSource.indexOf('const initialViewLoad = switchView(activeView);'), 'PH-DU01 authenticated Pet facade is installed after view opening');
 
   assert(htmlSource.includes('id="popioHealthView"') && htmlSource.includes('id="popioHealthMount"'), 'Pet Health view/mount missing');
-  assert(htmlSource.includes('data-target-view="popio-health"'), 'Pet Health drawer navigation missing');
+  assert(fs.readFileSync(path.join(root, 'features/navigation/config.js'), 'utf8').includes('view: "popio-health"'), 'Pet Health drawer navigation config missing');
   assert(htmlSource.includes('features/popio-health/popio-health.js'), 'Pet Health feature script missing');
   const baselineViews = (membershipSource.match(/const BASELINE_ALLOWED_VIEWS = Object\.freeze\(\[[^\]]*\]\);/) || [''])[0];
   const roleViews = (membershipSource.match(/const ROLE_ALLOWED_VIEWS = Object\.freeze\(\{[\s\S]*?\n\}\);/) || [''])[0];
