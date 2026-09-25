@@ -115,6 +115,7 @@ textarea {
 }
 
 .app-topbar-inner {
+  position: relative;
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) 48px;
   align-items: center;
@@ -125,7 +126,9 @@ textarea {
 }
 
 .home-wordmark {
-  justify-self: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   color: var(--accent-dark);
   font-size: 1.05rem;
   font-weight: 850;
