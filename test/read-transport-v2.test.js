@@ -29,7 +29,8 @@ function todayDto() {
   return { schema_version: 'kaz-today-plan-v1', origin: 'real_operational_sources',
     mode: 'read_only', fixture_only: false,
     sources: { work_items: healthy('work-revision'), calendar: healthy('calendar-revision') },
-    today: { now: [], next: [], waiting: [], availability: [],
+    today: { now: { kind: 'none', items: [], basis: [] },
+      next: { kind: 'none', items: [], basis: [] }, waiting: [], availability: [],
       calendar_state: { unknown: [], classification_revision_current: true } },
     writes: { notion: 0, calendar: 0, context: 0 } };
 }
@@ -207,10 +208,32 @@ async function main() {
     assert(harness.records.every(item => item.values.transportType === 'DIRECT_V2'));
 
     const multipleNow = todayDto();
-    multipleNow.today.now = [{ id: 'now-one' }, { id: 'now-two' }];
+    multipleNow.today.now = { kind: 'multiple', items: [{ id: 'now-one' }, { id: 'now-two' }],
+      basis: ['state=DOING'] };
     assert.deepEqual(await harness.create({ fetchImpl: async () => response(200, multipleNow),
       config: phase2Config }).today(), multipleNow,
     'Direct V1 validator must preserve the legacy V1 multiple-NOW contract');
+
+    for (const invalidNow of [
+      [],
+      { kind: 'unknown', items: [], basis: [] },
+      { kind: 'none', items: [{}], basis: [] },
+      { kind: 'single', items: [], basis: [] },
+      { kind: 'multiple', items: [{}], basis: [] },
+      { kind: 'none', items: [], basis: 'not-an-array' },
+      { kind: 'none', items: [], basis: [], unexpected: true },
+    ]) {
+      const invalid = todayDto();
+      invalid.today.now = invalidNow;
+      await assert.rejects(harness.create({ fetchImpl: async () => response(200, invalid),
+        config: phase2Config }).today(), error => error.code === 'TODAY_CONTRACT_INVALID');
+    }
+
+    const tooManyNext = todayDto();
+    tooManyNext.today.next = { kind: 'multiple',
+      items: [{}, {}, {}], basis: ['availability'] };
+    await assert.rejects(harness.create({ fetchImpl: async () => response(200, tooManyNext),
+      config: phase2Config }).today(), error => error.code === 'TODAY_CONTRACT_INVALID');
   }
 
   {

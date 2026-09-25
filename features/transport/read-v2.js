@@ -87,6 +87,21 @@
       && typeof value.source_revision === 'string' && value.source_revision;
   }
 
+  function validTodaySelection_(value, maxItems) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)
+        || Object.keys(value).sort().join(',') !== 'basis,items,kind'
+        || !['none', 'single', 'multiple'].includes(value.kind)
+        || !Array.isArray(value.items) || value.items.length > maxItems
+        || !value.items.every(item => item && typeof item === 'object' && !Array.isArray(item))
+        || !Array.isArray(value.basis) || value.basis.length > 8
+        || !value.basis.every(reason => typeof reason === 'string' && reason.length <= 80)) {
+      return false;
+    }
+    if ((value.kind === 'none') !== (value.items.length === 0)) return false;
+    if (value.kind === 'single' && value.items.length !== 1) return false;
+    return value.kind !== 'multiple' || value.items.length >= 2;
+  }
+
   function validateToday_(value) {
     const sources = value && value.sources;
     const today = value && value.today;
@@ -95,8 +110,8 @@
         || value.fixture_only !== false || !zeroWrites_(value)
         || !healthySource_(sources && sources.work_items)
         || !healthySource_(sources && sources.calendar)
-        || !today || !Array.isArray(today.now)
-        || !Array.isArray(today.next) || today.next.length > 2
+        || !today || !validTodaySelection_(today.now, 100)
+        || !validTodaySelection_(today.next, 2)
         || !Array.isArray(today.waiting) || !Array.isArray(today.availability)
         || !today.calendar_state || !Array.isArray(today.calendar_state.unknown)) {
       throw codedError_('TODAY_CONTRACT_INVALID', { transportClassification: 'parse' });

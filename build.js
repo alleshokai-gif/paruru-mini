@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260925-read-transport-v2-phase2-canary";
+globalThis.BUILD_ID = "v20260925-phase2-today-selection-contract-v1";
