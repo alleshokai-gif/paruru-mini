@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260925-navigation-redesign-v4");
-// Release: v20260925-navigation-redesign-v4
+importScripts("./build.js?v=v20260925-navigation-polish-v5");
+// Release: v20260925-navigation-polish-v5
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -41,6 +41,7 @@ const STATIC_IMAGE_ASSETS = [
   versioned("assets/icons/paw-close.svg"),
   versioned("assets/character/paluru/official/paruru_face.png"),
   versioned("assets/character/paluru/official/paruru_bust.png"),
+  versioned("assets/character/paluru/official/paruru_stand.png"),
   versioned("assets/character/paluru/expressions/paruru_bust_normal.png"),
   versioned("assets/character/paluru/expressions/paruru_bust_smile.png"),
   versioned("assets/character/paluru/expressions/paruru_bust_angry.png"),
