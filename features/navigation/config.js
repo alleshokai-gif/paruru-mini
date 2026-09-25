@@ -9,7 +9,6 @@
   }).toString();
 
   const items = Object.freeze([
-    { id: "home", label: "ホーム", icon: "⌂", view: "home", menu: true, section: "" },
     { id: "today", label: "今日の予定", note: "今日の予定・お知らせ", icon: "📅", view: "home", anchor: "todayParuru", capability: "home.read", home: true, menu: true, section: "毎日のこと" },
     { id: "inbox", label: "Inbox", note: "保存した項目", icon: "📥", view: "inbox", menu: true, section: "毎日のこと" },
     { id: "infection", label: "感染症ウォッチ", note: "川崎市の感染症情報", icon: "🦠", href: infectionWatchUrl.toString(), external: true, home: true, menu: true, section: "地域の情報" },
