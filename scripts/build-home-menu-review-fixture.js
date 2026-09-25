@@ -4,6 +4,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync, spawn } = require("node:child_process");
+const net = require("node:net");
 
 const repoRoot = path.resolve(__dirname, "..");
 const outputRelativePath = path.join("test", "fixtures", "home-menu-review.html");
@@ -154,18 +155,31 @@ function generateFixture({ report = true } = {}) {
 
 function startPreviewServer(port = 4173) {
   const python = process.platform === "win32" ? "python" : "python3";
-  const server = spawn(python, ["-m", "http.server", String(port), "--bind", "127.0.0.1"], {
-    cwd: repoRoot,
-    stdio: "inherit",
-    windowsHide: true,
-  });
-  server.on("error", error => {
-    process.stderr.write(`Could not start local preview server (${error.code || "spawn error"}).\n`);
-    process.exitCode = 1;
-  });
-  server.on("spawn", () => {
-    process.stdout.write(`preview URL: http://127.0.0.1:${port}/${outputRelativePath.replaceAll(path.sep, "/")}\n`);
-  });
+  const choosePort = candidate => {
+    const probe = net.createServer();
+    probe.once("error", error => {
+      if (error.code === "EADDRINUSE" && candidate < 65535) return choosePort(candidate + 1);
+      process.stderr.write(`Could not reserve local preview port (${error.code || "listen error"}).\n`);
+      process.exitCode = 1;
+    });
+    probe.listen(candidate, "127.0.0.1", () => {
+      probe.close(() => {
+        const server = spawn(python, ["-m", "http.server", String(candidate), "--bind", "127.0.0.1"], {
+          cwd: repoRoot,
+          stdio: "inherit",
+          windowsHide: true,
+        });
+        server.on("error", error => {
+          process.stderr.write(`Could not start local preview server (${error.code || "spawn error"}).\n`);
+          process.exitCode = 1;
+        });
+        server.on("spawn", () => {
+          process.stdout.write(`preview URL: http://127.0.0.1:${candidate}/${outputRelativePath.replaceAll(path.sep, "/")}\n`);
+        });
+      });
+    });
+  };
+  choosePort(port);
 }
 
 if (require.main === module) {
