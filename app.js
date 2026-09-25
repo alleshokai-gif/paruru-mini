@@ -1743,6 +1743,15 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
+  if (resolvedView === "infection") {
+    const infectionFrame = document.querySelector("#infectionWatchFrame");
+    const infectionItem = Array.isArray(globalThis.PALURU_NAVIGATION_CONFIG)
+      ? globalThis.PALURU_NAVIGATION_CONFIG.find(item => item.id === "infection")
+      : null;
+    if (infectionFrame && infectionItem?.src && infectionFrame.src !== infectionItem.src) {
+      infectionFrame.src = infectionItem.src;
+    }
+  }
   try { globalThis.PALURUBus?.setActive(resolvedView === "bus"); } catch { /* Keep Bus failures inside its view. */ }
   try { globalThis.PALURUBusHub?.setActive(resolvedView === "bus"); } catch { /* Keep Hub failures inside its view. */ }
   views.forEach((view) => {
@@ -5252,6 +5261,9 @@ function saveUserProfileFromForm() {
 
 function isViewAllowed_(viewName) {
   if (viewName === "kaz-os" && activeMembershipContext?.role !== "admin") return false;
+  if (viewName === "infection") {
+    return appAuthenticationState === "active_member" && isViewAllowed_("home");
+  }
   return appAuthenticationState === "active_member"
     && Array.isArray(activeMembershipContext?.allowedViews)
     && activeMembershipContext.allowedViews.includes(String(viewName || ""));
