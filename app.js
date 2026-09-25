@@ -300,8 +300,8 @@ function consumeViewAfterControllerChange_() {
 
 const form = document.querySelector("#inboxForm");
 const memoInput = document.querySelector("#memo");
-const homeMemoQuickInput = document.querySelector("#homeMemoQuickInput");
-const homeMemoQuickOpen = document.querySelector("#homeMemoQuickOpen");
+const homeMemoQuickInput = null;
+const homeMemoQuickOpen = null;
 const categoryInput = document.querySelector("#category");
 const priorityInputs = document.querySelectorAll('input[name="priority"]');
 const paruruImage = document.querySelector("#paruruImage");
@@ -1166,26 +1166,6 @@ askPaluruButton.addEventListener("click", async () => {
 
 saveToPaluruButton.addEventListener("click", async () => {
   await submitHomeInput("register");
-});
-
-function openHomeMemoFromQuick_() {
-  if (!isViewAllowed_("home") || !hasMembershipCapability_("memo.self.create")) return;
-  const draft = String(homeMemoQuickInput?.value || "").trim();
-  if (draft) {
-    memoInput.value = memoInput.value.trim() ? `${memoInput.value.trimEnd()}\n${draft}` : draft;
-    homeMemoQuickInput.value = "";
-  }
-  homeMemoDetails.open = true;
-  memoInput.focus({ preventScroll: true });
-  homeMemoDetails.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-homeMemoQuickOpen?.addEventListener("click", openHomeMemoFromQuick_);
-homeMemoQuickInput?.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !event.isComposing) {
-    event.preventDefault();
-    openHomeMemoFromQuick_();
-  }
 });
 
 homeIntentConfirmSwitch.addEventListener("click", async () => {
