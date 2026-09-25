@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260925-dynamic-daily-planning-v2";
+globalThis.BUILD_ID = "v20260925-infection-watch-card-v1";

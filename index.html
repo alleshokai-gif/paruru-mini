@@ -45,6 +45,17 @@
 
     <main class="app-shell">
       <section id="homeView" class="app-view is-active" data-view="home">
+        <section id="infectionWatchCard" class="infection-watch-card" aria-labelledby="infectionWatchTitle" hidden>
+          <div class="infection-watch-card-heading">
+            <div><p class="infection-watch-eyebrow">川崎市の公表情報</p><h2 id="infectionWatchTitle">自宅周辺の感染症</h2></div>
+            <span id="infectionWatchStatus" class="infection-watch-status" role="status" aria-live="polite">読み込み中</span>
+          </div>
+          <div id="infectionWatchContent" class="infection-watch-content"><p>感染症情報を確認しています。</p></div>
+          <div class="infection-watch-card-footer">
+            <button id="infectionWatchRetry" class="secondary-button" type="button" hidden>もう一度確認</button>
+            <a id="infectionWatchDetails" href="https://kawasaki-infection-watch.pages.dev/" target="_blank" rel="noopener noreferrer">詳しく見る →</a>
+          </div>
+        </section>
         <section id="todayParuru" class="today-paruru" aria-live="polite">
           <div class="today-paruru-header">
             <div>
@@ -510,12 +521,13 @@
       <div id="familyInboxReviewCandidates" class="family-inbox-review-candidates"></div>
     </dialog>
 
-    <script src="./build.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
+    <script src="./build.js?v=v20260925-infection-watch-card-v1" defer></script>
     <script src="./features/transport/diagnostics.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/transport/read-v2-config.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/transport/read-v2.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/auth/firebase-auth.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/auth/firebase-auth-runtime.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
+    <script src="./features/infection-watch/card.js?v=v20260925-infection-watch-card-v1" defer></script>
     <script src="./features/nurse-okan/health-routine.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./app.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/nurse-okan/nurse-okan.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
