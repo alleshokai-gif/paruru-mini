@@ -300,6 +300,8 @@ function consumeViewAfterControllerChange_() {
 
 const form = document.querySelector("#inboxForm");
 const memoInput = document.querySelector("#memo");
+const homeMemoQuickInput = null;
+const homeMemoQuickOpen = null;
 const categoryInput = document.querySelector("#category");
 const priorityInputs = document.querySelectorAll('input[name="priority"]');
 const paruruImage = document.querySelector("#paruruImage");
@@ -337,7 +339,6 @@ const transportDiagnosticsPanel = document.querySelector("#transportDiagnosticsP
 const transportDiagnosticsOutput = document.querySelector("#transportDiagnosticsOutput");
 const views = document.querySelectorAll(".app-view");
 const navItems = document.querySelectorAll(".nav-item");
-const viewNavigationItems = document.querySelectorAll("[data-target-view]");
 const inboxList = document.querySelector("#inboxList");
 const refreshInboxButton = document.querySelector("#refreshInboxButton");
 const familyInboxForm = document.querySelector("#familyInboxForm");
@@ -414,6 +415,7 @@ const todayParuru = document.querySelector("#todayParuru");
 const todayParuruLine = document.querySelector("#todayParuruLine");
 const todayParuruList = document.querySelector("#todayParuruList");
 const todayParuruAllButton = document.querySelector("#todayParuruAllButton");
+const homeMemoDetails = document.querySelector("#homeMemoDetails");
 const refreshNotificationsButton = document.querySelector("#refreshNotificationsButton");
 const homeAgentCard = document.querySelector("#homeAgentCard");
 const homeAgentContent = document.querySelector("#homeAgentContent");
@@ -793,7 +795,6 @@ function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
   renderAuthenticationOnboardingState_(state);
   if (state !== "active_member") {
-    try { globalThis.PALURUInfectionWatchCard?.setVisible(false); } catch { /* Public summary must not block auth lock. */ }
     if (authenticatedBackgroundReadsTimerId !== null) {
       window.clearTimeout(authenticatedBackgroundReadsTimerId);
       authenticatedBackgroundReadsTimerId = null;
@@ -1381,9 +1382,19 @@ navItems.forEach((item) => {
 });
 
 if (typeof document.addEventListener === "function") {
-  document.addEventListener("paruru:view-request", (event) => {
+  document.addEventListener("paruru:view-request", async (event) => {
     const viewName = event && event.detail && event.detail.viewName;
-    switchView(viewName);
+    await switchView(viewName);
+    const detail = event?.detail || {};
+    if (detail.navigationId) setCurrentNavigation_(detail.navigationId);
+    if (detail.openMemo) {
+      if (homeMemoDetails) homeMemoDetails.open = true;
+      memoInput?.focus({ preventScroll: true });
+    }
+    if (detail.openMemo || detail.anchorId) {
+      const target = detail.openMemo ? document.querySelector("#homeMemoDetails") : document.getElementById(detail.anchorId);
+      if (target && typeof target.scrollIntoView === "function") target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
 }
 
@@ -1740,6 +1751,9 @@ async function switchView(viewName) {
     view.classList.toggle("is-active", allowed && view.dataset.view === resolvedView);
   });
   navItems.forEach((item) => item.classList.toggle("is-active", item.dataset.targetView === resolvedView));
+  setCurrentNavigation_(resolvedView === "kaz-os"
+    ? `kaz-${String(globalThis.location?.hash || "").split("/")[1] || "today"}`
+    : resolvedView);
   showMessage("", "");
 
   if (resolvedView === "kaz-os") {
@@ -5243,16 +5257,37 @@ function isViewAllowed_(viewName) {
     && activeMembershipContext.allowedViews.includes(String(viewName || ""));
 }
 
+function getViewNavigationItems_() {
+  return document.querySelectorAll("[data-target-view], [data-visibility-view]");
+}
+
+function setCurrentNavigation_(navigationId) {
+  getViewNavigationItems_().forEach((item) => {
+    const isBottomTab = item.classList?.contains("nav-item");
+    const selected = item.dataset.navigationId
+      ? item.dataset.navigationId === navigationId
+      : isBottomTab && item.dataset.targetView === activeView;
+    if (selected) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+}
+
 function normalizeAllowedView_(viewName) {
   return isViewAllowed_(viewName) ? viewName : isViewAllowed_("home") ? "home" : "";
 }
 
 function applyAllowedViews_() {
-  viewNavigationItems.forEach((item) => {
-    const allowed = isViewAllowed_(item.dataset.targetView);
+  getViewNavigationItems_().forEach((item) => {
+    const allowed = isViewAllowed_(item.dataset.visibilityView || item.dataset.targetView)
+      && (!item.dataset.requiredCapability || hasMembershipCapability_(item.dataset.requiredCapability));
     item.hidden = !allowed;
-    item.disabled = !allowed;
     item.setAttribute("aria-hidden", String(!allowed));
+  });
+  document.querySelectorAll("#drawerFeatureMenu .drawer-menu-section").forEach((section) => {
+    const hasVisibleItem = Array.from(section.querySelectorAll(".drawer-menu-item")).some((item) => !item.hidden);
+    section.hidden = !hasVisibleItem;
+    const heading = section.previousElementSibling;
+    if (heading?.classList.contains("drawer-menu-section-title")) heading.hidden = !hasVisibleItem;
   });
   views.forEach((view) => { view.hidden = !isViewAllowed_(view.dataset.view); });
 }
@@ -5384,9 +5419,12 @@ async function callAuthenticatedKazOsInboxAnswer_(answer) {
 
 function applyMembershipCapabilityVisibility_() {
   const canReadHome = hasMembershipCapability_("home.read");
-  try { globalThis.PALURUInfectionWatchCard?.setVisible(canReadHome && document.body.classList.contains("is-authenticated")); } catch { /* Public summary is isolated from PALURU home state. */ }
   const canSubmitFamilyInbox = hasMembershipCapability_("family.inbox.submit");
   if (todayParuru) todayParuru.hidden = !canReadHome;
+  const homeFeatureLauncher = document.querySelector(".home-feature-launcher");
+  if (homeFeatureLauncher) homeFeatureLauncher.hidden = !canReadHome;
+  const homeMemoQuick = document.querySelector("#homeMemoQuick");
+  if (homeMemoQuick) homeMemoQuick.hidden = !hasMembershipCapability_("memo.self.create");
   const consultOption = askPaluruButton && typeof askPaluruButton.closest === "function"
     ? askPaluruButton.closest(".paluru-action-option")
     : null;

@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260925-infection-watch-card-v1");
-// Release: v20260925-infection-watch-card-v1
+importScripts("./build.js?v=v20260925-navigation-final-v7");
+// Release: v20260925-navigation-final-v7
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -15,7 +15,7 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("app.js"),
   versioned("features/auth/firebase-auth.js"),
   versioned("features/auth/firebase-auth-runtime.js"),
-  versioned("features/infection-watch/card.js"),
+  versioned("features/navigation/config.js"),
   versioned("features/nurse-okan/health-routine.js"),
   versioned("features/nurse-okan/nurse-okan.js"),
   versioned("features/popio-health/popio-health.js"),
@@ -37,8 +37,11 @@ const STATIC_IMAGE_ASSETS = [
   versioned("assets/icons/favicon.png"),
   versioned("assets/icons/icon-192.png"),
   versioned("assets/icons/icon-512.png"),
+  versioned("assets/icons/paw-menu.svg"),
+  versioned("assets/icons/paw-close.svg"),
   versioned("assets/character/paluru/official/paruru_face.png"),
   versioned("assets/character/paluru/official/paruru_bust.png"),
+  versioned("assets/character/paluru/official/paruru_stand.png"),
   versioned("assets/character/paluru/expressions/paruru_bust_normal.png"),
   versioned("assets/character/paluru/expressions/paruru_bust_smile.png"),
   versioned("assets/character/paluru/expressions/paruru_bust_angry.png"),

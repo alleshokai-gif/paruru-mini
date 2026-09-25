@@ -33,6 +33,7 @@ const context = {
   askPaluruButton: { closest: (selector) => selector === '.paluru-action-option' ? consultOption : null },
   familyInboxForm: { hidden: false },
   familyInboxReviewSection: { hidden: false },
+  document: { querySelector: () => null, querySelectorAll: selector => selector.includes('data-target-view') ? navigation : [] },
   hideCalendarSyncPanel: (target) => hiddenPanels.push(target),
   Array, String,
 };
@@ -51,7 +52,7 @@ for (const name of allowedViews) {
 }
 for (const name of ['settings', 'kaz-os']) {
   assert.strictEqual(views.find((item) => item.dataset.view === name).hidden, true, `${name} view visible`);
-  assert.strictEqual(navigation.find((item) => item.dataset.targetView === name).disabled, true, `${name} navigation enabled`);
+  assert.strictEqual(navigation.find((item) => item.dataset.targetView === name).hidden, true, `${name} navigation visible`);
 }
 assert.strictEqual(context.todayParuru.hidden, false, 'Today/Calendar surface was hidden from baseline access');
 assert.strictEqual(consultOption.hidden, false, 'Home Agent consult surface was hidden from baseline access');

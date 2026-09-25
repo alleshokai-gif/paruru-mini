@@ -86,7 +86,7 @@ test('PWA Bus and Hub switching cannot interrupt another view even if either fea
   const source = fs.readFileSync(require.resolve('../app.js'), 'utf8');
   const fn = source.slice(source.indexOf('async function switchView(viewName)'), source.indexOf('async function loadInbox(options = {})'));
   let loaded = false;
-  const context = { normalizeAllowedView_: (v) => v, isViewAllowed_: () => true, activeView: '', views: [], navItems: [],
+  const context = { normalizeAllowedView_: (v) => v, isViewAllowed_: () => true, setCurrentNavigation_: () => {}, activeView: '', views: [], navItems: [],
     PALURUBus: { setActive() { throw Error('Bus isolated'); } }, PALURUBusHub: { setActive() { throw Error('Hub isolated'); } },
     showMessage() {}, setParuruState() {}, async loadInboxView_() { loaded = true; } };
   vm.createContext(context); vm.runInContext(fn, context); await context.switchView('inbox'); assert(loaded);
