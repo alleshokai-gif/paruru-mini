@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { createHarness } = require('./fixtures/kaz-progress-harness');
 const root = path.resolve(__dirname, '..');
 
@@ -26,6 +27,13 @@ function snapshot() {
     { value: 'this_week', label: '今週', effect: '今週候補' },
     { value: 'later', label: 'あとで', effect: '後日候補' },
   ], { title: 'Acceptance方針', project_id: projectId, entity_ref: 'WI-10', entity_revision: workRevision, source_label: 'Notion Work Items' });
+  const choiceSeed = today.answer_contract.choices.map(choice => choice.value).join(',');
+  const planningSeed = today.entity_ref + '\\u0000' + today.entity_revision + '\\u0000' + today.decision_date + '\\u0000' + choiceSeed;
+  const sha = value => crypto.createHash('sha256').update(value).digest('hex');
+  today.id = 'decision-' + sha('daily-planning-preference\\u0000' + planningSeed).slice(0, 24);
+  today.question_revision = 'question-sha256:' + sha('daily-planning-preference-question\\u0000' + planningSeed);
+  today.answer_contract.inbox_item_id = today.id;
+  today.answer_contract.question_revision = today.question_revision;
   const event = { id: 'event-sha256:' + '1'.repeat(64), title: 'sanitized event', start: iso(300000), end: iso(360000), all_day: false };
   const calendar = make('decision-' + 'e'.repeat(24), 'calendar_event_impact', 'この予定で、Kaz本人の時間はどれだけ拘束される？', [
     { value: 'all', label: '全部拘束', effect: 'full event proposal' },
@@ -43,6 +51,34 @@ function snapshot() {
     persistence: { kind: 'none', status: 'disabled', answers: 0, proposals: 0, followups: 0 }, writes: { notion: 0, calendar: 0, context: 0 } };
 }
 
+function estimateSnapshot() {
+  const value = snapshot(), target = value.work_items[0];
+  const expires = nextJstDayBoundary(new Date().toISOString());
+  value.inbox_items = [{
+    id: 'decision-' + '7'.repeat(24), kind: 'daily_estimate', contract: 'secretary-question-0.1',
+    owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
+    title: target.title, question: 'これ何分くらい？',
+    reason: 'TODAY candidateをCalendar空き時間へ配置するため', impact: '当日だけ使うDaily Estimate',
+    estimate_min: null, affects_today: true, urgent_today: true,
+    decision_date: new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10),
+    due_at: expires, project_id: target.project_id, entity_ref: target.id,
+    source_label: 'Notion Work Items', entity_revision: target.source_revision,
+    question_revision: 'question-sha256:' + '7'.repeat(64),
+    source_revision_references: {
+      projects: value.sources.projects.source_revision,
+      work_items: value.sources.tasks.source_revision,
+      calendar: value.sources.calendar.source_revision,
+    },
+    answer_contract: { inbox_item_id: 'decision-' + '7'.repeat(24),
+      question_revision: 'question-sha256:' + '7'.repeat(64), question: 'これ何分くらい？', choices: [] },
+    calendar_event: null,
+    input_contract: { type: 'integer_minutes', min: 1, max: 100000, unit: 'minutes' },
+    recommended_option: null, recommendation_basis: null, expires_at: expires,
+  }];
+  value.calendar_events = [];
+  return value;
+}
+
 let value = snapshot();
 function harness(rows) {
   const h = createHarness({ root, answerEnabled: true, decisionLedgerRows: rows,
@@ -52,6 +88,15 @@ function harness(rows) {
   return h;
 }
 const requestId = () => require('node:crypto').randomUUID();
+function nextJstDayBoundary(value) {
+  const jst = new Date(Date.parse(value) + 9 * 3600000);
+  return new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate() + 1) - 9 * 3600000).toISOString();
+}
+function nextJstWeekBoundary(value) {
+  const jst = new Date(Date.parse(value) + 9 * 3600000), day = jst.getUTCDay();
+  const daysUntilMonday = day === 0 ? 1 : 8 - day;
+  return new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate() + daysUntilMonday) - 9 * 3600000).toISOString();
+}
 function request(h, item, selected, key = 'paluru-test-00000001') {
   return h.call(h.body('admin-local', { action: 'kazOs.inbox.answer', request_id: requestId(),
     decision_id: item.id, question_revision: item.question_revision,
@@ -76,6 +121,17 @@ test('answer persists one first-class Answer and one controlled proposal', () =>
   assert.equal(result.data.answer.persistence_status, 'DURABLE_PERSISTED');
   assert.equal(result.data.proposal.status, 'PROPOSED'); assert.equal(result.data.proposal.write_allowed, false);
   assert.equal(result.data.proposal.requires_separate_write_approval, true);
+  assert.equal(result.data.proposal.change.kind, 'DAILY_PLANNING_PREFERENCE');
+  assert.equal(result.data.proposal.change.preference, 'today');
+  assert.equal(result.data.proposal.change.timezone, 'Asia/Tokyo');
+  assert.equal(result.data.proposal.change.source, 'human');
+  assert.equal(result.data.proposal.change.work_item_id, value.work_items[0].id);
+  assert.equal(result.data.proposal.change.work_item_source_revision, value.work_items[0].source_revision);
+  assert.equal(result.data.proposal.change.planning_date, value.inbox_items[0].decision_date);
+  assert.equal(result.data.proposal.change.valid_from, result.data.answer.answered_at);
+  assert.equal(result.data.proposal.change.expires_at, nextJstDayBoundary(result.data.proposal.change.valid_from));
+  assert.equal(result.data.proposal.change.permanent_priority_change, false);
+  assert.equal(result.data.proposal.change.permanent_status_change, false);
   assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
   assert.equal(result.data.inbox.inbox_items.length, 1); assert.equal(h.rows.Kaz_OS_Decision_Ledger.length, 2);
 });
@@ -106,6 +162,211 @@ test('reload and process restart restore the answered state', () => {
   assert(result.success); assert.equal(result.data.mode, 'controlled_proposal');
   assert.equal(result.data.persistence.answers, 1); assert.equal(result.data.inbox_items.length, 1);
 });
+test('today preference survives unrelated Calendar revision change', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const original = structuredClone(localValue.inbox_items[0]);
+  localValue.sources.calendar.source_revision = 'observation-sha256:' + '8'.repeat(64);
+  localValue.sources.resolution.source_revision = localValue.sources.calendar.source_revision;
+  localValue.inbox_items.forEach(item => {
+    item.source_revision_references = {
+      projects: localValue.sources.projects.source_revision,
+      work_items: localValue.sources.tasks.source_revision,
+      calendar: localValue.sources.calendar.source_revision,
+    };
+  });
+  const result = request(local, original, 'today', 'paluru-planning-calendar-scope-0001');
+  assert(result.success, JSON.stringify(result));
+  assert.equal(result.data.proposal.change.kind, 'DAILY_PLANNING_PREFERENCE');
+});
+
+test('today focus identity ignores unrelated Calendar revision changes', () => {
+  let localValue = snapshot();
+  const local = createHarness({ root, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  const first = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(first.success, JSON.stringify(first));
+  const before = first.data.inbox_items.find(item => item.kind === 'today_focus');
+  localValue = structuredClone(localValue);
+  localValue.sources.calendar.source_revision = 'observation-sha256:' + '8'.repeat(64);
+  localValue.sources.resolution.source_revision = localValue.sources.calendar.source_revision;
+  localValue.inbox_items.forEach(item => {
+    item.source_revision_references = { ...item.source_revision_references,
+      calendar: localValue.sources.calendar.source_revision };
+  });
+  const second = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(second.success, JSON.stringify(second));
+  const after = second.data.inbox_items.find(item => item.kind === 'today_focus');
+  assert.equal(after.id, before.id);
+  assert.equal(after.question_revision, before.question_revision);
+});
+
+test('today preference rejects changed target Work Item revision', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const original = structuredClone(localValue.inbox_items[0]);
+  const changedRevision = iso(-100);
+  localValue.work_items[0].revision = changedRevision;
+  localValue.work_items[0].source_revision = changedRevision;
+  localValue.inbox_items[0].entity_revision = changedRevision;
+  const result = request(local, original, 'today', 'paluru-planning-work-scope-0001');
+  assert.equal(result.error.code, 'REVALIDATION_REQUIRED');
+  assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 1);
+});
+
+test('this_week and later expire at next Monday 00:00 JST without permanent mutation', () => {
+  for (const preference of ['this_week', 'later']) {
+    const localValue = snapshot();
+    const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+      projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+    local.setupDecisionLedger(); local.resetStats();
+    const result = request(local, localValue.inbox_items[0], preference, 'paluru-planning-' + preference + '-0001');
+    assert(result.success, JSON.stringify(result));
+    const change = result.data.proposal.change;
+    assert.equal(change.kind, 'DAILY_PLANNING_PREFERENCE');
+    assert.equal(change.preference, preference);
+    assert.equal(change.expires_at, nextJstWeekBoundary(change.valid_from));
+    assert.equal(change.permanent_priority_change, false);
+    assert.equal(change.permanent_status_change, false);
+  }
+});
+
+test('daily estimate identity ignores unrelated Calendar revision changes', () => {
+  let localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const first = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(first.success, JSON.stringify(first));
+  const before = first.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  localValue = structuredClone(localValue);
+  localValue.sources.calendar.source_revision = 'observation-sha256:' + '2'.repeat(64);
+  localValue.sources.resolution.source_revision = localValue.sources.calendar.source_revision;
+  localValue.inbox_items[0].source_revision_references.calendar = localValue.sources.calendar.source_revision;
+  const second = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const after = second.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  assert.equal(after.id, before.id);
+  assert.equal(after.question_revision, before.question_revision);
+});
+
+test('daily estimate rejects an answer after the target Work Item revision changes', () => {
+  let localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const original = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  localValue = structuredClone(localValue);
+  const changedRevision = iso(-50);
+  localValue.work_items[0].revision = changedRevision;
+  localValue.work_items[0].source_revision = changedRevision;
+  localValue.inbox_items[0].entity_revision = changedRevision;
+  const result = request(local, original, 30, 'paluru-estimate-work-revision-0001');
+  assert.equal(result.error.code, 'REVALIDATION_REQUIRED');
+  assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 1);
+});
+
+test('stale daily estimate questions disappear after target closure or revision change', () => {
+  for (const mode of ['DONE', 'CANCELLED', 'revision']) {
+    const localValue = estimateSnapshot();
+    if (mode === 'revision') {
+      const changedRevision = iso(-50);
+      localValue.work_items[0].revision = changedRevision;
+      localValue.work_items[0].source_revision = changedRevision;
+    } else {
+      localValue.work_items[0].state = mode;
+    }
+    const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+      projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+    local.setupDecisionLedger(); local.resetStats();
+    const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+    assert(read.success, JSON.stringify(read));
+    assert.equal(read.data.inbox_items.some(item => item.kind === 'daily_estimate'), false, mode);
+  }
+});
+
+test('daily estimate persists integer minutes only as date-scoped planning evidence', () => {
+  const localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  const result = request(local, question, 30, 'paluru-estimate-0001');
+  assert(result.success, JSON.stringify(result));
+  const change = result.data.proposal.change;
+  assert.equal(change.kind, 'DAILY_ESTIMATE');
+  assert.equal(change.estimate_min, 30);
+  assert.equal(change.source, 'human');
+  assert.equal(change.timezone, 'Asia/Tokyo');
+  assert.equal(change.work_item_id, question.entity_ref);
+  assert.equal(change.work_item_source_revision, question.entity_revision);
+  assert.equal(change.planning_date, question.decision_date);
+  assert.equal(change.valid_from, result.data.answer.answered_at);
+  assert.equal(change.expires_at, question.expires_at);
+  assert.equal(change.permanent_estimate_change, false);
+  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
+});
+
+test('daily estimate rejects zero non-integer and text', () => {
+  for (const [selected, suffix] of [[0,'zero'],[1.5,'fraction'],['30','text']]) {
+    const localValue = estimateSnapshot();
+    const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+      projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+    local.setupDecisionLedger(); local.resetStats();
+    const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+    const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+    const result = request(local, question, selected, 'paluru-estimate-invalid-' + suffix);
+    assert.equal(result.error.code, 'KAZ_ANSWER_INVALID');
+    assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 1);
+  }
+});
+
+test('daily estimate receipt survives question disappearance for response-loss reconcile', () => {
+  let localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  const saved = request(local, question, 45, 'paluru-estimate-reconcile-0001');
+  assert(saved.success, JSON.stringify(saved));
+  localValue = structuredClone(localValue);
+  localValue.inbox_items = [];
+  localValue.work_items = [];
+  const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const receipt = refreshed.data.persistence.confirmed_answers.find(entry =>
+    entry.decision_id === question.id && entry.question_revision === question.question_revision);
+  assert(receipt);
+  assert.equal(receipt.persistence_status, 'DURABLE_PERSISTED');
+});
+
+test('expired planning evidence stays append-only in the Decision Ledger', () => {
+  const localValue = estimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  const saved = request(local, question, 45, 'paluru-estimate-expired-ledger-0001');
+  assert(saved.success, JSON.stringify(saved));
+  const rows = local.rows.Kaz_OS_Decision_Ledger;
+  const proposalIndex = rows[0].indexOf('proposalJson');
+  const proposal = JSON.parse(rows[1][proposalIndex]);
+  proposal.change.expires_at = iso(-1);
+  rows[1][proposalIndex] = JSON.stringify(proposal);
+  const rowCount = rows.length;
+  const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(refreshed.success, JSON.stringify(refreshed));
+  assert.equal(rows.length, rowCount);
+  assert.equal(refreshed.data.persistence.answers, 1);
+  assert.equal(refreshed.data.persistence.confirmed_answers.length, 0);
+});
+
 test('changed source revision rejects stale answer without persistence', () => {
   const original = value, changed = snapshot(), item = changed.inbox_items[1];
   changed.sources.tasks.source_revision = 'observation-sha256:' + '9'.repeat(64); value = changed;
@@ -118,7 +379,23 @@ test('Calendar partial creates only an event-bound time-range follow-up', () => 
   const followup = result.data.inbox.inbox_items.find(item => item.kind === 'calendar_partial_window');
   assert(followup); assert.equal(followup.entity_ref, value.calendar_events[0].id);
   assert.equal(followup.input_contract.type, 'time_range'); assert.equal(result.data.proposal.change.constraint_creation, false);
+  assert.equal(followup.expires_at, new Date(Date.parse(value.calendar_events[0].end)).toISOString());
 });
+test('Calendar partial follow-up disappears at event end even if source remains fresh', () => {
+  const localValue = snapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
+  local.setupDecisionLedger(); local.resetStats();
+  const first = request(local, localValue.inbox_items[1], 'partial', 'paluru-calendar-expiry-0001');
+  assert(first.success, JSON.stringify(first));
+  assert(first.data.inbox.inbox_items.some(item => item.kind === 'calendar_partial_window'));
+  localValue.calendar_events[0].end = iso(-1);
+  localValue.inbox_items[1].calendar_event.end = localValue.calendar_events[0].end;
+  const refreshed = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(refreshed.success, JSON.stringify(refreshed));
+  assert.equal(refreshed.data.inbox_items.some(item => item.kind === 'calendar_partial_window'), false);
+});
+
 test('Calendar partial follow-up survives unrelated Project and Work source revision changes', () => {
   const localValue = snapshot();
   const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },

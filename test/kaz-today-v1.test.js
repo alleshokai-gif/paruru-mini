@@ -86,6 +86,25 @@ const snapshot=()=>({
   writes:{notion:0,calendar:0,context:0},
 });
 
+const snapshotV2=()=>{
+  const base=snapshot();
+  const decorate=w=>({...w,planning_preference:null,waiting_reason:null});
+  const nowItems=base.today.now.items.map(decorate), nextItems=base.today.next.items.map(decorate);
+  return {
+    schema_version:'kaz-today-plan-v2',origin:'real_operational_sources',mode:'read_only',fixture_only:false,
+    planning_date:new Date(Date.now()+9*3600000).toISOString().slice(0,10),timezone:'Asia/Tokyo',
+    policy:{version:'dynamic-daily-planning-v2',dynamic_daily_planning:true,calendar_used:true,availability_used:true,
+      human_preference_used:true,daily_estimate_used:true,energy_used:false,ui_scoring_allowed:false,duration_inference_allowed:false},
+    sources:base.sources,
+    today:{now:{...base.today.now,items:nowItems},next:{...base.today.next,items:nextItems},
+      scheduled:[...nowItems,...nextItems],waiting:[],waiting_count:0,not_fit_today:[],not_fit_today_count:0,
+      availability:base.today.availability,calendar_state:base.today.calendar_state,preference_count:0,daily_estimate_count:0,
+      missing_estimate_count:0,active_count:3,done_count:0,cancelled_count:0,needs_input:true,
+      limitations:['energy_not_used','missing_estimate_not_inferred','ui_scoring_not_used','automatic_carry_over_not_used','unknown_calendar_not_treated_as_free']},
+    writes:{notion:0,calendar:0,context:0},
+  };
+};
+
 let data=snapshot(), fail=false, checks=0;
 const h=createHarness({
   root,baseRoot,
@@ -162,14 +181,53 @@ test('gateway derives /v1/today and POSTs bounded transient planning input',()=>
     observedPayload=JSON.parse(options.payload);
     return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(snapshot())};
   };
+  h.ctx.Utilities.formatDate=(date,timezone,format)=>{
+    assert.equal(timezone,'Asia/Tokyo');
+    assert.equal(format,'yyyy-MM-dd');
+    return new Date(date.getTime()+9*3600000).toISOString().slice(0,10);
+  };
   vm.runInContext(fs.readFileSync(path.join(root,'gas/KazOsToday.js'),'utf8'),h.ctx);
   h.ctx.buildKazOsCalendarCapture_=()=>({selection:{},horizon:{},fetched_at:'x',response:{events:[]},connector_receipt:{}});
   const result=h.ctx.sanitizeKazOsToday_(h.ctx.readKazOsToday_());
   assert.equal(result.schema_version,'kaz-today-plan-v1');
-  assert.deepEqual(Object.keys(observedPayload).sort(),['calendar_capture','classifications']);
+  assert.deepEqual(Object.keys(observedPayload).sort(),['calendar_capture','classifications','planning']);
   assert.deepEqual(observedPayload.classifications,{items:[]});
+  assert.equal(observedPayload.planning.timezone,'Asia/Tokyo');
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(observedPayload.planning.planning_date));
+  assert.deepEqual(observedPayload.planning.preferences,[]);
+  assert.deepEqual(observedPayload.planning.daily_estimates,[]);
   assert.equal(calls,1);
   assert.equal(h.stats().writes,0);
+});
+
+test('TODAY sanitizer accepts bounded V2 sections and preserves NOW/NEXT limits',()=>{
+  const result=h.ctx.sanitizeKazOsToday_(snapshotV2());
+  assert.equal(result.schema_version,'kaz-today-plan-v2');
+  assert.equal(result.policy.duration_inference_allowed,false);
+  assert.equal(result.today.now.items.length,1);
+  assert.equal(result.today.next.items.length,1);
+  assert.deepEqual(result.today.not_fit_today,[]);
+});
+
+test('V2 TODAY fixture exposes all five Human-facing planning sections',()=>{
+  const v=snapshotV2();
+  const a={...v.today.scheduled[0],placement:'ADOPTED_SCHEDULE',plan_start:new Date(Date.now()+7200000).toISOString(),plan_end:new Date(Date.now()+9000000).toISOString()};
+  const b={...v.today.scheduled[0],id:'00000000-0000-0000-0000-000000000103',work_id:'WI-19',title:'Estimate wait',plan_start:null,plan_end:null,placement:'ESTIMATE_REQUIRED',waiting_reason:'ESTIMATE_REQUIRED',estimate_min:null};
+  const c={...v.today.scheduled[0],id:'00000000-0000-0000-0000-000000000104',work_id:'WI-20',title:'Not fit',plan_start:null,plan_end:null,placement:'NO_AVAILABLE_SLOT',waiting_reason:null};
+  v.today.scheduled=[a];v.today.waiting=[b];v.today.waiting_count=1;v.today.not_fit_today=[c];v.today.not_fit_today_count=1;v.today.missing_estimate_count=1;
+  const result=h.ctx.sanitizeKazOsToday_(v);
+  assert.equal(result.today.now.items.length,1);
+  assert.equal(result.today.next.items.length,1);
+  assert.equal(result.today.scheduled.length,1);
+  assert.equal(result.today.waiting[0].waiting_reason,'ESTIMATE_REQUIRED');
+  assert.equal(result.today.not_fit_today[0].placement,'NO_AVAILABLE_SLOT');
+  assert.equal(result.today.not_fit_today_count,1);
+});
+
+test('TODAY sanitizer keeps V1 readable during rolling V2 deploy',()=>{
+  data=snapshot();
+  const result=h.ctx.sanitizeKazOsToday_(data);
+  assert.equal(result.schema_version,'kaz-today-plan-v1');
 });
 
 test('dispatcher explicitly exposes TODAY read and keeps generic Kaz writes denied',()=>{
@@ -192,6 +250,13 @@ test('PWA exposes Dynamic TODAY time context without UI score',()=>{
   assert(personal.includes("selection.page === 'today'"));
   assert(personal.includes('Family Calendarから、いま使える時間'));
   assert(personal.includes('Dynamic Daily Planning v1の判定範囲'));
+  assert(personal.includes('Dynamic Daily Planning v2の判定範囲'));
+  assert(personal.includes("const t = data.today, v2 = data.schema_version === 'kaz-today-plan-v2'"));
+  for(const lane of ["part('NOW')","part('NEXT')","part('SCHEDULED')","part('WAITING')","part('NOT FIT TODAY')"])assert(personal.includes(lane));
+  assert(personal.includes('今日の3つ'));
+  assert(personal.includes('INBOXで分数を答えると配置できます'));
+  assert(personal.includes('Human preference'));
+  assert(personal.includes('Daily Estimate'));
   assert(!personal.includes('UI scoreはまだ使っていません'));
 });
 

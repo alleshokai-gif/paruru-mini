@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260925-inbox-revision-fingerprint-v1";
+globalThis.BUILD_ID = "v20260925-dynamic-daily-planning-v2";

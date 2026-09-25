@@ -62,8 +62,15 @@ function readKazOsInbox_(trace, transportTrace) {
   recordKazOsTransport_(transportTrace, 'CLOUD_RUN_START', { outcome: 'progress' });
   let response;
   try {
+    const classifications = typeof buildKazOsTodayPlanningClassifications_ === 'function'
+      ? buildKazOsTodayPlanningClassifications_() : [];
+    const planning = typeof buildKazOsTodayPlanningEvidence_ === 'function'
+      ? buildKazOsTodayPlanningEvidence_() : { timezone: 'Asia/Tokyo',
+        planning_date: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd'),
+        preferences: [], daily_estimates: [] };
     response = UrlFetchApp.fetch(url, {
-      method: 'post', contentType: 'application/json', payload: JSON.stringify(capture),
+      method: 'post', contentType: 'application/json',
+      payload: JSON.stringify({ calendar_capture: capture, classifications: { items: classifications }, planning: planning }),
       headers: { Authorization: 'Bearer ' + token, 'X-Kaz-Request-Id': trace.request_id }, muteHttpExceptions: true,
       followRedirects: false, validateHttpsCertificates: true
     });
@@ -150,7 +157,7 @@ function sanitizeKazOsInbox_(data) {
   const number = function(value, nullable) { if (nullable && value == null) return null; if (!Number.isInteger(value) || value < 0 || value > 100000) fail(); return value; };
   const list = function(value, limit, mapper) { if (!Array.isArray(value) || value.length > limit) fail(); return value.map(mapper); };
   const states = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
-  const kinds = ['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window'];
+  const kinds = ['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window','daily_estimate'];
   const gardenerKinds = ['CONTEXT_CANDIDATE','CONFLICT_RESOLUTION'];
   const source = function(value) {
     if (!value || value.status !== 'ok' || value.complete !== true) fail();
@@ -250,6 +257,11 @@ function sanitizeKazOsInbox_(data) {
           || value.input_contract.timezone !== 'Asia/Tokyo'
           || value.input_contract.start_required !== true || value.input_contract.end_required !== true
           || value.input_contract.within_event !== true) fail();
+    } else if (value.kind === 'daily_estimate') {
+      if (choices.length !== 0 || !value.input_contract || value.input_contract.type !== 'integer_minutes'
+          || value.input_contract.unit !== 'minutes' || value.input_contract.min !== 1
+          || !Number.isInteger(value.input_contract.max) || value.input_contract.max < 1
+          || value.input_contract.max > 100000) fail();
     } else if (choices.length < 2) fail();
     let calendarEvent = null;
     if (value.kind === 'calendar_event_impact' || value.kind === 'calendar_partial_window') {
@@ -261,30 +273,62 @@ function sanitizeKazOsInbox_(data) {
       calendarEvent = { ref: calendarEvent.id, title: calendarEvent.title, start: calendarEvent.start,
         end: calendarEvent.end, all_day: calendarEvent.all_day };
     }
-    return { id: text(value.id, 80), kind: value.kind, contract: value.contract,
+    const decisionDate = text(value.decision_date, 20, true);
+    const entityRef = text(value.entity_ref, 80, true);
+    const entityRevision = text(value.entity_revision, 80, true);
+    let decisionId = text(value.id, 80);
+    let questionRevision = text(value.question_revision, 90);
+    if (value.kind === 'today_focus') {
+      if (!entityRef || !entityRevision || !decisionDate) fail();
+      const choiceSeed = choices.map(function(choice) { return choice.value; }).join(',');
+      const seed = entityRef + '\\u0000' + entityRevision + '\\u0000' + decisionDate + '\\u0000' + choiceSeed;
+      decisionId = 'decision-' + kazOsSha256_('daily-planning-preference\\u0000' + seed).slice(0, 24);
+      questionRevision = 'question-sha256:' + kazOsSha256_('daily-planning-preference-question\\u0000' + seed);
+    } else if (value.kind === 'daily_estimate') {
+      if (!entityRef || !entityRevision || !decisionDate) fail();
+      const inputSeed = value.input_contract.type + ':' + value.input_contract.min + ':' + value.input_contract.max;
+      const seed = entityRef + '\\u0000' + entityRevision + '\\u0000' + decisionDate + '\\u0000' + inputSeed;
+      decisionId = 'decision-' + kazOsSha256_('daily-estimate\\u0000' + seed).slice(0, 24);
+      questionRevision = 'question-sha256:' + kazOsSha256_('daily-estimate-question\\u0000' + seed);
+    }
+    return { id: decisionId, kind: value.kind, contract: value.contract,
       owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
       title: text(value.title, 200), question: text(value.question, 500), reason: text(value.reason, 500),
       impact: text(value.impact, 500), estimate_min: number(value.estimate_min, true),
       affects_today: boolean(value.affects_today), urgent_today: boolean(value.urgent_today),
-      decision_date: text(value.decision_date, 20, true), due_at: text(value.due_at, 80, true),
-      project_id: text(value.project_id, 80, true), entity_ref: text(value.entity_ref, 80, true),
-      source_label: text(value.source_label, 100), entity_revision: text(value.entity_revision, 80, true),
-      question_revision: text(value.question_revision, 90),
+      decision_date: decisionDate, due_at: text(value.due_at, 80, true),
+      project_id: text(value.project_id, 80, true), entity_ref: entityRef,
+      source_label: text(value.source_label, 100), entity_revision: entityRevision,
+      question_revision: questionRevision,
       expires_at: text(value.expires_at, 80, true),
       source_revision_references: { projects: refs.projects, work_items: refs.work_items, calendar: refs.calendar },
-      answer_contract: { inbox_item_id: text(value.answer_contract.inbox_item_id, 80),
-        question_revision: text(value.answer_contract.question_revision, 90),
+      answer_contract: { inbox_item_id: decisionId,
+        question_revision: questionRevision,
         question: text(value.answer_contract.question, 500), choices: choices },
        calendar_event: calendarEvent,
        input_contract: value.kind === 'calendar_partial_window' ? { type: 'time_range', timezone: 'Asia/Tokyo',
-         start_required: true, end_required: true, within_event: true } : null,
+         start_required: true, end_required: true, within_event: true }
+         : value.kind === 'daily_estimate' ? { type: 'integer_minutes', min: value.input_contract.min,
+           max: value.input_contract.max, unit: 'minutes' } : null,
       recommended_option: text(value.recommended_option, 80, true),
       recommendation_basis: value.recommendation_basis == null ? null : list(value.recommendation_basis, 8, function(item) { return text(item, 300); }) };
+  });
+  const activeInboxItems = inboxItems.filter(function(item) {
+    if (item.kind === 'daily_estimate') {
+      const target = workItems.find(function(workItem) { return workItem.id === item.entity_ref; });
+      if (!target || target.source_revision !== item.entity_revision
+          || ['BACKLOG','READY','SCHEDULED','DOING'].indexOf(target.state) < 0
+          || (Number.isInteger(target.estimate_min) && target.estimate_min > 0)) return false;
+    }
+    if (item.expires_at == null) return true;
+    const expires = Date.parse(item.expires_at);
+    if (!Number.isFinite(expires) || expires <= Date.now()) return false;
+    return true;
   });
   return { schema_version: data.schema_version, origin: data.origin, mode: data.mode,
     fixture_only: false, fixture_fallback: false, as_of: text(data.as_of, 80), timezone: 'Asia/Tokyo',
     sources: sources, projects: projects, work_items: workItems, calendar_events: calendarEvents,
-    inbox_items: inboxItems, decision_priority_evidence: {}, feedback: null,
+    inbox_items: activeInboxItems, decision_priority_evidence: {}, feedback: null,
     gardener: gardener && data.gardener ? {
       status: text(data.gardener.status, 20), complete: boolean(data.gardener.complete),
       source_revision: text(data.gardener.source_revision, 120, true),

@@ -114,7 +114,9 @@ function validateKazOsAnswerRequest_(input) {
     return typeof refs[key] !== 'string' || !refs[key] || refs[key].length > 160;
   })) throw homeMembershipError_('KAZ_ANSWER_INVALID');
   let selected = input.selected_option;
-  if (selected && typeof selected === 'object' && !Array.isArray(selected)) {
+  if (Number.isInteger(selected)) {
+    if (selected <= 0 || selected > 100000) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+  } else if (selected && typeof selected === 'object' && !Array.isArray(selected)) {
     if (Object.keys(selected).sort().join(',') !== 'end,start') throw homeMembershipError_('KAZ_ANSWER_INVALID');
     selected = { start: text(selected.start, 80), end: text(selected.end, 80) };
   } else {
@@ -128,6 +130,12 @@ function validateKazOsAnswerRequest_(input) {
 }
 
 function validateKazOsAnswerSelection_(question, selected) {
+  if (question.kind === 'daily_estimate') {
+    const contract = question.input_contract;
+    if (!contract || contract.type !== 'integer_minutes' || !Number.isInteger(selected)
+        || selected < contract.min || selected > contract.max) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    return;
+  }
   if (question.kind === 'calendar_partial_window') {
     const start = selected && Date.parse(selected.start), end = selected && Date.parse(selected.end);
     const allDay = question.calendar_event && question.calendar_event.all_day === true;
@@ -155,18 +163,25 @@ function sameKazOsSourceRevisions_(left, right) {
 
 function sameKazOsQuestionSourceRevisions_(question, left, right) {
   if (!question || !left || !right) return false;
+  if (question.kind === 'today_focus' || question.kind === 'daily_estimate') return true;
   const keys = ['calendar_event_impact', 'calendar_partial_window'].indexOf(question.kind) >= 0
     ? ['calendar']
     : ['projects', 'work_items', 'calendar'];
   return keys.every(function(key) { return left[key] === right[key]; });
 }
 
-function sameKazOsLedgerSourceRevisions_(row, currentRefs) {
+function sameKazOsLedgerSourceRevisions_(row, inbox) {
   const change = row && row.proposal && row.proposal.change;
   const refs = row && row.answer && row.answer.source_revision_references;
-  if (!change || !refs || !currentRefs) return false;
+  if (!change || !refs || !inbox) return false;
+  const currentRefs = currentSourceRevisions_(inbox);
   if (['FOLLOWUP_REQUIRED', 'CALENDAR_CLASSIFICATION_PROPOSAL'].indexOf(change.kind) >= 0) {
     return refs.calendar === currentRefs.calendar;
+  }
+  if (change.kind === 'DAILY_PLANNING_PREFERENCE' || change.kind === 'DAILY_ESTIMATE') {
+    if (!Number.isFinite(Date.parse(change.expires_at)) || Date.parse(change.expires_at) <= Date.now()) return false;
+    const item = inbox.work_items.find(function(value) { return value.id === change.work_item_id; });
+    return !item || item.source_revision === change.work_item_source_revision;
   }
   return sameKazOsSourceRevisions_(refs, currentRefs);
 }
@@ -259,9 +274,30 @@ function buildKazOsControlledProposal_(question, answer, proposalId) {
       target_event_ref: eventRef, impact_on_kaz: 'none', classification_source: 'user', constraint_creation: false };
     else change = { kind: 'NO_OPERATIONAL_CHANGE', unknown_window_maintained: true };
   } else if (question.kind === 'today_focus') {
-    change = { kind: 'PLANNING_PREFERENCE', work_item_id: question.entity_ref,
-      planning_preference: selected === 'today' ? 'today' : selected === 'this_week' ? 'this_week' : 'later',
-      permanent_priority_change: false };
+    if (!question.entity_ref || !question.entity_revision || !question.decision_date) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    const preference = selected === 'today' ? 'today' : selected === 'this_week' ? 'this_week' : 'later';
+    const validFrom = answer.answered_at;
+    const answeredJst = new Date(Date.parse(answer.answered_at) + 9 * 60 * 60 * 1000);
+    let expires;
+    if (preference === 'today') {
+      expires = new Date(Date.UTC(answeredJst.getUTCFullYear(), answeredJst.getUTCMonth(), answeredJst.getUTCDate() + 1) - 9 * 60 * 60 * 1000);
+    } else {
+      const day = answeredJst.getUTCDay();
+      const daysUntilMonday = day === 0 ? 1 : 8 - day;
+      expires = new Date(Date.UTC(answeredJst.getUTCFullYear(), answeredJst.getUTCMonth(), answeredJst.getUTCDate() + daysUntilMonday) - 9 * 60 * 60 * 1000);
+    }
+    change = { kind: 'DAILY_PLANNING_PREFERENCE', work_item_id: question.entity_ref,
+      planning_date: question.decision_date, timezone: 'Asia/Tokyo', preference: preference, source: 'human',
+      work_item_source_revision: question.entity_revision, project_source_revision: null,
+      valid_from: validFrom, expires_at: expires.toISOString(),
+      permanent_priority_change: false, permanent_status_change: false };
+  } else if (question.kind === 'daily_estimate') {
+    if (!question.entity_ref || !question.entity_revision || !question.decision_date
+        || !Number.isInteger(selected) || selected <= 0) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    change = { kind: 'DAILY_ESTIMATE', work_item_id: question.entity_ref,
+      planning_date: question.decision_date, timezone: 'Asia/Tokyo', estimate_min: selected, source: 'human',
+      work_item_source_revision: question.entity_revision, valid_from: answer.answered_at,
+      expires_at: question.expires_at, permanent_estimate_change: false };
   } else if (question.kind === 'stale_state_confirmation') {
     change = selected === 'complete' ? { kind: 'WORK_ITEM_STATE_CHANGE', work_item_id: question.entity_ref,
       expected_before: question.current_state, desired_after: 'DONE' } : { kind: 'NO_OPERATIONAL_CHANGE', state_maintained: true };
@@ -282,9 +318,8 @@ function buildKazOsControlledProposal_(question, answer, proposalId) {
 function applyKazOsDecisionLedger_(inbox) {
   if (!isKazOsInboxAnswerEnabled_()) return inbox;
   const rows = readKazOsDecisionLedger_();
-  const currentRefs = currentSourceRevisions_(inbox);
   const currentAnswers = rows.filter(function(row) {
-    return sameKazOsLedgerSourceRevisions_(row, currentRefs);
+    return sameKazOsLedgerSourceRevisions_(row, inbox);
   });
   const answered = new Set(currentAnswers.map(function(row) { return row.answer.decision_id + '\u0000' + row.answer.question_revision; }));
   const pending = inbox.inbox_items.filter(function(item) { return !answered.has(item.id + '\u0000' + item.question_revision); });
@@ -319,6 +354,8 @@ function buildKazOsCalendarFollowup_(row, inbox) {
   const eventRef = String(change && change.target_event_ref || '');
   const event = eventRef && inbox.calendar_events.find(function(item) { return item.id === eventRef; });
   if (!answer || !event || change.kind !== 'FOLLOWUP_REQUIRED' || change.follow_up !== 'calendar_partial_window') return null;
+  const eventEnd = Date.parse(String(event.end || '') + (event.all_day ? 'T00:00:00+09:00' : ''));
+  if (!Number.isFinite(eventEnd) || eventEnd <= Date.now()) return null;
   const currentRefs = currentSourceRevisions_(inbox);
   const id = 'decision-' + kazOsSha256_(answer.decision_id + '\u0000' + event.id + '\u0000' + currentRefs.calendar).slice(0, 24);
   const base = { id: id, kind: 'calendar_partial_window', contract: 'secretary-question-0.1', owner: 'kaz',
@@ -335,7 +372,7 @@ function buildKazOsCalendarFollowup_(row, inbox) {
     calendar_event: { ref: event.id, title: event.title, start: event.start, end: event.end, all_day: event.all_day },
     input_contract: { type: 'time_range', timezone: 'Asia/Tokyo', start_required: true, end_required: true, within_event: true },
     recommended_option: null, recommendation_basis: null,
-    expires_at: inbox.sources.calendar.valid_until };
+    expires_at: new Date(eventEnd).toISOString() };
   const revisionSeed = {
     id: base.id,
     kind: base.kind,
