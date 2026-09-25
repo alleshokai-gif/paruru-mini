@@ -3167,6 +3167,75 @@ body:not(.is-authenticated) .drawer-overlay {
 }
 
 
+.infection-watch-card {
+  margin: 0 0 18px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-left: 4px solid #28796e;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgba(31, 47, 92, .06);
+}
+
+.infection-watch-card-heading,
+.infection-watch-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.infection-watch-eyebrow,
+.infection-watch-card h2,
+.infection-watch-content p {
+  margin: 0;
+}
+
+.infection-watch-eyebrow,
+.infection-watch-status,
+.infection-watch-meta {
+  color: var(--muted);
+  font-size: .82rem;
+}
+
+.infection-watch-card h2 {
+  font-size: 1.05rem;
+}
+
+.infection-watch-status.is-warning {
+  color: #895b0b;
+}
+
+.infection-watch-content {
+  margin: 12px 0;
+}
+
+.infection-watch-summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+}
+
+.infection-watch-summary strong {
+  font-size: 1.05rem;
+}
+
+.infection-watch-card-footer a {
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .infection-watch-card {
+    padding: 16px 14px;
+  }
+
+  .infection-watch-card-heading {
+    align-items: flex-start;
+  }
+}
+
 [hidden] {
   display: none !important;
 }
