@@ -3589,10 +3589,19 @@ body:not(.is-authenticated) .drawer-overlay {
 }
 
 
+.today-paruru-refresh {
+  width: 42px;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .today-paruru-refresh img {
   display: block;
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
 }
 
 
