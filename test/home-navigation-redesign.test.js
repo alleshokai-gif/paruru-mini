@@ -60,7 +60,7 @@ assert(!launcherItems.some(item => ['home', 'inbox', 'settings', 'memo'].include
 assert(drawerMemo && drawerMemo.dataset.targetView === 'home' && drawerMemo.dataset.openHomeMemo === 'true', 'memo is not preserved as a drawer action');
 assert(drawerInfection?.className.includes('is-external') && drawerInfection.attributes['aria-label'].includes('外部サイト') && drawerInfection.children.length === 2, 'external destination must remain accessible without a right-side arrow');
 assert(drawerButtons.filter(item => item.className === 'drawer-menu-item').every(item => item.children.length === 2), 'drawer items must contain only icon and title');
-assert(drawerButtons[0]?.dataset.navigationId === 'home' && drawerButtons.at(-2)?.dataset.navigationId === 'memo', 'drawer hierarchy must start at Home and keep memo under Other');
+assert(!drawerButtons.some(item => item.dataset.navigationId === 'home') && drawerButtons.at(-2)?.dataset.navigationId === 'memo', 'drawer must not duplicate Home and must keep memo under Other');
 assert(!index.includes('id="infectionWatchCard"'), 'infection summary card remains in Home');
 assert(!index.includes('features/infection-watch/card.js'), 'infection card script remains loaded');
 assert(!app.includes('PALURUInfectionWatchCard') && !app.includes('infection-watch-api-poc'), 'PALURU still initializes or fetches the Public infection API');
@@ -68,8 +68,8 @@ assert(!style.includes('.infection-watch-card'), 'card-only CSS remains');
 assert(!sw.includes('features/infection-watch/card.js') && sw.includes('versioned("features/navigation/config.js")'), 'service worker asset list is stale');
 assert(index.includes('<details id="homeMemoDetails"') && index.includes('<form id="inboxForm"'), 'existing memo form was not preserved behind a collapsed details section');
 assert(!index.includes('id="homeMemoOpenButton"') && !index.includes('よく使う機能'), 'Home still contains the oversized memo entry or duplicate launcher heading');
-assert(index.includes('id="homeMemoQuickInput"') && index.includes('id="homeMemoQuickOpen"'), 'compact memo entry is missing');
-assert(index.includes('paw-menu.svg') && index.includes('paw-close.svg') && !index.includes('>☰</button>'), 'paw menu/close assets are not in the header');
+assert(index.includes('id="homeMemoQuickInput"') && index.includes('id="homeMemoQuickOpen"') && index.includes('>メモ</button>'), 'compact memo entry is missing or unclear');
+assert(index.includes('paw-menu.svg') && index.includes('paw-close.svg') && !index.includes('>☰</button>') && index.includes('paruru_stand.png'), 'paw controls or full-body PALURU asset are missing');
 assert(index.includes('class="app-topbar"') && index.includes('class="home-wordmark"'), 'shared navigation header is missing');
 assert(app.includes('homeMemoDetails.open = true') && app.includes('memoInput?.focus({ preventScroll: true })'), 'drawer memo action does not open and focus the preserved form');
 assert(app.includes('function openHomeMemoFromQuick_()') && app.includes('memoInput.value.trimEnd()'), 'quick memo does not preserve existing draft while reusing the save form');
@@ -98,13 +98,13 @@ assert.deepEqual(JSON.parse(JSON.stringify(documentEvents.at(-1).detail)), { vie
 assert(app.includes('detail.openMemo') && app.includes('homeMemoDetails) homeMemoDetails.open = true'), 'drawer memo action does not open the preserved form');
 assert(configSource.includes('kazPageLaunch') && app.includes('setCurrentNavigation_') && app.includes('aria-current'), 'current location highlighting contract missing');
 
-assert(style.includes('grid-template-columns: repeat(2, minmax(0, 1fr))') && style.includes('grid-template-rows: 26px 18px 1fr'), 'home launcher is not a two-column compact tile grid');
-assert(style.includes('min-height: 88px') && style.includes('.drawer-menu-item:focus-visible'), 'compact tile or keyboard focus styling missing');
+assert(style.includes('grid-template-columns: repeat(2, minmax(0, 1fr))') && style.includes('grid-template-columns: 32px minmax(0, 1fr)'), 'home launcher is not a two-column compact horizontal tile grid');
+assert(style.includes('height: 72px') && style.includes('.drawer-menu-item:focus-visible'), 'compact tile or keyboard focus styling missing');
 assert(style.includes('width: min(90vw, 360px)') && style.includes('body.drawer-open') && style.includes('.home-memo-details:not([open])'), 'drawer width, scroll lock, or memo presentation regressed');
 assert(style.includes('overflow-x: clip'), 'mobile horizontal overflow guard missing');
 assert(app.includes('Build: ${globalThis.BUILD_ID}'), 'Build ID display is missing');
 const buildId = build.match(/BUILD_ID\s*=\s*"([^"]+)"/)?.[1];
-assert(buildId === 'v20260925-navigation-redesign-v4', 'Build ID not updated for the navigation/SW change');
+assert(buildId === 'v20260925-navigation-polish-v5', 'Build ID not updated for the navigation/SW change');
 assert(sw.includes(`importScripts("./build.js?v=${buildId}")`), 'Service Worker still uses an old Build ID');
 assert(sw.includes('versioned("assets/icons/paw-menu.svg")') && sw.includes('versioned("assets/icons/paw-close.svg")'), 'paw assets are missing from offline cache');
 assert(index.includes(`./style.css?v=${buildId}`) && index.includes(`./features/navigation/config.js?v=${buildId}`), 'updated UI assets are not versioned consistently');
