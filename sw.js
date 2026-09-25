@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260925-dynamic-daily-planning-v2");
-// Release: v20260925-dynamic-daily-planning-v2
+importScripts("./build.js?v=v20260925-infection-watch-card-v1");
+// Release: v20260925-infection-watch-card-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -15,6 +15,7 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("app.js"),
   versioned("features/auth/firebase-auth.js"),
   versioned("features/auth/firebase-auth-runtime.js"),
+  versioned("features/infection-watch/card.js"),
   versioned("features/nurse-okan/health-routine.js"),
   versioned("features/nurse-okan/nurse-okan.js"),
   versioned("features/popio-health/popio-health.js"),

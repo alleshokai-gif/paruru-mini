@@ -76,7 +76,7 @@
     const previous = sumSevenDays(realtime.daily, realtime.periodEnd, -13);
     if (current === null || previous === null) return null;
     const closureCount = schoolClosureCount(snapshot, targetDate);
-    const statusSources = closureCount === null ? [realtimeStatus] : [realtimeStatus, closuresStatus].filter(Boolean);
+    const statusSources = [realtimeStatus, closuresStatus].filter(Boolean);
     const effectiveStatus = statusSources.find(source => source.status !== "ok")?.status || "ok";
     return {
       current,
@@ -91,7 +91,12 @@
 
   function deepLink() {
     const url = new URL(WATCH_BASE);
-    url.search = new URLSearchParams({ disease: "influenza", ward: HOME_WARD, district: HOME_DISTRICT }).toString();
+    url.search = new URLSearchParams({
+      disease: "influenza",
+      ward: HOME_WARD,
+      district: HOME_DISTRICT,
+      schoolDate: todayInTokyo()
+    }).toString();
     return url.href;
   }
 

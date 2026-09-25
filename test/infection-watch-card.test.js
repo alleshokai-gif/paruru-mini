@@ -5,6 +5,7 @@ const vm = require("node:vm");
 const test = require("node:test");
 
 const source = fs.readFileSync(path.join(__dirname, "../features/infection-watch/card.js"), "utf8");
+const serviceWorkerSource = fs.readFileSync(path.join(__dirname, "../sw.js"), "utf8");
 
 function makeCard() {
   const classList = () => ({ add() {}, remove() {}, toggle() {} });
@@ -56,7 +57,14 @@ test("card uses only public filter values in canonical Watch deep link", () => {
   assert.equal(url.searchParams.get("disease"), "influenza");
   assert.equal(url.searchParams.get("ward"), "宮前区");
   assert.equal(url.searchParams.get("district"), "宮前区:向丘地区");
+  assert.match(url.searchParams.get("schoolDate"), /^\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual([...url.searchParams.keys()].sort(), ["disease", "district", "schoolDate", "ward"]);
   assert.equal(url.searchParams.has("home"), false);
+});
+
+test("card script joins the versioned network-first app shell for PWA updates", () => {
+  assert.match(serviceWorkerSource, /features\/infection-watch\/card\.js/);
+  assert.match(serviceWorkerSource, /infection-watch-card-v1/);
 });
 
 test("card summarizes exact 7-day counts and previous period without storing a cache", async () => {
@@ -100,6 +108,20 @@ test("failed + LKG and stale status are shown as such instead of presenting fres
   closuresLkg.sources.find(source => source.id === "closures").data_is_last_known_good = true;
   await api.load(async () => jsonResponse(closuresLkg));
   assert.equal(elements.infectionWatchStatus.textContent, "前回確認データ");
+});
+
+test("closures publication pending remains visible when closure rows are unavailable", async () => {
+  const { api, elements } = makeCard();
+  const value = snapshot();
+  const closures = value.sources.find(source => source.id === "closures");
+  closures.status = "publication_pending";
+  closures.data_available = false;
+  value.data.closures.rows = [];
+  const state = await api.load(async () => jsonResponse(value));
+  assert.equal(state.kind, "summary");
+  assert.equal(state.summary.sourceStatus, "publication_pending");
+  assert.equal(elements.infectionWatchStatus.textContent, "公表待ち");
+  assert.match(elements.infectionWatchContent.innerHTML, /学校休業情報は確認できません/);
 });
 
 test("missing target district data fails closed and does not show fabricated zero", () => {

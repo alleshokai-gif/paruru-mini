@@ -1174,14 +1174,14 @@ test('agentChat logs API_ERROR and FETCH_FAILED with the same request context', 
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
-  const expected = 'v20260925-inbox-revision-fingerprint-v1';
   const buildSource = fs.readFileSync(path.join(root, 'build.js'), 'utf8');
-  assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildSource.includes('globalThis.BUILD_ID = "' + expected + '"'), 'BUILD_ID must have one definition');
+  const buildId = buildSource.match(/globalThis\.BUILD_ID\s*=\s*"([^"]+)"/);
+  assert((buildSource.match(/globalThis\.BUILD_ID\s*=/g) || []).length === 1 && buildId, 'BUILD_ID must have one definition');
   assert(appSource.includes('Build: ${globalThis.BUILD_ID}') && !/const\s+(?:ASSET_VERSION|BUILD_VERSION|BUILD_ID)\s*=/.test(appSource), 'app does not use BUILD_ID as the only Build display source');
   const swSource = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
-  assert(swSource.includes('importScripts("./build.js?v=' + expected + '")') && swSource.includes('const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`') && !/const\s+ASSET_VERSION\s*=/.test(swSource), 'SW does not cache-bust build.js or use BUILD_ID for CACHE_NAME');
+  assert(swSource.includes('importScripts("./build.js?v=' + buildId[1] + '")') && swSource.includes('const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`') && !/const\s+ASSET_VERSION\s*=/.test(swSource), 'SW does not cache-bust build.js or use BUILD_ID for CACHE_NAME');
   const indexSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-  assert(indexSource.includes('<script src="./build.js?v=' + expected + '" defer></script>'), 'HTML does not load the cache-busted BUILD_ID');
+  assert(indexSource.includes('<script src="./build.js?v=' + buildId[1] + '" defer></script>'), 'HTML does not load the cache-busted BUILD_ID');
   assert(indexSource.includes('<p class="splash-logo">PALURU</p>') && indexSource.includes('<p class="splash-tagline">AI for everyday life.</p>') && indexSource.includes('<p class="splash-loading">Googleセッションを確認中…</p>'), 'splash product label, tagline, or Firebase session text changed');
   const styleSource = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
   const splashTaglineCss = (styleSource.match(/\.splash-tagline\s*\{[^}]*\}/) || [''])[0];
