@@ -116,9 +116,9 @@ textarea {
 
 .app-topbar-inner {
   position: relative;
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  display: flex;
   align-items: center;
+  justify-content: center;
   width: min(100%, 480px);
   height: calc(64px + env(safe-area-inset-top));
   margin: 0 auto;
@@ -126,9 +126,6 @@ textarea {
 }
 
 .home-wordmark {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   color: var(--accent-dark);
   font-size: 1.05rem;
   font-weight: 850;
@@ -3581,17 +3578,6 @@ body:not(.is-authenticated) .drawer-overlay {
 .home-memo-actions .paluru-action-hint { display: none; }
 
 /* Navigation final v7. */
-.app-topbar-inner {
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
-}
-.menu-toggle {
-  grid-column: 3;
-}
-.home-wordmark {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
 .home-feature-launcher {
   margin-top: 10px;
 }
@@ -3610,8 +3596,9 @@ body:not(.is-authenticated) .drawer-overlay {
 }
 
 
-/* Header placement: wordmark is viewport-centered; menu stays in the right grid cell. */
+/* Header placement: wordmark centered across full header; menu independently pinned right. */
 .menu-toggle {
-  grid-column: 3;
-  justify-self: end;
+  position: absolute;
+  right: 16px;
+  top: calc(env(safe-area-inset-top) + 8px);
 }
