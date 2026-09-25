@@ -3466,3 +3466,136 @@ body:not(.is-authenticated) .drawer-overlay {
 [hidden] {
   display: none !important;
 }
+
+
+/* Navigation polish v5: compact Home launcher and brand-paw controls. */
+.menu-toggle,
+.paw-close-button {
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+.menu-toggle:focus-visible,
+.paw-close-button:focus-visible {
+  outline: none;
+}
+.menu-toggle:focus-visible img,
+.paw-close-button:focus-visible img {
+  filter: drop-shadow(0 0 2px var(--accent-dark)) drop-shadow(0 0 2px var(--accent-dark));
+}
+#homeView > .paruru-hero {
+  grid-template-columns: 96px minmax(0, 1fr);
+  min-height: 100px;
+  align-items: center;
+  overflow: visible;
+}
+#homeView > .paruru-hero .paruru-character {
+  width: 96px;
+  min-height: 100px;
+  overflow: visible;
+}
+#homeView > .paruru-hero .paruru-image {
+  display: block;
+  width: 88px;
+  max-width: 88px;
+  height: auto;
+  max-height: none;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+.home-feature-grid {
+  column-gap: 10px;
+  row-gap: 10px;
+}
+.home-feature-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  row-gap: 2px;
+  align-content: center;
+  align-items: center;
+  height: 72px;
+  min-height: 72px;
+  max-height: 72px;
+  padding: 8px 10px;
+}
+.home-feature-item .navigation-item-icon {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  width: 32px;
+  height: 32px;
+}
+.home-feature-item .navigation-item-label {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 0.84rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+.home-feature-item .navigation-item-note {
+  grid-column: 2;
+  grid-row: 2;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.home-memo-quick {
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+.home-memo-quick-entry {
+  grid-template-columns: minmax(0, 1fr) 56px;
+  gap: 8px;
+}
+.home-memo-quick-entry input,
+.home-memo-quick-entry button {
+  height: 44px;
+  min-height: 44px;
+}
+.home-memo-quick-entry input {
+  padding: 0 12px;
+  font-size: 0.9rem;
+}
+.home-memo-quick-entry button {
+  width: 56px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.app-drawer {
+  width: min(90vw, 350px);
+  padding: max(14px, env(safe-area-inset-top)) 14px 0;
+}
+.app-drawer-header {
+  min-height: 56px;
+  margin-bottom: 4px;
+  padding: 0 4px 8px;
+}
+.drawer-menu-section {
+  gap: 0;
+}
+.drawer-menu-section-title {
+  margin: 12px 8px 3px;
+  font-size: 0.7rem;
+}
+.drawer-menu-item {
+  min-height: 44px;
+  height: 44px;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+.drawer-menu-item .navigation-item-icon {
+  width: 28px;
+  flex-basis: 28px;
+  font-size: 1.05rem;
+}
