@@ -345,12 +345,13 @@ main,
 .home-feature-item .navigation-item-icon {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--accent-soft);
+  width: 32px;
+  height: 32px;
+  border-radius: 0;
+  background: transparent url("./assets/icons/paw-soft.svg") center / 32px 32px no-repeat;
   text-align: center;
-  font-size: 1rem;
+  font-size: 0.9rem;
+  line-height: 1;
 }
 
 .home-feature-item .navigation-item-label {
