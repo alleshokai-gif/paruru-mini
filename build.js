@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260925-memo-compact-v6";
+globalThis.BUILD_ID = "v20260925-navigation-final-v7";
