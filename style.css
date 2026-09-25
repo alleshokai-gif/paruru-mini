@@ -3619,3 +3619,30 @@ body:not(.is-authenticated) .drawer-overlay {
   height: 44px;
 }
 .home-memo-actions .paluru-action-hint { display: none; }
+
+/* Navigation final v7. */
+.app-topbar-inner {
+  grid-template-columns: 1fr auto 48px;
+}
+.menu-toggle {
+  grid-column: 3;
+}
+.home-wordmark {
+  grid-column: 2;
+}
+.home-feature-launcher {
+  margin-top: 10px;
+}
+.home-feature-launcher-heading {
+  display: none;
+}
+#homeView > .paruru-hero .paruru-image {
+  width: min(90px, 100%);
+  max-width: 90px;
+  height: auto;
+  max-height: none;
+  object-fit: contain;
+}
+.home-memo-inline-field > span {
+  display: none;
+}
