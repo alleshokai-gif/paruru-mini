@@ -121,7 +121,10 @@ assert.equal(cacheValues.size, 1);
 assert(![...cacheValues.keys()].some(key => key.includes(reusedToken)), 'raw token leaked into cache key');
 assert(![...cacheValues.values()].some(value => value.includes(reusedToken)), 'raw token leaked into cached actor');
 
-clock += 9;
+clock += 29;
+context.resolveFirebaseAuthenticatedActorForRead_(body(reusedToken), overrides());
+assert.equal(lookupCount, 1, 'same token was not reused within the short TTL');
+clock += 2;
 context.resolveFirebaseAuthenticatedActorForRead_(body(reusedToken), overrides());
 assert.equal(lookupCount, 2, 'TTL expiry did not force fresh verification');
 
@@ -168,4 +171,4 @@ assert(progressSource.includes('resolveFirebaseAuthenticatedActorForRead_(input)
 assert(answerSource.includes('resolveFirebaseAuthenticatedActor_(input)'), 'Kaz answer write no longer performs fresh actor resolution');
 assert(!answerSource.includes('resolveFirebaseAuthenticatedActorForRead_'), 'Kaz answer write incorrectly shares read cache');
 
-console.log(`PASS actor call-count evidence before=${JSON.stringify(before)} after=${JSON.stringify(after)} ttlSeconds=8`);
+console.log(`PASS actor call-count evidence before=${JSON.stringify(before)} after=${JSON.stringify(after)} ttlSeconds=30`);

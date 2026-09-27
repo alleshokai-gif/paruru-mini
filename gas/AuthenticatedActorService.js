@@ -1,4 +1,4 @@
-const FIREBASE_READ_ACTOR_CACHE_TTL_SECONDS = 8;
+const FIREBASE_READ_ACTOR_CACHE_TTL_SECONDS = 30;
 const FIREBASE_READ_ACTOR_CACHE_PREFIX = 'firebase-read-actor-v1:';
 
 function resolveFirebaseAuthenticatedActor_(body, overrides, transportTrace) {

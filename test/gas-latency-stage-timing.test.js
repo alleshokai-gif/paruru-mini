@@ -106,8 +106,8 @@ assert(!app.includes('callHomeControlWriteApiWithRetry_'), 'write retry helper w
 assert((app.match(/callHomeControlReadOnlyApi_/g) || []).length > 0, 'read retry wrapper unexpectedly removed');
 
 const changedRuntimeSources = [diagnostics, code, actor, session, progress, projects, work, today, inbox].join('\n');
-assert(!changedRuntimeSources.includes('CacheService.getScriptCache()') || actor.includes('FIREBASE_READ_ACTOR_CACHE_TTL_SECONDS = 8'),
-  'observability patch changed the existing bounded actor cache contract');
+assert(!changedRuntimeSources.includes('CacheService.getScriptCache()') || actor.includes('FIREBASE_READ_ACTOR_CACHE_TTL_SECONDS = 30'),
+  'read actor cache exceeds the bounded 30-second contract');
 assert(!changedRuntimeSources.includes('setTimeout('), 'timeout behavior was added to GAS');
 assert(!changedRuntimeSources.includes('Utilities.sleep('), 'timing instrumentation blocks request execution');
 
