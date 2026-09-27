@@ -13,8 +13,13 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
     if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.work.get', 'kazOs.today.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
     if (!isKazOsLiveEnabled_()) throw homeMembershipError_('KAZ_NOT_CONNECTED');
     recordKazOsTransport_(transportTrace, 'AUTH_RESOLVE_START', { outcome: 'progress' });
-    const actor = resolveFirebaseAuthenticatedActorForRead_(input);
-    authorizeKazOsOwner_(actor);
+    const authStart = Date.now();
+    try {
+      const actor = resolveFirebaseAuthenticatedActorForRead_(input);
+      authorizeKazOsOwner_(actor);
+    } finally {
+      if (inboxTrace) recordKazOsInboxTiming_(inboxTrace, 'auth_ms', Date.now() - authStart);
+    }
     recordKazOsTransport_(transportTrace, 'AUTH_RESOLVE_END', { outcome: 'progress' });
     if (input.action === 'kazOs.inbox.get') recordKazOsInboxTrace_(inboxTrace, 'AUTH_PASSED');
     if (input.action === 'kazOs.projects.get') {
@@ -48,15 +53,29 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
       recordKazOsInboxTrace_(inboxTrace, 'INBOX_READ_STARTED');
       const rawInbox = readKazOsInbox_(inboxTrace, transportTrace);
       recordKazOsTransport_(transportTrace, 'SANITIZE_START', { outcome: 'progress' });
-      const sanitized = sanitizeKazOsInbox_(rawInbox);
+      const sanitizeStart = Date.now();
+      let sanitized;
+      try {
+        sanitized = sanitizeKazOsInbox_(rawInbox);
+      } finally {
+        recordKazOsInboxTiming_(inboxTrace, 'response_ms', Date.now() - sanitizeStart);
+      }
       recordKazOsTransport_(transportTrace, 'SANITIZE_END', { outcome: 'progress' });
       recordKazOsTransport_(transportTrace, 'DECISION_LEDGER_READ_START', { outcome: 'progress' });
-      const projected = typeof applyKazOsDecisionLedger_ === 'function' ? applyKazOsDecisionLedger_(sanitized) : sanitized;
+      const ledgerStart = Date.now();
+      let projected;
+      try {
+        projected = typeof applyKazOsDecisionLedger_ === 'function' ? applyKazOsDecisionLedger_(sanitized) : sanitized;
+      } finally {
+        recordKazOsInboxTiming_(inboxTrace, 'decision_ledger_ms', Date.now() - ledgerStart);
+      }
       recordKazOsTransport_(transportTrace, 'DECISION_LEDGER_READ_END', { outcome: 'progress' });
       const questionCount = Array.isArray(projected.inbox_items) ? projected.inbox_items.length : null;
       recordKazOsInboxTrace_(inboxTrace, 'SANITIZER_OK', { question_count: questionCount });
       recordKazOsInboxTrace_(inboxTrace, 'RESPONSE_SENT', { question_count: questionCount });
+      const responseStart = Date.now();
       const response = json_({ success: true, data: projected, message: projected.mode === 'controlled_proposal' ? 'controlled proposal' : 'read only' });
+      recordKazOsInboxTiming_(inboxTrace, 'response_ms', Date.now() - responseStart);
       recordKazOsTransport_(transportTrace, 'RESPONSE_READY', { outcome: 'success' });
       return response;
     }
@@ -69,6 +88,8 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
       classification: 'business', outcome: 'unresolved', errorCode: code
     });
     return json_({ success: false, data: null, error: { code: code }, message: code });
+  } finally {
+    if (inboxTrace) logKazOsInboxTiming_(inboxTrace);
   }
 }
 

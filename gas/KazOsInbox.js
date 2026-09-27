@@ -8,7 +8,35 @@ var KAZ_OS_INBOX_TRACE_ERROR_CODES_ = ['FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'MEMB
 function createKazOsInboxTrace_(requestId) {
   const normalized = String(requestId || '').trim().toLowerCase();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(normalized)) return null;
-  return { request_id: normalized, started_at_ms: Date.now() };
+  return { request_id: normalized, started_at_ms: Date.now(), timing_ms: {} };
+}
+
+var KAZ_OS_INBOX_TIMING_STAGES_ = ['auth_ms', 'config_ms', 'calendar_ms', 'decision_ledger_ms',
+  'gateway_post_ms', 'response_ms'];
+
+function recordKazOsInboxTiming_(trace, stage, elapsedMs) {
+  if (!trace || KAZ_OS_INBOX_TIMING_STAGES_.indexOf(stage) < 0 || !Number.isFinite(elapsedMs)) return;
+  const value = Math.min(600000, Math.max(0, Math.floor(elapsedMs)));
+  if (!trace.timing_ms) trace.timing_ms = {};
+  trace.timing_ms[stage] = Math.min(600000, (trace.timing_ms[stage] || 0) + value);
+}
+
+function logKazOsInboxTiming_(trace) {
+  if (!trace || trace.timing_logged) return;
+  trace.timing_logged = true;
+  const stages = trace.timing_ms || {};
+  const entry = { request_id: trace.request_id };
+  KAZ_OS_INBOX_TIMING_STAGES_.forEach(function(stage) {
+    entry[stage] = Number.isInteger(stages[stage]) ? stages[stage] : null;
+  });
+  entry.gas_total_ms = Math.min(600000, Math.max(0, Date.now() - (trace.gas_started_at_ms || trace.started_at_ms)));
+  try {
+    if (typeof Logger !== 'undefined' && typeof Logger.log === 'function') {
+      Logger.log('[KAZ_OS_INBOX_TIMING] ' + JSON.stringify(entry));
+    }
+  } catch (_) {
+    // Timing never changes the read result.
+  }
 }
 
 function recordKazOsInboxTrace_(trace, stage, values) {
@@ -40,17 +68,28 @@ function safeKazOsInboxTraceErrorCode_(error) {
 }
 
 function readKazOsInbox_(trace, transportTrace) {
-  const props = PropertiesService.getScriptProperties();
-  const url = String(props.getProperty('KAZ_OS_INBOX_READ_URL') || '');
-  const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
+  let url, token;
+  const configStart = Date.now();
+  try {
+    const props = PropertiesService.getScriptProperties();
+    url = String(props.getProperty('KAZ_OS_INBOX_READ_URL') || '');
+    token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
+  } finally {
+    recordKazOsInboxTiming_(trace, 'config_ms', Date.now() - configStart);
+  }
   if (!/^https:\/\/[^\s?#]+\/v1\/inbox$/.test(url) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
   let capture;
   recordKazOsTransport_(transportTrace, 'CALENDAR_CAPTURE_START', { outcome: 'progress' });
+  const calendarStart = Date.now();
   try {
     capture = buildKazOsCalendarCapture_();
+    recordKazOsInboxTiming_(trace, 'calendar_ms', Date.now() - calendarStart);
     recordKazOsTransport_(transportTrace, 'CALENDAR_CAPTURE_END', { outcome: 'progress' });
     recordKazOsInboxTrace_(trace, 'CALENDAR_CAPTURE_OK', { event_count: capture.response.events.length });
   } catch (error) {
+    if (!Number.isInteger(trace && trace.timing_ms && trace.timing_ms.calendar_ms)) {
+      recordKazOsInboxTiming_(trace, 'calendar_ms', Date.now() - calendarStart);
+    }
     recordKazOsTransport_(transportTrace, 'CALENDAR_CAPTURE_END', {
       classification: 'business', outcome: 'unresolved', errorCode: 'KAZ_SOURCE_FAILED'
     });
@@ -58,22 +97,34 @@ function readKazOsInbox_(trace, transportTrace) {
     throw error;
   }
   const eventCount = capture.response.events.length;
-  recordKazOsInboxTrace_(trace, 'GATEWAY_POST_STARTED', { event_count: eventCount });
-  recordKazOsTransport_(transportTrace, 'CLOUD_RUN_START', { outcome: 'progress' });
   let response;
   try {
-    const classifications = typeof buildKazOsTodayPlanningClassifications_ === 'function'
-      ? buildKazOsTodayPlanningClassifications_() : [];
-    const planning = typeof buildKazOsTodayPlanningEvidence_ === 'function'
-      ? buildKazOsTodayPlanningEvidence_() : { timezone: 'Asia/Tokyo',
-        planning_date: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd'),
-        preferences: [], daily_estimates: [] };
-    response = UrlFetchApp.fetch(url, {
+    const ledgerStart = Date.now();
+    let classifications, planning;
+    try {
+      classifications = typeof buildKazOsTodayPlanningClassifications_ === 'function'
+        ? buildKazOsTodayPlanningClassifications_() : [];
+      planning = typeof buildKazOsTodayPlanningEvidence_ === 'function'
+        ? buildKazOsTodayPlanningEvidence_() : { timezone: 'Asia/Tokyo',
+          planning_date: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd'),
+          preferences: [], daily_estimates: [] };
+    } finally {
+      recordKazOsInboxTiming_(trace, 'decision_ledger_ms', Date.now() - ledgerStart);
+    }
+    const options = {
       method: 'post', contentType: 'application/json',
       payload: JSON.stringify({ calendar_capture: capture, classifications: { items: classifications }, planning: planning }),
       headers: { Authorization: 'Bearer ' + token, 'X-Kaz-Request-Id': trace.request_id }, muteHttpExceptions: true,
       followRedirects: false, validateHttpsCertificates: true
-    });
+    };
+    recordKazOsInboxTrace_(trace, 'GATEWAY_POST_STARTED', { event_count: eventCount });
+    recordKazOsTransport_(transportTrace, 'CLOUD_RUN_START', { outcome: 'progress' });
+    const gatewayStart = Date.now();
+    try {
+      response = UrlFetchApp.fetch(url, options);
+    } finally {
+      recordKazOsInboxTiming_(trace, 'gateway_post_ms', Date.now() - gatewayStart);
+    }
   } catch (_) {
     recordKazOsTransport_(transportTrace, 'CLOUD_RUN_END', {
       classification: 'unknown', outcome: 'unresolved', errorCode: 'KAZ_SOURCE_FAILED'

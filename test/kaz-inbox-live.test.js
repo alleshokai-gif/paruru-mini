@@ -134,7 +134,7 @@ test('GAS INBOX read sends one bounded V2 envelope and no raw IDs',()=>{
   assert.deepEqual(payload.classifications,{items:[]});assert.equal(payload.planning.timezone,'Asia/Tokyo');assert.match(payload.planning.planning_date,/^\d{4}-\d{2}-\d{2}$/);assert.deepEqual(payload.planning.preferences,[]);assert.deepEqual(payload.planning.daily_estimates,[]);
   const encoded=JSON.stringify(payload);assert(!encoded.includes('raw-event-id'));assert(!encoded.includes('private-calendar-id'));assert(!encoded.includes(h.props.KAZ_OS_PROGRESS_READ_TOKEN));
   assert(!Object.hasOwn(payload,'request_id'),'request id must not alter the INBOX envelope contract');
-  const entries=logs.map(line=>JSON.parse(line.replace(/^\[KAZ_OS_INBOX_TRACE\] /,'')));
+  const entries=logs.filter(line=>line.startsWith('[KAZ_OS_INBOX_TRACE] ')).map(line=>JSON.parse(line.replace(/^\[KAZ_OS_INBOX_TRACE\] /,'')));
   assert.deepEqual(entries.map(entry=>entry.stage),['REQUEST_RECEIVED','ROUTER_MATCHED','AUTH_PASSED','INBOX_READ_STARTED','CALENDAR_CAPTURE_OK','GATEWAY_POST_STARTED','GATEWAY_RESPONSE','SANITIZER_OK','RESPONSE_SENT']);
   const allowed=['elapsed_ms','error_code','event_count','gas_version','http_status','question_count','request_id','stage','timestamp'].sort();
   for(const entry of entries){assert.deepEqual(Object.keys(entry).sort(),allowed);assert.equal(entry.request_id,requestId);}
@@ -146,7 +146,7 @@ test('Calendar failure records only the safe failed stage and never calls the ga
   h.ctx.getCalendarByConfig_=()=>({getName:()=> 'ファミリー',getEvents:()=>{throw Error('PRIVATE CALENDAR FAILURE');}});
   h.ctx.UrlFetchApp.fetch=()=>{gatewayCalls++;throw Error('MUST_NOT_RUN');};
   const r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(gatewayCalls,0);
-  const entries=logs.map(line=>JSON.parse(line.replace(/^\[KAZ_OS_INBOX_TRACE\] /,'')));
+  const entries=logs.filter(line=>line.startsWith('[KAZ_OS_INBOX_TRACE] ')).map(line=>JSON.parse(line.replace(/^\[KAZ_OS_INBOX_TRACE\] /,'')));
   assert(entries.some(entry=>entry.stage==='CALENDAR_CAPTURE_FAILED'&&entry.error_code==='KAZ_SOURCE_FAILED'));
   assert.equal(entries.at(-1).stage,'RESPONSE_SENT');assert.equal(entries.at(-1).error_code,'KAZ_SOURCE_FAILED');
   assert(!JSON.stringify(entries).includes('PRIVATE CALENDAR FAILURE'));
