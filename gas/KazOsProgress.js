@@ -77,6 +77,11 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
       const response = json_({ success: true, data: projected, message: projected.mode === 'controlled_proposal' ? 'controlled proposal' : 'read only' });
       recordKazOsInboxTiming_(inboxTrace, 'response_ms', Date.now() - responseStart);
       recordKazOsTransport_(transportTrace, 'RESPONSE_READY', { outcome: 'success' });
+      if (inboxTrace && inboxTrace.debug_timing_requested === true) {
+        return json_({ success: true, data: projected,
+          message: projected.mode === 'controlled_proposal' ? 'controlled proposal' : 'read only',
+          diagnostics: buildKazOsInboxTimingDiagnostics_(inboxTrace) });
+      }
       return response;
     }
     return json_({ success: true, data: sanitizeKazOsProgress_(readKazOsProgress_()), message: 'read only' });

@@ -39,6 +39,23 @@ function logKazOsInboxTiming_(trace) {
   }
 }
 
+function buildKazOsInboxTimingDiagnostics_(trace) {
+  const stages = trace.timing_ms || {};
+  const elapsed = function(stage) {
+    return Number.isInteger(stages[stage]) ? stages[stage] : null;
+  };
+  return {
+    request_id_suffix: trace.request_id.replace(/-/g, '').slice(-8),
+    auth_ms: elapsed('auth_ms'),
+    config_ms: elapsed('config_ms'),
+    calendar_ms: elapsed('calendar_ms'),
+    ledger_ms: elapsed('decision_ledger_ms'),
+    gateway_ms: elapsed('gateway_post_ms'),
+    response_ms: elapsed('response_ms'),
+    total_ms: Math.min(600000, Math.max(0, Date.now() - (trace.gas_started_at_ms || trace.started_at_ms)))
+  };
+}
+
 function recordKazOsInboxTrace_(trace, stage, values) {
   if (!trace || KAZ_OS_INBOX_TRACE_STAGES_.indexOf(stage) < 0) return;
   const input = values || {};

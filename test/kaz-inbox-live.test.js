@@ -27,6 +27,22 @@ const call=(device='admin-local',extra={})=>h.call(h.body(device,{action:'kazOs.
 function test(name,fn){fn();checks++;}
 
 test('owner receives only live read-only Secretary Questions',()=>{value.private_payload='SECRET';const r=call();assert(r.success);assert.equal(r.data.mode,'read_only_display');assert.equal(r.data.inbox_items.length,1);assert.equal(r.data.inbox_items[0].write_allowed,false);assert(!JSON.stringify(r).includes('SECRET'));});
+test('explicit debug timing is owner-only and leaves ordinary response unchanged',()=>{
+  value=snapshot();
+  const ordinary=call();
+  assert.deepEqual(Object.keys(ordinary),['success','data','message']);
+  assert.equal(call('admin-local',{debug_inbox_timing:'true'}).diagnostics,undefined);
+  const debug=call('admin-local',{debug_inbox_timing:true});
+  assert(debug.success);
+  assert.deepEqual(Object.keys(debug),['success','data','message','diagnostics']);
+  assert.deepEqual(Object.keys(debug.diagnostics),['request_id_suffix','auth_ms','config_ms',
+    'calendar_ms','ledger_ms','gateway_ms','response_ms','total_ms']);
+  assert.equal(debug.diagnostics.request_id_suffix,'14174000');
+  assert.equal(debug.diagnostics.data,undefined);
+  const denied=call('child-local',{debug_inbox_timing:true});
+  assert.equal(denied.error.code,'FORBIDDEN');
+  assert.equal(denied.diagnostics,undefined);
+});
 test('Secretary queue remains bounded at 20 even after Gardener support',()=>{
   value=snapshot();
   const base=value.inbox_items[0];

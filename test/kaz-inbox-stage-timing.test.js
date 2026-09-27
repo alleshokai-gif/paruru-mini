@@ -72,8 +72,32 @@ assert.equal(logs.filter(line => line.startsWith('[KAZ_OS_INBOX_TIMING] ')).leng
 context.recordKazOsInboxTiming_(trace, 'unlisted_ms', 100);
 assert(!Object.hasOwn(trace.timing_ms, 'unlisted_ms'));
 
+logs.length = 0;
+fetches = 0;
+nowMs = 1500;
+const debugTrace = context.createKazOsInboxTrace_(requestId);
+debugTrace.gas_started_at_ms = 1490;
+debugTrace.debug_timing_requested = true;
+const debugResult = context.kazOsProgress_({ action: 'kazOs.inbox.get' }, debugTrace, null);
+assert.equal(debugResult.success, true);
+assert.equal(fetches, 1);
+assert.deepEqual(Object.keys(debugResult.diagnostics), ['request_id_suffix', 'auth_ms', 'config_ms',
+  'calendar_ms', 'ledger_ms', 'gateway_ms', 'response_ms', 'total_ms']);
+assert.equal(debugResult.diagnostics.request_id_suffix, '14174000');
+assert.equal(debugResult.diagnostics.auth_ms, 20);
+assert.equal(debugResult.diagnostics.config_ms, 4);
+assert.equal(debugResult.diagnostics.calendar_ms, 7);
+assert.equal(debugResult.diagnostics.ledger_ms, 95);
+assert.equal(debugResult.diagnostics.gateway_ms, 111);
+assert.equal(debugResult.diagnostics.response_ms, 8);
+assert.equal(debugResult.diagnostics.total_ms, nowMs - 3 - 1490);
+for (const secret of ['t'.repeat(32), 'gateway.example', 'admin', 'inbox_items', 'preferences', requestId]) {
+  assert(!JSON.stringify(debugResult.diagnostics).includes(secret), 'debug diagnostics leaked private data');
+}
+
 assert(codeSource.includes('const gasStartedAtMs = Date.now();'));
 assert(codeSource.includes('trace.gas_started_at_ms = gasStartedAtMs;'));
+assert(codeSource.includes('trace.debug_timing_requested = body.debug_inbox_timing === true;'));
 assert.match(inboxSource, /const options = \{[\s\S]*?const gatewayStart = Date\.now\(\);\s*try \{\s*response = UrlFetchApp\.fetch\(url, options\);\s*\} finally \{\s*recordKazOsInboxTiming_\(trace, 'gateway_post_ms', Date\.now\(\) - gatewayStart\);/);
 
 logs.length = 0;

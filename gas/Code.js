@@ -232,6 +232,7 @@ function doPost(e) {
         return json_({ success: false, data: null, error: { code: 'KAZ_REQUEST_ID_INVALID' }, message: 'KAZ_REQUEST_ID_INVALID' });
       }
       trace.gas_started_at_ms = gasStartedAtMs;
+      trace.debug_timing_requested = body.debug_inbox_timing === true;
       recordKazOsInboxTrace_(trace, 'REQUEST_RECEIVED');
       recordKazOsInboxTrace_(trace, 'ROUTER_MATCHED');
       return kazOsProgress_(body, trace, transportTrace);
