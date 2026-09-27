@@ -145,6 +145,48 @@ test('static-only participates in chronological comparison while retaining lower
   assert.equal(ranked[0].rankingBasis, 'scheduled_departure');
 });
 
+test('mixed-provider Hub ranks ordinary realtime and static candidates by departure time', () => {
+  const departure = (time) => Date.parse(`2026-09-27T${time}:00+09:00`) / 1000;
+  const generatedAt = departure('11:40');
+  const tokyo = (id, time) => arrival({ id, sourceId: 'mukougaoka_to_kibukihoncho', provider: 'tokyu',
+    routeId: 'odpt.Busroute:TokyuBus.Kou01', routeLabel: '向０１', destination: '梶が谷駅',
+    originStop: { id: 'tokyu-origin', name: '向ヶ丘遊園駅南口' },
+    targetStop: { id: 'tokyu-target', name: '神木本町' },
+    scheduledDeparture: departure(time), estimatedDeparture: null, effectiveDeparture: null,
+    etaMinutes: null, delayMinutes: null, platform: '6', realtimeState: 'static_only',
+    departureState: 'scheduled', actionability: null, confidence: null });
+  const kawasakiStatic = arrival({ id: 'kawasaki-mizonokuchi-static',
+    sourceId: 'mukougaoka_to_kibukihoncho', routeId: '10037', routeLabel: '溝１９',
+    destination: '溝口駅南口(おし沼)', originStop: { id: '474_5', name: '向ヶ丘遊園駅南口' },
+    targetStop: { id: '184_1', name: '神木本町' }, scheduledDeparture: departure('12:07'),
+    estimatedDeparture: null, effectiveDeparture: null, etaMinutes: null, delayMinutes: null,
+    platform: '5番', realtimeState: 'static_fallback', departureState: 'scheduled', actionability: null });
+  const hub = aggregateHub({ hub: MUKOUGAOKA_YUEN_MINAMIGUCHI_HUB, generatedAt, providerResults: [
+    { provider: 'kawasaki', arrivals: [kawasakiStatic] },
+    { provider: 'tokyu', arrivals: [tokyo('tokyu-1145', '11:45'), tokyo('tokyu-1218', '12:18'),
+      tokyo('tokyu-1251', '12:51')] }
+  ] });
+  const group = hub.decisionGroups[0];
+  assert.deepEqual(group.arrivals.map((row) => [row.provider, row.scheduledDeparture]), [
+    ['tokyu', departure('11:45')], ['kawasaki', departure('12:07')], ['tokyu', departure('12:18')]
+  ]);
+
+  const kawasakiRealtime = { ...kawasakiStatic, id: 'kawasaki-mizonokuchi-realtime',
+    scheduledDeparture: departure('12:02'), estimatedDeparture: departure('12:07'), etaMinutes: 27,
+    delayMinutes: 5, realtimeState: 'realtime', departureState: 'realtime', actionability: 'catchable' };
+  const realtimeHub = aggregateHub({ hub: MUKOUGAOKA_YUEN_MINAMIGUCHI_HUB, generatedAt, providerResults: [
+    { provider: 'kawasaki', arrivals: [kawasakiRealtime] },
+    { provider: 'tokyu', arrivals: [tokyo('tokyu-1145-live-case', '11:45'), tokyo('tokyu-1218-live-case', '12:18'),
+      tokyo('tokyu-1251-live-case', '12:51')] }
+  ] });
+  const realtimeGroup = realtimeHub.decisionGroups[0];
+  assert.deepEqual(realtimeGroup.arrivals.map((row) => row.provider), ['tokyu', 'kawasaki', 'tokyu']);
+  assert.equal(realtimeGroup.arrivals[1].realtimeState, 'realtime');
+  assert.equal(realtimeGroup.arrivals[1].recommendable, true);
+  assert.equal(realtimeGroup.arrivals[0].recommendationQuality, 'static_only');
+  assert.equal(realtimeGroup.arrivals[0].recommendable, true);
+});
+
 test('low confidence is downranked and departure uncertain is never recommended', () => {
   const ranked = rankHubArrivals([
     normalizeHubArrival(arrival({ id: 'low', etaMinutes: 1, estimatedDeparture: NOW + 60, confidence: 0.2 }), NOW),
@@ -152,8 +194,22 @@ test('low confidence is downranked and departure uncertain is never recommended'
     normalizeHubArrival(arrival({ id: 'uncertain', etaMinutes: null, estimatedDeparture: null,
       scheduledDeparture: NOW + 30, departureState: 'departure_uncertain', actionability: 'do_not_recommend' }), NOW)
   ], NOW);
-  assert.deepEqual(ranked.map(({ id }) => id), ['normal', 'low', 'uncertain']);
-  assert.deepEqual(ranked.map(({ recommendable }) => recommendable), [true, false, false]);
+  assert.deepEqual(ranked.map(({ id }) => id), ['low', 'normal', 'uncertain']);
+  assert.deepEqual(ranked.map(({ recommendable }) => recommendable), [false, true, false]);
+});
+
+test('stale but valid arrivals keep time order while remaining non-recommendable', () => {
+  const ranked = rankHubArrivals([
+    normalizeHubArrival(arrival({ id: 'later-realtime', scheduledDeparture: NOW + 240,
+      estimatedDeparture: NOW + 300, etaMinutes: 5 }), NOW),
+    normalizeHubArrival(arrival({ id: 'earlier-stale', scheduledDeparture: NOW + 60,
+      estimatedDeparture: null, etaMinutes: null, delayMinutes: null,
+      realtimeState: 'stale', departureState: 'scheduled', actionability: null }), NOW)
+  ], NOW);
+  assert.deepEqual(ranked.map(({ id }) => id), ['earlier-stale', 'later-realtime']);
+  assert.equal(ranked[0].recommendationQuality, 'degraded');
+  assert.equal(ranked[0].recommendable, false);
+  assert.equal(ranked[1].recommendable, true);
 });
 
 test('Mizonokuchi ranking crosses platforms and only marks a sufficiently reliable fastest candidate', () => {
