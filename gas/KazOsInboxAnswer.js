@@ -71,8 +71,18 @@ function answerKazOsInbox_(body, transportTrace) {
       question.current_state = workItem.state;
     }
     validateKazOsAnswerSelection_(question, request.selected_option);
-
-    const persisted = persistKazOsAnswer_(question, request, actor);
+    if (question.kind === 'generic_candidate_review') {
+      if (request.candidate_ref !== question.candidate_ref || request.candidate_revision !== question.candidate_revision) {
+        throw homeMembershipError_('REVALIDATION_REQUIRED');
+      }
+      if (request.selected_option === 'WORK' && !request.work_fields) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+      if (request.selected_option !== 'WORK' && request.work_fields) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    } else if (request.candidate_ref || request.candidate_revision || request.work_fields) {
+      throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    }
+    const candidateProposal = question.kind === 'generic_candidate_review'
+      ? buildKazOsCandidateReviewProposal_(question, request) : null;
+    const persisted = persistKazOsAnswer_(question, request, actor, candidateProposal);
     recordKazOsAnswerTransport_(transportTrace, 'DURABLE_PERSISTED', { outcome: 'success' });
     const refreshed = applyKazOsDecisionLedger_(current);
     refreshed.feedback = { message: '✓ 回答したで。Operational Sourceはまだ変更してへん',
@@ -123,13 +133,34 @@ function validateKazOsAnswerRequest_(input) {
     selected = text(selected, 80);
   }
   const reason = input.reason == null || input.reason === '' ? null : kazOsText_(input.reason, 1000);
+  const candidateRef = input.candidate_ref == null ? null : text(input.candidate_ref, 300);
+  const candidateRevision = input.candidate_revision == null ? null : text(input.candidate_revision, 100);
+  let workFields = null;
+  if (input.work_fields != null) {
+    const fields = input.work_fields;
+    if (!fields || typeof fields !== 'object' || Array.isArray(fields)
+        || Object.keys(fields).sort().join(',') !== 'action_type,estimate_min,project_id,source,status,title') throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    workFields = { project_id: text(fields.project_id, 80), title: text(fields.title, 200),
+      status: text(fields.status, 20), action_type: text(fields.action_type, 20), source: text(fields.source, 20),
+      estimate_min: fields.estimate_min == null ? null : fields.estimate_min };
+    if (workFields.status !== 'READY' || workFields.action_type !== 'ACTION'
+        || ['CHATGPT', 'PALURU'].indexOf(workFields.source) < 0
+        || (workFields.estimate_min !== null && (!Number.isInteger(workFields.estimate_min) || workFields.estimate_min < 1 || workFields.estimate_min > 100000))) {
+      throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    }
+  }
   return { request_id: requestId, decision_id: text(input.decision_id, 100),
     question_revision: text(input.question_revision, 100), source_revision_references: {
       projects: refs.projects, work_items: refs.work_items, calendar: refs.calendar },
-    selected_option: selected, reason: reason, idempotency_key: idempotencyKey };
+    selected_option: selected, reason: reason, idempotency_key: idempotencyKey,
+    candidate_ref: candidateRef, candidate_revision: candidateRevision, work_fields: workFields };
 }
 
 function validateKazOsAnswerSelection_(question, selected) {
+  if (question.kind === 'generic_candidate_review') {
+    if (typeof selected !== 'string' || !question.answer_contract.choices.some(function(choice) { return choice.value === selected; })) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    return;
+  }
   if (question.kind === 'daily_estimate') {
     const contract = question.input_contract;
     if (!contract || contract.type !== 'integer_minutes' || !Number.isInteger(selected)
@@ -174,6 +205,11 @@ function sameKazOsLedgerSourceRevisions_(row, inbox) {
   const change = row && row.proposal && row.proposal.change;
   const refs = row && row.answer && row.answer.source_revision_references;
   if (!change || !refs || !inbox) return false;
+  if (change.kind === 'GENERIC_CANDIDATE_REVIEW') {
+    const candidate = inbox.inbox_items.find(function(item) { return item.kind === 'generic_candidate_review' && item.candidate_ref === change.candidate_ref; });
+    return Boolean(candidate && candidate.candidate_revision === change.candidate_revision
+      && candidate.question_revision === row.answer.question_revision);
+  }
   const currentRefs = currentSourceRevisions_(inbox);
   if (['FOLLOWUP_REQUIRED', 'CALENDAR_CLASSIFICATION_PROPOSAL'].indexOf(change.kind) >= 0) {
     return refs.calendar === currentRefs.calendar;
@@ -210,7 +246,7 @@ function readKazOsDecisionLedger_() {
   });
 }
 
-function persistKazOsAnswer_(question, request, actor) {
+function persistKazOsAnswer_(question, request, actor, candidateProposal) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -218,6 +254,8 @@ function persistKazOsAnswer_(question, request, actor) {
     const requestValue = { decision_id: request.decision_id, question_revision: request.question_revision,
       source_revision_references: request.source_revision_references, actor: 'Kaz',
       selected_option: request.selected_option, reason: request.reason };
+    if (question.kind === 'generic_candidate_review') Object.assign(requestValue, {
+      candidate_ref: request.candidate_ref, candidate_revision: request.candidate_revision, work_fields: request.work_fields });
     const requestHash = 'request-sha256:' + kazOsSha256_(stableKazOsJson_(requestValue));
     const byKey = rows.find(function(row) { return row.idempotency_key === request.idempotency_key; });
     if (byKey) {
@@ -241,7 +279,11 @@ function persistKazOsAnswer_(question, request, actor) {
       actor: 'Kaz', selected_option: request.selected_option, reason: request.reason,
       answered_at: answeredAt, resulting_proposal_id: proposalId,
       persistence_status: 'DURABLE_PERSISTED', idempotency_key: request.idempotency_key };
-    const proposal = buildKazOsControlledProposal_(question, answer, proposalId);
+    if (question.kind === 'generic_candidate_review') Object.assign(answer, {
+      candidate_ref: request.candidate_ref, candidate_revision: request.candidate_revision, work_fields: request.work_fields });
+    const proposal = candidateProposal
+      ? Object.assign({}, candidateProposal, { proposal_id: proposalId, answer_id: answerId, created_at: answeredAt })
+      : buildKazOsControlledProposal_(question, answer, proposalId);
     const row = [answerId, proposalId, request.decision_id, request.question_revision,
       stableKazOsJson_(request.source_revision_references), 'Kaz', stableKazOsJson_(request.selected_option),
       request.reason || '', answeredAt, retainUntil, request.idempotency_key, requestHash,
@@ -258,6 +300,56 @@ function persistKazOsAnswer_(question, request, actor) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function buildKazOsCandidateReviewProposal_(question, request) {
+  const work = request.selected_option === 'WORK';
+  let workProposal = null;
+  if (work) {
+    const fields = request.work_fields;
+    if (!fields || fields.source !== question.candidate_origin || !question.candidate_origin
+        || fields.project_id == null || !fields.title) throw homeMembershipError_('KAZ_ANSWER_INVALID');
+    const props = PropertiesService.getScriptProperties();
+    const inboxUrl = String(props.getProperty('KAZ_OS_INBOX_READ_URL') || '');
+    const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
+    if (!/^https:\/\/[^\s?#]+\/v1\/inbox$/.test(inboxUrl) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
+    const body = { candidate_ref: question.candidate_ref, candidate_revision: question.candidate_revision,
+      request_id: request.request_id, idempotency_key: request.idempotency_key,
+      work_fields: fields, source_revision_references: request.source_revision_references };
+    let response;
+    try {
+      response = UrlFetchApp.fetch(inboxUrl.replace(/\/v1\/inbox$/, '/v1/candidate-work-proposal'), {
+        method: 'post', contentType: 'application/json', payload: JSON.stringify(body),
+        headers: { Authorization: 'Bearer ' + token, 'X-Kaz-Request-Id': request.request_id },
+        muteHttpExceptions: true, followRedirects: false, validateHttpsCertificates: true
+      });
+    } catch (_) { throw homeMembershipError_('KAZ_SOURCE_FAILED'); }
+    if (response.getResponseCode() !== 200) throw homeMembershipError_('REVALIDATION_REQUIRED');
+    let result;
+    try { result = JSON.parse(response.getContentText()); } catch (_) { throw homeMembershipError_('KAZ_SOURCE_FAILED'); }
+    workProposal = result && result.proposal;
+    if (result.candidate_ref !== question.candidate_ref || result.candidate_revision !== question.candidate_revision
+        || result.candidate_origin !== question.candidate_origin || !workProposal
+        || workProposal.kind !== 'CREATE_WORK' || workProposal.status !== 'PROPOSED'
+        || workProposal.write_allowed !== false || workProposal.notion_write !== 0
+        || workProposal.requires_separate_write_approval !== true
+        || workProposal.proposed?.title !== fields.title || workProposal.proposed?.status !== 'READY'
+        || workProposal.proposed?.action_type !== 'ACTION' || workProposal.proposed?.source !== fields.source
+        || workProposal.target?.project_id !== fields.project_id
+        || workProposal.proposed?.estimate_min !== fields.estimate_min
+        || result.writes?.notion !== 0) throw homeMembershipError_('KAZ_SOURCE_FAILED');
+  }
+  return { proposal_id: 'proposal-sha256:' + kazOsSha256_(request.request_id + '\u0000' + request.idempotency_key),
+    answer_id: null, decision_id: question.id, question_revision: question.question_revision,
+    source_revision_references: request.source_revision_references, created_at: new Date().toISOString(),
+    status: 'PROPOSED', write_allowed: false, requires_separate_write_approval: true,
+    notion_write: 0, calendar_write: 0, context_write: 0,
+    change: { kind: 'GENERIC_CANDIDATE_REVIEW', decision: request.selected_option,
+      apply_status: work ? 'CREATE_WORK_PROPOSAL_READY'
+        : ['CONTEXT', 'PROJECT', 'MERGE'].indexOf(request.selected_option) >= 0 ? 'PENDING_APPLY' : 'NO_APPLY',
+      candidate_ref: question.candidate_ref, candidate_revision: question.candidate_revision,
+      candidate_origin: question.candidate_origin, work_fields: work ? request.work_fields : null,
+      create_work_proposal: workProposal } };
 }
 
 function buildKazOsControlledProposal_(question, answer, proposalId) {

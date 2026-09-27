@@ -136,7 +136,19 @@
           || item.decision_requested !== true || item.decision_status !== 'pending'
           || item.write_allowed !== false || typeof item.question_revision !== 'string'
           || !item.source_revision_references || !item.answer_contract
-          || item.answer_contract.question_revision !== item.question_revision)) {
+          || item.answer_contract.question_revision !== item.question_revision
+          || (item.kind === 'generic_candidate_review'
+            && (item.contract !== 'generic-candidate-review-0.1'
+              || !value.sources.github_candidates || value.sources.github_candidates.status !== 'ok'
+              || value.sources.github_candidates.complete !== true
+              || typeof item.candidate_ref !== 'string' || !/^github:\/\/.+\/inbox\/.+\.md@[a-f0-9]{40}$/.test(item.candidate_ref)
+              || typeof item.candidate_revision !== 'string' || !/^([a-f0-9]{40}):([a-f0-9]{40})$/.test(item.candidate_revision)
+              || value.sources.github_candidates.source_revision !== item.candidate_revision.split(':')[0]
+              || item.entity_ref !== item.candidate_ref
+              || !/^question-sha256:[a-f0-9]{64}$/.test(item.question_revision)
+              || !Array.isArray(item.answer_contract.choices)
+              || item.answer_contract.choices.map(choice => choice?.value).join(',')
+                !== 'CONTEXT,WORK,PROJECT,HOLD,REJECT,MERGE')))) {
       throw codedError_('INBOX_CONTRACT_INVALID', { transportClassification: 'parse' });
     }
     return value;

@@ -78,6 +78,24 @@ function estimateSnapshot() {
   value.calendar_events = [];
   return value;
 }
+function candidateSnapshot() {
+  const value=snapshot(),commit='a'.repeat(40),blob='b'.repeat(40),revision=commit+':'+blob,
+    candidateRef='github://alleshokai-gif/kaz-context/inbox/candidate.md@'+commit,
+    choices=[{value:'CONTEXT',label:'CONTEXT',effect:'Context候補として記録する'},{value:'WORK',label:'WORK',effect:'CREATE_WORK proposalを作る'},
+      {value:'PROJECT',label:'PROJECT',effect:'Project候補として保留する'},{value:'HOLD',label:'HOLD',effect:'保留する'},
+      {value:'REJECT',label:'REJECT',effect:'候補から外す'},{value:'MERGE',label:'MERGE',effect:'既存項目との統合候補にする'}],
+    sha=s=>crypto.createHash('sha256').update(s).digest('hex'),stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v),
+    id='candidate-review-'+sha(candidateRef+'\u0000'+revision).slice(0,24),title='Candidate title',question='このCandidateの扱いを決めてな。',
+    questionRevision='question-sha256:'+sha(stable({id,candidate_ref:candidateRef,candidate_revision:revision,candidate_origin:'CHATGPT',title,choices}));
+  value.sources.github_candidates={status:'ok',complete:true,fetched_at:iso(-500),valid_until:iso(600000),source_revision:commit,scope:'candidate source'};
+  value.inbox_items=[{id,kind:'generic_candidate_review',contract:'generic-candidate-review-0.1',owner:'kaz',decision_requested:true,decision_status:'pending',write_allowed:false,
+    title,question,reason:'Human decision',impact:'WORK choice produces read-only proposal',estimate_min:null,affects_today:false,urgent_today:false,decision_date:null,due_at:null,project_id:null,
+    entity_ref:candidateRef,candidate_ref:candidateRef,candidate_revision:revision,candidate_commit:commit,candidate_blob_sha:blob,candidate_origin:'CHATGPT',candidate_source:'Source: ChatGPT',candidate_content:'# Candidate title',
+    source_label:'GitHub Candidate',entity_revision:revision,question_revision:questionRevision,expires_at:null,
+    source_revision_references:{projects:value.sources.projects.source_revision,work_items:value.sources.tasks.source_revision,calendar:value.sources.calendar.source_revision},
+    answer_contract:{inbox_item_id:id,question_revision:questionRevision,question,choices},calendar_event:null,input_contract:null,selection_mode:null,selection_options:null,recommended_option:null,recommendation_basis:null}];
+  return value;
+}
 
 let value = snapshot();
 function harness(rows) {
@@ -134,6 +152,19 @@ test('answer persists one first-class Answer and one controlled proposal', () =>
   assert.equal(result.data.proposal.change.permanent_status_change, false);
   assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
   assert.equal(result.data.inbox.inbox_items.length, 1); assert.equal(h.rows.Kaz_OS_Decision_Ledger.length, 2);
+});
+test('Generic Candidate WORK stores one answer and a read-only CREATE_WORK proposal after exact revision checks',()=>{
+  const candidate=candidateSnapshot(),harness=createHarness({root,answerEnabled:true,decisionLedgerRows:null,inboxProvider:()=>candidate});
+  harness.setupDecisionLedger();harness.resetStats();harness.props.KAZ_OS_INBOX_READ_URL='https://gateway.example/v1/inbox';harness.props.KAZ_OS_PROGRESS_READ_TOKEN='x'.repeat(40);
+  let proposalCalls=0;harness.ctx.UrlFetchApp.fetch=(url,options)=>{proposalCalls++;assert.equal(url,'https://gateway.example/v1/candidate-work-proposal');const sent=JSON.parse(options.payload);assert.equal(sent.candidate_revision,candidate.inbox_items[0].candidate_revision);assert.equal(sent.work_fields.project_id,candidate.projects[0].id);const proposal={kind:'CREATE_WORK',status:'PROPOSED',write_allowed:false,requires_separate_write_approval:true,notion_write:0,target:{project_id:sent.work_fields.project_id},proposed:{title:sent.work_fields.title,status:'READY',action_type:'ACTION',source:'CHATGPT',estimate_min:60}};return{getResponseCode:()=>200,getContentText:()=>JSON.stringify({candidate_ref:sent.candidate_ref,candidate_revision:sent.candidate_revision,candidate_origin:'CHATGPT',proposal,writes:{notion:0}})};};
+  const item=candidate.inbox_items[0],result=harness.call(harness.body('admin-local',{action:'kazOs.inbox.answer',request_id:requestId(),decision_id:item.id,question_revision:item.question_revision,source_revision_references:item.source_revision_references,selected_option:'WORK',candidate_ref:item.candidate_ref,candidate_revision:item.candidate_revision,work_fields:{project_id:candidate.projects[0].id,title:item.title,status:'READY',action_type:'ACTION',source:'CHATGPT',estimate_min:60},reason:null,idempotency_key:'candidate-work-e2e-0001'}));
+  assert(result.success,JSON.stringify(result));assert.equal(proposalCalls,1);assert.equal(result.data.proposal.change.kind,'GENERIC_CANDIDATE_REVIEW');assert.equal(result.data.proposal.change.apply_status,'CREATE_WORK_PROPOSAL_READY');assert.equal(result.data.proposal.change.create_work_proposal.kind,'CREATE_WORK');assert.equal(result.data.proposal.change.create_work_proposal.write_allowed,false);assert.equal(result.data.proposal.change.create_work_proposal.notion_write,0);assert.equal(result.data.answer.candidate_revision,item.candidate_revision);assert.equal(result.data.inbox.inbox_items.length,0);assert.equal(harness.rows.Kaz_OS_Decision_Ledger.length,2);
+});
+test('Generic Candidate non-WORK answer is recorded as PENDING_APPLY without calling proposal builder',()=>{
+  const candidate=candidateSnapshot(),harness=createHarness({root,answerEnabled:true,decisionLedgerRows:null,inboxProvider:()=>candidate});
+  harness.setupDecisionLedger();harness.resetStats();let calls=0;harness.ctx.UrlFetchApp.fetch=()=>{calls++;throw Error('WORK_PROPOSAL_MUST_NOT_RUN');};
+  const item=candidate.inbox_items[0],result=harness.call(harness.body('admin-local',{action:'kazOs.inbox.answer',request_id:requestId(),decision_id:item.id,question_revision:item.question_revision,source_revision_references:item.source_revision_references,selected_option:'CONTEXT',candidate_ref:item.candidate_ref,candidate_revision:item.candidate_revision,reason:null,idempotency_key:'candidate-context-e2e-0001'}));
+  assert(result.success,JSON.stringify(result));assert.equal(calls,0);assert.equal(result.data.proposal.change.apply_status,'PENDING_APPLY');assert.equal(result.data.proposal.change.create_work_proposal,null);assert.equal(result.data.inbox.inbox_items.length,0);assert.equal(harness.rows.Kaz_OS_Decision_Ledger.length,2);
 });
 test('controlled INBOX exposes bounded persisted-answer receipt for response-loss reconciliation', () => {
   const item = value.inbox_items[0];

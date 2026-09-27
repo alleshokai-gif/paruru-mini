@@ -159,6 +159,7 @@ function sanitizeKazOsInbox_(data) {
   const states = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
   const kinds = ['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window','daily_estimate'];
   const gardenerKinds = ['CONTEXT_CANDIDATE','CONFLICT_RESOLUTION'];
+  const candidateChoices = ['CONTEXT','WORK','PROJECT','HOLD','REJECT','MERGE'];
   const source = function(value) {
     if (!value || value.status !== 'ok' || value.complete !== true) fail();
     const fetched = Date.parse(value.fetched_at), until = Date.parse(value.valid_until);
@@ -185,6 +186,21 @@ function sanitizeKazOsInbox_(data) {
     };
     sources.context_gardener = gardener;
   }
+  let githubCandidates = null;
+  if (data.sources && data.sources.github_candidates != null) {
+    const value = data.sources.github_candidates;
+    if (!value || ['ok','blocked'].indexOf(value.status) < 0 || typeof value.complete !== 'boolean'
+        || (value.status === 'ok' && value.complete !== true)
+        || (value.status === 'blocked' && value.complete !== false)) fail();
+    if (value.status === 'ok') {
+      const fetched = Date.parse(value.fetched_at), until = Date.parse(value.valid_until);
+      if (!Number.isFinite(fetched) || !Number.isFinite(until) || fetched > Date.now() + 60000 || until <= Date.now()) fail();
+    } else if (value.fetched_at != null || value.valid_until != null || value.source_revision != null) fail();
+    githubCandidates = { status: value.status, complete: value.complete,
+      fetched_at: text(value.fetched_at, 80, true), valid_until: text(value.valid_until, 80, true),
+      source_revision: text(value.source_revision, 120, true), scope: text(value.scope, 240) };
+    sources.github_candidates = githubCandidates;
+  }
   if (!data.writes || data.writes.notion !== 0 || data.writes.calendar !== 0 || data.writes.context !== 0
       || !data.persistence || data.persistence.kind !== 'none' || data.persistence.status !== 'disabled') fail();
   const projects = list(data.projects, 20, function(value) {
@@ -206,10 +222,60 @@ function sanitizeKazOsInbox_(data) {
       end: text(value.end, 80, true), precision: value.precision, all_day: boolean(value.all_day), classification: 'unconfirmed',
       source_revision: text(value.source_revision, 120) };
   });
-  let secretaryItemCount = 0, gardenerItemCount = 0;
+  let secretaryItemCount = 0, gardenerItemCount = 0, candidateReviewCount = 0;
   const inboxItems = list(data.inbox_items, 30, function(value) {
     if (!value || value.owner !== 'kaz' || value.decision_requested !== true || value.decision_status !== 'pending'
         || value.write_allowed !== false) fail();
+    if (value.contract === 'generic-candidate-review-0.1') {
+      candidateReviewCount++;
+      const revisionMatch = typeof value.candidate_revision === 'string'
+        ? /^([a-f0-9]{40}):([a-f0-9]{40})$/.exec(value.candidate_revision) : null;
+      if (candidateReviewCount > 10 || value.kind !== 'generic_candidate_review'
+          || !githubCandidates || githubCandidates.status !== 'ok' || githubCandidates.complete !== true
+          || !revisionMatch || value.candidate_commit !== revisionMatch[1]
+          || value.candidate_blob_sha !== revisionMatch[2]
+          || githubCandidates.source_revision !== value.candidate_commit
+          || (value.candidate_origin != null && ['CHATGPT','PALURU'].indexOf(value.candidate_origin) < 0)
+          || !value.source_revision_references
+          || value.source_revision_references.projects !== sources.projects.source_revision
+          || value.source_revision_references.work_items !== sources.tasks.source_revision
+          || value.source_revision_references.calendar !== sources.calendar.source_revision) fail();
+      const candidateRef = text(value.candidate_ref, 200);
+      if (!candidateRef.startsWith('github://') || !candidateRef.endsWith('@' + value.candidate_commit)
+          || value.entity_ref !== candidateRef) fail();
+      const choices = list(value.answer_contract && value.answer_contract.choices, 6, function(choice) {
+        return { value: text(choice.value, 20), label: text(choice.label, 40), effect: text(choice.effect, 160) };
+      });
+      if (choices.length !== candidateChoices.length
+          || choices.some(function(choice, index) { return choice.value !== candidateChoices[index] || choice.label !== candidateChoices[index]; })) fail();
+      const id = text(value.id, 80);
+      const questionRevision = text(value.question_revision, 100);
+      const seed = { id: id, candidate_ref: candidateRef, candidate_revision: value.candidate_revision,
+        candidate_origin: value.candidate_origin == null ? null : value.candidate_origin,
+        title: text(value.title, 200), choices: choices };
+      if (id !== 'candidate-review-' + kazOsSha256_(candidateRef + '\u0000' + value.candidate_revision).slice(0, 24)
+          || !/^question-sha256:[a-f0-9]{64}$/.test(questionRevision)
+          || questionRevision !== 'question-sha256:' + kazOsSha256_(stableKazOsJson_(seed))
+          || value.answer_contract.question_revision !== questionRevision) fail();
+      return { id: id, kind: value.kind, contract: value.contract, owner: 'kaz',
+        decision_requested: true, decision_status: 'pending', write_allowed: false,
+        title: seed.title, question: text(value.question, 500), reason: text(value.reason, 500),
+        impact: text(value.impact, 500), estimate_min: null, affects_today: false, urgent_today: false,
+        decision_date: null, due_at: null, project_id: null, entity_ref: candidateRef,
+        candidate_ref: candidateRef, candidate_revision: value.candidate_revision,
+        candidate_commit: value.candidate_commit, candidate_blob_sha: value.candidate_blob_sha,
+        candidate_origin: seed.candidate_origin, candidate_source: text(value.candidate_source, 300),
+        candidate_content: text(value.candidate_content, 16384),
+        source_label: 'GitHub Candidate', entity_revision: value.candidate_revision,
+        question_revision: questionRevision, expires_at: null,
+        source_revision_references: { projects: value.source_revision_references.projects,
+          work_items: value.source_revision_references.work_items,
+          calendar: value.source_revision_references.calendar },
+        answer_contract: { inbox_item_id: id, question_revision: questionRevision,
+          question: text(value.answer_contract.question, 500), choices: choices },
+        calendar_event: null, input_contract: null, selection_mode: null, selection_options: null,
+        recommended_option: null, recommendation_basis: null };
+    }
     const isGardener = value.contract === 'context-gardener-decision-0.1';
     if (isGardener) {
       gardenerItemCount++;

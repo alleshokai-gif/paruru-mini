@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260925-navigation-final-v8";
+globalThis.BUILD_ID = "v20260927-generic-candidate-review-e2e-v1";

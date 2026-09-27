@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260925-navigation-final-v8");
-// Release: v20260925-navigation-final-v8
+importScripts("./build.js?v=v20260927-generic-candidate-review-e2e-v1");
+// Release: v20260927-generic-candidate-review-e2e-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

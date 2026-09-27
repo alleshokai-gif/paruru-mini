@@ -5,12 +5,13 @@
   else root.KazInboxView=view;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const TYPES={human_review:'HUMAN REVIEW',acceptance:'ACCEPTANCE',blocker_decision:'BLOCKER',idea_triage:'IDEA',context_candidate:'CONTEXT CANDIDATE',classification_required:'CLASSIFICATION',conflict_resolution:'CONFLICT',stale_state_confirmation:'STALE STATE',calendar_event_impact:'CALENDAR',today_focus:'TODAY',calendar_partial_window:'CALENDAR',daily_estimate:'ESTIMATE'};
+  const TYPES={human_review:'HUMAN REVIEW',acceptance:'ACCEPTANCE',blocker_decision:'BLOCKER',idea_triage:'IDEA',context_candidate:'CONTEXT CANDIDATE',classification_required:'CLASSIFICATION',conflict_resolution:'CONFLICT',stale_state_confirmation:'STALE STATE',calendar_event_impact:'CALENDAR',today_focus:'TODAY',calendar_partial_window:'CALENDAR',daily_estimate:'ESTIMATE',generic_candidate_review:'CANDIDATE REVIEW'};
   const ALIASES={blocked:'blocker_decision',idea:'idea_triage'};
   const OUTCOMES={human_review:{ACCEPTED:'妥当',REWORK_REQUIRED:'手直し依頼',REJECTED:'却下'},acceptance:{ACCEPTED:'終了条件を満たす',REWORK_REQUIRED:'不足あり'},blocker_decision:{unblock:'解除方針',defer:'保留'},idea_triage:{promote:'採用',incubate:'保留',reject:'却下'},context_candidate:{review:'既存Reviewへ',defer:'保留',reject:'却下'},classification_required:{hard_constraint:'拘束',soft_constraint:'調整可能',informational:'参考',none:'関係なし',unknown:'未確定'},conflict_resolution:{resolve:'解消方針',defer:'保留'},stale_state_confirmation:{complete:'完了',still_open:'まだ'},calendar_event_impact:{all:'全部拘束',partial:'一部拘束',none:'拘束なし',unknown:'不明'},today_focus:{today:'今日',this_week:'今週',later:'あとで'},calendar_partial_window:{time_range:'拘束時間を指定'},daily_estimate:{}};
   const INLINE_CHOICES={human_review:[['ACCEPTED','承認'],['REWORK_REQUIRED','差戻し']],acceptance:[['ACCEPTED','承認'],['REWORK_REQUIRED','差戻し']],idea_triage:[['promote','やる'],['incubate','保留'],['reject','捨てる']],context_candidate:[['review','候補にする'],['reject','不要']],classification_required:[['hard_constraint','はい'],['none','いいえ'],['unknown','わからん']]};
   const sessions=new WeakMap(), PAGE_SIZE=5, PREVIEW=3;
   const SECRETARY=new Set(['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window','daily_estimate']);
+  const CANDIDATE_CHOICES=['CONTEXT','WORK','PROJECT','HOLD','REJECT','MERGE'];
   const kind=i=>{const k=String(i?.kind||'').toLowerCase();return ALIASES[k]||k;};
   const at=v=>typeof v==='string' && /T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(v)?Date.parse(v):NaN;
   const day=n=>new Date(n+9*3600000).toISOString().slice(0,10);
@@ -60,6 +61,15 @@
       if(['stale_state_confirmation','today_focus'].includes(k)&&(!w||w.source_revision!==i.entity_revision))issues.push('Work Item revisionを再取得');
       return{issues:[...new Set(issues)],packet:null,entity:w,projectId};
     }
+    if(k==='generic_candidate_review'){
+      const refs=i?.source_revision_references, source=data?.sources?.github_candidates;
+      if(i?.contract!=='generic-candidate-review-0.1'||!/^question-sha256:[a-f0-9]{64}$/.test(i?.question_revision||''))issues.push('Candidate question revisionを確認');
+      if(health(source,now)!=='ok'||source?.complete!==true||source.source_revision!==i?.candidate_revision?.split(':')[0])issues.push('GitHub Candidate sourceを再取得');
+      if(!/^github:\/\/.+\/inbox\/.+\.md@[a-f0-9]{40}$/.test(i?.candidate_ref||'')||!/^([a-f0-9]{40}):([a-f0-9]{40})$/.test(i?.candidate_revision||''))issues.push('Candidate revisionを確認');
+      for(const [name,view] of [['projects','projects'],['work_items','tasks'],['calendar','calendar']])if(health(data?.sources?.[view],now)!=='ok'||refs?.[name]!==data?.sources?.[view]?.source_revision)issues.push(`${name} revisionを再取得`);
+      if(!Array.isArray(i?.answer_contract?.choices)||i.answer_contract.choices.map(x=>x.value).join(',')!==CANDIDATE_CHOICES.join(','))issues.push('Candidate Reviewの回答contractを再取得');
+      return{issues:[...new Set(issues)],packet:null,entity:null,projectId:null};
+    }
     if(!projectId)issues.push('Project relationが未確認');
     if(!w||health(data?.sources?.[source],now)!=='ok')issues.push('元項目の取得が必要');
     if(i.project_id&&w?.project_id&&i.project_id!==w.project_id)issues.push('Project relationが一致しない');
@@ -96,6 +106,19 @@
       const label=estimate?String(selected)+'分':partial?'拘束時間を指定':item.answer_contract.choices.find(choice=>choice.value===selected).label;
       return{status:'answer_pending',mode:'local_controlled_proposal',adopted:false,persisted:false,authority:'human_answer_input',decision_id:item.id,inbox_item_id:item.id,entity_ref:item.entity_ref,project_id:gate.projectId,question_revision:item.question_revision,source_revision_references:{...item.source_revision_references},selected_option:selected,reason:typeof input?.reason==='string'&&input.reason.trim()?input.reason.trim():null,answer_label:label};
     }
+    if(k==='generic_candidate_review'){
+      const selected=input?.decision;
+      if(!CANDIDATE_CHOICES.includes(selected))throw Error('Candidate Reviewの選択肢から回答してください');
+      const result={status:'answer_pending',mode:'local_controlled_proposal',adopted:false,persisted:false,authority:'human_answer_input',decision_id:item.id,inbox_item_id:item.id,entity_ref:item.candidate_ref,candidate_ref:item.candidate_ref,candidate_revision:item.candidate_revision,candidate_origin:item.candidate_origin,question_revision:item.question_revision,source_revision_references:{...item.source_revision_references},selected_option:selected,reason:typeof input?.reason==='string'&&input.reason.trim()?input.reason.trim():null,answer_label:selected};
+      if(selected==='WORK'){
+        const f=input?.work_fields, project=(list(data.projects)||[]).find(p=>p.id===f?.project_id);
+        if(!project||typeof f?.title!=='string'||!f.title.trim()||f.title.trim().length>200)throw Error('既存ProjectとWork titleを指定してください');
+        if(f.status!=='READY'||f.action_type!=='ACTION'||f.source!==item.candidate_origin||!['CHATGPT','PALURU'].includes(f.source))throw Error('Status / Action Type / SourceがCandidate contractと一致しません');
+        if(f.estimate_min!==null&&(!Number.isInteger(f.estimate_min)||f.estimate_min<1||f.estimate_min>100000))throw Error('Estimate Minは1以上の整数か空欄にしてください');
+        result.project_id=project.id;result.work_fields={project_id:project.id,title:f.title.trim(),status:'READY',action_type:'ACTION',source:f.source,estimate_min:f.estimate_min};
+      }
+      return result;
+    }
     if(!Object.hasOwn(OUTCOMES[k],input?.decision)||typeof input.reason!=='string'||!input.reason.trim()||input.reason.length>1000)throw Error('判断と理由を入力してください');
     const refs=[];
     if(['human_review','acceptance'].includes(k)){
@@ -116,7 +139,11 @@
     const issues=[...gate.issues],review=['human_review','acceptance'].includes(k);
     let choices=(INLINE_CHOICES[k]||[]).map(([value,label])=>({value,label})),checks=[];
     const question=i.question||{human_review:'この変更を承認する？',acceptance:'目的・終了条件を満たしたとして受け入れる？',idea_triage:'Taskとして残す？',context_candidate:'Contextの候補として残す？',classification_required:'Kaz本人の時間も拘束される予定？'}[k]||'判断内容の確認が必要です';
-    if(SECRETARY.has(k)&&!['calendar_partial_window','daily_estimate'].includes(k)){
+    if(k==='generic_candidate_review'){
+      const c=i.answer_contract;
+      if(c?.inbox_item_id===i.id&&c.question_revision===i.question_revision&&Array.isArray(c.choices)&&c.choices.length===6&&c.choices.map(x=>x.value).join(',')===CANDIDATE_CHOICES.join(','))choices=c.choices;
+      else issues.push('Candidate Reviewの回答条件を再取得');
+    }else if(SECRETARY.has(k)&&!['calendar_partial_window','daily_estimate'].includes(k)){
       const c=i.answer_contract;
       if(c?.inbox_item_id===i.id&&c.question_revision===i.question_revision&&typeof c.question==='string'&&c.question.trim()&&Array.isArray(c.choices)&&c.choices.length>=2&&c.choices.length<=4&&new Set(c.choices.map(x=>x.value)).size===c.choices.length&&c.choices.every(x=>Object.hasOwn(OUTCOMES[k],x.value)&&typeof x.label==='string'&&x.label.trim()&&typeof x.effect==='string'&&x.effect.trim()))choices=c.choices;
       else issues.push('Secretary Questionの回答条件を再取得');
@@ -161,7 +188,11 @@
     if(!choice)throw Error('この質問の選択肢から回答してください');
     if(summary.review&&input.confirmed_summary!==true)throw Error('上のEvidence要約を確認してください');
     if(summary.review&&input.decision==='REWORK_REQUIRED'&&!input.reason?.trim())throw Error('差戻し理由を入力してください');
-    const reason=SECRETARY.has(summary.kind)?input.reason?.trim()||null:input.reason?.trim()||`${summary.question} → ${choice.label}（追加理由なし）`;
+    const reason=SECRETARY.has(summary.kind)||summary.kind==='generic_candidate_review'?input.reason?.trim()||null:input.reason?.trim()||`${summary.question} → ${choice.label}（追加理由なし）`;
+    if(summary.kind==='generic_candidate_review'){
+      const draft=proposal(data,id,{decision:choice.value,work_fields:input?.work_fields,reason},now,health);
+      return{...draft,answer_label:choice.label,question:summary.question};
+    }
     const draft=proposal(data,id,{decision:choice.value,selected_option:input?.selected_option,reason,actor:summary.kind==='classification_required'?'unknown':undefined,checked:summary.review?summary.checks.map(c=>c.id):[]},now,health);
     return{...draft,answer_label:choice.label,question:summary.question,summary_confirmed:summary.review?true:null};
   }
@@ -289,10 +320,10 @@
           const panel=add(active,'div','','kiq-review-panel');panel.hidden=true;panel.id='kiq-review-'+item.id;
           let pendingChoice=null,confirmed=null,note=null,submit=null;
           const error=add(active,'p','','kp-notice kiq-error');error.hidden=true;error.setAttribute('role','alert');
-          async function answer(choice,selectedOption=null){
+          async function answer(choice,selectedOption=null,workFields=null){
             if(sessions.get(host)!==session)return;
             try{
-              const draft=inlineAnswer(data,item.id,{decision:choice.value,selected_option:selectedOption,confirmed_summary:confirmed?.checked,reason:note?.value||notes.get(item.id)||''},currentTime(),health);
+              const draft=inlineAnswer(data,item.id,{decision:choice.value,selected_option:selectedOption,work_fields:workFields,confirmed_summary:confirmed?.checked,reason:note?.value||notes.get(item.id)||''},currentTime(),health);
             if(!answerApi){
               if(data?.mode==='read_only_display')throw Error('Live回答はまだ無効です');
               drafts.set(item.id,draft);totals();draw();return;
@@ -326,7 +357,28 @@
             const button=add(actions,'button',choice.label,'ki-button kiq-answer');button.type='button';button.dataset.answer=choice.value;
             button.disabled=summary.issues.length>0||data?.mode==='read_only_display';
             if(summary.review){button.setAttribute('aria-controls',panel.id);button.setAttribute('aria-expanded','false');}
-            button.onclick=()=>{if(sessions.get(host)!==session)return;if(summary.review)review(choice);else answer(choice);};
+            button.onclick=()=>{
+              if(sessions.get(host)!==session)return;
+              if(summary.kind==='generic_candidate_review'&&choice.value==='WORK'){
+                pendingChoice=choice;panel.hidden=false;panel.replaceChildren();error.hidden=true;
+                actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded',String(b===button)));
+                add(panel,'p','CREATE_WORK proposalの項目を確認','kiq-check-heading');
+                const project=field(panel,'Project（既存Projectsから選択）','select');add(project,'option','Projectを選択').value='';
+                (list(data.projects)||[]).forEach(p=>{if(['ACTIVE','REVIEW','BLOCKED','BACKLOG'].includes(p.status)){const o=add(project,'option',p.title);o.value=p.id;}});
+                const title=field(panel,'Work title','input');title.type='text';title.maxLength=200;title.value=summary.title;
+                const status=field(panel,'Status','input');status.value='READY';status.readOnly=true;
+                const action=field(panel,'Action Type','input');action.value='ACTION';action.readOnly=true;
+                const source=field(panel,'Source','input');source.value=item.candidate_origin||'';source.readOnly=true;
+                const estimate=field(panel,'Estimate Min（任意）','input');estimate.type='number';estimate.min='1';estimate.max='100000';estimate.step='1';
+                const noteBox=add(panel,'div','','kiq-notes'),reason=field(noteBox,'理由（任意）','textarea');reason.rows=2;reason.maxLength=1000;reason.value=notes.get(item.id)||'';reason.addEventListener('input',()=>notes.set(item.id,reason.value));
+                const controls=add(panel,'div','','kiq-review-controls');const submitWork=add(controls,'button','WORKを記録してproposalを作る','ki-button kiq-submit');submitWork.type='button';
+                submitWork.disabled=!project.value||!title.value.trim()||!['CHATGPT','PALURU'].includes(item.candidate_origin)||data?.mode==='read_only_display';
+                const refresh=()=>{submitWork.disabled=!project.value||!title.value.trim()||!['CHATGPT','PALURU'].includes(item.candidate_origin)||data?.mode==='read_only_display'||!statusLive();};
+                project.addEventListener('change',refresh);title.addEventListener('input',refresh);
+                submitWork.onclick=()=>{const value=estimate.value.trim();answer(choice,null,{project_id:project.value,title:title.value,status:'READY',action_type:'ACTION',source:item.candidate_origin,estimate_min:value===''?null:Number(value)});};
+                const close=add(controls,'button','閉じる','kiq-text-button');close.type='button';close.onclick=()=>{panel.hidden=true;panel.replaceChildren();pendingChoice=null;error.hidden=true;actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded','false'));};
+              }else if(summary.review)review(choice);else answer(choice);
+            };
           }
           if(summary.kind==='calendar_partial_window'){
             const group=add(active,'fieldset','','kiq-partial-window'),legend=add(group,'legend','拘束される時間');legend.className='kiq-check-heading';

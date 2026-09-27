@@ -5387,6 +5387,9 @@ async function callAuthenticatedKazOsInboxAnswer_(answer) {
       question_revision: answer?.question_revision,
       source_revision_references: answer?.source_revision_references,
       selected_option: answer?.selected_option,
+      candidate_ref: answer?.candidate_ref,
+      candidate_revision: answer?.candidate_revision,
+      work_fields: answer?.work_fields,
       reason: answer?.reason ?? null,
       idempotency_key: answer?.idempotency_key,
     });
