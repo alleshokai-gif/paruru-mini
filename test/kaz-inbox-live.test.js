@@ -36,7 +36,8 @@ test('explicit debug timing is owner-only and leaves ordinary response unchanged
   assert(debug.success);
   assert.deepEqual(Object.keys(debug),['success','data','message','diagnostics']);
   assert.deepEqual(Object.keys(debug.diagnostics),['request_id_suffix','auth_ms','config_ms',
-    'calendar_ms','ledger_ms','gateway_ms','response_ms','total_ms']);
+    'calendar_ms','ledger_ms','gateway_ms','response_ms','total_ms','ledger_breakdown']);
+  assert.equal(debug.diagnostics.ledger_breakdown.read_count,0);
   assert.equal(debug.diagnostics.request_id_suffix,'14174000');
   assert.equal(debug.diagnostics.data,undefined);
   const denied=call('child-local',{debug_inbox_timing:true});

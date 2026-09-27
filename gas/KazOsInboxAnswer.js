@@ -7,6 +7,12 @@ const KAZ_OS_DECISION_LEDGER_HEADERS_ = [
 ];
 const KAZ_OS_ANSWER_RETENTION_DAYS_ = 365;
 
+function recordKazOsLedgerReadStage_(trace, stage, startedAtMs) {
+  if (trace && trace.debug_timing_requested === true && typeof recordKazOsLedgerBreakdown_ === 'function') {
+    recordKazOsLedgerBreakdown_(trace, stage, Date.now() - startedAtMs);
+  }
+}
+
 function isKazOsInboxAnswerEnabled_() {
   try {
     return String(PropertiesService.getScriptProperties().getProperty('KAZ_OS_INBOX_ANSWER_ENABLED') || '').toLowerCase() === 'true';
@@ -222,21 +228,37 @@ function sameKazOsLedgerSourceRevisions_(row, inbox) {
   return sameKazOsSourceRevisions_(refs, currentRefs);
 }
 
-function getKazOsDecisionLedger_() {
+function getKazOsDecisionLedger_(trace) {
+  const openStart = Date.now();
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  recordKazOsLedgerReadStage_(trace, 'spreadsheet_open_ms', openStart);
+  const sheetStart = Date.now();
   const sheet = spreadsheet && spreadsheet.getSheetByName(KAZ_OS_DECISION_LEDGER_SHEET_);
+  recordKazOsLedgerReadStage_(trace, 'sheet_get_ms', sheetStart);
   if (!sheet) throw homeMembershipError_('KAZ_PERSISTENCE_NOT_CONFIGURED');
+  const rangeStart = Date.now();
   const width = Math.max(sheet.getLastColumn(), 1);
-  const headers = sheet.getRange(1, 1, 1, width).getValues()[0].map(String);
+  const headerRange = sheet.getRange(1, 1, 1, width);
+  recordKazOsLedgerReadStage_(trace, 'range_get_ms', rangeStart);
+  const rowsStart = Date.now();
+  const headers = headerRange.getValues()[0].map(String);
+  recordKazOsLedgerReadStage_(trace, 'rows_read_ms', rowsStart);
   if (JSON.stringify(headers) !== JSON.stringify(KAZ_OS_DECISION_LEDGER_HEADERS_)) throw homeMembershipError_('KAZ_PERSISTENCE_SCHEMA_MISMATCH');
   return sheet;
 }
 
-function readKazOsDecisionLedger_() {
-  const sheet = getKazOsDecisionLedger_();
-  const values = sheet.getDataRange().getValues();
+function readKazOsDecisionLedger_(trace) {
+  const sheet = getKazOsDecisionLedger_(trace);
+  const rangeStart = Date.now();
+  const dataRange = sheet.getDataRange();
+  recordKazOsLedgerReadStage_(trace, 'range_get_ms', rangeStart);
+  const rowsStart = Date.now();
+  const values = dataRange.getValues();
+  recordKazOsLedgerReadStage_(trace, 'rows_read_ms', rowsStart);
+  if (trace && trace.debug_timing_requested === true) trace.ledger_read_count = (trace.ledger_read_count || 0) + 1;
+  const parseStart = Date.now();
   const index = Object.fromEntries(KAZ_OS_DECISION_LEDGER_HEADERS_.map(function(name, position) { return [name, position]; }));
-  return values.slice(1).filter(function(row) { return String(row[index.answerId] || ''); }).map(function(row) {
+  const parsed = values.slice(1).filter(function(row) { return String(row[index.answerId] || ''); }).map(function(row) {
     try {
       return { answer: JSON.parse(String(row[index.answerJson])), proposal: JSON.parse(String(row[index.proposalJson])),
         idempotency_key: String(row[index.idempotencyKey]), request_hash: String(row[index.requestHash]) };
@@ -244,6 +266,8 @@ function readKazOsDecisionLedger_() {
       throw homeMembershipError_('KAZ_PERSISTENCE_FAILED');
     }
   });
+  recordKazOsLedgerReadStage_(trace, 'filter_parse_ms', parseStart);
+  return parsed;
 }
 
 function persistKazOsAnswer_(question, request, actor, candidateProposal) {
@@ -407,9 +431,10 @@ function buildKazOsControlledProposal_(question, answer, proposalId) {
     change: change };
 }
 
-function applyKazOsDecisionLedger_(inbox) {
+function applyKazOsDecisionLedger_(inbox, trace) {
   if (!isKazOsInboxAnswerEnabled_()) return inbox;
-  const rows = readKazOsDecisionLedger_();
+  const rows = readKazOsDecisionLedger_(trace);
+  const projectionStart = Date.now();
   const currentAnswers = rows.filter(function(row) {
     return sameKazOsLedgerSourceRevisions_(row, inbox);
   });
@@ -437,6 +462,7 @@ function applyKazOsDecisionLedger_(inbox) {
       return { decision_id: row.answer.decision_id, question_revision: row.answer.question_revision,
         persistence_status: row.answer.persistence_status };
     }) };
+  recordKazOsLedgerReadStage_(trace, 'confirmed_current_ms', projectionStart);
   return inbox;
 }
 

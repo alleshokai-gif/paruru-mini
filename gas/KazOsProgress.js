@@ -65,7 +65,7 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
       const ledgerStart = Date.now();
       let projected;
       try {
-        projected = typeof applyKazOsDecisionLedger_ === 'function' ? applyKazOsDecisionLedger_(sanitized) : sanitized;
+        projected = typeof applyKazOsDecisionLedger_ === 'function' ? applyKazOsDecisionLedger_(sanitized, inboxTrace) : sanitized;
       } finally {
         recordKazOsInboxTiming_(inboxTrace, 'decision_ledger_ms', Date.now() - ledgerStart);
       }

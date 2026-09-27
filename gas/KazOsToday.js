@@ -56,18 +56,19 @@ function readKazOsToday_(transportTrace) {
   return JSON.parse(text);
 }
 
-function buildKazOsTodayPlanningClassifications_() {
+function buildKazOsTodayPlanningClassifications_(trace) {
   if (typeof isKazOsInboxAnswerEnabled_ === 'function' && !isKazOsInboxAnswerEnabled_()) return [];
   if (typeof readKazOsDecisionLedger_ !== 'function') return [];
   let rows;
   try {
-    rows = readKazOsDecisionLedger_();
+    rows = readKazOsDecisionLedger_(trace);
   } catch (_) {
     // Missing/unavailable ledger means "no current human classification evidence".
     // Backend will fail safe and will not treat unanswered Calendar time as free.
     return [];
   }
   if (!Array.isArray(rows)) return [];
+  const projectionStart = Date.now();
   const bounded = rows.slice(Math.max(0, rows.length - 200));
   const byKey = {};
   bounded.forEach(function(row) {
@@ -97,10 +98,14 @@ function buildKazOsTodayPlanningClassifications_() {
       constraint_window: window
     };
   });
-  return Object.keys(byKey).sort().map(function(key) { return byKey[key]; });
+  const projected = Object.keys(byKey).sort().map(function(key) { return byKey[key]; });
+  if (trace && trace.debug_timing_requested === true && typeof recordKazOsLedgerBreakdown_ === 'function') {
+    recordKazOsLedgerBreakdown_(trace, 'planning_projection_ms', Date.now() - projectionStart);
+  }
+  return projected;
 }
 
-function buildKazOsTodayPlanningEvidence_() {
+function buildKazOsTodayPlanningEvidence_(trace) {
   const timezone = 'Asia/Tokyo';
   const planningDate = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
   const empty = { timezone: timezone, planning_date: planningDate, preferences: [], daily_estimates: [] };
@@ -108,11 +113,12 @@ function buildKazOsTodayPlanningEvidence_() {
   if (typeof readKazOsDecisionLedger_ !== 'function') return empty;
   let rows;
   try {
-    rows = readKazOsDecisionLedger_();
+    rows = readKazOsDecisionLedger_(trace);
   } catch (_) {
     return empty;
   }
   if (!Array.isArray(rows)) return empty;
+  const projectionStart = Date.now();
   const bounded = rows.slice(Math.max(0, rows.length - 200)).filter(function(row) {
     return row && row.answer && row.proposal && row.proposal.change;
   }).sort(function(a, b) {
@@ -139,12 +145,16 @@ function buildKazOsTodayPlanningEvidence_() {
         planning_date: planningDay, estimate_min: estimate, expires_at: expiresAt };
     }
   });
-  return {
+  const projected = {
     timezone: timezone,
     planning_date: planningDate,
     preferences: Object.keys(preferences).sort().map(function(key) { return preferences[key]; }),
     daily_estimates: Object.keys(estimates).sort().map(function(key) { return estimates[key]; })
   };
+  if (trace && trace.debug_timing_requested === true && typeof recordKazOsLedgerBreakdown_ === 'function') {
+    recordKazOsLedgerBreakdown_(trace, 'planning_projection_ms', Date.now() - projectionStart);
+  }
+  return projected;
 }
 
 function sanitizeKazOsTodayV2_(data) {

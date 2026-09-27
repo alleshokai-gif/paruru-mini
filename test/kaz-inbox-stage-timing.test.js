@@ -82,7 +82,10 @@ const debugResult = context.kazOsProgress_({ action: 'kazOs.inbox.get' }, debugT
 assert.equal(debugResult.success, true);
 assert.equal(fetches, 1);
 assert.deepEqual(Object.keys(debugResult.diagnostics), ['request_id_suffix', 'auth_ms', 'config_ms',
-  'calendar_ms', 'ledger_ms', 'gateway_ms', 'response_ms', 'total_ms']);
+  'calendar_ms', 'ledger_ms', 'gateway_ms', 'response_ms', 'total_ms', 'ledger_breakdown']);
+assert.deepEqual(Object.keys(debugResult.diagnostics.ledger_breakdown), ['read_count', 'spreadsheet_open_ms',
+  'sheet_get_ms', 'range_get_ms', 'rows_read_ms', 'filter_parse_ms', 'planning_projection_ms',
+  'confirmed_current_ms']);
 assert.equal(debugResult.diagnostics.request_id_suffix, '14174000');
 assert.equal(debugResult.diagnostics.auth_ms, 20);
 assert.equal(debugResult.diagnostics.config_ms, 4);

@@ -52,8 +52,29 @@ function buildKazOsInboxTimingDiagnostics_(trace) {
     ledger_ms: elapsed('decision_ledger_ms'),
     gateway_ms: elapsed('gateway_post_ms'),
     response_ms: elapsed('response_ms'),
-    total_ms: Math.min(600000, Math.max(0, Date.now() - (trace.gas_started_at_ms || trace.started_at_ms)))
+    total_ms: Math.min(600000, Math.max(0, Date.now() - (trace.gas_started_at_ms || trace.started_at_ms))),
+    ledger_breakdown: buildKazOsLedgerBreakdown_(trace)
   };
+}
+
+var KAZ_OS_LEDGER_TIMING_STAGES_ = ['spreadsheet_open_ms', 'sheet_get_ms', 'range_get_ms',
+  'rows_read_ms', 'filter_parse_ms', 'planning_projection_ms', 'confirmed_current_ms'];
+
+function recordKazOsLedgerBreakdown_(trace, stage, elapsedMs) {
+  if (!trace || trace.debug_timing_requested !== true || KAZ_OS_LEDGER_TIMING_STAGES_.indexOf(stage) < 0
+      || !Number.isFinite(elapsedMs)) return;
+  if (!trace.ledger_breakdown_ms) trace.ledger_breakdown_ms = {};
+  const value = Math.min(600000, Math.max(0, Math.floor(elapsedMs)));
+  trace.ledger_breakdown_ms[stage] = Math.min(600000, (trace.ledger_breakdown_ms[stage] || 0) + value);
+}
+
+function buildKazOsLedgerBreakdown_(trace) {
+  const stages = trace.ledger_breakdown_ms || {};
+  const result = { read_count: Number.isInteger(trace.ledger_read_count) ? trace.ledger_read_count : 0 };
+  KAZ_OS_LEDGER_TIMING_STAGES_.forEach(function(stage) {
+    result[stage] = Number.isInteger(stages[stage]) ? stages[stage] : null;
+  });
+  return result;
 }
 
 function recordKazOsInboxTrace_(trace, stage, values) {
@@ -120,9 +141,9 @@ function readKazOsInbox_(trace, transportTrace) {
     let classifications, planning;
     try {
       classifications = typeof buildKazOsTodayPlanningClassifications_ === 'function'
-        ? buildKazOsTodayPlanningClassifications_() : [];
+        ? buildKazOsTodayPlanningClassifications_(trace) : [];
       planning = typeof buildKazOsTodayPlanningEvidence_ === 'function'
-        ? buildKazOsTodayPlanningEvidence_() : { timezone: 'Asia/Tokyo',
+        ? buildKazOsTodayPlanningEvidence_(trace) : { timezone: 'Asia/Tokyo',
           planning_date: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd'),
           preferences: [], daily_estimates: [] };
     } finally {
