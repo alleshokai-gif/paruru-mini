@@ -19,9 +19,9 @@ function tier(arrival, lowConfidenceThreshold) {
   return { excluded: false, value: 0, quality: 'realtime' };
 }
 
-function sortingRisk(arrival) {
-  if (arrival.recommendationTier >= 3) return 2;
-  if (arrival.recommendationTier === 1) return 1;
+function candidateBand(arrival) {
+  if (['departure_uncertain', 'unknown'].includes(arrival.departureState)
+    || arrival.actionability === 'do_not_recommend') return 1;
   return 0;
 }
 
@@ -35,7 +35,7 @@ export function rankHubArrivals(arrivals, generatedAt, { lowConfidenceThreshold 
       recommendationTier: recommendation.value, recommendationQuality: recommendation.quality,
       recommendable: !recommendation.excluded && recommendation.value !== 1 && recommendation.value < 3 };
   }).filter((arrival) => !['cancelled', 'departed'].includes(arrival.departureState))
-    .sort((a, b) => sortingRisk(a) - sortingRisk(b)
+    .sort((a, b) => candidateBand(a) - candidateBand(b)
       || a.rankingTime - b.rankingTime
       || a.recommendationTier - b.recommendationTier
       || a.scheduledDeparture - b.scheduledDeparture
