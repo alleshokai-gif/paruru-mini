@@ -28,7 +28,9 @@ test('train choice uses an explicit accessible dropdown rather than GPS inferenc
   assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.bus-home-route-toggle\s*\{[^}]*text-align: center;/);
   const config = fs.readFileSync(require.resolve('../features/bus/config.js'), 'utf8');
-  assert.match(config, /PALURU_BUS_HOME_ROUTE_ENABLED\s*=\s*false/);
+  assert.match(config, /PALURU_BUS_HOME_ROUTE_ENABLED\s*=\s*true/);
+  assert.match(config, /\/api\/bus\/trains/);
+  assert.match(config, /\/api\/bus\/home-route/);
 });
 
 test('user rail choices show source departure and both comparison arrivals with paging', () => {
@@ -106,7 +108,7 @@ test('home route selects the related normal Bus location only from an exact stat
   assert.equal(ui.hubForJourney('high_school', { fastest: null }), null);
 });
 
-test('PALURU Bus view mounts manual train selection behind the disabled production gate', () => {
+test('PALURU Bus view mounts the accepted manual train selector with a production source', () => {
   const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
   const app = fs.readFileSync(require.resolve('../app.js'), 'utf8');
   const sw = fs.readFileSync(require.resolve('../sw.js'), 'utf8');
@@ -119,7 +121,7 @@ test('PALURU Bus view mounts manual train selection behind the disabled producti
   assert.match(app, /PALURUBusHomeRoute\?\.setActive\(resolvedView === "bus"\)/);
   assert.match(sw, /versioned\("features\/bus\/home-route\.js"\)/);
   assert.match(sw, /versioned\("features\/bus\/home-route\.css"\)/);
-  assert.match(config, /PALURU_BUS_HOME_ROUTE_ENABLED\s*=\s*false/);
+  assert.match(config, /PALURU_BUS_HOME_ROUTE_ENABLED\s*=\s*true/);
   assert.match(config, /PALURU_BUS_POSITION_SHADOW_ENABLED\s*=\s*true/);
   assert.match(hub, /replaceChildren\(rootHeading,.*homeRoute.*locations\)/);
   assert.match(preview, /window\.PALURUBusHomeRoute\?\.setActive\(true\)/);
