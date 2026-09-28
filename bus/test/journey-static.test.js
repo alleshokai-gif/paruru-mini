@@ -21,19 +21,24 @@ function journeyZip() {
   return zipSync({
     'agency.txt': csv([['agency_timezone'], ['Asia/Tokyo']]),
     'stops.txt': csv([['stop_id', 'stop_name', 'location_type'], ['474_5', '向丘遊園駅南口', 0],
-      ['184_1', '神木本町', 0], ['184_3', '神木本町', 0], ['469_2', '向丘中学校下', 0],
+      ['184_1', '神木本町', 0], ['184_2', '神木本町', 0], ['184_3', '神木本町', 0],
+      ['365_1', '登戸駅多摩川口', 0], ['365_2', '登戸駅多摩川口', 0], ['469_2', '向丘中学校下', 0],
       ['999_1', '対象外', 0]]),
     'routes.txt': csv([['route_id', 'route_short_name'], ['10037', '溝１９'],
       ...westbound.map(([routeId, routeLabel]) => [routeId, routeLabel])]),
     'trips.txt': csv([['trip_id', 'route_id', 'service_id', 'trip_headsign', 'direction_id'],
       ['through-kibuki', '10037', 'weekday', '溝口駅南口(おし沼)', 0],
       ['not-through-kibuki', '10037', 'weekday', '対象外', 0],
+      ['home-tamagawa', '10045', 'weekday', 'カリタス学園', 0],
       ...westbound.map(([routeId, , headsign]) => [`west-${routeId}`, routeId, 'weekday', headsign, 1])]),
     'stop_times.txt': csv([['trip_id', 'stop_sequence', 'stop_id', 'departure_time', 'pickup_type', 'drop_off_type', 'stop_headsign'],
       ['through-kibuki', 1, '474_5', '07:00:00', 0, 0, '溝口駅南口(おし沼)'],
       ['through-kibuki', 12, '184_1', '07:20:00', 0, 0, '溝口駅南口(おし沼)'],
       ['not-through-kibuki', 1, '474_5', '07:10:00', 0, 0, '対象外'],
       ['not-through-kibuki', 2, '999_1', '07:15:00', 0, 0, '対象外'],
+      ['home-tamagawa', 13, '184_2', '09:00:00', 0, 0, 'カリタス学園'],
+      ['home-tamagawa', 20, '365_1', '09:12:00', 0, 0, 'カリタス学園'],
+      ['west-10045', 1, '365_2', '07:55:00', 0, 0, '鷲ヶ峰営業所前'],
       ...westbound.flatMap(([routeId, , headsign], index) => [
         [`west-${routeId}`, 10, '184_3', `08:${String(index).padStart(2, '0')}:00`, 0, 0, headsign],
         [`west-${routeId}`, 11, '469_2', `08:${String(index + 1).padStart(2, '0')}:00`, 0, 0, headsign]
@@ -54,6 +59,17 @@ test('P2.5 Kawasaki builder retains only 474_5 to 184_1 trips with the verified 
     ['474_5', '184_1', '10037', '5番']);
   assert.equal(rows[0].directionId, '0'); assert.equal(rows[0].headsign, '溝口駅南口(おし沼)');
   assert.ok(!JSON.stringify(artifact).includes('not-through-kibuki'));
+});
+
+test('登06 uses distinct Tamagawa poles in both directions and never merges them with 登05', () => {
+  const artifact = buildP2_5KawasakiStatic(journeyZip(), { now: NOW, sourceDate: '20260828' });
+  validateKawasakiJourneyArtifact(artifact, '20260828');
+  const outbound = artifact.directions.kibukihoncho_to_noborito_tamagawa;
+  const inbound = artifact.directions.noborito_tamagawa_to_kibukihoncho;
+  assert.deepEqual(outbound.map((row) => [row.fromStopId, row.toStopId, row.routeId, row.platform]),
+    [['184_2', '365_1', '10045', '2番']]);
+  assert.deepEqual(inbound.map((row) => [row.fromStopId, row.toStopId, row.routeId, row.platform]),
+    [['365_2', '184_3', '10045', '多摩川口2番のりば']]);
 });
 
 test('supplemental Kawasaki builder retains the verified 184_3 westbound routes and per-trip destinations', () => {

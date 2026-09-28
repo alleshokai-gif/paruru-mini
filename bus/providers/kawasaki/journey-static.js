@@ -28,8 +28,21 @@ export function validateKawasakiJourneyArtifact(index, expectedSourceDate = null
     || typeof row.headsign !== 'string' || !row.headsign.trim())
     || JSON.stringify([...new Set(westbound.map((row) => row.routeId))].sort()) !== JSON.stringify(expectedRoutes))
     fail('BUS_KAWASAKI_JOURNEY_ROUTE_INVALID');
+  for (const [id, from, to, direction, platform] of [
+    ['kibukihoncho_to_noborito_tamagawa', '184_2', '365_1', '0', '2番'],
+    ['noborito_tamagawa_to_kibukihoncho', '365_2', '184_3', '1', '多摩川口2番のりば']
+  ]) {
+    const branch = index.directions?.[id];
+    if (!Array.isArray(branch) || !branch.length || branch.some((row) => row.routeId !== '10045'
+      || row.routeLabel !== '登０６' || row.directionId !== direction || row.fromStopId !== from
+      || row.toStopId !== to || row.stopSequence >= row.alightSequence || row.platform !== platform
+      || typeof row.headsign !== 'string' || !row.headsign.trim()))
+      fail('BUS_KAWASAKI_JOURNEY_ROUTE_INVALID');
+  }
   const serviceIds = new Set([...(index.calendar || []), ...(index.calendarDates || [])].map((row) => row.service_id));
-  if ([...rows, ...westbound].some((row) => !serviceIds.has(row.serviceId))) fail('BUS_KAWASAKI_JOURNEY_SERVICE_INVALID');
+  if ([...rows, ...westbound, ...index.directions.kibukihoncho_to_noborito_tamagawa,
+    ...index.directions.noborito_tamagawa_to_kibukihoncho].some((row) => !serviceIds.has(row.serviceId)))
+    fail('BUS_KAWASAKI_JOURNEY_SERVICE_INVALID');
   return index;
 }
 

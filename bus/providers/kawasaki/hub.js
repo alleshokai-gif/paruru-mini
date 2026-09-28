@@ -2,7 +2,8 @@ import { ATTRIBUTION } from './attribution.js';
 import { resolvePlatform } from './config.js';
 
 const INCLUDED_SOURCES = new Set(['home_to_noborito', 'home_to_mizonokuchi', 'mizonokuchi_to_home',
-  'noborito_to_home', 'mukougaoka_to_kibukihoncho', 'kibukihoncho_to_miyamae_washigamine']);
+  'noborito_to_home', 'mukougaoka_to_kibukihoncho', 'kibukihoncho_to_miyamae_washigamine',
+  'kibukihoncho_to_noborito_tamagawa', 'noborito_tamagawa_to_kibukihoncho']);
 const DEPARTURE_STATES = new Set(['departure_pending', 'departure_overdue', 'departure_uncertain']);
 const fail = (code) => { throw new Error(code); };
 
@@ -64,6 +65,8 @@ export function normalizeKawasakiHubResult(response, { index, queries }) {
       arrivals.push({
         id: `kawasaki:${row.tripId}`, sourceId: direction.id, provider: 'kawasaki',
         routeId, routeLabel: row.routeLabel, isOrigin: staticRow.isOrigin,
+        areaBadge: ['365_1', '365_2'].includes(staticRow.fromStopId)
+          || ['365_1', '365_2'].includes(staticRow.toStopId) ? '多摩川口' : null,
         destination: row.headsign || direction.to,
         originStop: { id: stopId, name: stop.name }, targetStop: { id: stopId, name: stop.name },
         scheduledDeparture, estimatedDeparture, effectiveDeparture: null,

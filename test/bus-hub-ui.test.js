@@ -56,6 +56,15 @@ test('Position shadow has an explicit local gate and safely waits for weak evide
   assert.equal(hub.displayShadowPosition({ ...row.position, shadowReady: false }), '位置確認中');
 });
 
+test('Tamagawa exit badge remains conspicuous without changing destination or platform', () => {
+  const row = arrival({ provider: 'kawasaki', routeLabel: '登０６', destination: '鷲ヶ峰営業所前',
+    platform: '多摩川口2番のりば', areaBadge: '多摩川口' });
+  const nodes = descendants(hub.renderArrivalList(fakeDocument(),
+    { arrivals: [row], recommendedArrivalId: null }, 'noborito-eki'));
+  assert.equal(nodes.filter((node) => node.className === 'bus-hub-area-badge').length, 1);
+  assert.match(nodes.map((node) => node.textContent).join(''), /多摩川口.*鷲ヶ峰営業所前/);
+});
+
 test('Hub location selection restores a valid session choice and activates only the visible controller', () => {
   const specs = hub.configuredHubs({ PALURU_BUS_HUBS: [
     { id: 'kibukihoncho', label: '神木本町', selectorLabel: '神木本町' },

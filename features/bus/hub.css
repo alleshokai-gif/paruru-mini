@@ -34,6 +34,8 @@
 .bus-hub-recommendation { padding: 3px 7px; border-radius: 999px; background: #dcecff; color: #24558d; font-size: 11px; font-weight: 800; }
 .bus-hub-origin-badge { padding: 3px 7px; border-radius: 999px; background: #e7f0ff; color: #24558d; font-size: 11px; font-weight: 800; }
 .bus-hub-destination { margin: 4px 0 5px; color: #53657c; font-size: 13px; }
+.bus-hub-area-badge { border: 1px solid #a86712; border-radius: 6px; padding: 2px 5px;
+  background: #fff2d7; color: #71420c; font-size: 12px; white-space: nowrap; }
 .bus-hub-position-shadow { margin: 6px 0 0; color: #36536d; font-size: 13px; overflow-wrap: anywhere; }
 .bus-hub-timing { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .bus-hub-time { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }

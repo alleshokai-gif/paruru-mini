@@ -41,6 +41,7 @@
         if (!text(row.id) || !text(row.provider) || !text(row.routeLabel) || !text(row.destination)
           || !Number.isFinite(row.scheduledDeparture) || !STATES.has(row.realtimeState)
           || row.isOrigin != null && typeof row.isOrigin !== 'boolean'
+          || row.areaBadge != null && !text(row.areaBadge)
           || row.etaMinutes != null && !Number.isFinite(row.etaMinutes)
           || row.delayMinutes != null && !Number.isFinite(row.delayMinutes)) throw Error('BUS_HUB_RESPONSE_INVALID');
         if (row.realtimeState === 'static_only' && (row.estimatedDeparture != null || row.etaMinutes != null || row.delayMinutes != null))
@@ -171,6 +172,7 @@
         const item = element(doc, 'li', `bus-hub-row is-${shown.kind}${recommended ? ' is-recommended' : ''}`);
         const heading = element(doc, 'div', 'bus-hub-row-heading');
         heading.append(providerLabel(doc, row.provider), element(doc, 'span', 'bus-hub-route', row.routeLabel));
+        if (row.areaBadge) heading.append(element(doc, 'strong', 'bus-hub-area-badge', row.areaBadge));
         if (hubId === 'kibukihoncho' && row.originStop?.name === '神木本町' && row.isOrigin === true)
           heading.append(element(doc, 'span', 'bus-hub-origin-badge', '始発'));
         if (recommended) heading.append(element(doc, 'span', 'bus-hub-recommendation', '最速候補'));
