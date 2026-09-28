@@ -26,6 +26,7 @@ test('train choice uses an explicit accessible dropdown rather than GPS inferenc
   const css = fs.readFileSync(require.resolve('../features/bus/home-route.css'), 'utf8');
   assert.match(css, /min-height: 48px/);
   assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.bus-home-route-toggle\s*\{[^}]*text-align: center;/);
   const config = fs.readFileSync(require.resolve('../features/bus/config.js'), 'utf8');
   assert.match(config, /PALURU_BUS_HOME_ROUTE_ENABLED\s*=\s*false/);
 });
@@ -53,6 +54,16 @@ test('partial source failure is visible even when its station still has buses', 
   ui.renderDecision(doc, mount, { status: 'partial', fastest: null, alternate: null,
     unavailablePlaces: [], unavailableSources: ['tokyu:mukougaoka_to_kibukihoncho'] });
   assert.match(renderedText(mount), /一部の経路情報を取得できませんでした/);
+});
+
+test('home route selects the related normal Bus location only from an exact station ID', () => {
+  assert.equal(ui.hubForJourney('university'), 'noborito-mukougaoka');
+  assert.equal(ui.hubForJourney('high_school', { fastest: { stationId: 'musashi_mizonokuchi' } }),
+    'mizonokuchi-minamiguchi');
+  assert.equal(ui.hubForJourney('high_school', { fastest: { stationId: 'noborito' } }),
+    'noborito-mukougaoka');
+  assert.equal(ui.hubForJourney('high_school', { fastest: { stationLabel: '溝の口駅南口' } }), null);
+  assert.equal(ui.hubForJourney('high_school', { fastest: null }), null);
 });
 
 test('PALURU Bus view mounts manual train selection behind the disabled production gate', () => {

@@ -13,6 +13,13 @@
     const result = doc.createElement(tag); result.className = className; result.textContent = value;
     return result;
   };
+  function hubForJourney(journeyId, decision) {
+    if (journeyId === 'university') return 'noborito-mukougaoka';
+    if (journeyId !== 'high_school') return null;
+    if (decision?.fastest?.stationId === 'musashi_mizonokuchi') return 'mizonokuchi-minamiguchi';
+    if (decision?.fastest?.stationId === 'noborito') return 'noborito-mukougaoka';
+    return null;
+  }
   function renderOption(doc, option, primary) {
     const section = node(doc, 'section', `bus-home-route-option${primary ? ' is-primary' : ''}`, '');
     const quality = option.timingQuality === 'static_only' ? '時刻表上の到着' :
@@ -88,6 +95,8 @@
       let selectedJourneyId = 'university';
       const selectJourney = (journeyId) => {
         selectedJourneyId = journeyId;
+        const defaultHubId = hubForJourney(journeyId);
+        if (defaultHubId) root.PALURUBusHub?.selectHub?.(defaultHubId);
         const request = ++generation;
         choices.replaceChildren(); result.replaceChildren(); status.textContent = '列車候補を読み込み中…';
         for (const button of journeys.children) button.setAttribute('aria-pressed', String(button.dataset.journeyId === journeyId));
@@ -99,6 +108,8 @@
             Promise.resolve().then(() => source.evaluate({ journeyId, trainId })).then((decision) => {
               if (!active || evaluation !== generation) return;
               renderDecision(doc, result, decision); status.textContent = '';
+              const hubId = hubForJourney(journeyId, decision);
+              if (hubId) root.PALURUBusHub?.selectHub?.(hubId);
             }).catch(() => { if (active && evaluation === generation) status.textContent = '帰宅経路を比較できません'; });
           });
           status.textContent = trains.length ? '乗車する列車を選んでください' : '列車候補がありません';
@@ -115,7 +126,7 @@
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();
   }
-  return { renderDecision, renderTrainChoices, install,
+  return { renderDecision, renderTrainChoices, hubForJourney, install,
     setActive(value) {
       active = !!value; if (!active) generation++;
       if (active && expanded) activate?.();

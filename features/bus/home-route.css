@@ -6,7 +6,7 @@
 .bus-home-route-station { margin: 0 0 6px; font-size: 17px; }
 .bus-home-route-quality, .bus-home-route-partial { color: #526579; font-size: 13px; }
 .bus-home-route { margin: 0 0 14px; min-width: 0; }
-.bus-home-route-toggle { width: 100%; min-height: 48px; padding: 10px 14px; border: 1px solid #b9cde0; border-radius: 10px; background: #eaf3fb; color: #224766; font-size: 16px; font-weight: 700; text-align: left; }
+.bus-home-route-toggle { width: 100%; min-height: 48px; padding: 10px 14px; border: 1px solid #b9cde0; border-radius: 10px; background: #eaf3fb; color: #224766; font-size: 16px; font-weight: 700; text-align: center; }
 .bus-home-route-toggle[aria-expanded="true"] { background: #dcecf9; }
 .bus-home-route-content { min-width: 0; margin-top: 8px; padding: 12px; border: 1px solid #d8e3ec; border-radius: 12px; }
 .bus-home-route-heading { margin: 0 0 10px; font-size: 20px; }

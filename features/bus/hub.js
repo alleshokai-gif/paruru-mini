@@ -12,7 +12,7 @@
   const PROVIDER_LABELS = Object.freeze({ kawasaki: '川崎市バス', tokyu: '東急バス', seibu: '西武バス' });
   const controllers = new Map();
   const selectorButtons = new Map(), locationPanels = new Map();
-  let requestedActive = false, installed = false, selection;
+  let requestedActive = false, installed = false, selection, selectHubFromRoute;
   const text = (value) => typeof value === 'string' && value.length > 0;
   const clock = (epoch) => new Date((epoch + 9 * 3600) * 1000).toISOString().slice(11, 16);
   const dateClock = (epoch) => new Date((epoch + 9 * 3600) * 1000).toISOString().slice(0, 16).replace('T', ' ');
@@ -242,12 +242,13 @@
       rootHeading.append(element(doc, 'p', 'bus-hub-eyebrow', 'いつもの場所'), selector);
       const locations = element(doc, 'div', 'bus-hub-locations');
       const selectHub = (hubId) => {
-        if (!selection.select(hubId)) return;
+        if (!selection.select(hubId)) return false;
         for (const [id, button] of selectorButtons) {
           const selected = id === hubId;
           button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
           locationPanels.get(id).hidden = !selected;
         }
+        return true;
       };
       specs.forEach((spec, index) => {
         const tabId = `busHubTab-${spec.id}`, panelId = `busHubPanel-${spec.id}`;
@@ -277,6 +278,7 @@
       selection = createSelection({ specs, initialHubId: readStoredHubId(root),
         activate: (hubId, value) => controllers.get(hubId).setActive(value),
         persist: (hubId) => writeStoredHubId(root, hubId) });
+      selectHubFromRoute = selectHub;
       const initialHubId = selection.selectedHubId;
       for (const [id, button] of selectorButtons) {
         const selected = id === initialHubId;
@@ -293,5 +295,6 @@
   return { install, validate, displayArrival, displayShadowPosition, sourceSummary, renderArrivalList, configuredHubs, apiUrl,
     resolveSelectedHubId, createSelection,
     HUB_UI_DEFAULT_ENABLED, HUB_SELECTION_STORAGE_KEY,
+    selectHub(hubId) { return selectHubFromRoute?.(hubId) ?? false; },
     setActive(value) { requestedActive = !!value; selection?.setActive(value); } };
 }));

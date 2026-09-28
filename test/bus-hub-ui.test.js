@@ -31,6 +31,7 @@ function renderOriginBadge(row, hubId = 'kibukihoncho') {
 
 test('Hub module stays fail-closed while production config explicitly enables it', () => {
   assert.equal(hub.HUB_UI_DEFAULT_ENABLED, false);
+  assert.equal(typeof hub.selectHub, 'function');
   const config = fs.readFileSync(require.resolve('../features/bus/config.js'), 'utf8');
   assert.match(config, /PALURU_BUS_HUB_UI_ENABLED\s*=\s*true/);
   assert.match(config, /PALURU_BUS_POSITION_SHADOW_ENABLED\s*=\s*true/);

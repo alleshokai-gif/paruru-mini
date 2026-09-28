@@ -41,12 +41,13 @@ const trains = (journeyId) => journeyId === 'university'
     : [];
 function homeRouteFixture(journeyId, scenario) {
   const school = journeyId === 'high_school';
-  const first = { stationLabel: school ? '溝の口駅南口' : '向ヶ丘遊園駅南口',
+  const first = { stationId: school ? 'musashi_mizonokuchi' : 'mukougaoka',
+    stationLabel: school ? '溝の口駅南口' : '向ヶ丘遊園駅南口',
     stationArrivalAt: fixtureTime(school ? '18:30' : '18:21'),
     departureAt: fixtureTime(school ? '18:37' : '18:27'),
     homeArrivalAt: fixtureTime('18:39'), provider: school ? 'kawasaki' : 'tokyu',
     routeLabel: school ? '溝１７' : '向０１', timingQuality: school ? 'departure_delay_projection' : 'static_only' };
-  const second = { stationLabel: '登戸駅', stationArrivalAt: fixtureTime('18:18'),
+  const second = { stationId: 'noborito', stationLabel: '登戸駅', stationArrivalAt: fixtureTime('18:18'),
     departureAt: fixtureTime('18:31'), homeArrivalAt: fixtureTime(scenario === 'tie' ? '18:40' : '18:44'),
     provider: 'kawasaki', routeLabel: '登０５', timingQuality: 'departure_delay_projection' };
   if (scenario === 'partial') return { status: 'partial', fastest: second, alternate: null,
