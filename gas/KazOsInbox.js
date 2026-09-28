@@ -324,7 +324,10 @@ function sanitizeKazOsInbox_(data) {
           || value.input_contract.start_required !== true || value.input_contract.end_required !== true
           || value.input_contract.within_event !== true) fail();
     } else if (value.kind === 'daily_estimate') {
-      if (choices.length !== 0 || !value.input_contract || value.input_contract.type !== 'integer_minutes'
+      const inputType = value.input_contract && value.input_contract.type;
+      const planningChoices = choices.map(function(choice) { return choice.value; }).join(',') === 'today,this_week,later';
+      if (!(inputType === 'integer_minutes' && choices.length === 0
+            || inputType === 'planning_estimate' && choices.length === 3 && planningChoices)
           || value.input_contract.unit !== 'minutes' || value.input_contract.min !== 1
           || !Number.isInteger(value.input_contract.max) || value.input_contract.max < 1
           || value.input_contract.max > 100000) fail();
@@ -352,7 +355,8 @@ function sanitizeKazOsInbox_(data) {
       questionRevision = 'question-sha256:' + kazOsSha256_('daily-planning-preference-question\\u0000' + seed);
     } else if (value.kind === 'daily_estimate') {
       if (!entityRef || !entityRevision || !decisionDate) fail();
-      const inputSeed = value.input_contract.type + ':' + value.input_contract.min + ':' + value.input_contract.max;
+      const inputSeed = value.input_contract.type + ':' + value.input_contract.min + ':' + value.input_contract.max
+        + (value.input_contract.type === 'planning_estimate' ? ':' + choices.map(function(choice) { return choice.value; }).join(',') : '');
       const seed = entityRef + '\\u0000' + entityRevision + '\\u0000' + decisionDate + '\\u0000' + inputSeed;
       decisionId = 'decision-' + kazOsSha256_('daily-estimate\\u0000' + seed).slice(0, 24);
       questionRevision = 'question-sha256:' + kazOsSha256_('daily-estimate-question\\u0000' + seed);
@@ -374,7 +378,7 @@ function sanitizeKazOsInbox_(data) {
        calendar_event: calendarEvent,
        input_contract: value.kind === 'calendar_partial_window' ? { type: 'time_range', timezone: 'Asia/Tokyo',
          start_required: true, end_required: true, within_event: true }
-         : value.kind === 'daily_estimate' ? { type: 'integer_minutes', min: value.input_contract.min,
+         : value.kind === 'daily_estimate' ? { type: value.input_contract.type, min: value.input_contract.min,
            max: value.input_contract.max, unit: 'minutes' } : null,
       recommended_option: text(value.recommended_option, 80, true),
       recommendation_basis: value.recommendation_basis == null ? null : list(value.recommendation_basis, 8, function(item) { return text(item, 300); }) };

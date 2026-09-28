@@ -105,14 +105,9 @@ function buildKazOsTodayPlanningEvidence_() {
   const planningDate = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
   const empty = { timezone: timezone, planning_date: planningDate, preferences: [], daily_estimates: [] };
   if (typeof isKazOsInboxAnswerEnabled_ === 'function' && !isKazOsInboxAnswerEnabled_()) return empty;
-  if (typeof readKazOsDecisionLedger_ !== 'function') return empty;
-  let rows;
-  try {
-    rows = readKazOsDecisionLedger_();
-  } catch (_) {
-    return empty;
-  }
-  if (!Array.isArray(rows)) return empty;
+  if (typeof readKazOsDecisionLedger_ !== 'function') throw homeMembershipError_('KAZ_PERSISTENCE_NOT_CONFIGURED');
+  const rows = readKazOsDecisionLedger_();
+  if (!Array.isArray(rows)) throw homeMembershipError_('KAZ_PERSISTENCE_FAILED');
   const bounded = rows.slice(Math.max(0, rows.length - 200)).filter(function(row) {
     return row && row.answer && row.proposal && row.proposal.change;
   }).sort(function(a, b) {
@@ -132,6 +127,11 @@ function buildKazOsTodayPlanningEvidence_() {
       if (['today','this_week','later'].indexOf(preference) < 0 || change.timezone !== timezone || change.source !== 'human') return;
       preferences[workItemId] = { work_item_id: workItemId, work_item_source_revision: revision,
         planning_date: planningDay, preference: preference, expires_at: expiresAt };
+      if (preference === 'today' && Number.isInteger(change.estimate_min)
+          && change.estimate_min > 0 && change.estimate_min <= 100000) {
+        estimates[workItemId] = { work_item_id: workItemId, work_item_source_revision: revision,
+          planning_date: planningDay, estimate_min: change.estimate_min, expires_at: expiresAt };
+      }
     } else if (change.kind === 'DAILY_ESTIMATE') {
       const estimate = change.estimate_min;
       if (!Number.isInteger(estimate) || estimate <= 0 || estimate > 100000 || change.timezone !== timezone || change.source !== 'human') return;

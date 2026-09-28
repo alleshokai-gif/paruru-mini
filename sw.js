@@ -1,4 +1,4 @@
-importScripts("./build.js?v=v20260928-inbox-estimate-quick-choice-v1");
+importScripts("./build.js?v=v20260928-inbox-work-planning-v1");
 // Release: v20260928-inbox-estimate-quick-choice-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;

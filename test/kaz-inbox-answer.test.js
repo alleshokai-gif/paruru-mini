@@ -78,6 +78,16 @@ function estimateSnapshot() {
   value.calendar_events = [];
   return value;
 }
+function planningEstimateSnapshot() {
+  const value = estimateSnapshot(), question = value.inbox_items[0];
+  question.question = '今日やる？';
+  question.answer_contract.question = question.question;
+  question.answer_contract.choices = ['today','this_week','later'].map((choice,index) => ({
+    value: choice, label: ['今日','今週','あとで'][index], effect: 'Work planning preference',
+  }));
+  question.input_contract.type = 'planning_estimate';
+  return value;
+}
 function candidateSnapshot() {
   const value=snapshot(),commit='a'.repeat(40),blob='b'.repeat(40),revision=commit+':'+blob,
     candidateRef='github://alleshokai-gif/kaz-context/inbox/candidate.md@'+commit,
@@ -341,6 +351,98 @@ test('daily estimate persists integer minutes only as date-scoped planning evide
   assert.equal(change.expires_at, question.expires_at);
   assert.equal(change.permanent_estimate_change, false);
   assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
+});
+
+test('Work planning Today stores preference and estimate in one revision-bound answer', () => {
+  const value = planningEstimateSnapshot();
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => value });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  assert.equal(question.input_contract.type, 'planning_estimate');
+  const result = request(local, question, { preference: 'today', estimate_min: 30 }, 'paluru-work-planning-today-0001');
+  assert(result.success, JSON.stringify(result));
+  const change = result.data.proposal.change;
+  assert.equal(change.kind, 'DAILY_PLANNING_PREFERENCE');
+  assert.equal(change.work_item_id, question.entity_ref);
+  assert.equal(change.preference, 'today');
+  assert.equal(change.estimate_min, 30);
+  assert.equal(change.expires_at, nextJstDayBoundary(result.data.answer.answered_at));
+  assert.equal(change.permanent_estimate_change, false);
+  assert.equal(result.data.inbox.inbox_items.some(item => item.id === question.id), false);
+  local.ctx.Utilities.formatDate = date => new Date(Date.parse(date.toISOString()) + 9 * 3600000).toISOString().slice(0, 10);
+  const evidence = local.ctx.buildKazOsTodayPlanningEvidence_();
+  assert.equal(evidence.preferences[0].work_item_id, question.entity_ref);
+  assert.equal(evidence.preferences[0].preference, 'today');
+  assert.equal(evidence.daily_estimates[0].estimate_min, 30);
+  assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 2);
+});
+
+test('Work planning This Week expires tomorrow and Later expires next Monday', () => {
+  for (const [preference, suffix] of [['this_week','week'],['later','later']]) {
+    const value = planningEstimateSnapshot();
+    const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+      projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => value });
+    local.setupDecisionLedger(); local.resetStats();
+    const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+    const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+    const result = request(local, question, { preference }, 'paluru-work-planning-' + suffix + '-0001');
+    assert(result.success, JSON.stringify(result));
+    const change = result.data.proposal.change;
+    assert.equal(change.work_item_id, question.entity_ref);
+    assert.equal(change.preference, preference);
+    assert.equal(change.estimate_min, null);
+    assert.equal(change.expires_at, preference === 'this_week'
+      ? nextJstDayBoundary(result.data.answer.answered_at) : nextJstWeekBoundary(result.data.answer.answered_at));
+    assert.equal(result.data.inbox.inbox_items.some(item => item.id === question.id), false);
+    assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 2);
+  }
+});
+
+test('a Work planning answer suppresses the overlapping Today focus question without allowing a second answer', () => {
+  const value = planningEstimateSnapshot(), focus = snapshot().inbox_items[0], target = value.work_items[0];
+  focus.entity_ref = target.id;
+  focus.entity_revision = target.source_revision;
+  focus.project_id = target.project_id;
+  focus.source_revision_references = value.inbox_items[0].source_revision_references;
+  value.inbox_items.push(focus);
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => value });
+  local.setupDecisionLedger(); local.resetStats();
+  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  const planning = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+  const oldFocus = read.data.inbox_items.find(item => item.kind === 'today_focus');
+  const saved = request(local, planning, { preference: 'this_week' }, 'paluru-work-overlap-0001');
+  assert(saved.success, JSON.stringify(saved));
+  assert.equal(saved.data.inbox.inbox_items.some(item => item.kind === 'today_focus'), false);
+  const stale = request(local, oldFocus, 'today', 'paluru-work-overlap-0002');
+  assert.equal(stale.error.code, 'REVALIDATION_REQUIRED');
+  assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 2);
+});
+
+test('Work planning rejects Today without valid minutes and deferred choices with minutes', () => {
+  for (const [selected, suffix] of [[{preference:'today'},'missing'],
+    [{preference:'today',estimate_min:0},'zero'],[{preference:'this_week',estimate_min:30},'week-minutes'],
+    [{preference:'later',estimate_min:30},'later-minutes']]) {
+    const value = planningEstimateSnapshot();
+    const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+      projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => value });
+    local.setupDecisionLedger(); local.resetStats();
+    const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+    const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
+    const result = request(local, question, selected, 'paluru-work-planning-invalid-' + suffix);
+    assert.equal(result.error.code, 'KAZ_ANSWER_INVALID');
+    assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, 1);
+  }
+});
+
+test('TODAY does not treat an unavailable active planning ledger as empty evidence', () => {
+  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
+    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => planningEstimateSnapshot() });
+  local.ctx.Utilities.formatDate = date => new Date(Date.parse(date.toISOString()) + 9 * 3600000).toISOString().slice(0, 10);
+  local.ctx.readKazOsDecisionLedger_ = () => { throw Object.assign(Error('ledger unavailable'), { code: 'KAZ_PERSISTENCE_FAILED' }); };
+  assert.throws(() => local.ctx.buildKazOsTodayPlanningEvidence_(), error => error.code === 'KAZ_PERSISTENCE_FAILED');
 });
 
 test('daily estimate rejects zero non-integer and text', () => {

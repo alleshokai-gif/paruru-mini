@@ -169,12 +169,25 @@
       const data = await inboxApi();
       if (!current()) return;
       if (!readOnlyInbox(data) && !controlledInbox(data)) throw Object.assign(new Error('KAZ_READ_ONLY'), { code: 'KAZ_READ_ONLY' });
+      const refreshPlanningToday = async (answer, inbox) => {
+        const preference = answer?.selected_option?.preference;
+        if (!['today','this_week','later'].includes(preference)) return;
+        const feedback = inbox?.feedback && typeof inbox.feedback.message === 'string' ? inbox.feedback : null;
+        try {
+          const today = await todayApi();
+          if (today?.schema_version !== 'kaz-today-plan-v2' || !today.today) throw Error('TODAY_REFRESH_FAILED');
+          if (feedback) feedback.message += ' · TODAY再計算済み';
+        } catch (_) {
+          if (feedback) feedback.message += ' · TODAY再計算は未確認。TODAYを開いて確認してな。';
+        }
+      };
       const answerApi = controlledInbox(data) && inboxAnswerApi ? async answer => {
         try {
           const result = await inboxAnswerApi(answer);
           if (!result?.inbox) throw Object.assign(new Error('KAZ_PERSISTENCE_FAILED'), { code: 'KAZ_PERSISTENCE_FAILED' });
           clearTimeout(inboxExpiry);
           inboxExpiry = null;
+          await refreshPlanningToday(answer, result.inbox);
           return result;
         } catch (error) {
           if (error?.code !== 'HOME_CONTROL_UNAVAILABLE') throw error;
@@ -213,6 +226,7 @@
           };
           clearTimeout(inboxExpiry);
           inboxExpiry = null;
+          await refreshPlanningToday(answer, refreshed);
           return { inbox: refreshed, reconciled: true };
         }
       } : null;

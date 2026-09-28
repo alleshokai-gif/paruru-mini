@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260928-inbox-estimate-quick-choice-v1";
+globalThis.BUILD_ID = "v20260928-inbox-work-planning-v1";

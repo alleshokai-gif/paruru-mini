@@ -38,10 +38,11 @@ const focus={id:'focus',kind:'today_focus',contract:'secretary-question-0.1',own
   answer_contract:{inbox_item_id:'focus',question_revision:'question-sha256:'+'a'.repeat(64),question:'いつやる？',
     choices:['today','this_week','later'].map((value,index)=>({value,label:['今日','今週','あとで'][index],effect:'fixture'}))}};
 const estimate=n=>({id:'estimate-'+n,kind:'daily_estimate',contract:'secretary-question-0.1',owner:'kaz',decision_requested:true,
-  title:'Estimate '+n,question:'これ何分くらい？',decision_date:today,project_id:'missing-project',entity_ref:'work-'+n,
+  title:'Estimate '+n,question:'今日やる？',decision_date:today,project_id:'missing-project',entity_ref:'work-'+n,
   entity_revision:'rev-'+n,question_revision:'question-sha256:'+'b'.repeat(64),source_revision_references:refs,
-  answer_contract:{inbox_item_id:'estimate-'+n,question_revision:'question-sha256:'+'b'.repeat(64),question:'これ何分くらい？',choices:[]},
-  input_contract:{type:'integer_minutes',min:1,max:100000,unit:'minutes'}});
+  answer_contract:{inbox_item_id:'estimate-'+n,question_revision:'question-sha256:'+'b'.repeat(64),question:'今日やる？',
+    choices:['today','this_week','later'].map((value,index)=>({value,label:['今日','今週','あとで'][index],effect:'fixture'}))},
+  input_contract:{type:'planning_estimate',min:1,max:100000,unit:'minutes'}});
 let data={origin:'real_operational_sources',mode:'controlled_proposal',fixture_only:false,as_of:new Date(now).toISOString(),
   sources:{inbox:source,projects:source,tasks:source,calendar:source},projects:[],
   work_items:[{id:'work-focus',source_revision:'rev'}],calendar_events:[],
@@ -57,24 +58,35 @@ const button=(parent,label)=>find(parent,node=>node.tagName==='button'&&node.tex
     ['focus','estimate-5','estimate-4','estimate-3']);
   assert(!host.textContent.includes('Project未確認'));
   assert(!host.textContent.includes('分で保存'));
+  assert(button(card('estimate-5'),'今日'));
+  assert(button(card('estimate-5'),'今週'));
+  assert(button(card('estimate-5'),'あとで'));
   assert.equal(button(card('estimate-5'),'30分').disabled,false);
   const custom=find(card('estimate-5'),node=>node.className.includes('kiq-estimate-custom'));
   assert.equal(custom.hidden,true);
+  const minutesGroup=find(card('estimate-5'),node=>node.className.includes('kiq-estimate')&&!node.className.includes('kiq-estimate-choices')&&!node.className.includes('kiq-estimate-custom'));
+  assert.equal(minutesGroup.hidden,true,'minutes must stay hidden before Today is selected');
+  button(card('estimate-5'),'今日').onclick();
+  assert.equal(calls.length,0,'Today selection only opens the same card');
+  assert.equal(minutesGroup.hidden,false);
   button(card('estimate-5'),'その他').onclick();
   assert.equal(custom.hidden,false);
   await button(card('estimate-5'),'30分').onclick();
   assert.equal(calls.length,1);
-  assert.equal(calls[0].selected_option,30);
+  assert.deepEqual(calls[0].selected_option,{preference:'today',estimate_min:30});
   assert.equal(calls[0].question_revision,'question-sha256:'+'b'.repeat(64));
   assert.equal(card('estimate-5'),undefined);
   assert(card('estimate-2'),'next TODAY estimate should enter the three-card window');
   button(card('estimate-4'),'スキップ').onclick();
   assert.equal(card('estimate-4'),undefined);
   assert.equal(calls.length,1,'skip must not save an answer');
+  await button(card('estimate-3'),'今週').onclick();
+  assert.deepEqual(calls[1].selected_option,{preference:'this_week'});
+  assert.equal(card('estimate-3'),undefined);
   await button(card('focus'),'今日やる').onclick();
-  assert.equal(calls[1].selected_option,'today');
+  assert.equal(calls[2].selected_option,'today');
   assert.equal(card('focus'),undefined);
   assert.equal(card('estimate-4'),undefined,'skip should survive another answer in the same view');
   inbox.dispose(host);
-  console.log('PASS INBOX quick choices, one focus, three estimates, skip, revision-bound save, and card removal');
+  console.log('PASS INBOX per-Work planning, conditional estimate, skip, revision-bound save, and card removal');
 })().catch(error=>{console.error(error);process.exitCode=1;});

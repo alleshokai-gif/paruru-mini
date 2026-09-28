@@ -167,6 +167,23 @@ const controlledInbox = (confirmedAnswers = []) => ({ ...freshInbox(), mode: 'co
   assert.equal(answerCalls, 1, 'answer API was not called exactly once');
   assert.equal(controlled.timers.size, 0, 'saved answer must not restore the old INBOX snapshot');
 
+  const planning = navigationHarness();
+  let planningWrites = 0, todayReads = 0;
+  planning.listeners['paruru:authenticated']({ detail: {
+    context: { role: 'admin', allowedViews: ['home', 'kaz-os'] },
+    kazOsInboxApi: async () => controlledInbox(),
+    kazOsInboxAnswerApi: async () => { planningWrites++; return { inbox: {
+      ...controlledInbox(), feedback: { message: '✓ 回答したで。Operational Sourceはまだ変更してへん' },
+    } }; },
+    kazOsTodayApi: async () => { todayReads++; return { schema_version: 'kaz-today-plan-v2', today: { planning_date: '2026-09-28' } }; },
+  } });
+  await new Promise(setImmediate);
+  const planningRender = planning.renders.find(args => args[2]?.mode === 'controlled_proposal');
+  const planningResult = await planningRender[4].answerApi({ selected_option: { preference: 'this_week' } });
+  assert.equal(planningWrites, 1, 'Work preference must use the existing one-write Answer path');
+  assert.equal(todayReads, 1, 'TODAY must be recalculated once after the persisted preference');
+  assert.match(planningResult.inbox.feedback.message, /TODAY再計算済み/);
+
   const reconciled = navigationHarness();
   let reconcileReads = 0;
   const decision = { decision_id: 'decision-response-lost', question_revision: 'question-sha256:response-lost' };

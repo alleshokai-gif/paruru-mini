@@ -108,12 +108,22 @@
       const partial=k==='calendar_partial_window',estimate=k==='daily_estimate';
       const selected=partial||estimate?input?.selected_option:input?.decision;
       let valid=estimate
-        ? Number.isInteger(selected)&&item.input_contract?.type==='integer_minutes'
-          &&selected>=item.input_contract.min&&selected<=item.input_contract.max
+        ? item.input_contract?.type==='planning_estimate'
+          ? selected&&typeof selected==='object'&&!Array.isArray(selected)
+            &&['today','this_week','later'].includes(selected.preference)
+            &&(selected.preference==='today'
+              ? Object.keys(selected).sort().join(',')==='estimate_min,preference'
+                &&Number.isInteger(selected.estimate_min)&&selected.estimate_min>=item.input_contract.min
+                &&selected.estimate_min<=item.input_contract.max
+              : Object.keys(selected).join(',')==='preference')
+          : Number.isInteger(selected)&&item.input_contract?.type==='integer_minutes'
+            &&selected>=item.input_contract.min&&selected<=item.input_contract.max
         : item.answer_contract?.choices?.some(choice=>choice.value===selected);
       if(partial){const start=Date.parse(selected?.start),end=Date.parse(selected?.end),suffix=item.calendar_event?.all_day?'T00:00:00+09:00':'',eventStart=Date.parse((item.calendar_event?.start||'')+suffix),eventEnd=Date.parse((item.calendar_event?.end||'')+suffix);valid=Number.isFinite(start)&&Number.isFinite(end)&&start<end&&Number.isFinite(eventStart)&&Number.isFinite(eventEnd)&&start>=eventStart&&end<=eventEnd&&(start!==eventStart||end!==eventEnd);}
       if(!valid)throw Error(estimate?'1分以上の整数で入力してください':partial?'拘束される開始・終了を予定の範囲内で指定してください':'この質問の選択肢から回答してください');
-      const label=estimate?String(selected)+'分':partial?'拘束時間を指定':item.answer_contract.choices.find(choice=>choice.value===selected).label;
+      const label=estimate?(item.input_contract?.type==='planning_estimate'
+        ? selected.preference==='today'?`今日 · ${selected.estimate_min}分`:selected.preference==='this_week'?'今週':'あとで'
+        :String(selected)+'分'):partial?'拘束時間を指定':item.answer_contract.choices.find(choice=>choice.value===selected).label;
       return{status:'answer_pending',mode:'local_controlled_proposal',adopted:false,persisted:false,authority:'human_answer_input',decision_id:item.id,inbox_item_id:item.id,entity_ref:item.entity_ref,project_id:gate.projectId,question_revision:item.question_revision,source_revision_references:{...item.source_revision_references},selected_option:selected,reason:typeof input?.reason==='string'&&input.reason.trim()?input.reason.trim():null,answer_label:label};
     }
     if(k==='generic_candidate_review'){
@@ -161,8 +171,13 @@
       choices=[];
       if(i.input_contract?.type!=='time_range'||i.input_contract?.timezone!=='Asia/Tokyo'||i.input_contract?.within_event!==true||!i.calendar_event?.ref||i.calendar_event.ref!==i.entity_ref)issues.push('Calendar eventの拘束時間contractを再取得');
     }else if(k==='daily_estimate'){
-      choices=[];
-      if(i.input_contract?.type!=='integer_minutes'||i.input_contract?.unit!=='minutes'||i.input_contract?.min!==1||!Number.isInteger(i.input_contract?.max)||i.input_contract.max<1)issues.push('Estimate入力contractを再取得');
+      const planning=i.input_contract?.type==='planning_estimate',contractChoices=i.answer_contract?.choices;
+      choices=planning&&Array.isArray(contractChoices)?contractChoices:[];
+      if(!['integer_minutes','planning_estimate'].includes(i.input_contract?.type)
+          ||i.input_contract?.unit!=='minutes'||i.input_contract?.min!==1
+          ||!Number.isInteger(i.input_contract?.max)||i.input_contract.max<1
+          ||planning&&(!Array.isArray(contractChoices)||contractChoices.map(c=>c.value).join(',')!=='today,this_week,later'
+            ||i.answer_contract?.question_revision!==i.question_revision))issues.push('Estimate入力contractを再取得');
     }else if(k==='blocker_decision'){
       const c=i.answer_contract;
       if(c?.inbox_item_id===i.id&&c.source_revision===data.sources.inbox.source_revision&&typeof c.question==='string'&&c.question.trim()&&Array.isArray(c.choices)&&c.choices.length>=2&&c.choices.length<=3&&new Set(c.choices.map(x=>x.value)).size===c.choices.length&&c.choices.every(x=>Object.hasOwn(OUTCOMES[k],x.value)&&typeof x.label==='string'&&x.label.trim()&&typeof x.effect==='string'&&x.effect.trim()))choices=c.choices;
@@ -193,7 +208,11 @@
   function inlineAnswer(data,id,input,now,health){
     const item=queueItems(data)?.find(i=>i.id===id);if(!item)throw Error('本人の未処理Decisionではありません');
     const summary=inlineSummary(data,item,now,health),partial=summary.kind==='calendar_partial_window',estimate=summary.kind==='daily_estimate',
-      choice=partial?{value:'time_range',label:'拘束時間を指定'}:estimate?{value:'minutes',label:Number.isInteger(input?.selected_option)?String(input.selected_option)+'分':'所要時間'}:summary.choices.find(c=>c.value===input?.decision);
+      choice=partial?{value:'time_range',label:'拘束時間を指定'}:estimate
+        ?item.input_contract?.type==='planning_estimate'
+          ?summary.choices.find(c=>c.value===input?.selected_option?.preference)
+          :{value:'minutes',label:Number.isInteger(input?.selected_option)?String(input.selected_option)+'分':'所要時間'}
+        :summary.choices.find(c=>c.value===input?.decision);
     if(summary.issues.length)throw Error(summary.issues.join(' / '));
     if(!choice)throw Error('この質問の選択肢から回答してください');
     if(summary.review&&input.confirmed_summary!==true)throw Error('上のEvidence要約を確認してください');
@@ -330,7 +349,7 @@
           actions.style.gridTemplateColumns=`repeat(${Math.max(2,summary.choices.length+(summary.review?1:0))}, minmax(0,1fr))`;
           // Review details are disclosed inline on explicit intent, never pre-confirmed.
           const panel=add(active,'div','','kiq-review-panel');panel.hidden=true;panel.id='kiq-review-'+item.id;
-          let pendingChoice=null,confirmed=null,note=null,submit=null;
+          let pendingChoice=null,confirmed=null,note=null,submit=null,planningEstimateGroup=null;
           const error=add(active,'p','','kp-notice kiq-error');error.hidden=true;error.setAttribute('role','alert');
           async function answer(choice,selectedOption=null,workFields=null){
             if(sessions.get(host)!==session)return;
@@ -371,7 +390,12 @@
             if(summary.review){button.setAttribute('aria-controls',panel.id);button.setAttribute('aria-expanded','false');}
             button.onclick=()=>{
               if(sessions.get(host)!==session)return;
-              if(summary.kind==='generic_candidate_review'&&choice.value==='WORK'){
+              if(summary.kind==='daily_estimate'&&item.input_contract?.type==='planning_estimate'){
+                if(choice.value==='today'){
+                  planningEstimateGroup.hidden=false;
+                  planningEstimateGroup.querySelectorAll('button')[0]?.focus();
+                }else answer(choice,{preference:choice.value});
+              }else if(summary.kind==='generic_candidate_review'&&choice.value==='WORK'){
                 pendingChoice=choice;panel.hidden=false;panel.replaceChildren();error.hidden=true;
                 actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded',String(b===button)));
                 add(panel,'p','CREATE_WORK proposalの項目を確認','kiq-check-heading');
@@ -418,12 +442,15 @@
           }
           if(summary.kind==='daily_estimate'){
             const group=add(active,'div','','kiq-estimate');
+            const planning=item.input_contract?.type==='planning_estimate';
+            if(planning){group.hidden=true;planningEstimateGroup=group;}
             const choices=add(group,'div','','kiq-estimate-choices');
             for(const minutes of ESTIMATE_QUICK_MINUTES){
               const button=add(choices,'button',minutes+'分','ki-button kiq-submit');button.type='button';
               button.disabled=!answerApi||summary.issues.length>0||!statusLive()
                 ||minutes<item.input_contract?.min||minutes>item.input_contract?.max;
-              button.onclick=()=>answer({value:'minutes',label:minutes+'分'},minutes);
+              button.onclick=()=>answer({value:planning?'today':'minutes',label:minutes+'分'},
+                planning?{preference:'today',estimate_min:minutes}:minutes);
             }
             const other=add(choices,'button','その他','ki-button kiq-submit');other.type='button';
             other.disabled=!answerApi||summary.issues.length>0||!statusLive();
@@ -433,9 +460,11 @@
             const refreshEstimate=()=>{const minutes=Number(input.value);submitEstimate.disabled=!answerApi||summary.issues.length>0||!statusLive()||!Number.isInteger(minutes)||minutes<Number(input.min)||minutes>Number(input.max);};
             other.onclick=()=>{custom.hidden=!custom.hidden;if(!custom.hidden)input.focus();};
             input.addEventListener('input',refreshEstimate);input.addEventListener('change',refreshEstimate);
-            submitEstimate.onclick=()=>{const minutes=Number(input.value);if(Number.isInteger(minutes))answer({value:'minutes',label:minutes+'分'},minutes);};
+            submitEstimate.onclick=()=>{const minutes=Number(input.value);if(Number.isInteger(minutes))answer(
+              {value:planning?'today':'minutes',label:minutes+'分'},
+              planning?{preference:'today',estimate_min:minutes}:minutes);};
             refreshEstimate();
-            const skip=add(group,'button','スキップ','kiq-text-button kiq-estimate-skip');skip.type='button';
+            const skip=add(active,'button','スキップ','kiq-text-button kiq-estimate-skip');skip.type='button';
             skip.onclick=()=>{skipped.add(item.id);showPage();};
           }
           if(summary.review)link(actions,'詳細','inbox/'+encodeURIComponent(item.id),'ki-button kiq-detail-link');
