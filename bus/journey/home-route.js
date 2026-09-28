@@ -31,13 +31,16 @@ export async function compareHomeRoutes({ journeyId, selectedTrain, transferMinu
   if (!places || !selectedTrain?.id || !validTime(now) || typeof loadBuses !== 'function'
     || !transferMinutes || typeof transferMinutes !== 'object') fail();
   for (const place of places) {
-    const stationArrivalAt = selectedTrain.arrivals?.[place.stationId], transfer = transferMinutes[place.placeId];
-    if (!validTime(stationArrivalAt) || stationArrivalAt < now || !Number.isFinite(transfer)
+    const stationTimeAt = (selectedTrain.effectiveStationTimes ?? selectedTrain.stationTimes
+      ?? selectedTrain.arrivals)?.[place.stationId], transfer = transferMinutes[place.placeId];
+    if (!validTime(stationTimeAt) || stationTimeAt < now || !Number.isFinite(transfer)
       || transfer < 0 || transfer > 60) fail();
   }
   const tasks = places.map(async (place) => {
-    const stationArrivalAt = selectedTrain.arrivals?.[place.stationId], transfer = transferMinutes[place.placeId];
-    const boardingAt = stationArrivalAt + transfer * 60;
+    const stationTimeAt = (selectedTrain.effectiveStationTimes ?? selectedTrain.stationTimes
+      ?? selectedTrain.arrivals)[place.stationId], transfer = transferMinutes[place.placeId];
+    const stationTimeSource = selectedTrain.stationTimeSources?.[place.stationId] ?? 'arrival';
+    const boardingAt = stationTimeAt + transfer * 60;
     const loaded = await loadBuses({ placeId: place.placeId, boardingAt, sourceIds: place.sourceIds });
     const sourceStates = loaded?.sourceStates;
     if (!Array.isArray(loaded?.arrivals) || !sourceStates || typeof sourceStates !== 'object'
@@ -51,7 +54,14 @@ export async function compareHomeRoutes({ journeyId, selectedTrain, transferMinu
         || sourceStates[`${bus.provider}:${bus.queryId}`] !== 'available') fail();
       return bus.departureAt >= boardingAt;
     }).map((bus) => ({ placeId: place.placeId, stationId: place.stationId, stationLabel: place.label,
-      stationArrivalAt, transferMinutes: transfer, boardingAt,
+      stationTimeAt, stationTimeSource,
+      stationArrivalAt: stationTimeSource === 'arrival' ? stationTimeAt : null,
+      railTimingQuality: selectedTrain.railRealtimeState === 'confirmed_delay'
+        && selectedTrain.delaySeconds > 0
+        ? 'delay_projection' : 'static_only',
+      railDelaySeconds: selectedTrain.railRealtimeState === 'confirmed_delay'
+        ? selectedTrain.delaySeconds : null,
+      transferMinutes: transfer, boardingAt,
       provider: bus.provider, routeLabel: bus.routeLabel, tripId: bus.tripId,
       platform: bus.platform, departureAt: bus.departureAt, homeArrivalAt: bus.estimatedArrival,
       timingQuality: bus.timingQuality, departureState: bus.departureState,

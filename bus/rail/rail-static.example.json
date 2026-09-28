@@ -6,7 +6,7 @@
   "timetableVersion": "development-sample-1",
   "generatedAt": "2026-09-28T00:00:00+09:00",
   "sourceCheckedAt": null,
-  "sampleNotice": "架空の開発用時刻です。実際の列車時刻として使用しないでください。",
+  "sampleNotice": "小田急のみ架空の開発用時刻です。南武線は別のサーバー側生成Staticを使用します。",
   "calendarOverrides": {},
   "trains": [
     {
@@ -18,11 +18,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "07:18"
+          "stationTime": "07:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "07:21"
+          "stationTime": "07:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -38,11 +40,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "08:18"
+          "stationTime": "08:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "08:21"
+          "stationTime": "08:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -58,11 +62,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "15:18"
+          "stationTime": "15:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "15:21"
+          "stationTime": "15:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -78,11 +84,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "16:18"
+          "stationTime": "16:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "16:21"
+          "stationTime": "16:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -98,11 +106,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "17:18"
+          "stationTime": "17:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "17:21"
+          "stationTime": "17:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -118,11 +128,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "17:38"
+          "stationTime": "17:38",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "17:41"
+          "stationTime": "17:41",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -138,11 +150,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "17:58"
+          "stationTime": "17:58",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "18:01"
+          "stationTime": "18:01",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -158,11 +172,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "18:18"
+          "stationTime": "18:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "18:21"
+          "stationTime": "18:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -178,11 +194,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "18:38"
+          "stationTime": "18:38",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "18:41"
+          "stationTime": "18:41",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -198,11 +216,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "18:58"
+          "stationTime": "18:58",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "19:01"
+          "stationTime": "19:01",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -218,11 +238,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "19:18"
+          "stationTime": "19:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "19:21"
+          "stationTime": "19:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -238,11 +260,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "19:48"
+          "stationTime": "19:48",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "19:51"
+          "stationTime": "19:51",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -258,11 +282,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "20:18"
+          "stationTime": "20:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "20:21"
+          "stationTime": "20:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -278,11 +304,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "20:48"
+          "stationTime": "20:48",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "20:51"
+          "stationTime": "20:51",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -298,11 +326,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "21:18"
+          "stationTime": "21:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "21:21"
+          "stationTime": "21:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -318,11 +348,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "21:48"
+          "stationTime": "21:48",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "21:51"
+          "stationTime": "21:51",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -338,356 +370,18 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "22:18"
+          "stationTime": "22:18",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "22:21"
+          "stationTime": "22:21",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
       "destination": "新宿方面（開発用）",
       "internalTripId": "sample-odakyu-weekday-2200"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "07:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "07:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "07:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-0700"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "08:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "08:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "08:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-0800"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "15:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "15:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "15:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1500"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "16:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "16:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "16:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1600"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "17:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "17:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "17:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1700"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "17:20",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "17:56"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "18:06"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1720"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "17:40",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "18:16"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "18:26"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1740"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "18:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "18:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "18:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1800"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "18:20",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "18:56"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "19:06"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1820"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "18:40",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "19:16"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "19:26"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1840"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "19:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "19:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "19:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1900"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "19:30",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "20:06"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "20:16"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-1930"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "20:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "20:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "20:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-2000"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "20:30",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "21:06"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "21:16"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-2030"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "21:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "21:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "21:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-2100"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "21:30",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "22:06"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "22:16"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-2130"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekday",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "22:00",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "22:36"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "22:46"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekday-2200"
     },
     {
       "provider": "odakyu",
@@ -698,11 +392,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "07:23"
+          "stationTime": "07:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "07:26"
+          "stationTime": "07:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -718,11 +414,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "08:23"
+          "stationTime": "08:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "08:26"
+          "stationTime": "08:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -738,11 +436,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "15:23"
+          "stationTime": "15:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "15:26"
+          "stationTime": "15:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -758,11 +458,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "16:23"
+          "stationTime": "16:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "16:26"
+          "stationTime": "16:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -778,11 +480,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "17:23"
+          "stationTime": "17:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "17:26"
+          "stationTime": "17:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -798,11 +502,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "17:43"
+          "stationTime": "17:43",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "17:46"
+          "stationTime": "17:46",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -818,11 +524,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "18:03"
+          "stationTime": "18:03",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "18:06"
+          "stationTime": "18:06",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -838,11 +546,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "18:23"
+          "stationTime": "18:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "18:26"
+          "stationTime": "18:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -858,11 +568,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "18:43"
+          "stationTime": "18:43",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "18:46"
+          "stationTime": "18:46",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -878,11 +590,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "19:03"
+          "stationTime": "19:03",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "19:06"
+          "stationTime": "19:06",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -898,11 +612,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "19:23"
+          "stationTime": "19:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "19:26"
+          "stationTime": "19:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -918,11 +634,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "19:53"
+          "stationTime": "19:53",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "19:56"
+          "stationTime": "19:56",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -938,11 +656,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "20:23"
+          "stationTime": "20:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "20:26"
+          "stationTime": "20:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -958,11 +678,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "20:53"
+          "stationTime": "20:53",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "20:56"
+          "stationTime": "20:56",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -978,11 +700,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "21:23"
+          "stationTime": "21:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "21:26"
+          "stationTime": "21:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -998,11 +722,13 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "21:53"
+          "stationTime": "21:53",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "21:56"
+          "stationTime": "21:56",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
@@ -1018,356 +744,18 @@
       "candidateStations": [
         {
           "station": "mukougaoka",
-          "arrival": "22:23"
+          "stationTime": "22:23",
+          "stationTimeSource": "arrival"
         },
         {
           "station": "noborito",
-          "arrival": "22:26"
+          "stationTime": "22:26",
+          "stationTimeSource": "arrival"
         }
       ],
       "trainType": "各駅停車",
       "destination": "新宿方面（開発用）",
       "internalTripId": "sample-odakyu-weekend-2205"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "07:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "07:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "07:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-0705"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "08:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "08:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "08:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-0805"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "15:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "15:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "15:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1505"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "16:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "16:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "16:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1605"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "17:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "17:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "17:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1705"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "17:25",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "18:01"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "18:11"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1725"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "17:45",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "18:21"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "18:31"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1745"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "18:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "18:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "18:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1805"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "18:25",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "19:01"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "19:11"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1825"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "18:45",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "19:21"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "19:31"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1845"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "19:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "19:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "19:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1905"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "19:35",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "20:11"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "20:21"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-1935"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "20:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "20:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "20:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-2005"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "20:35",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "21:11"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "21:21"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-2035"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "21:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "21:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "21:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-2105"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "21:35",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "22:11"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "22:21"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-2135"
-    },
-    {
-      "provider": "jr_east",
-      "route": "tachikawa_to_mizonokuchi",
-      "calendarType": "weekend",
-      "sourceStation": "tachikawa",
-      "sourceDeparture": "22:05",
-      "candidateStations": [
-        {
-          "station": "noborito",
-          "arrival": "22:41"
-        },
-        {
-          "station": "musashi_mizonokuchi",
-          "arrival": "22:51"
-        }
-      ],
-      "trainType": "普通",
-      "destination": "川崎方面（開発用）",
-      "internalTripId": "sample-nambu-weekend-2205"
     }
   ]
 }

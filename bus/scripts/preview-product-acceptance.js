@@ -13,6 +13,7 @@ import { getFutureBuses } from '../journey/future-bus.js';
 import { createHomeBusLoader } from '../journey/home-bus-loader.js';
 import { compareHomeRoutes } from '../journey/home-route.js';
 import { listRailTrains } from '../rail/static-provider.js';
+import { attachJrNambuLocations, loadJrNambuLocations } from '../rail/jr-challenge-provider.js';
 
 const root = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const port = Number(process.env.PALURU_BUS_PREVIEW_PORT || 8792);
@@ -41,6 +42,8 @@ const responseJson = (res, value, status = 200) => {
 };
 const railStaticFile = process.env.PALURU_RAIL_STATIC_PATH
   || fileURLToPath(new URL('../rail/rail-static.example.json', import.meta.url));
+const jrStaticFile = process.env.PALURU_JR_NAMBU_STATIC_PATH
+  || fileURLToPath(new URL('../generated/rail-nambu-challenge-static.json', import.meta.url));
 const transferMinutes = Object.freeze({ 'noborito-normal': 8, 'noborito-tamagawa': 11,
   mukougaoka: 5, mizonokuchi: 6 }); // Preview-only user-editable estimates, not measured walking times.
 const p0Static = JSON.parse(await readFile(new URL('../generated/p0-static.json', import.meta.url)));
@@ -58,9 +61,26 @@ const previewNow = (url) => {
   if (!Number.isFinite(value)) throw Error('PREVIEW_TIME_INVALID');
   return value;
 };
-const railChoices = async (journeyId, now, page = 0) => listRailTrains({
-  artifact: JSON.parse(await readFile(railStaticFile, 'utf8')), journeyId, now, page
-});
+let jrLocationCache = null;
+async function jrLocations(now) {
+  if (jrLocationCache && Date.now() - jrLocationCache.loadedAt < 30000)
+    return jrLocationCache.rows;
+  try {
+    const result = await loadJrNambuLocations({ now });
+    jrLocationCache = { loadedAt: Date.now(), rows: result?.rows ?? [] };
+  } catch {
+    jrLocationCache = { loadedAt: Date.now(), rows: [] };
+  }
+  return jrLocationCache.rows;
+}
+async function railChoices(journeyId, now, page = 0) {
+  const artifact = JSON.parse(await readFile(journeyId === 'high_school'
+    ? jrStaticFile : railStaticFile, 'utf8'));
+  const locations = journeyId === 'high_school' ? await jrLocations(now) : [];
+  return listRailTrains({ artifact, journeyId, now, page,
+    enrichTrain: (train) => journeyId === 'high_school'
+      ? attachJrNambuLocations([train], locations, now)[0] : train });
+}
 function futureBusLoader(now) {
   const sourceLoaders = Object.fromEntries(futureSourceIds.map((id) => [
     `kawasaki:${id}`, ({ boardingAt }) => getFutureBuses({
@@ -123,8 +143,8 @@ async function validation(path, search, scenario) {
 function bootstrap(scenario) {
   const label = scenarios.find(([id]) => id === scenario)?.[1];
   const note = scenario === 'live'
-    ? 'Hubはvalidation実データ。帰宅最速の鉄道は編集可能な架空サンプル、バス比較はGTFS Staticです。'
-    : `${label}。鉄道は編集可能な架空サンプル、バス比較はGTFS Staticです。`;
+    ? 'Hubはvalidation実データ。大学列車は開発用サンプル、南武線はChallengeから生成したローカルStaticです。バス比較はGTFS Staticです。'
+    : `${label}。大学列車は開発用サンプル、南武線はChallengeから生成したローカルStaticです。バス比較はGTFS Staticです。`;
   return `<style>
     #splash,#authLock{display:none!important}body{overflow:auto!important}
     .bus-preview-note{margin:0 0 10px;color:#526579;font-size:11px;line-height:1.4}

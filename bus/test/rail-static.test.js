@@ -7,14 +7,14 @@ const example = JSON.parse(await readFile(new URL('../rail/rail-static.example.j
 const epoch = (date, time) => Date.parse(`${date}T${time}:00+09:00`) / 1000;
 const copy = () => structuredClone(example);
 
-test('user-managed sample has both calendars and both fixed routes', () => {
+test('user-managed sample has both calendars and no fictional Nambu trains', () => {
   assert.equal(validateRailStatic(example), example);
   assert.equal(example.management, 'user');
   assert.equal(example.sample, true);
   assert.deepEqual([...new Set(example.trains.map((row) => row.calendarType))].sort(),
     ['weekday', 'weekend']);
   assert.equal(example.trains.filter((row) => row.route === 'tamagawa_to_noborito').length, 34);
-  assert.equal(example.trains.filter((row) => row.route === 'tachikawa_to_mizonokuchi').length, 34);
+  assert.equal(example.trains.filter((row) => row.route === 'tachikawa_to_mizonokuchi').length, 0);
 });
 
 test('selector keeps a departed train until its first comparison station and shows five choices', () => {
@@ -23,8 +23,8 @@ test('selector keeps a departed train until its first comparison station and sho
   assert.equal(result.calendarType, 'weekday');
   assert.equal(result.trains.length, 5);
   assert.equal(result.trains[0].sourceDeparture, '18:00');
-  assert.equal(result.trains[0].arrivals.mukougaoka, epoch('2026-09-28', '18:18'));
-  assert.equal(result.trains[0].arrivals.noborito, epoch('2026-09-28', '18:21'));
+  assert.equal(result.trains[0].stationTimes.mukougaoka, epoch('2026-09-28', '18:18'));
+  assert.equal(result.trains[0].stationTimes.noborito, epoch('2026-09-28', '18:21'));
   assert.equal(result.trains[0].trainType, '各駅停車');
   assert.equal(result.hasNext, true);
   const expired = listRailTrains({ artifact: example, journeyId: 'university',
@@ -35,14 +35,7 @@ test('selector keeps a departed train until its first comparison station and sho
 test('school stations remain in the actual Noborito then Musashi-Mizonokuchi order', () => {
   const result = listRailTrains({ artifact: example, journeyId: 'high_school',
     now: epoch('2026-09-28', '18:35') });
-  assert.deepEqual(result.trains[0].candidateStations.map((row) => row.station),
-    ['noborito', 'musashi_mizonokuchi']);
-  assert.equal(result.trains[0].sourceDeparture, '18:00');
-  assert.equal(result.trains[0].arrivals.noborito, epoch('2026-09-28', '18:36'));
-  assert.equal(result.trains[0].arrivals.musashi_mizonokuchi, epoch('2026-09-28', '18:46'));
-  const expired = listRailTrains({ artifact: example, journeyId: 'high_school',
-    now: epoch('2026-09-28', '18:37') });
-  assert.equal(expired.trains[0].sourceDeparture, '18:20');
+  assert.deepEqual(result.trains, []);
 });
 
 test('weekend and explicit user calendar overrides select their own rows', () => {
@@ -71,14 +64,14 @@ test('next-page navigation only moves among still-usable user trains', () => {
 
 test('malformed, duplicated and reverse-order input fails closed', () => {
   const reverse = copy();
-  reverse.trains.find((row) => row.route === 'tachikawa_to_mizonokuchi')
+  reverse.trains.find((row) => row.route === 'tamagawa_to_noborito')
     .candidateStations.reverse();
   assert.throws(() => validateRailStatic(reverse), /RAIL_STATIC_INVALID/);
   const duplicate = copy();
   duplicate.trains.push(structuredClone(duplicate.trains[0]));
   assert.throws(() => validateRailStatic(duplicate), /RAIL_STATIC_INVALID/);
   const impossible = copy();
-  impossible.trains[0].candidateStations[0].arrival = impossible.trains[0].sourceDeparture;
+  impossible.trains[0].candidateStations[0].stationTime = impossible.trains[0].sourceDeparture;
   assert.throws(() => validateRailStatic(impossible), /RAIL_STATIC_INVALID/);
   const unknownHoliday = copy();
   unknownHoliday.calendarOverrides['2026-09-28'] = 'guessed';
