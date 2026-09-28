@@ -61,11 +61,13 @@ export function getFutureBuses({ index, queries, providerContext, realtime = nul
           const estimatedArrival = update ? eventAt(update.stops, row.toStopId, row.alightSequence,
             'arrival', scheduledArrival) : null;
           const departureAt = estimatedDeparture ?? scheduledDeparture;
-          const departureState = departureStateForTrip({ row, date, now, scheduledDeparture, estimatedDeparture });
+          const originDecision = departureStateForTrip({ row, date, now, scheduledDeparture, estimatedDeparture });
+          const departureState = typeof originDecision === 'string' ? originDecision : originDecision?.state;
           if (!['scheduled', 'departure_pending', 'departure_overdue', 'departure_uncertain',
             'unknown', 'departed', 'cancelled'].includes(departureState)) fail();
           if (['departed', 'cancelled'].includes(departureState)) continue;
-          const unconfirmedOrigin = row.isOrigin === true && date === dateKey(boardingAt)
+          const unconfirmedOrigin = row.isOrigin === true && originDecision?.keep === true
+            && date === dateKey(boardingAt)
             && ['departure_pending', 'departure_overdue', 'departure_uncertain', 'unknown']
               .includes(departureState);
           if (departureAt > boardingAt + horizonSec || departureAt < boardingAt && !unconfirmedOrigin) continue;
@@ -83,6 +85,7 @@ export function getFutureBuses({ index, queries, providerContext, realtime = nul
             scheduledArrival, estimatedArrival: projectedArrival,
             delayMinutes: estimatedDeparture === null ? null : Math.round((estimatedDeparture - scheduledDeparture) / 60),
             timingQuality, departureState, recommendable: departureAt >= boardingAt
+              && (typeof originDecision !== 'object' || originDecision.actionability === 'catchable')
               && !['departure_pending', 'departure_overdue', 'departure_uncertain', 'unknown'].includes(departureState)
               && projectedArrival !== null });
         }

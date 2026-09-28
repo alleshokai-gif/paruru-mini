@@ -79,11 +79,31 @@ test('unconfirmed origin remains advisory after scheduled time, never catchable'
   index.directions[query.id][0].isOrigin = true;
   const rows = getFutureBuses({ index, queries: [query], providerContext: P0_INPUT.providerContext,
     now: epoch('08:07'), boardingAt: epoch('08:10'), departureStateForTrip: ({ row }) =>
-      row.tripId === 'future-0' ? 'departure_overdue' : 'scheduled' }).results[0].arrivals;
+      row.tripId === 'future-0' ? { state: 'departure_overdue', keep: true,
+        actionability: 'uncertain' } : 'scheduled' }).results[0].arrivals;
   assert.equal(rows.at(-1).tripId.endsWith('future-0'), true);
   assert.equal(rows.at(-1).departureState, 'departure_overdue');
   assert.equal(rows.at(-1).recommendable, false);
   assert.equal(rows[0].tripId.endsWith('future-1'), true);
+});
+
+test('unconfirmed origin without a positive keep decision cannot persist past boarding time', () => {
+  const index = indexWithThree();
+  index.directions[query.id][0].isOrigin = true;
+  const rows = getFutureBuses({ index, queries: [query], providerContext: P0_INPUT.providerContext,
+    now: epoch('08:07'), boardingAt: epoch('08:10'), departureStateForTrip: ({ row }) =>
+      row.tripId === 'future-0' ? 'departure_overdue' : 'scheduled' }).results[0].arrivals;
+  assert.equal(rows.some((row) => row.tripId.endsWith('future-0')), false);
+});
+
+test('future origin with do-not-recommend actionability stays advisory', () => {
+  const index = indexWithThree();
+  index.directions[query.id][0].isOrigin = true;
+  const row = getFutureBuses({ index, queries: [query], providerContext: P0_INPUT.providerContext,
+    now: NOW, boardingAt: epoch('08:00'), departureStateForTrip: ({ row }) => row.tripId === 'future-0'
+      ? { state: 'departure_pending', keep: true, actionability: 'do_not_recommend' }
+      : 'scheduled' }).results[0].arrivals.find((item) => item.tripId.endsWith('future-0'));
+  assert.equal(row.recommendable, false);
 });
 
 test('past ordinary stop and past scheduled origin remain excluded', () => {
