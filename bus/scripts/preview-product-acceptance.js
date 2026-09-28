@@ -41,7 +41,7 @@ const responseJson = (res, value, status = 200) => {
   res.end(JSON.stringify(value));
 };
 const railStaticFile = process.env.PALURU_RAIL_STATIC_PATH
-  || fileURLToPath(new URL('../rail/rail-static.example.json', import.meta.url));
+  || fileURLToPath(new URL('../generated/rail-odakyu-static.json', import.meta.url));
 const jrStaticFile = process.env.PALURU_JR_NAMBU_STATIC_PATH
   || fileURLToPath(new URL('../generated/rail-nambu-challenge-static.json', import.meta.url));
 const transferMinutes = Object.freeze({ 'noborito-normal': 8, 'noborito-tamagawa': 11,
@@ -143,8 +143,8 @@ async function validation(path, search, scenario) {
 function bootstrap(scenario) {
   const label = scenarios.find(([id]) => id === scenario)?.[1];
   const note = scenario === 'live'
-    ? 'Hubはvalidation実データ。大学列車は開発用サンプル、南武線はChallengeから生成したローカルStaticです。バス比較はGTFS Staticです。'
-    : `${label}。大学列車は開発用サンプル、南武線はChallengeから生成したローカルStaticです。バス比較はGTFS Staticです。`;
+    ? 'Hubはvalidation実データ。大学列車は小田急公式表示とChallenge発時刻から生成したローカルStatic、南武線はChallengeから生成したローカルStaticです。バス比較はGTFS Staticです。'
+    : `${label}。大学列車は小田急公式表示とChallenge発時刻から生成したローカルStatic、南武線はChallengeから生成したローカルStaticです。バス比較はGTFS Staticです。`;
   return `<style>
     #splash,#authLock{display:none!important}body{overflow:auto!important}
     .bus-preview-note{margin:0 0 10px;color:#526579;font-size:11px;line-height:1.4}
