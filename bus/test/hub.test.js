@@ -100,13 +100,24 @@ test('P2.5 child Hub configs bind only verified trips through Kibukihoncho', () 
 test('normalized Hub model retains common fields and strips raw coordinates', () => {
   const normalized = normalizeHubArrival(arrival({
     position: { supported: true, state: 'between_stops', stopsAway: 2, previousStop: '平', nextStop: '堰下',
-      confidence: 0.96, lat: 35.6, lon: 139.5 }, rawResponse: { token: 'never' }
+      confidence: 0.96, lat: 35.6, lon: 139.5 }, isOrigin: true, rawResponse: { token: 'never' }
   }), NOW);
   assert.equal(normalized.routeId, '10032');
+  assert.equal(normalized.isOrigin, true);
   assert.equal(normalized.position.stopsAway, 2);
   assert.ok(!Object.hasOwn(normalized.position, 'lat'));
   assert.ok(!Object.hasOwn(normalized.position, 'lon'));
   assert.ok(!Object.hasOwn(normalized, 'rawResponse'));
+  assert.throws(() => normalizeHubArrival(arrival({ isOrigin: 'true' }), NOW), /BUS_HUB_ARRIVAL_INVALID/);
+});
+
+test('Hub API DTO preserves Static isOrigin without changing rank or departure state', () => {
+  const result = aggregateHub({ hub: KIBUKIHONCHO_HUB, generatedAt: NOW, providerResults: [{ provider: 'kawasaki',
+    arrivals: [arrival({ isOrigin: true, departureState: 'departure_overdue', actionability: 'do_not_recommend' })] }] });
+  const row = result.arrivals.find((value) => value.isOrigin);
+  assert.ok(row);
+  assert.equal(row.departureState, 'departure_overdue');
+  assert.equal(row.recommendable, false);
 });
 
 test('normalized Hub model rejects contradictory ETA and malformed required values', () => {
@@ -318,6 +329,11 @@ test('Kawasaki Provider adapter resolves verified 2/3/4 platform stops without e
     }] };
   });
   const inbound = P0_INPUT.queries.find((query) => query.id === 'mizonokuchi_to_home');
+  index.directions[inbound.id] = [
+    { tripId: 'mizo-0', routeId: '10033', fromStopId: '434_2', isOrigin: true },
+    { tripId: 'mizo-1', routeId: '10036', fromStopId: '434_3', isOrigin: true },
+    { tripId: 'mizo-2', routeId: '10032', fromStopId: '434_4', isOrigin: true }
+  ];
   directions.push({ id: inbound.id, to: inbound.to, state: 'realtime', arrivals: [
     ['2番', '10033'], ['3番', '10036'], ['4番', '10032']
   ].map(([platform, routeId], indexValue) => ({
@@ -341,11 +357,36 @@ test('Kawasaki Provider adapter resolves verified 2/3/4 platform stops without e
   }] }, { index, queries: P0_INPUT.queries }), /BUS_KAWASAKI_HUB_PLATFORM_INVALID/);
 });
 
+test('Kawasaki Hub preserves Static isOrigin only for the matching Shinki Honcho boarding trip', () => {
+  const query = P0_INPUT.queries.find((value) => value.id === 'home_to_mizonokuchi');
+  const index = indexFixture();
+  const staticRow = index.directions[query.id][0];
+  assert.equal(staticRow.fromStopId, '184_1');
+  assert.equal(staticRow.isOrigin, true);
+  const row = (realtime, tripId = staticRow.tripId) => ({ tripId: `20260928:${tripId}`,
+    routeLabel: index.routes[staticRow.routeId].label, headsign: '溝口駅南口', platform: '1番',
+    scheduledAt: '2026-09-28T08:35:00+09:00', estimatedAt: realtime ? '2026-09-28T08:37:00+09:00' : null,
+    etaMinutes: realtime ? 2 : null, delayMinutes: realtime ? 2 : null, realtime, state: realtime ? 'realtime' : 'static_fallback',
+    position: { supported: false } });
+  const normalize = (value, suppliedIndex = index) => normalizeKawasakiHubResult({ success: true,
+    fetchError: false, directions: [{ id: query.id, to: query.to, state: value.state, arrivals: [value] }] },
+  { index: suppliedIndex, queries: P0_INPUT.queries });
+
+  assert.equal(normalize(row(true)).arrivals[0].isOrigin, true);
+  assert.equal(normalize(row(false)).arrivals[0].isOrigin, true);
+
+  const midRouteIndex = { ...index, directions: { ...index.directions,
+    [query.id]: index.directions[query.id].map((value) => ({ ...value, isOrigin: false })) } };
+  assert.equal(normalize(row(true), midRouteIndex).arrivals[0].isOrigin, false);
+  assert.throws(() => normalize(row(true, 'missing-static-trip')), /BUS_KAWASAKI_HUB_STATIC_ORIGIN_INVALID/);
+});
+
 test('Kawasaki Hub normalization accepts only the injected Mukougaoka journey query', () => {
   const query = KAWASAKI_JOURNEY_QUERIES[0];
   const index = { ...indexFixture(), stops: { ...indexFixture().stops,
     '474_5': { stopId: '474_5', name: '向丘遊園駅南口' }, '184_1': { stopId: '184_1', name: '神木本町' } },
     routes: { ...indexFixture().routes, '10037': { routeId: '10037', label: '溝１９' } } };
+  index.directions[query.id] = [{ tripId: 'official-trip', routeId: '10037', fromStopId: '474_5', isOrigin: false }];
   const response = { success: true, fetchError: false, directions: [{ id: query.id, to: query.to, state: 'realtime', arrivals: [{
     tripId: '20260914:official-trip', routeLabel: '溝１９', headsign: '溝口駅南口(おし沼)', platform: '5番',
     scheduledAt: '2026-09-14T07:00:00+09:00', estimatedAt: '2026-09-14T07:03:00+09:00',
@@ -356,6 +397,7 @@ test('Kawasaki Hub normalization accepts only the injected Mukougaoka journey qu
   assert.deepEqual([result.arrivals[0].sourceId, result.arrivals[0].originStop.id, result.arrivals[0].routeId,
     result.arrivals[0].platform], ['mukougaoka_to_kibukihoncho', '474_5', '10037', '5番']);
   assert.equal(result.arrivals[0].destination, '溝口駅南口(おし沼)');
+  assert.equal(result.arrivals[0].isOrigin, false);
 });
 
 test('Kawasaki Hub normalization preserves the westbound route, destination and platform', () => {
@@ -363,6 +405,7 @@ test('Kawasaki Hub normalization preserves the westbound route, destination and 
   const index = { ...indexFixture(), stops: { ...indexFixture().stops,
     '184_3': { stopId: '184_3', name: '神木本町' }, '469_2': { stopId: '469_2', name: '向丘中学校下' } },
     routes: { ...indexFixture().routes, '10033': { routeId: '10033', label: '溝１５' } } };
+  index.directions[query.id] = [{ tripId: 'westbound-trip', routeId: '10033', fromStopId: '184_3', isOrigin: true }];
   const response = { success: true, fetchError: false, directions: [{ id: query.id, to: query.to,
     state: 'realtime', arrivals: [{ tripId: '20260915:westbound-trip', routeLabel: '溝１５', headsign: '宮前平駅',
       platform: '3番', scheduledAt: '2026-09-15T07:00:00+09:00', estimatedAt: '2026-09-15T07:02:00+09:00',
@@ -372,6 +415,7 @@ test('Kawasaki Hub normalization preserves the westbound route, destination and 
   assert.deepEqual([result.arrivals[0].sourceId, result.arrivals[0].originStop.id, result.arrivals[0].routeId,
     result.arrivals[0].platform, result.arrivals[0].destination],
   ['kibukihoncho_to_miyamae_washigamine', '184_3', '10033', '3番', '宮前平駅']);
+  assert.equal(result.arrivals[0].isOrigin, true);
 });
 
 test('Hub service selects providers per Hub and isolates Provider failures', async () => {
