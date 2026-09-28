@@ -58,7 +58,7 @@ const shadowArtifact = Object.freeze({ approvedForShadow: true, approvedForPubli
 function positionFixture(scenario) {
   return shadowPosition({ supported: true, confidence: scenario === 'position-safe' ? 0.92 : 0.4,
     method: 'gps_shape_snap', state: 'between_stops', conflicts: [],
-    previousStop: { name: '長尾橋' }, nextStop: { name: '神木本町' }, stopsAway: 2 }, shadowArtifact);
+    previousStop: { name: '長尾橋' }, nextStop: { name: '宿河原' }, stopsAway: 2 }, shadowArtifact);
 }
 const journeyStatic = JSON.parse(await readFile(new URL('../generated/kawasaki-p2-5-static.json', import.meta.url)));
 function tamagawaRow(direction) {
