@@ -61,11 +61,14 @@ export function getFutureBuses({ index, queries, providerContext, realtime = nul
           const estimatedArrival = update ? eventAt(update.stops, row.toStopId, row.alightSequence,
             'arrival', scheduledArrival) : null;
           const departureAt = estimatedDeparture ?? scheduledDeparture;
-          if (departureAt < boardingAt || departureAt > boardingAt + horizonSec) continue;
           const departureState = departureStateForTrip({ row, date, now, scheduledDeparture, estimatedDeparture });
           if (!['scheduled', 'departure_pending', 'departure_overdue', 'departure_uncertain',
             'unknown', 'departed', 'cancelled'].includes(departureState)) fail();
           if (['departed', 'cancelled'].includes(departureState)) continue;
+          const unconfirmedOrigin = row.isOrigin === true && date === dateKey(boardingAt)
+            && ['departure_pending', 'departure_overdue', 'departure_uncertain', 'unknown']
+              .includes(departureState);
+          if (departureAt > boardingAt + horizonSec || departureAt < boardingAt && !unconfirmedOrigin) continue;
           const projectedArrival = estimatedArrival ?? (scheduledArrival !== null && estimatedDeparture !== null
             ? scheduledArrival + estimatedDeparture - scheduledDeparture : scheduledArrival);
           if (!nullable(projectedArrival) || projectedArrival !== null && projectedArrival < departureAt) fail();
@@ -79,7 +82,8 @@ export function getFutureBuses({ index, queries, providerContext, realtime = nul
             scheduledDeparture, estimatedDeparture, boardingAt, departureAt,
             scheduledArrival, estimatedArrival: projectedArrival,
             delayMinutes: estimatedDeparture === null ? null : Math.round((estimatedDeparture - scheduledDeparture) / 60),
-            timingQuality, departureState, recommendable: !['departure_uncertain', 'unknown'].includes(departureState)
+            timingQuality, departureState, recommendable: departureAt >= boardingAt
+              && !['departure_pending', 'departure_overdue', 'departure_uncertain', 'unknown'].includes(departureState)
               && projectedArrival !== null });
         }
       }

@@ -73,3 +73,23 @@ test('missing GTFS target arrival remains unknown instead of fabricated', () => 
   assert.equal(row.timingQuality, 'arrival_unknown');
   assert.equal(row.recommendable, false);
 });
+
+test('unconfirmed origin remains advisory after scheduled time, never catchable', () => {
+  const index = indexWithThree();
+  index.directions[query.id][0].isOrigin = true;
+  const rows = getFutureBuses({ index, queries: [query], providerContext: P0_INPUT.providerContext,
+    now: epoch('08:07'), boardingAt: epoch('08:10'), departureStateForTrip: ({ row }) =>
+      row.tripId === 'future-0' ? 'departure_overdue' : 'scheduled' }).results[0].arrivals;
+  assert.equal(rows.at(-1).tripId.endsWith('future-0'), true);
+  assert.equal(rows.at(-1).departureState, 'departure_overdue');
+  assert.equal(rows.at(-1).recommendable, false);
+  assert.equal(rows[0].tripId.endsWith('future-1'), true);
+});
+
+test('past ordinary stop and past scheduled origin remain excluded', () => {
+  const index = indexWithThree();
+  index.directions[query.id][0].isOrigin = true;
+  const rows = getFutureBuses({ index, queries: [query], providerContext: P0_INPUT.providerContext,
+    now: epoch('08:07'), boardingAt: epoch('08:10') }).results[0].arrivals;
+  assert.equal(rows.some((row) => row.tripId.endsWith('future-0')), false);
+});
