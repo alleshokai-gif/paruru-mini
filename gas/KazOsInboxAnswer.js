@@ -248,7 +248,13 @@ function getKazOsDecisionLedger_(trace) {
 }
 
 function readKazOsDecisionLedger_(trace) {
-  const sheet = getKazOsDecisionLedger_(trace);
+  const openStart = Date.now();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  recordKazOsLedgerReadStage_(trace, 'spreadsheet_open_ms', openStart);
+  const sheetStart = Date.now();
+  const sheet = spreadsheet && spreadsheet.getSheetByName(KAZ_OS_DECISION_LEDGER_SHEET_);
+  recordKazOsLedgerReadStage_(trace, 'sheet_get_ms', sheetStart);
+  if (!sheet) throw homeMembershipError_('KAZ_PERSISTENCE_NOT_CONFIGURED');
   const rangeStart = Date.now();
   const dataRange = sheet.getDataRange();
   recordKazOsLedgerReadStage_(trace, 'range_get_ms', rangeStart);
@@ -256,6 +262,9 @@ function readKazOsDecisionLedger_(trace) {
   const values = dataRange.getValues();
   recordKazOsLedgerReadStage_(trace, 'rows_read_ms', rowsStart);
   if (trace && trace.debug_timing_requested === true) trace.ledger_read_count = (trace.ledger_read_count || 0) + 1;
+  // The first row of this read is the same header checked by the write path.
+  const headers = (values[0] || []).map(String);
+  if (JSON.stringify(headers) !== JSON.stringify(KAZ_OS_DECISION_LEDGER_HEADERS_)) throw homeMembershipError_('KAZ_PERSISTENCE_SCHEMA_MISMATCH');
   const parseStart = Date.now();
   const index = Object.fromEntries(KAZ_OS_DECISION_LEDGER_HEADERS_.map(function(name, position) { return [name, position]; }));
   const parsed = values.slice(1).filter(function(row) { return String(row[index.answerId] || ''); }).map(function(row) {

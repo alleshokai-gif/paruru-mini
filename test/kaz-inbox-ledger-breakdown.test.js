@@ -8,14 +8,16 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 let nowMs = 1000;
 let writes = 0;
+let headerRangeCalls = 0;
+let dataRangeCalls = 0;
 class ClockDate extends Date { static now() { return nowMs; } }
 const headers = ['answerId', 'proposalId', 'decisionId', 'questionRevision', 'sourceRevisionsJson',
   'actor', 'selectedOptionJson', 'reason', 'answeredAt', 'retainUntil', 'idempotencyKey',
   'requestHash', 'answerJson', 'proposalJson', 'persistenceStatus'];
 const sheet = {
   getLastColumn() { nowMs += 3; return headers.length; },
-  getRange() { nowMs += 4; return { getValues() { nowMs += 11; return [headers]; } }; },
-  getDataRange() { nowMs += 5; return { getValues() { nowMs += 40; return [headers]; } }; },
+  getRange() { headerRangeCalls++; nowMs += 4; return { getValues() { nowMs += 11; return [headers]; } }; },
+  getDataRange() { dataRangeCalls++; nowMs += 5; return { getValues() { nowMs += 40; return [headers]; } }; },
   setValues() { writes++; throw Error('WRITE_FORBIDDEN'); },
 };
 const context = {
@@ -46,8 +48,10 @@ assert.deepEqual(Object.keys(breakdown), ['read_count', 'spreadsheet_open_ms', '
 assert.equal(breakdown.read_count, 3, 'INBOX should account for all three ledger reads');
 assert.equal(breakdown.spreadsheet_open_ms, 21);
 assert.equal(breakdown.sheet_get_ms, 27);
-assert.equal(breakdown.range_get_ms, 36);
-assert.equal(breakdown.rows_read_ms, 153);
+assert.equal(breakdown.range_get_ms, 15);
+assert.equal(breakdown.rows_read_ms, 120);
+assert.equal(headerRangeCalls, 0, 'read path must not fetch the header range separately');
+assert.equal(dataRangeCalls, 3, 'each ledger read fetches one complete range');
 assert.equal(writes, 0);
 assert(!JSON.stringify(breakdown).includes('answerId'));
 
@@ -57,4 +61,8 @@ assert.equal(ordinaryTrace.ledger_breakdown_ms, undefined);
 assert.equal(ordinaryTrace.ledger_read_count, undefined);
 assert.equal(writes, 0);
 
-console.log('PASS INBOX ledger read breakdown, three calls, debug-only numbers, and zero writes');
+sheet.getDataRange = () => ({ getValues: () => [headers.slice(0, -1)] });
+assert.throws(() => context.readKazOsDecisionLedger_(), { code: 'KAZ_PERSISTENCE_SCHEMA_MISMATCH' });
+assert.equal(writes, 0);
+
+console.log('PASS INBOX ledger range reuse, schema guard, debug-only numbers, and zero writes');
