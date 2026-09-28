@@ -226,7 +226,7 @@
     return{...draft,answer_label:choice.label,question:summary.question,summary_confirmed:summary.review?true:null};
   }
   function dispose(host){const s=sessions.get(host);if(s){clearInterval(s.timer);sessions.delete(host);}}
-  function render(host,selection,data,now,{health,workDetail,tick=true,answerApi=null,skippedEstimateIds=null}={}){
+  function render(host,selection,data,now,{health,workDetail,tick=true,answerApi=null,projectsApi=null,skippedEstimateIds=null}={}){
     dispose(host);host.replaceChildren();
     const doc=host.ownerDocument, session={timer:null};sessions.set(host,session);
     const start=Date.now(),currentTime=()=>now+(tick?Date.now()-start:0);
@@ -246,6 +246,15 @@
     const trusted=model.status==='ok';
     const statusLive=()=>health(data?.sources?.inbox,currentTime())==='ok';
     function field(parent,label,tag){const l=add(parent,'label','','ki-field');add(l,'span',label);return add(l,tag);}
+    async function candidateProjects(){
+      if(!projectsApi)return list(data.projects)||[];
+      const snapshot=await projectsApi();
+      if(sessions.get(host)!==session)throw Error('Project一覧を再取得してください');
+      const source=snapshot?.sources?.projects,projects=list(snapshot?.projects);
+      if(health(source,currentTime())!=='ok'||source?.complete!==true
+          ||source.source_revision!==data?.sources?.projects?.source_revision||!projects)throw Error('Project revisionを再取得してください');
+      return projects;
+    }
     const requestKeys=new Map();
     async function persistAnswer(item,draft,active,skipped){
       const key=requestKeys.get(item.id)||`paluru-${globalThis.crypto?.randomUUID?.()||String(Date.now())+'-'+Math.random().toString(16).slice(2)}`;
@@ -262,7 +271,7 @@
             ?'✓ 回答保存 · Candidate revision一致 · CREATE_WORK proposal生成 · write_allowed=false · Notion write 0'
             :'回答結果のrevision / proposalを確認できません'};
         }
-        render(host,selection,result.inbox,Date.now(),{health,workDetail,tick,answerApi,skippedEstimateIds:skipped||skippedEstimateIds});return;
+        render(host,selection,result.inbox,Date.now(),{health,workDetail,tick,answerApi,projectsApi,skippedEstimateIds:skipped||skippedEstimateIds});return;
       }
       throw Error('保存結果を再取得できません');
     }
@@ -271,14 +280,20 @@
       for(const choice of summary.choices){
         const button=add(actions,'button',choice.label,'ki-button kiq-answer');button.type='button';button.dataset.answer=choice.value;
         button.disabled=summary.issues.length>0||data?.mode==='read_only_display';
-        button.onclick=()=>{
+        button.onclick=async()=>{
           if(sessions.get(host)!==session)return;
           if(choice.value!=='WORK')return submitCandidate(choice,null,'');
           panel.hidden=false;panel.replaceChildren();error.hidden=true;
           actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded',String(b===button)));
+          add(panel,'p','Project一覧を確認中…','kp-muted');
+          let projects;
+          try{projects=await candidateProjects();}
+          catch(e){panel.replaceChildren();error.hidden=false;error.textContent=e.message;return;}
+          if(sessions.get(host)!==session)return;
+          panel.replaceChildren();
           add(panel,'p','CREATE_WORK proposalの項目を確認','kiq-check-heading');
           const project=field(panel,'Project（既存Projectsから選択）','select');add(project,'option','Projectを選択').value='';
-          (list(data.projects)||[]).forEach(p=>{if(['ACTIVE','REVIEW','BLOCKED','BACKLOG'].includes(p.status)){const o=add(project,'option',p.title);o.value=p.id;}});
+          projects.forEach(p=>{if(['ACTIVE','REVIEW','BLOCKED','BACKLOG'].includes(p.status)){const o=add(project,'option',p.title);o.value=p.id;}});
           const title=field(panel,'Work title','input');title.type='text';title.maxLength=200;title.value=summary.title;
           const status=field(panel,'Status','input');status.value='READY';status.readOnly=true;
           const action=field(panel,'Action Type','input');action.value='ACTION';action.readOnly=true;
@@ -288,7 +303,7 @@
           const controls=add(panel,'div','','kiq-review-controls');const submitWork=add(controls,'button','WORKを記録してproposalを作る','ki-button kiq-submit');submitWork.type='button';
           const refresh=()=>{submitWork.disabled=!project.value||!title.value.trim()||!['CHATGPT','PALURU'].includes(item.candidate_origin)||data?.mode==='read_only_display'||!statusLive();};
           project.addEventListener('change',refresh);title.addEventListener('input',refresh);refresh();
-          submitWork.onclick=()=>{const value=estimate.value.trim();return submitCandidate(choice,{project_id:project.value,title:title.value,status:'READY',action_type:'ACTION',source:item.candidate_origin,estimate_min:value===''?null:Number(value)},reason.value);};
+          submitWork.onclick=()=>{const value=estimate.value.trim();return submitCandidate(choice,{project_id:project.value,title:title.value,status:'READY',action_type:'ACTION',source:item.candidate_origin,estimate_min:value===''?null:Number(value)},reason.value,projects);};
           const close=add(controls,'button','閉じる','kiq-text-button');close.type='button';close.onclick=()=>{panel.hidden=true;panel.replaceChildren();error.hidden=true;actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded','false'));};
         };
       }
@@ -398,10 +413,10 @@
           const panel=add(active,'div','','kiq-review-panel');panel.hidden=true;panel.id='kiq-review-'+item.id;
           let pendingChoice=null,confirmed=null,note=null,submit=null,planningEstimateGroup=null;
           const error=add(active,'p','','kp-notice kiq-error');error.hidden=true;error.setAttribute('role','alert');
-          async function answer(choice,selectedOption=null,workFields=null,answerReason=null){
+          async function answer(choice,selectedOption=null,workFields=null,answerReason=null,projectOptions=null){
             if(sessions.get(host)!==session)return;
             try{
-              const draft=inlineAnswer(data,item.id,{decision:choice.value,selected_option:selectedOption,work_fields:workFields,confirmed_summary:confirmed?.checked,reason:answerReason===null?note?.value||notes.get(item.id)||'':answerReason},currentTime(),health);
+              const draft=inlineAnswer(projectOptions?{...data,projects:projectOptions}:data,item.id,{decision:choice.value,selected_option:selectedOption,work_fields:workFields,confirmed_summary:confirmed?.checked,reason:answerReason===null?note?.value||notes.get(item.id)||'':answerReason},currentTime(),health);
             if(!answerApi){
               if(data?.mode==='read_only_display')throw Error('Live回答はまだ無効です');
               drafts.set(item.id,draft);totals();draw();return;
@@ -427,7 +442,7 @@
             submit.onclick=()=>answer(pendingChoice);
             const close=add(controls,'button','閉じる','kiq-text-button');close.type='button';close.onclick=()=>{panel.hidden=true;panel.replaceChildren();confirmed=null;note=null;pendingChoice=null;error.hidden=true;actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded','false'));};
           }
-          if(summary.kind==='generic_candidate_review')candidateReviewControls(item,summary,actions,panel,error,(choice,fields,reason)=>answer(choice,null,fields,reason));
+          if(summary.kind==='generic_candidate_review')candidateReviewControls(item,summary,actions,panel,error,(choice,fields,reason,projects)=>answer(choice,null,fields,reason,projects));
           else for(const choice of summary.choices){
             const button=add(actions,'button',summary.kind==='today_focus'&&choice.value==='today'?'今日やる':choice.label,'ki-button kiq-answer');button.type='button';button.dataset.answer=choice.value;
             button.disabled=summary.issues.length>0||data?.mode==='read_only_display';
@@ -568,9 +583,9 @@
             const warning=add(review,'p',summary.issues.join(' / '),'kp-notice kiq-warning');warning.hidden=!summary.issues.length;
             const actions=add(review,'div','','kiq-actions'),panel=add(review,'div','','kiq-review-panel');panel.hidden=true;
             const error=add(review,'p','','kp-notice kiq-error');error.hidden=true;error.setAttribute('role','alert');
-            candidateReviewControls(i,summary,actions,panel,error,async(choice,fields,reason)=>{
+            candidateReviewControls(i,summary,actions,panel,error,async(choice,fields,reason,projects)=>{
               try{
-                const draft=inlineAnswer(data,i.id,{decision:choice.value,work_fields:fields,reason},currentTime(),health);
+                const draft=inlineAnswer(projects?{...data,projects}:data,i.id,{decision:choice.value,work_fields:fields,reason},currentTime(),health);
                 await persistAnswer(i,draft,container);
               }catch(e){error.hidden=false;error.textContent=e.message;container.querySelectorAll('button,input,select,textarea').forEach(control=>control.disabled=!statusLive());}
             });

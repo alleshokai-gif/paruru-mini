@@ -230,11 +230,11 @@
           return { inbox: refreshed, reconciled: true };
         }
       } : null;
-      globalThis.KazPersonalView.render(host, selection, data, Date.now(), { answerApi });
+      globalThis.KazPersonalView.render(host, selection, data, Date.now(), { answerApi, projectsApi });
       const until = Date.parse(data?.sources?.inbox?.valid_until);
       if (Number.isFinite(until) && until > Date.now()) {
         inboxExpiry = setTimeout(() => {
-          if (current()) globalThis.KazPersonalView.render(host, selection, data, Date.now(), { answerApi });
+          if (current()) globalThis.KazPersonalView.render(host, selection, data, Date.now(), { answerApi, projectsApi });
         }, Math.max(1, until - Date.now() + 1));
       }
     } catch (error) {

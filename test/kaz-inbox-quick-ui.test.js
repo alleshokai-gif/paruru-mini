@@ -96,17 +96,25 @@ const button=(parent,label)=>find(parent,node=>node.tagName==='button'&&node.tex
     candidate_ref:candidateRef,candidate_revision:revision,candidate_origin:'CHATGPT',question_revision:'question-sha256:'+'c'.repeat(64),
     source_revision_references:refs,answer_contract:{inbox_item_id:'candidate-review-later',question_revision:'question-sha256:'+'c'.repeat(64),
       choices:['CONTEXT','WORK','PROJECT','HOLD','REJECT','MERGE'].map(value=>({value,label:value}))}};
-  data={...data,projects:[{id:'project-1',title:'Kaz OS',status:'ACTIVE'}],work_items:[],inbox_items:[candidate],
+  data={...data,projects:[],work_items:[],inbox_items:[candidate],
     sources:{...data.sources,github_candidates:{...source,source_revision:commit}}};
-  calls.length=0;
-  inbox.render(host,{page:'inbox',id:'all'},data,now,{health,tick:false,answerApi});
+  calls.length=0;let projectReads=0;
+  const projectsApi=async()=>{projectReads++;return{sources:{projects:source},projects:[{id:'project-1',title:'Kaz OS',status:'ACTIVE'}]};};
+  inbox.render(host,{page:'inbox',id:'all'},data,now,{health,tick:false,answerApi,
+    projectsApi:async()=>({sources:{projects:{...source,source_revision:'changed'}},projects:[{id:'project-1',title:'Kaz OS',status:'ACTIVE'}]})});
+  let filter=find(host,node=>node.tagName==='select'&&node.className==='ki-filter');filter.value='all';filter.listeners.change();
+  button(host,'判断する').onclick();await button(host,'WORK').onclick();
+  assert(host.textContent.includes('Project revisionを再取得してください'));
+  assert.equal(calls.length,0,'changed Project revision cannot save a Candidate answer');
+  inbox.render(host,{page:'inbox',id:'all'},data,now,{health,tick:false,answerApi,projectsApi});
   assert.equal(inbox.derive(data,now,health).today.length,0);
   assert.equal(inbox.derive(data,now,health).later.length,1);
-  const filter=find(host,node=>node.tagName==='select'&&node.className==='ki-filter');filter.value='all';filter.listeners.change();
+  filter=find(host,node=>node.tagName==='select'&&node.className==='ki-filter');filter.value='all';filter.listeners.change();
   const start=button(host,'判断する');assert(start);
   start.onclick();
   assert.deepEqual(['CONTEXT','WORK','PROJECT','HOLD','REJECT','MERGE'].map(value=>Boolean(button(host,value))),[true,true,true,true,true,true]);
-  button(host,'WORK').onclick();
+  await button(host,'WORK').onclick();
+  assert.equal(projectReads,1,'WORK loads the existing complete Projects read once');
   const project=find(host,node=>node.tagName==='select'&&node.children.some(option=>option.value==='project-1'));
   const title=find(host,node=>node.tagName==='input'&&node.value===candidate.title);
   assert(project);assert(title);
