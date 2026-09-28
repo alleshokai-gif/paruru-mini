@@ -124,12 +124,16 @@ export function parseStatic(bytes, fetchedAt, queries) {
       if (pairs.length > 1) fail('STATIC_AMBIGUOUS_VISIT');
       if (!pairs.length) continue;
       const [from, to] = pairs[0]; const seconds = clockSeconds(from.departure_time);
+      const arrivalSeconds = clockSeconds(to.arrival_time);
       if (seconds === null || !trip.service_id || clockSeconds(starts.get(tripId)?.time) === null) fail('STATIC_SCHEDULE_MISSING');
       if (clockSeconds(to.departure_time) === null || clockSeconds(to.departure_time) < seconds) fail('STATIC_TIME_ORDER');
+      if (arrivalSeconds !== null && (arrivalSeconds < seconds || arrivalSeconds > clockSeconds(to.departure_time)))
+        fail('STATIC_TIME_ORDER');
       if (!['', '0', '1'].includes(trip.direction_id || '')) fail('STATIC_DIRECTION_ID');
       directions[f.id].push({ tripId, routeId: trip.route_id, routeLabel: routes.get(trip.route_id).route_short_name,
         serviceId: trip.service_id, directionId: trip.direction_id || null, startTime: starts.get(tripId).time, fromStopId: from.stop_id, toStopId: to.stop_id,
         stopSequence: from.sequence, alightSequence: to.sequence, scheduledSeconds: seconds,
+        scheduledArrivalSeconds: arrivalSeconds,
         originStopId: starts.get(tripId).stopId, originSequence: starts.get(tripId).sequence,
         isOrigin: starts.get(tripId).stopId === from.stop_id && starts.get(tripId).sequence === from.sequence,
         headsign: from.stop_headsign || trip.trip_headsign || null, platform: resolvePlatform(from.stop_id) });

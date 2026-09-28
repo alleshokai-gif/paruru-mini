@@ -22,6 +22,8 @@ export const KIBUKIHONCHO_HUB = Object.freeze({
   ]),
   sources: freezeList([
     { provider: 'kawasaki', sourceId: 'home_to_noborito', decisionGroupId: 'kibukihoncho_north', walkMinutes: null },
+    { provider: 'kawasaki', sourceId: 'kibukihoncho_to_noborito_tamagawa',
+      decisionGroupId: 'kibukihoncho_north', walkMinutes: null },
     { provider: 'tokyu', sourceId: 'kibukihoncho_to_mukougaoka', decisionGroupId: 'kibukihoncho_north', walkMinutes: null },
     { provider: 'kawasaki', sourceId: 'home_to_mizonokuchi', decisionGroupId: 'kibukihoncho_mizonokuchi', walkMinutes: null },
     { provider: 'tokyu', sourceId: 'kibukihoncho_to_kajigaya', decisionGroupId: 'kibukihoncho_kajigaya', walkMinutes: null },
@@ -82,6 +84,8 @@ export const NOBORITO_EKI_HUB = Object.freeze({
   ]),
   sources: freezeList([
     { provider: 'kawasaki', sourceId: 'noborito_to_home',
+      decisionGroupId: 'noborito_kibukihoncho', walkMinutes: null },
+    { provider: 'kawasaki', sourceId: 'noborito_tamagawa_to_kibukihoncho',
       decisionGroupId: 'noborito_kibukihoncho', walkMinutes: null }
   ]),
   unresolved: freezeList([])

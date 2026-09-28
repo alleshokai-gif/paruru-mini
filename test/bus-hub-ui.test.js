@@ -31,8 +31,10 @@ function renderOriginBadge(row, hubId = 'kibukihoncho') {
 
 test('Hub module stays fail-closed while production config explicitly enables it', () => {
   assert.equal(hub.HUB_UI_DEFAULT_ENABLED, false);
+  assert.equal(typeof hub.selectHub, 'function');
   const config = fs.readFileSync(require.resolve('../features/bus/config.js'), 'utf8');
   assert.match(config, /PALURU_BUS_HUB_UI_ENABLED\s*=\s*true/);
+  assert.match(config, /PALURU_BUS_POSITION_SHADOW_ENABLED\s*=\s*true/);
   assert.match(config, /PALURU_BUS_LEGACY_UI_ENABLED\s*=\s*false/);
   assert.match(config, /mizonokuchi-minamiguchi/);
   assert.match(config, /tachikawa-ekikitaguchi/);
@@ -41,6 +43,27 @@ test('Hub module stays fail-closed while production config explicitly enables it
     { id: 'kibukihoncho', label: '神木本町' }, { id: 'mizonokuchi-minamiguchi', label: '溝の口駅南口' }
   ] }).map((value) => value.id), ['kibukihoncho', 'mizonokuchi-minamiguchi']);
   assert.throws(() => hub.configuredHubs({ PALURU_BUS_HUBS: [] }), /BUS_HUB_CONFIG_INVALID/);
+});
+
+test('Position shadow has an explicit local gate and safely waits for weak evidence', () => {
+  const row = arrival({ provider: 'kawasaki', routeLabel: '登０５', destination: '登戸駅',
+    realtimeState: 'realtime', position: { supported: true, shadowReady: true,
+      state: 'between_stops', previousStop: '長尾橋', nextStop: '神木本町', stopsAway: 2 } });
+  const group = { arrivals: [row], recommendedArrivalId: null };
+  assert.doesNotMatch(renderedText(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho')), /停留所|位置確認中/);
+  assert.match(renderedText(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho', true)),
+    /長尾橋〜神木本町を走行中・あと2停留所/);
+  assert.equal(hub.displayShadowPosition({ supported: false }), '位置確認中');
+  assert.equal(hub.displayShadowPosition({ ...row.position, shadowReady: false }), '位置確認中');
+});
+
+test('Tamagawa exit badge remains conspicuous without changing destination or platform', () => {
+  const row = arrival({ provider: 'kawasaki', routeLabel: '登０６', destination: '鷲ヶ峰営業所前',
+    platform: '多摩川口2番のりば', areaBadge: '多摩川口' });
+  const nodes = descendants(hub.renderArrivalList(fakeDocument(),
+    { arrivals: [row], recommendedArrivalId: null }, 'noborito-eki'));
+  assert.equal(nodes.filter((node) => node.className === 'bus-hub-area-badge').length, 1);
+  assert.match(nodes.map((node) => node.textContent).join(''), /多摩川口.*鷲ヶ峰営業所前/);
 });
 
 test('Hub location selection restores a valid session choice and activates only the visible controller', () => {
@@ -129,7 +152,8 @@ test('Kawasaki realtime displays P0 delay wording while stale and pending states
   assert.equal(hub.displayArrival(arrival({ provider: 'kawasaki', realtimeState: 'realtime',
     departureState: 'departure_uncertain' })).note, '発車済みの可能性あり');
   const source = fs.readFileSync(require.resolve('../features/bus/hub.js'), 'utf8');
-  assert.doesNotMatch(source, /bus-position|latitude|longitude|stopsAway/);
+  assert.match(source, /PALURU_BUS_POSITION_SHADOW_ENABLED === true/);
+  assert.doesNotMatch(source, /latitude|longitude/);
 });
 
 test('Static origin badge is limited to Shinki Honcho boarding rows and coexists with overdue state', () => {

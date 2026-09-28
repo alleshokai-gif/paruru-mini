@@ -55,6 +55,7 @@ test('shadow evaluator snaps GPS to stop intervals and derives naturally decreas
   assert.equal(result.direction_trace_count, 1); assert.equal(result.monotonic_trace_count, 1);
   assert.equal(result.direction_accuracy, 1); assert.equal(result.observed_segment_count, 3);
   assert.equal(result.geometry_ready, false); assert.equal(result.decision, 'HOLD');
+  assert.equal(JSON.parse(result.reason_codes).includes('MULTI_DAY_COVERAGE_INSUFFICIENT'), false);
   assert.equal(positionEvaluationValues(result).length, POSITION_EVALUATION_HEADERS.length);
 });
 

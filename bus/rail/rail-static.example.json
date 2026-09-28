@@ -1,0 +1,761 @@
+{
+  "schemaVersion": 1,
+  "timezone": "Asia/Tokyo",
+  "management": "user",
+  "sample": true,
+  "timetableVersion": "development-sample-1",
+  "generatedAt": "2026-09-28T00:00:00+09:00",
+  "sourceCheckedAt": null,
+  "sampleNotice": "小田急のみ架空の開発用時刻です。南武線は別のサーバー側生成Staticを使用します。",
+  "calendarOverrides": {},
+  "trains": [
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "07:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "07:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "07:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-0700"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "08:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "08:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "08:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-0800"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "15:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "15:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "15:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1500"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "16:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "16:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "16:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1600"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "17:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "17:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "17:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1700"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "17:20",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "17:38",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "17:41",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1720"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "17:40",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "17:58",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "18:01",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1740"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "18:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "18:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "18:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1800"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "18:20",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "18:38",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "18:41",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1820"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "18:40",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "18:58",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "19:01",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1840"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "19:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "19:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "19:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1900"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "19:30",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "19:48",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "19:51",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-1930"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "20:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "20:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "20:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-2000"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "20:30",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "20:48",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "20:51",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-2030"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "21:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "21:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "21:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-2100"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "21:30",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "21:48",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "21:51",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-2130"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekday",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "22:00",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "22:18",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "22:21",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekday-2200"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "07:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "07:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "07:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-0705"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "08:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "08:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "08:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-0805"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "15:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "15:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "15:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1505"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "16:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "16:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "16:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1605"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "17:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "17:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "17:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1705"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "17:25",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "17:43",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "17:46",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1725"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "17:45",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "18:03",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "18:06",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1745"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "18:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "18:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "18:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1805"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "18:25",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "18:43",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "18:46",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1825"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "18:45",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "19:03",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "19:06",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1845"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "19:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "19:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "19:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1905"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "19:35",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "19:53",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "19:56",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-1935"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "20:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "20:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "20:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-2005"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "20:35",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "20:53",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "20:56",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-2035"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "21:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "21:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "21:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-2105"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "21:35",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "21:53",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "21:56",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-2135"
+    },
+    {
+      "provider": "odakyu",
+      "route": "tamagawa_to_noborito",
+      "calendarType": "weekend",
+      "sourceStation": "tamagawagakuenmae",
+      "sourceDeparture": "22:05",
+      "candidateStations": [
+        {
+          "station": "mukougaoka",
+          "stationTime": "22:23",
+          "stationTimeSource": "arrival"
+        },
+        {
+          "station": "noborito",
+          "stationTime": "22:26",
+          "stationTimeSource": "arrival"
+        }
+      ],
+      "trainType": "各駅停車",
+      "destination": "新宿方面（開発用）",
+      "internalTripId": "sample-odakyu-weekend-2205"
+    }
+  ]
+}

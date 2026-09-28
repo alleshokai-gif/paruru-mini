@@ -1,0 +1,4123 @@
+{
+  "schemaVersion": 1,
+  "timezone": "Asia/Tokyo",
+  "management": "challenge_generated",
+  "sample": false,
+  "timetableVersion": "jr-east-nambu-challenge-2026",
+  "generatedAt": "2026-09-28T12:37:05.609Z",
+  "sourceCheckedAt": "2026-09-28T12:37:05.609Z",
+  "sourceMetadata": {
+    "operator": "odpt.Operator:JR-East",
+    "railway": "odpt.Railway:JR-East.Nambu",
+    "endpoint": "odpt:TrainTimetable",
+    "stationTimeSource": "departure",
+    "serviceCalendars": [
+      "weekday",
+      "weekend"
+    ],
+    "earliestSourceDeparture": "12:00"
+  },
+  "calendarOverrides": {},
+  "trains": [
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:07",
+      "trainNumber": "1246F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1246F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "12:35",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "12:44",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:15",
+      "trainNumber": "1238F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1238F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "12:48",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "12:56",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:24",
+      "trainNumber": "4220F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-4220F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "12:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "12:51",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:27",
+      "trainNumber": "1240F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1240F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "12:56",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:04",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:37",
+      "trainNumber": "1230F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1230F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:05",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:14",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:45",
+      "trainNumber": "1260F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1260F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:18",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:26",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:54",
+      "trainNumber": "4216F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-4216F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:15",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:21",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:57",
+      "trainNumber": "1242F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1242F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:26",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:34",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:07",
+      "trainNumber": "1306F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1306F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:35",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:44",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:15",
+      "trainNumber": "1328F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1328F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:48",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:56",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:24",
+      "trainNumber": "4312F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-4312F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:51",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:27",
+      "trainNumber": "1304F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1304F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:56",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:04",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:37",
+      "trainNumber": "1318F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1318F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:05",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:14",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:45",
+      "trainNumber": "1354F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1354F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:18",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:26",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:54",
+      "trainNumber": "4326F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-4326F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:15",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:21",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:57",
+      "trainNumber": "1334F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1334F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:26",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:34",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:07",
+      "trainNumber": "1462F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1462F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:35",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:44",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:15",
+      "trainNumber": "1446F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1446F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:48",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:56",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:24",
+      "trainNumber": "4438F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-4438F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:51",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:27",
+      "trainNumber": "1420F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1420F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:56",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:04",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:37",
+      "trainNumber": "1440F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1440F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:05",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:14",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:45",
+      "trainNumber": "1430F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1430F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:18",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:26",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:54",
+      "trainNumber": "4460F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-4460F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:15",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:21",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:57",
+      "trainNumber": "1416F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1416F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:26",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:34",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:07",
+      "trainNumber": "1542F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1542F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:35",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:44",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:15",
+      "trainNumber": "1506F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1506F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:48",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:56",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:24",
+      "trainNumber": "4528F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-4528F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:51",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:27",
+      "trainNumber": "1512F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1512F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:55",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:03",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:37",
+      "trainNumber": "1504F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1504F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:05",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:13",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:45",
+      "trainNumber": "1518F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1518F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:18",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:26",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:54",
+      "trainNumber": "4554F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-4554F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:15",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:21",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:57",
+      "trainNumber": "1526F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1526F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:27",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:35",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:07",
+      "trainNumber": "1634F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1634F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:35",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:43",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:16",
+      "trainNumber": "1662F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1662F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:46",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:54",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:26",
+      "trainNumber": "1646F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1646F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:55",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:04",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:34",
+      "trainNumber": "1638F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1638F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:04",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:12",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:41",
+      "trainNumber": "1620F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1620F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:13",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:23",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:49",
+      "trainNumber": "1640F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1640F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:20",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:30",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:00",
+      "trainNumber": "1730F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1730F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:31",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:40",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:10",
+      "trainNumber": "1760F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1760F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:38",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:46",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:20",
+      "trainNumber": "1716F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1716F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:51",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:00",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:33",
+      "trainNumber": "1728F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1728F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:06",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:14",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:45",
+      "trainNumber": "1706F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1706F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:15",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:24",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:54",
+      "trainNumber": "1704F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1704F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:22",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:30",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:04",
+      "trainNumber": "1818F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1818F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:37",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:45",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:13",
+      "trainNumber": "1836F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1836F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:41",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:50",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:19",
+      "trainNumber": "1834F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1834F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:47",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:55",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:24",
+      "trainNumber": "1802F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1802F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:52",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:01",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:34",
+      "trainNumber": "1850F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1850F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:07",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:15",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:43",
+      "trainNumber": "1846F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1846F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:12",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:20",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:48",
+      "trainNumber": "1842F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1842F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:19",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:28",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:55",
+      "trainNumber": "1824F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1824F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:24",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:32",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:00",
+      "trainNumber": "1944F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1944F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:30",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:38",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:08",
+      "trainNumber": "1940F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1940F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:39",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:48",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:16",
+      "trainNumber": "1954F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1954F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:53",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:25",
+      "trainNumber": "1960F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1960F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:54",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:02",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:32",
+      "trainNumber": "1914F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1914F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:59",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:07",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:44",
+      "trainNumber": "1962F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1962F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:14",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:22",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:54",
+      "trainNumber": "1910F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-1910F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:21",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:29",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:00",
+      "trainNumber": "2006F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2006F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:29",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:37",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:10",
+      "trainNumber": "2020F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2020F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:38",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:46",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:18",
+      "trainNumber": "2038F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2038F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:46",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:54",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:27",
+      "trainNumber": "2036F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2036F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:55",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:03",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:34",
+      "trainNumber": "2002F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2002F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:02",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:10",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:42",
+      "trainNumber": "2030F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2030F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:10",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:18",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:52",
+      "trainNumber": "2046F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2046F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:20",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:28",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:00",
+      "trainNumber": "2142F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2142F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:29",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:37",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:09",
+      "trainNumber": "2104F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2104F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:37",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:45",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:17",
+      "trainNumber": "2144F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2144F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:44",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:52",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:26",
+      "trainNumber": "2154F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2154F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:54",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:02",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:33",
+      "trainNumber": "2160F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2160F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:01",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:09",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:45",
+      "trainNumber": "2114F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2114F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:14",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:22",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:55",
+      "trainNumber": "2162F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2162F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:24",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:32",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:06",
+      "trainNumber": "2210F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2210F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:35",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:43",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:19",
+      "trainNumber": "2206F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2206F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:48",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:56",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:28",
+      "trainNumber": "2238F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2238F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:57",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:05",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:37",
+      "trainNumber": "2236F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2236F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:05",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:13",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:48",
+      "trainNumber": "2202F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2202F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:16",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:24",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:57",
+      "trainNumber": "2240F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2240F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:24",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:32",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "23:04",
+      "trainNumber": "2346F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2346F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:32",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:40",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "23:13",
+      "trainNumber": "2304F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2304F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:41",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:49",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "23:25",
+      "trainNumber": "2344F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekday-2344F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:52",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "00:00",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekday",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "23:44",
+      "trainNumber": "2360F",
+      "trainType": "各駅停車",
+      "destination": "武蔵中原",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.MusashiNakahara",
+      "internalTripId": "jr-nambu-weekday-2360F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "00:12",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "00:20",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:06",
+      "trainNumber": "1248F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1248F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "12:38",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "12:46",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:15",
+      "trainNumber": "4210F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4210F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "12:36",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "12:41",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:18",
+      "trainNumber": "1230F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1230F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "12:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "12:53",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:26",
+      "trainNumber": "1240F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1240F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "12:58",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:06",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:35",
+      "trainNumber": "4252F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4252F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "12:56",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:01",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:38",
+      "trainNumber": "1204F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1204F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:05",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:13",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:46",
+      "trainNumber": "1212F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1212F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:18",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:26",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:55",
+      "trainNumber": "4220F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4220F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:16",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:21",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "12:58",
+      "trainNumber": "1222F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1222F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:25",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:33",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:06",
+      "trainNumber": "1324F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1324F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:38",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:46",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:15",
+      "trainNumber": "4326F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4326F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:36",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:41",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:18",
+      "trainNumber": "1336F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1336F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "13:53",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:26",
+      "trainNumber": "1306F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1306F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:58",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:06",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:35",
+      "trainNumber": "4316F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4316F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "13:56",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:01",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:38",
+      "trainNumber": "1346F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1346F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:05",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:13",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:46",
+      "trainNumber": "1334F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1334F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:18",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:26",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:55",
+      "trainNumber": "4302F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4302F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:16",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:21",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "13:58",
+      "trainNumber": "1310F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1310F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:25",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:33",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:06",
+      "trainNumber": "1444F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1444F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:38",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:46",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:15",
+      "trainNumber": "4442F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4442F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:36",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:41",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:18",
+      "trainNumber": "1452F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1452F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "14:53",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:26",
+      "trainNumber": "1448F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1448F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:58",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:06",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:35",
+      "trainNumber": "4430F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4430F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "14:56",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:01",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:38",
+      "trainNumber": "1420F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1420F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:05",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:13",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:46",
+      "trainNumber": "1440F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1440F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:18",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:26",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:55",
+      "trainNumber": "4404F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4404F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:16",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:21",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "14:58",
+      "trainNumber": "1426F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1426F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:25",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:33",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:06",
+      "trainNumber": "1512F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1512F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:38",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:46",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:15",
+      "trainNumber": "4522F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4522F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:36",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:41",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:18",
+      "trainNumber": "1516F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1516F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "15:53",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:28",
+      "trainNumber": "1524F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1524F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:01",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:09",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:38",
+      "trainNumber": "4536F",
+      "trainType": "快速",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-4536F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "15:58",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:04",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:42",
+      "trainNumber": "1502F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1502F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:09",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:17",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:49",
+      "trainNumber": "1506F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1506F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:17",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:25",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "15:56",
+      "trainNumber": "1546F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1546F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:24",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:32",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:02",
+      "trainNumber": "1642F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1642F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:31",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:39",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:09",
+      "trainNumber": "1634F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1634F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:38",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:46",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:14",
+      "trainNumber": "1610F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1610F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:43",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:51",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:22",
+      "trainNumber": "1630F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1630F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:49",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "16:57",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:29",
+      "trainNumber": "1644F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1644F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "16:57",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:05",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:35",
+      "trainNumber": "1652F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1652F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:03",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:11",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:42",
+      "trainNumber": "1604F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1604F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:10",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:18",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:49",
+      "trainNumber": "1648F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1648F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:17",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:25",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "16:57",
+      "trainNumber": "1620F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1620F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:25",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:33",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:04",
+      "trainNumber": "1722F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1722F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:32",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:40",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:13",
+      "trainNumber": "1740F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1740F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:42",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:50",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:21",
+      "trainNumber": "1726F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1726F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:49",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "17:57",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:28",
+      "trainNumber": "1712F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1712F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "17:56",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:04",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:37",
+      "trainNumber": "1736F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1736F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:06",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:14",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:49",
+      "trainNumber": "1724F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1724F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:17",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:25",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "17:57",
+      "trainNumber": "1702F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1702F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:25",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:33",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:05",
+      "trainNumber": "1806F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1806F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:33",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:41",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:13",
+      "trainNumber": "1846F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1846F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:42",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "18:50",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:24",
+      "trainNumber": "1810F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1810F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "18:53",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:01",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:34",
+      "trainNumber": "1830F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1830F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:01",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:09",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:46",
+      "trainNumber": "1844F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1844F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:15",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:23",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "18:56",
+      "trainNumber": "1804F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1804F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:24",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:32",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:08",
+      "trainNumber": "1932F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1932F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:36",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:44",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:20",
+      "trainNumber": "1954F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1954F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "19:48",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "19:56",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:32",
+      "trainNumber": "1926F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1926F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:00",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:08",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:42",
+      "trainNumber": "1914F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1914F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:10",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:18",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "19:53",
+      "trainNumber": "1936F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-1936F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:21",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:29",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:03",
+      "trainNumber": "2024F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2024F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:31",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:39",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:15",
+      "trainNumber": "2006F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2006F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:43",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "20:51",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:24",
+      "trainNumber": "2046F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2046F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "20:52",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:00",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:33",
+      "trainNumber": "2048F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2048F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:01",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:09",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "20:47",
+      "trainNumber": "2010F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2010F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:15",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:23",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:01",
+      "trainNumber": "2140F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2140F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:30",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:38",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:16",
+      "trainNumber": "2104F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2104F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:45",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "21:53",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:29",
+      "trainNumber": "2142F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2142F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "21:58",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:06",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:42",
+      "trainNumber": "2102F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2102F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:11",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:19",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "21:55",
+      "trainNumber": "2114F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2114F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:24",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:32",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:07",
+      "trainNumber": "2218F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2218F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:35",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:44",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:21",
+      "trainNumber": "2224F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2224F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:48",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "22:56",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:32",
+      "trainNumber": "2206F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2206F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "22:59",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:07",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:45",
+      "trainNumber": "2248F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2248F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:13",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:21",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "22:54",
+      "trainNumber": "2226F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2226F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:21",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:29",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "23:04",
+      "trainNumber": "2310F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2310F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:31",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:39",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "23:14",
+      "trainNumber": "2336F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2336F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:41",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "23:49",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "23:25",
+      "trainNumber": "2304F",
+      "trainType": "各駅停車",
+      "destination": "川崎",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.Kawasaki",
+      "internalTripId": "jr-nambu-weekend-2304F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "23:52",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "00:00",
+          "stationTimeSource": "departure"
+        }
+      ]
+    },
+    {
+      "provider": "jr_east",
+      "route": "tachikawa_to_mizonokuchi",
+      "railway": "odpt.Railway:JR-East.Nambu",
+      "calendarType": "weekend",
+      "sourceStation": "tachikawa",
+      "sourceDeparture": "23:44",
+      "trainNumber": "2330F",
+      "trainType": "各駅停車",
+      "destination": "武蔵中原",
+      "destinationStationId": "odpt.Station:JR-East.Nambu.MusashiNakahara",
+      "internalTripId": "jr-nambu-weekend-2330F",
+      "candidateStations": [
+        {
+          "station": "noborito",
+          "stationTime": "00:12",
+          "stationTimeSource": "departure"
+        },
+        {
+          "station": "musashi_mizonokuchi",
+          "stationTime": "00:20",
+          "stationTimeSource": "departure"
+        }
+      ]
+    }
+  ]
+}

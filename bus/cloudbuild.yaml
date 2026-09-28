@@ -13,10 +13,22 @@ steps:
         for attempt in {1..15}; do
           if docker exec bus-build-smoke node --input-type=module -e '
             import assert from "node:assert/strict";
-            import { existsSync } from "node:fs";
+            import { existsSync, readFileSync } from "node:fs";
             const r = await fetch("http://127.0.0.1:8080/health");
             assert.equal(r.status,200); assert.equal((await r.json()).status,"ok");
             assert.equal(existsSync("/app/.dev.vars"),false);
+            const jr=JSON.parse(readFileSync("/app/release-static/rail-nambu-challenge-static.json"));
+            const odakyu=JSON.parse(readFileSync("/app/release-static/rail-odakyu-static.json"));
+            assert.equal(jr.sample,false); assert.equal(odakyu.sample,false);
+            assert.equal(jr.trains.filter(x=>x.calendarType==="weekday").length,83);
+            assert.equal(jr.trains.filter(x=>x.calendarType==="weekend").length,81);
+            assert.equal(odakyu.trains.filter(x=>x.calendarType==="weekday").length,69);
+            assert.equal(odakyu.trains.filter(x=>x.calendarType==="weekend").length,71);
+            const university=await fetch("http://127.0.0.1:8080/api/bus/trains?journeyId=university");
+            const school=await fetch("http://127.0.0.1:8080/api/bus/trains?journeyId=high_school");
+            assert.equal(university.status,200); assert.equal(school.status,200);
+            assert.equal((await university.json()).trains.length,5);
+            assert.equal((await school.json()).trains.length,5);
             assert.equal(existsSync("/app/scripts"),false);
             assert.equal(existsSync("/app/node_modules/fflate"),false);
             assert.equal(process.versions.node.split(".")[0],"24");

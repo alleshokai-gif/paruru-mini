@@ -170,8 +170,12 @@ function validateJourney(value) {
   assert.equal(noborito?.hubId, 'noborito-eki'); assert.equal(noborito?.state, 'available');
   assert.equal(mukougaoka?.hubId, 'mukougaoka-yuen-minamiguchi'); assert.equal(mukougaoka?.state, 'available');
   assert.equal(noborito.decisionGroup.arrivals.length, 3); assert.equal(mukougaoka.decisionGroup.arrivals.length, 3);
-  assert.ok(noborito.decisionGroup.arrivals.every((row) => row.provider === 'kawasaki' && row.routeId === '10044'
-    && row.originStop.id === '362_1' && Object.hasOwn(row, 'delayMinutes') && row.position.supported === false));
+  assert.ok(noborito.decisionGroup.arrivals.every((row) => {
+    if (row.provider !== 'kawasaki' || !Object.hasOwn(row, 'delayMinutes') || row.position.supported !== false) return false;
+    if (row.routeId === '10044') return row.originStop.id === '362_1' && row.areaBadge !== '多摩川口';
+    if (row.routeId === '10045') return row.originStop.id === '365_2' && row.areaBadge === '多摩川口';
+    return false;
+  }));
   const mukougaokaProviders = new Map(mukougaoka.providers.map((row) => [row.provider, row]));
   assert.notEqual(mukougaokaProviders.get('kawasaki')?.state, 'unavailable');
   assert.notEqual(mukougaokaProviders.get('tokyu')?.state, 'unavailable');

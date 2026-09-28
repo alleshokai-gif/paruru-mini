@@ -27,7 +27,24 @@ export const KIBUKIHONCHO_TO_MIYAMAE_WASHIGAMINE = Object.freeze({
   routeIds: Object.freeze(['10032', '10033', '10034', '10035', '10036', '10044', '10045'])
 });
 
+// Official GTFS 20260828: 登06 serves a different station exit and stop poles from 登05.
+export const KIBUKIHONCHO_TO_NOBORITO_TAMAGAWA = Object.freeze({
+  id: 'kibukihoncho_to_noborito_tamagawa', type: 'favorite', group: 'hub', provider: 'kawasaki',
+  label: '神木本町 → 登戸駅多摩川口', from: '神木本町', to: '登戸駅多摩川口',
+  fromStopIds: Object.freeze(['184_2']), toStopIds: Object.freeze(['365_1']),
+  routeIds: Object.freeze(['10045'])
+});
+
+export const NOBORITO_TAMAGAWA_TO_KIBUKIHONCHO = Object.freeze({
+  id: 'noborito_tamagawa_to_kibukihoncho', type: 'favorite', group: 'hub', provider: 'kawasaki',
+  label: '登戸駅多摩川口 → 神木本町', from: '登戸駅多摩川口', to: '神木本町',
+  fromStopIds: Object.freeze(['365_2']), toStopIds: Object.freeze(['184_3']),
+  routeIds: Object.freeze(['10045'])
+});
+
 export const KAWASAKI_JOURNEY_QUERIES = Object.freeze([
   MUKOUGAOKA_TO_KIBUKIHONCHO,
-  KIBUKIHONCHO_TO_MIYAMAE_WASHIGAMINE
+  KIBUKIHONCHO_TO_MIYAMAE_WASHIGAMINE,
+  KIBUKIHONCHO_TO_NOBORITO_TAMAGAWA,
+  NOBORITO_TAMAGAWA_TO_KIBUKIHONCHO
 ]);

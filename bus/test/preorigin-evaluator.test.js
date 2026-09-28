@@ -130,6 +130,27 @@ test('log and Raw sample counts must agree even when both independently meet the
   assert.ok(reasons.includes('SAMPLE_SOURCE_MISMATCH'));
 });
 
+test('a completed sample with zero target rows is not a missing sample', () => {
+  const input = healthyInput();
+  const run = PREORIGIN_HEADERS.indexOf('run_id'), sample = PREORIGIN_HEADERS.indexOf('sample_index');
+  input.rawValues.slice(1).forEach((row, index) => {
+    row[run] = `run-${Math.floor(index / 10)}`; row[sample] = index % 10;
+  });
+  input.runLogEntries.filter((entry) => entry.jsonPayload.event === 'preorigin_sample')
+    .forEach((entry) => { entry.jsonPayload.rows = 1; });
+  const empty = input.runLogEntries.find((entry) => entry.jsonPayload.event === 'preorigin_sample');
+  empty.jsonPayload.rows = 0;
+  input.rawValues.splice(1, 1);
+  let result = evaluatePreoriginCanary(input), reasons = JSON.parse(result.reason_codes);
+  assert.equal(result.actual_samples, 280);
+  assert.equal(result.missing_sample_count, 0);
+  assert.ok(!reasons.includes('SAMPLE_SOURCE_MISMATCH'));
+  assert.ok(!reasons.includes('SAMPLE_COVERAGE_INSUFFICIENT'));
+  input.rawValues.splice(1, 1);
+  result = evaluatePreoriginCanary(input); reasons = JSON.parse(result.reason_codes);
+  assert.ok(reasons.includes('SAMPLE_SOURCE_MISMATCH'));
+});
+
 test('consecutive Job failures and target trip mismatch are NO_GO', () => {
   const input = healthyInput();
   input.executions[0] = { ...input.executions[0], succeededCount: 0, failedCount: 1 };

@@ -1,6 +1,26 @@
 // Production Cloud Run service; validation uses its separate IAM-protected service.
 globalThis.PALURU_BUS_API_URL = 'https://paluru-bus-api-jwnmkrlyha-an.a.run.app/api/bus/arrivals';
 globalThis.PALURU_BUS_HUB_UI_ENABLED = true;
+globalThis.PALURU_BUS_POSITION_SHADOW_ENABLED = true;
+globalThis.PALURU_BUS_HOME_ROUTE_ENABLED = true;
+globalThis.PALURU_BUS_HOME_ROUTE_SOURCE = Object.freeze({
+  async getTrainChoices(journeyId, page = 0) {
+    const url = new URL(globalThis.PALURU_BUS_API_URL);
+    url.pathname = '/api/bus/trains';
+    url.search = new URLSearchParams({ journeyId, page: String(page) });
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) throw Error('BUS_TRAIN_CHOICES_UNAVAILABLE');
+    return response.json();
+  },
+  async evaluate({ journeyId, trainId, page = 0 }) {
+    const url = new URL(globalThis.PALURU_BUS_API_URL);
+    url.pathname = '/api/bus/home-route';
+    url.search = new URLSearchParams({ journeyId, trainId, page: String(page) });
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) throw Error('BUS_HOME_ROUTE_UNAVAILABLE');
+    return response.json();
+  }
+});
 globalThis.PALURU_BUS_LEGACY_UI_ENABLED = false;
 globalThis.PALURU_BUS_JOURNEY_UI_ENABLED = true;
 globalThis.PALURU_BUS_JOURNEYS = Object.freeze([

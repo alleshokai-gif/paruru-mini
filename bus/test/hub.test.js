@@ -90,6 +90,8 @@ test('P2.5 child Hub configs bind only verified trips through Kibukihoncho', () 
   assert.deepEqual(NOBORITO_EKI_HUB.decisionGroups, [{ id: 'noborito_kibukihoncho', hubId: 'noborito-eki',
     label: '神木本町方面', destinations: ['神木本町経由'], providers: ['kawasaki'], displayLimit: 3 }]);
   assert.deepEqual(NOBORITO_EKI_HUB.sources, [{ provider: 'kawasaki', sourceId: 'noborito_to_home',
+    decisionGroupId: 'noborito_kibukihoncho', walkMinutes: null },
+  { provider: 'kawasaki', sourceId: 'noborito_tamagawa_to_kibukihoncho',
     decisionGroupId: 'noborito_kibukihoncho', walkMinutes: null }]);
   assert.deepEqual(MUKOUGAOKA_YUEN_MINAMIGUCHI_HUB.decisionGroups[0].providers, ['kawasaki', 'tokyu']);
   assert.deepEqual(MUKOUGAOKA_YUEN_MINAMIGUCHI_HUB.sources.map((row) => `${row.provider}|${row.sourceId}`),
@@ -416,6 +418,29 @@ test('Kawasaki Hub normalization preserves the westbound route, destination and 
     result.arrivals[0].platform, result.arrivals[0].destination],
   ['kibukihoncho_to_miyamae_washigamine', '184_3', '10033', '3番', '宮前平駅']);
   assert.equal(result.arrivals[0].isOrigin, true);
+});
+
+test('Tamagawa branch keeps its station-area badge through Kawasaki normalize and Hub DTO', () => {
+  for (const [query, from, to, platform] of [
+    [KAWASAKI_JOURNEY_QUERIES[2], '184_2', '365_1', '2番'],
+    [KAWASAKI_JOURNEY_QUERIES[3], '365_2', '184_3', '多摩川口2番のりば']
+  ]) {
+    const index = { ...indexFixture(), stops: { ...indexFixture().stops,
+      [from]: { stopId: from, name: from.startsWith('365') ? '登戸駅多摩川口' : '神木本町' },
+      [to]: { stopId: to, name: to.startsWith('365') ? '登戸駅多摩川口' : '神木本町' } },
+      routes: { ...indexFixture().routes, '10045': { routeId: '10045', label: '登０６' } },
+      directions: { [query.id]: [{ tripId: 'tamagawa-trip', routeId: '10045', fromStopId: from,
+        toStopId: to, isOrigin: false }] } };
+    const response = { success: true, fetchError: false, directions: [{ id: query.id, to: query.to,
+      state: 'realtime', arrivals: [{ tripId: '20260915:tamagawa-trip', routeLabel: '登０６',
+        headsign: '鷲ヶ峰営業所前', platform, scheduledAt: '2026-09-15T07:00:00+09:00',
+        estimatedAt: '2026-09-15T07:02:00+09:00', etaMinutes: 2, delayMinutes: 2,
+        realtime: true, state: 'realtime', position: { supported: false } }] }] };
+    const normalized = normalizeKawasakiHubResult(response, { index, queries: [query] }).arrivals[0];
+    assert.equal(normalized.areaBadge, '多摩川口');
+    assert.equal(normalizeHubArrival(normalized, Date.parse('2026-09-15T07:00:00+09:00') / 1000).areaBadge,
+      '多摩川口');
+  }
 });
 
 test('Hub service selects providers per Hub and isolates Provider failures', async () => {

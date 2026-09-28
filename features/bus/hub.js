@@ -12,7 +12,7 @@
   const PROVIDER_LABELS = Object.freeze({ kawasaki: '川崎市バス', tokyu: '東急バス', seibu: '西武バス' });
   const controllers = new Map();
   const selectorButtons = new Map(), locationPanels = new Map();
-  let requestedActive = false, installed = false, selection;
+  let requestedActive = false, installed = false, selection, selectHubFromRoute;
   const text = (value) => typeof value === 'string' && value.length > 0;
   const clock = (epoch) => new Date((epoch + 9 * 3600) * 1000).toISOString().slice(11, 16);
   const dateClock = (epoch) => new Date((epoch + 9 * 3600) * 1000).toISOString().slice(0, 16).replace('T', ' ');
@@ -41,6 +41,7 @@
         if (!text(row.id) || !text(row.provider) || !text(row.routeLabel) || !text(row.destination)
           || !Number.isFinite(row.scheduledDeparture) || !STATES.has(row.realtimeState)
           || row.isOrigin != null && typeof row.isOrigin !== 'boolean'
+          || row.areaBadge != null && !text(row.areaBadge)
           || row.etaMinutes != null && !Number.isFinite(row.etaMinutes)
           || row.delayMinutes != null && !Number.isFinite(row.delayMinutes)) throw Error('BUS_HUB_RESPONSE_INVALID');
         if (row.realtimeState === 'static_only' && (row.estimatedDeparture != null || row.etaMinutes != null || row.delayMinutes != null))
@@ -65,6 +66,18 @@
       : row.delayMinutes < 0 ? `${Math.abs(row.delayMinutes)}分早い予測` : '';
     return { time: scheduled, timeSuffix: '便', note: Number.isFinite(row.etaMinutes) ? `あと${row.etaMinutes}分` : '予測更新待ち',
       kind: 'live', delay };
+  }
+
+  function displayShadowPosition(position) {
+    if (position?.supported !== true || position.shadowReady !== true
+      || !Number.isInteger(position.stopsAway) || position.stopsAway < 0
+      || !text(position.nextStop)) return '位置確認中';
+    if (position.state === 'at_stop') return `${position.nextStop}に停車中・あと${position.stopsAway}停留所`;
+    if (position.state === 'approaching') return `${position.nextStop}に接近中・あと${position.stopsAway}停留所`;
+    if (position.state === 'between_stops' && text(position.previousStop))
+      return `${position.previousStop}〜${position.nextStop}を走行中・あと${position.stopsAway}停留所`;
+    if (position.state === 'departed') return `${position.nextStop}へ走行中・あと${position.stopsAway}停留所`;
+    return '位置確認中';
   }
 
   function sourceSummary(data) {
@@ -152,13 +165,14 @@
     return values.length ? values.join('＋') : '運行情報を確認できません';
   }
 
-  function renderArrivalList(doc, group, hubId) {
+  function renderArrivalList(doc, group, hubId, positionShadowEnabled = false) {
     const list = element(doc, 'ol', 'bus-hub-board');
     group.arrivals.slice(0, 3).forEach((row) => {
         const shown = displayArrival(row), recommended = row.id === group.recommendedArrivalId;
         const item = element(doc, 'li', `bus-hub-row is-${shown.kind}${recommended ? ' is-recommended' : ''}`);
         const heading = element(doc, 'div', 'bus-hub-row-heading');
         heading.append(providerLabel(doc, row.provider), element(doc, 'span', 'bus-hub-route', row.routeLabel));
+        if (row.areaBadge) heading.append(element(doc, 'strong', 'bus-hub-area-badge', row.areaBadge));
         if (hubId === 'kibukihoncho' && row.originStop?.name === '神木本町' && row.isOrigin === true)
           heading.append(element(doc, 'span', 'bus-hub-origin-badge', '始発'));
         if (recommended) heading.append(element(doc, 'span', 'bus-hub-recommendation', '最速候補'));
@@ -171,15 +185,18 @@
           element(doc, 'span', 'bus-hub-time-suffix', shown.timeSuffix));
         timing.append(departureTime, element(doc, 'span', 'bus-hub-quality', shown.note));
         if (shown.delay) timing.append(element(doc, 'span', 'bus-hub-delay', shown.delay));
-      item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing); list.append(item);
+      item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing);
+      if (positionShadowEnabled) item.append(element(doc, 'p', 'bus-hub-position-shadow', displayShadowPosition(row.position)));
+      list.append(item);
     });
     return list;
   }
 
-  function renderGroups(doc, groups, data) {
+  function renderGroups(doc, groups, data, positionShadowEnabled = false) {
     groups.replaceChildren(...data.decisionGroups.filter((group) => group.arrivals.length).map((group) => {
       const section = element(doc, 'section', 'bus-hub-group'); section.dataset.decisionGroup = group.id;
-      section.append(element(doc, 'h3', 'bus-hub-purpose', group.label), renderArrivalList(doc, group, data.hubId));
+      section.append(element(doc, 'h3', 'bus-hub-purpose', group.label),
+        renderArrivalList(doc, group, data.hubId, positionShadowEnabled));
       return section;
     }));
   }
@@ -205,7 +222,7 @@
         status.classList.toggle('is-stale', !!error);
         if (!data) return;
         sources.textContent = sourceSummary(data);
-        renderGroups(doc, groups, data);
+        renderGroups(doc, groups, data, root.PALURU_BUS_POSITION_SHADOW_ENABLED === true);
       } });
   }
 
@@ -225,12 +242,13 @@
       rootHeading.append(element(doc, 'p', 'bus-hub-eyebrow', 'いつもの場所'), selector);
       const locations = element(doc, 'div', 'bus-hub-locations');
       const selectHub = (hubId) => {
-        if (!selection.select(hubId)) return;
+        if (!selection.select(hubId)) return false;
         for (const [id, button] of selectorButtons) {
           const selected = id === hubId;
           button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
           locationPanels.get(id).hidden = !selected;
         }
+        return true;
       };
       specs.forEach((spec, index) => {
         const tabId = `busHubTab-${spec.id}`, panelId = `busHubPanel-${spec.id}`;
@@ -260,20 +278,23 @@
       selection = createSelection({ specs, initialHubId: readStoredHubId(root),
         activate: (hubId, value) => controllers.get(hubId).setActive(value),
         persist: (hubId) => writeStoredHubId(root, hubId) });
+      selectHubFromRoute = selectHub;
       const initialHubId = selection.selectedHubId;
       for (const [id, button] of selectorButtons) {
         const selected = id === initialHubId;
         button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
         locationPanels.get(id).hidden = !selected;
       }
-      mountPoint.replaceChildren(rootHeading, locations); installed = true;
+      const homeRoute = doc.querySelector('#busHomeRouteMount');
+      mountPoint.replaceChildren(rootHeading, ...(homeRoute ? [homeRoute] : []), locations); installed = true;
       selection.setActive(requestedActive);
       doc.addEventListener('visibilitychange', () => controllers.forEach((value) => value.visibilityChanged()));
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();
   }
-  return { install, validate, displayArrival, sourceSummary, renderArrivalList, configuredHubs, apiUrl,
+  return { install, validate, displayArrival, displayShadowPosition, sourceSummary, renderArrivalList, configuredHubs, apiUrl,
     resolveSelectedHubId, createSelection,
     HUB_UI_DEFAULT_ENABLED, HUB_SELECTION_STORAGE_KEY,
+    selectHub(hubId) { return selectHubFromRoute?.(hubId) ?? false; },
     setActive(value) { requestedActive = !!value; selection?.setActive(value); } };
 }));

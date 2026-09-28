@@ -62,6 +62,8 @@ test('Journey reuses the Hub arrival renderer and keeps the 390px containment co
   const source = fs.readFileSync(require.resolve('../features/bus/journey.js'), 'utf8');
   const css = fs.readFileSync(require.resolve('../features/bus/journey.css'), 'utf8');
   assert.match(source, /hubUi\.renderArrivalList/);
+  assert.match(source, /root\.PALURU_BUS_POSITION_SHADOW_ENABLED === true/);
+  assert.match(source, /renderArrivalList\(doc, child\.decisionGroup, child\.hubId, positionShadowEnabled\)/);
   assert.equal(typeof journey.createJourneyController, 'function');
   assert.match(source, /child\.purposeLabel/);
   assert.doesNotMatch(source, /recommendedChildId|compareChildren|bestHub/);

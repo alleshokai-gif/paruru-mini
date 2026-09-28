@@ -54,7 +54,7 @@
     return url;
   }
 
-  function renderChildren(doc, mount, data, hubUi) {
+  function renderChildren(doc, mount, data, hubUi, positionShadowEnabled = false) {
     mount.replaceChildren(...data.children.map((child) => {
       const card = element(doc, 'section', `bus-journey-child is-${child.state}`); card.dataset.journeyChild = child.id;
       const header = element(doc, 'header', 'bus-journey-child-header');
@@ -63,7 +63,7 @@
       card.append(header);
       if (child.state === 'unavailable') card.append(element(doc, 'p', 'bus-journey-child-message', '運行情報を確認できません'));
       else if (child.state === 'empty') card.append(element(doc, 'p', 'bus-journey-child-message', 'この先の便はありません'));
-      else card.append(hubUi.renderArrivalList(doc, child.decisionGroup));
+      else card.append(hubUi.renderArrivalList(doc, child.decisionGroup, child.hubId, positionShadowEnabled));
       return card;
     }));
   }
@@ -91,7 +91,8 @@
           status.textContent = error ? '情報を更新できませんでした' : !data ? '情報を読み込み中…'
             : loading ? '更新中…' : '各駅の次3便';
           status.classList.toggle('is-stale', !!error);
-          if (data) renderChildren(doc, children, data, root.PALURUBusHub);
+          if (data) renderChildren(doc, children, data, root.PALURUBusHub,
+            root.PALURU_BUS_POSITION_SHADOW_ENABLED === true);
         } });
     return controller;
   }
