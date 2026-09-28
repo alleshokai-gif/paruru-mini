@@ -17,6 +17,15 @@ steps:
             const r = await fetch("http://127.0.0.1:8080/health");
             assert.equal(r.status,200); assert.equal((await r.json()).status,"ok");
             assert.equal(existsSync("/app/.dev.vars"),false);
+            const {loadShadowPosition}=await import("/app/runtime/shadow-position.js");
+            const p0=JSON.parse(readFileSync("/app/generated/p0-static.json"));
+            const positionStatic=JSON.parse(readFileSync("/app/generated/p1-position-static.json"));
+            const shadow=loadShadowPosition({index:p0,positionStatic});
+            assert.equal(shadow.status,"shadow_geometry_loaded");
+            assert.equal(shadow.stats.supportedChains,1);
+            assert.deepEqual(shadow.stats.geometrySources,["validated_road_geometry"]);
+            assert.equal(shadow.stats.approvedForPublic,false);
+            assert.equal(shadow.stats.geometryReady,false);
             const jr=JSON.parse(readFileSync("/app/release-static/rail-nambu-challenge-static.json"));
             const odakyu=JSON.parse(readFileSync("/app/release-static/rail-odakyu-static.json"));
             assert.equal(jr.sample,false); assert.equal(odakyu.sample,false);

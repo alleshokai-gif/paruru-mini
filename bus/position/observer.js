@@ -9,10 +9,12 @@ export function createPositionObserver({routeIndex,index}) {
     if(!targets.has(row.tripId))targets.set(row.tripId,[]);
     targets.get(row.tripId).push({stopId:row.fromStopId,sequence:row.stopSequence,serviceId:row.serviceId,startTime:row.startTime});
   }
-  let summary={evaluated:0,supported:0,reasons:{}};
+  let summary={evaluated:0,supported:0,reasons:{}},positions=new Map(),details=[],ambiguous=new Set();
   return {
     observe({realtime,now}) {
-      const result={evaluated:0,supported:0,reasons:{}};
+      positions=new Map();details=[];ambiguous=new Set();
+      const result={evaluated:0,supported:0,reasons:{},feedVehicleCount:realtime?.vehicles?.length||0};
+      const metadata=new Map();
       if(realtime && (!Number.isFinite(realtime.timestamp)||now-realtime.timestamp>POSITION_POLICY.maxAgeSec||now-realtime.timestamp< -POSITION_POLICY.futureSec)) {
         engine.clear();summary={evaluated:0,supported:0,reasons:{feed_stale:1}};return;
       }
@@ -23,14 +25,27 @@ export function createPositionObserver({routeIndex,index}) {
         const roundTrip=Number.isFinite(day)?new Date((day+9*3600)*1000).toISOString().slice(0,10).replaceAll('-',''):null;
         if(roundTrip!==date||!serviceActive(index,target.serviceId,day)
           ||(vehicle.trip.startTime && clockSeconds(vehicle.trip.startTime)!==clockSeconds(target.startTime))) {
-          result.evaluated++;result.reasons.service_instance_mismatch=(result.reasons.service_instance_mismatch||0)+1;continue;
+          result.evaluated++;result.reasons.service_instance_mismatch=(result.reasons.service_instance_mismatch||0)+1;
+          if(details.length<24)details.push({tripId:vehicle.trip.tripId,routeId:vehicle.trip.routeId,
+            targetStopId:target.stopId,supported:false,reason:'service_instance_mismatch'});
+          continue;
         }
         const position=engine.evaluate({...normalizeVehicle(vehicle,routeIndex.provider),serviceDayStart:day},target,now);
-        result.evaluated++;if(position.supported)result.supported++;
-        else result.reasons[position.reason]=(result.reasons[position.reason]||0)+1;
+        const key=`${date}:${vehicle.trip.tripId}:${target.stopId}:${target.sequence}`;
+        if(positions.has(key))ambiguous.add(key);
+        positions.set(key,ambiguous.has(key)?{supported:false,reason:'vehicle_ambiguous'}:position);
+        metadata.set(key,{tripId:vehicle.trip.tripId,routeId:vehicle.trip.routeId,targetStopId:target.stopId});
+        result.evaluated++;
+        if(!position.supported)result.reasons[position.reason]=(result.reasons[position.reason]||0)+1;
       }
+      if(ambiguous.size)result.reasons.vehicle_ambiguous=ambiguous.size;
+      result.supported=[...positions.values()].filter(position=>position.supported).length;
+      for(const [key,position] of positions)if(details.length<24)details.push({ ...metadata.get(key),
+        supported:position.supported,reason:position.reason });
       summary=result;
     },
-    summary:()=>structuredClone(summary)
+    summary:()=>structuredClone({...summary,details}),
+    positionFor:({tripId,date,stopId,sequence})=>positions.get(`${date}:${tripId}:${stopId}:${sequence}`)||null,
+    clear:()=>{positions=new Map();details=[];ambiguous=new Set();engine.clear();summary={evaluated:0,supported:0,reasons:{}};}
   };
 }
