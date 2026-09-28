@@ -67,6 +67,18 @@
       kind: 'live', delay };
   }
 
+  function displayShadowPosition(position) {
+    if (position?.supported !== true || position.shadowReady !== true
+      || !Number.isInteger(position.stopsAway) || position.stopsAway < 0
+      || !text(position.nextStop)) return '位置確認中';
+    if (position.state === 'at_stop') return `${position.nextStop}に停車中・あと${position.stopsAway}停留所`;
+    if (position.state === 'approaching') return `${position.nextStop}に接近中・あと${position.stopsAway}停留所`;
+    if (position.state === 'between_stops' && text(position.previousStop))
+      return `${position.previousStop}〜${position.nextStop}を走行中・あと${position.stopsAway}停留所`;
+    if (position.state === 'departed') return `${position.nextStop}へ走行中・あと${position.stopsAway}停留所`;
+    return '位置確認中';
+  }
+
   function sourceSummary(data) {
     const tokyu = data.providers.find((value) => value.provider === 'tokyu' && Number.isFinite(value.retrievedAt));
     return `${tokyu ? `東急時刻表取得 ${dateClock(tokyu.retrievedAt)} / ` : ''}出典: ${data.attributions
@@ -152,7 +164,7 @@
     return values.length ? values.join('＋') : '運行情報を確認できません';
   }
 
-  function renderArrivalList(doc, group, hubId) {
+  function renderArrivalList(doc, group, hubId, positionShadowEnabled = false) {
     const list = element(doc, 'ol', 'bus-hub-board');
     group.arrivals.slice(0, 3).forEach((row) => {
         const shown = displayArrival(row), recommended = row.id === group.recommendedArrivalId;
@@ -171,15 +183,18 @@
           element(doc, 'span', 'bus-hub-time-suffix', shown.timeSuffix));
         timing.append(departureTime, element(doc, 'span', 'bus-hub-quality', shown.note));
         if (shown.delay) timing.append(element(doc, 'span', 'bus-hub-delay', shown.delay));
-      item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing); list.append(item);
+      item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing);
+      if (positionShadowEnabled) item.append(element(doc, 'p', 'bus-hub-position-shadow', displayShadowPosition(row.position)));
+      list.append(item);
     });
     return list;
   }
 
-  function renderGroups(doc, groups, data) {
+  function renderGroups(doc, groups, data, positionShadowEnabled = false) {
     groups.replaceChildren(...data.decisionGroups.filter((group) => group.arrivals.length).map((group) => {
       const section = element(doc, 'section', 'bus-hub-group'); section.dataset.decisionGroup = group.id;
-      section.append(element(doc, 'h3', 'bus-hub-purpose', group.label), renderArrivalList(doc, group, data.hubId));
+      section.append(element(doc, 'h3', 'bus-hub-purpose', group.label),
+        renderArrivalList(doc, group, data.hubId, positionShadowEnabled));
       return section;
     }));
   }
@@ -205,7 +220,7 @@
         status.classList.toggle('is-stale', !!error);
         if (!data) return;
         sources.textContent = sourceSummary(data);
-        renderGroups(doc, groups, data);
+        renderGroups(doc, groups, data, root.PALURU_BUS_POSITION_SHADOW_ENABLED === true);
       } });
   }
 
@@ -272,7 +287,7 @@
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();
   }
-  return { install, validate, displayArrival, sourceSummary, renderArrivalList, configuredHubs, apiUrl,
+  return { install, validate, displayArrival, displayShadowPosition, sourceSummary, renderArrivalList, configuredHubs, apiUrl,
     resolveSelectedHubId, createSelection,
     HUB_UI_DEFAULT_ENABLED, HUB_SELECTION_STORAGE_KEY,
     setActive(value) { requestedActive = !!value; selection?.setActive(value); } };
