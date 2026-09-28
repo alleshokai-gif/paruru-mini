@@ -1,0 +1,7 @@
+.bus-home-route-train-choice { min-height: 48px; padding: 10px 14px; font-size: 16px; }
+.bus-home-route-option { min-width: 0; padding: 12px; border: 1px solid #d8e3ec;
+  border-radius: 12px; overflow-wrap: anywhere; }
+.bus-home-route-option.is-primary { background: #edf5fc; border-color: #90b5d6; }
+.bus-home-route-option p { margin: 4px 0; }
+.bus-home-route-station { margin: 0 0 6px; font-size: 17px; }
+.bus-home-route-quality, .bus-home-route-partial { color: #526579; font-size: 13px; }
