@@ -54,6 +54,15 @@ test('future query excludes missed or cancelled trips and projects only a labele
   assert.equal(rows[0].delayMinutes, 5);
 });
 
+test('explicitly skipped boarding or home stops are not restored by Static fallback', () => {
+  const index = indexWithThree(), feed = realtime([{ i: 0 }, { i: 1 }]);
+  feed.updates[0].stops[0].relationship = 1;
+  feed.updates[1].stops[1].relationship = 1;
+  const rows = getFutureBuses({ index, queries: [query], providerContext: P0_INPUT.providerContext,
+    realtime: feed, now: NOW, boardingAt: epoch('08:00') }).results[0].arrivals;
+  assert.deepEqual(rows.map((row) => row.tripId.slice(-8)), ['future-2']);
+});
+
 test('uncertain departure falls below normal future trips without being presented as catchable', () => {
   const index = indexWithThree();
   const result = getFutureBuses({ index, queries: [query], providerContext: P0_INPUT.providerContext,

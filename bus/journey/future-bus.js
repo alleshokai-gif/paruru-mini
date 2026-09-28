@@ -22,6 +22,13 @@ function eventAt(stops, stopId, sequence, kind, scheduled) {
   return null;
 }
 
+function skippedStop(stops, stopId, sequence) {
+  const matching = (stops || []).filter((stop) => (stop.stopId === null || stop.stopId === stopId)
+    && (stop.sequence === null || stop.sequence === sequence)
+    && (stop.stopId !== null || stop.sequence !== null));
+  return matching.length === 1 && matching[0].relationship === 1;
+}
+
 // BoardingAt is a future station-arrival plus transfer time, not the current wall clock.
 // This service deliberately does not reuse getArrivals(), which truncates to the next three at now.
 export function getFutureBuses({ index, queries, providerContext, realtime = null, now, boardingAt,
@@ -56,6 +63,8 @@ export function getFutureBuses({ index, queries, providerContext, realtime = nul
           const update = matches.length === 1 && fresh(matches[0].timestamp, now, LIMITS.tripMaxAgeSec)
             ? matches[0] : null;
           if (update?.trip.relationship === 3 || update && update.trip.relationship !== 0) continue;
+          if (update && (skippedStop(update.stops, row.fromStopId, row.stopSequence)
+            || skippedStop(update.stops, row.toStopId, row.alightSequence))) continue;
           const estimatedDeparture = update ? eventAt(update.stops, row.fromStopId, row.stopSequence,
             'departure', scheduledDeparture) : null;
           const estimatedArrival = update ? eventAt(update.stops, row.toStopId, row.alightSequence,
