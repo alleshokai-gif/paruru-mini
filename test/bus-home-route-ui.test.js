@@ -42,3 +42,10 @@ test('route decision shows station, bus, home arrival and static quality without
   assert.match(text, /5分差/);
   assert.doesNotMatch(text, /confidence|GPS|lat|lon|sourceId/);
 });
+
+test('partial source failure is visible even when its station still has buses', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  ui.renderDecision(doc, mount, { status: 'partial', fastest: null, alternate: null,
+    unavailablePlaces: [], unavailableSources: ['tokyu:mukougaoka_to_kibukihoncho'] });
+  assert.match(renderedText(mount), /一部の経路情報を取得できませんでした/);
+});

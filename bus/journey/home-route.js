@@ -38,12 +38,17 @@ export async function compareHomeRoutes({ journeyId, selectedTrain, transferMinu
   const tasks = places.map(async (place) => {
     const stationArrivalAt = selectedTrain.arrivals?.[place.stationId], transfer = transferMinutes[place.placeId];
     const boardingAt = stationArrivalAt + transfer * 60;
-    const buses = await loadBuses({ placeId: place.placeId, boardingAt, sourceIds: place.sourceIds });
-    if (!Array.isArray(buses)) fail();
-    return buses.filter((bus) => {
+    const loaded = await loadBuses({ placeId: place.placeId, boardingAt, sourceIds: place.sourceIds });
+    const sourceStates = loaded?.sourceStates;
+    if (!Array.isArray(loaded?.arrivals) || !sourceStates || typeof sourceStates !== 'object'
+      || Array.isArray(sourceStates) || Object.keys(sourceStates).length !== place.sourceIds.length
+      || place.sourceIds.some((id) => !['available', 'unavailable'].includes(sourceStates[id]))) fail();
+    const unavailableSources = place.sourceIds.filter((id) => sourceStates[id] === 'unavailable');
+    const options = loaded.arrivals.filter((bus) => {
       if (!place.sourceIds.includes(`${bus.provider}:${bus.queryId}`) || !validTime(bus.departureAt)
         || !knownState.has(bus.departureState) || bus.estimatedArrival !== null
-          && !validTime(bus.estimatedArrival)) fail();
+          && !validTime(bus.estimatedArrival)
+        || sourceStates[`${bus.provider}:${bus.queryId}`] !== 'available') fail();
       return bus.departureAt >= boardingAt;
     }).map((bus) => ({ placeId: place.placeId, stationId: place.stationId, stationLabel: place.label,
       stationArrivalAt, transferMinutes: transfer, boardingAt,
@@ -51,11 +56,19 @@ export async function compareHomeRoutes({ journeyId, selectedTrain, transferMinu
       platform: bus.platform, departureAt: bus.departureAt, homeArrivalAt: bus.estimatedArrival,
       timingQuality: bus.timingQuality, departureState: bus.departureState,
       recommendable: bus.recommendable === true && !uncertainty.has(bus.departureState) }));
+    return { options, unavailableSources };
   });
-  const settled = await Promise.allSettled(tasks), options = [], unavailable = [];
+  const settled = await Promise.allSettled(tasks), options = [], unavailable = [], unavailableSources = [];
   for (let index = 0; index < settled.length; index++) {
-    if (settled[index].status === 'fulfilled') options.push(...settled[index].value);
-    else unavailable.push(places[index].placeId);
+    if (settled[index].status === 'fulfilled') {
+      options.push(...settled[index].value.options);
+      unavailableSources.push(...settled[index].value.unavailableSources);
+      if (settled[index].value.unavailableSources.length === places[index].sourceIds.length)
+        unavailable.push(places[index].placeId);
+    } else {
+      unavailable.push(places[index].placeId);
+      unavailableSources.push(...places[index].sourceIds);
+    }
   }
   const eligible = options.filter((option) => option.recommendable && validTime(option.homeArrivalAt)
     && option.homeArrivalAt >= option.departureAt);
@@ -63,8 +76,8 @@ export async function compareHomeRoutes({ journeyId, selectedTrain, transferMinu
     || a.departureAt - b.departureAt || a.tripId.localeCompare(b.tripId));
   const fastest = eligible[0] ?? null, alternate = eligible.find((option) => option.stationId !== fastest?.stationId) ?? null;
   return Object.freeze({ journeyId, selectedTrainId: selectedTrain.id,
-    status: fastest ? unavailable.length ? 'partial' : 'available' : 'insufficient_data',
+    status: fastest ? unavailableSources.length ? 'partial' : 'available' : 'insufficient_data',
     fastest, alternate, differenceMinutes: fastest && alternate
       ? Math.round((alternate.homeArrivalAt - fastest.homeArrivalAt) / 60) : null,
-    options, unavailablePlaces: unavailable });
+    options, unavailablePlaces: unavailable, unavailableSources });
 }

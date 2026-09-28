@@ -35,7 +35,8 @@
       if (Number.isFinite(result.differenceMinutes)) nodes.push(node(doc, 'p', 'bus-home-route-difference',
         `${result.differenceMinutes}分差`));
     } else nodes.push(node(doc, 'p', 'bus-home-route-unavailable', '帰宅時刻を比較できません'));
-    if (result.unavailablePlaces?.length) nodes.push(node(doc, 'p', 'bus-home-route-partial',
+    if (result.unavailablePlaces?.length || result.unavailableSources?.length)
+      nodes.push(node(doc, 'p', 'bus-home-route-partial',
       '一部の経路情報を取得できませんでした'));
     mount.replaceChildren(...nodes);
   }
