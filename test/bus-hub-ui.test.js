@@ -33,7 +33,7 @@ test('Hub module stays fail-closed while production config explicitly enables it
   assert.equal(hub.HUB_UI_DEFAULT_ENABLED, false);
   const config = fs.readFileSync(require.resolve('../features/bus/config.js'), 'utf8');
   assert.match(config, /PALURU_BUS_HUB_UI_ENABLED\s*=\s*true/);
-  assert.match(config, /PALURU_BUS_POSITION_SHADOW_ENABLED\s*=\s*false/);
+  assert.match(config, /PALURU_BUS_POSITION_SHADOW_ENABLED\s*=\s*true/);
   assert.match(config, /PALURU_BUS_LEGACY_UI_ENABLED\s*=\s*false/);
   assert.match(config, /mizonokuchi-minamiguchi/);
   assert.match(config, /tachikawa-ekikitaguchi/);

@@ -1,14 +1,21 @@
-.bus-home-route-train-choice { min-height: 48px; padding: 10px 14px; font-size: 16px; }
+.bus-home-route-train-choice { display: block; box-sizing: border-box; width: 100%; min-height: 48px; margin-top: 6px; padding: 10px 14px; font-size: 16px; }
 .bus-home-route-option { min-width: 0; padding: 12px; border: 1px solid #d8e3ec;
   border-radius: 12px; overflow-wrap: anywhere; }
 .bus-home-route-option.is-primary { background: #edf5fc; border-color: #90b5d6; }
 .bus-home-route-option p { margin: 4px 0; }
 .bus-home-route-station { margin: 0 0 6px; font-size: 17px; }
 .bus-home-route-quality, .bus-home-route-partial { color: #526579; font-size: 13px; }
-.bus-home-route { margin: 0 0 18px; padding: 14px; border: 1px solid #d8e3ec; border-radius: 14px; min-width: 0; }
+.bus-home-route { margin: 0 0 14px; min-width: 0; }
+.bus-home-route-toggle { width: 100%; min-height: 48px; padding: 10px 14px; border: 1px solid #b9cde0; border-radius: 10px; background: #eaf3fb; color: #224766; font-size: 16px; font-weight: 700; text-align: left; }
+.bus-home-route-toggle[aria-expanded="true"] { background: #dcecf9; }
+.bus-home-route-content { min-width: 0; margin-top: 8px; padding: 12px; border: 1px solid #d8e3ec; border-radius: 12px; }
 .bus-home-route-heading { margin: 0 0 10px; font-size: 20px; }
-.bus-home-route-journeys, .bus-home-route-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-.bus-home-route-journey-choice { min-height: 48px; padding: 9px 14px; font-size: 16px; }
-.bus-home-route-journey-choice[aria-pressed="true"] { background: #314e68; color: #fff; }
+.bus-home-route-journeys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+.bus-home-route-choices { margin: 8px 0; }
+.bus-home-route-journey-choice { min-width: 0; min-height: 48px; padding: 9px 8px; border-radius: 9px; font-size: 16px; }
+.bus-home-route-journey-choice[data-journey-id="university"] { background: #e5f1fc; color: #22547a; border: 1px solid #9cc7e9; }
+.bus-home-route-journey-choice[data-journey-id="high_school"] { background: #edf2e4; color: #47622d; border: 1px solid #b8cf98; }
+.bus-home-route-journey-choice[aria-pressed="true"] { box-shadow: inset 0 0 0 2px currentColor; font-weight: 700; }
+.bus-home-route-train-label { display: block; font-size: 14px; color: #425971; }
 .bus-home-route-status { min-height: 1.4em; color: #526579; }
 .bus-home-route-result { display: grid; gap: 8px; min-width: 0; }

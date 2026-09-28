@@ -283,7 +283,8 @@
         button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
         locationPanels.get(id).hidden = !selected;
       }
-      mountPoint.replaceChildren(rootHeading, locations); installed = true;
+      const homeRoute = doc.querySelector('#busHomeRouteMount');
+      mountPoint.replaceChildren(rootHeading, ...(homeRoute ? [homeRoute] : []), locations); installed = true;
       selection.setActive(requestedActive);
       doc.addEventListener('visibilitychange', () => controllers.forEach((value) => value.visibilityChanged()));
     }

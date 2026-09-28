@@ -105,16 +105,14 @@ async function validation(path, search, scenario) {
   return { status: 200, body: overlay(await result.json(), path, scenario) };
 }
 function bootstrap(scenario) {
-  const links = scenarios.map(([id, label]) => `<a href="/?case=${id}" ${id === scenario ? 'aria-current="page"' : ''}>${label}</a>`).join('');
-  const fixture = scenario !== 'live';
+  const label = scenarios.find(([id]) => id === scenario)?.[1];
+  const note = scenario === 'live'
+    ? 'Hubはvalidation実データ。帰宅最速の列車・比較時刻はUI確認用です。'
+    : `UI確認用fixture: ${label}。通常便はvalidation実データです。`;
   return `<style>
     #splash,#authLock{display:none!important}body{overflow:auto!important}
-    .bus-preview-controls{box-sizing:border-box;max-width:100%;margin:0 0 14px;padding:12px;background:#fff4d9;border:1px solid #e5c878;border-radius:12px}
-    .bus-preview-controls h1{font-size:16px;margin:0 0 5px}.bus-preview-controls p{font-size:12px;margin:0 0 9px}
-    .bus-preview-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-    .bus-preview-links a{box-sizing:border-box;min-width:0;min-height:48px;padding:9px 6px;border:1px solid #9caec0;border-radius:8px;background:#fff;color:#243b54;font-size:12px;font-weight:700;text-align:center;text-decoration:none;display:grid;place-items:center;overflow-wrap:anywhere}
-    .bus-preview-links a[aria-current=page]{background:#334e68;color:white}
-    @media(min-width:700px){.bus-preview-links{grid-template-columns:repeat(4,minmax(0,1fr))}}
+    .bus-preview-note{margin:0 0 10px;color:#526579;font-size:11px;line-height:1.4}
+    .menu-toggle{visibility:hidden!important}
   </style>
   <script>
     (()=>{
@@ -134,16 +132,10 @@ function bootstrap(scenario) {
         document.body.classList.add('is-authenticated');
         const bus=document.querySelector('#busView');
         document.querySelectorAll('.app-view').forEach(view=>{view.hidden=view!==bus;view.classList.toggle('is-active',view===bus)});
-        const controls=document.createElement('aside');
-        controls.className='bus-preview-controls';
-        controls.innerHTML=${JSON.stringify(`<h1>PALURU Bus Preview</h1><p>feature branchの実画面。Hubの通常便はvalidation API、帰宅最速と${fixture ? '選択ケース' : '列車入力'}はUI fixtureです。公開版ではありません。</p><div class="bus-preview-links">${links}</div>`)};
-        bus.prepend(controls);
-        const nav=document.querySelector('.bottom-nav');
-        nav.innerHTML='<button class="nav-item is-active" type="button">Bus</button><button class="nav-item" type="button">帰宅最速</button><button class="nav-item" type="button">ケース</button>';
-        nav.children[0].onclick=()=>window.scrollTo({top:0,behavior:'smooth'});
-        nav.children[1].onclick=()=>document.querySelector('#busHomeRouteMount').scrollIntoView({behavior:'smooth'});
-        nav.children[2].onclick=()=>controls.scrollIntoView({behavior:'smooth'});
-        document.querySelector('#menuToggleButton').onclick=()=>controls.scrollIntoView({behavior:'smooth'});
+        const note=document.createElement('p');
+        note.className='bus-preview-note';
+        note.textContent=${JSON.stringify(note)};
+        bus.prepend(note);
         window.PALURUBusHub?.setActive(true);
         window.PALURUBusHomeRoute?.setActive(true);
       });
@@ -152,7 +144,7 @@ function bootstrap(scenario) {
 }
 const configOverride = (scenario) => `\n;globalThis.PALURU_BUS_API_URL='/api/bus/arrivals';
 globalThis.PALURU_BUS_HOME_ROUTE_ENABLED=true;
-globalThis.PALURU_BUS_POSITION_SHADOW_ENABLED=${['position-safe', 'position-weak'].includes(scenario)};
+globalThis.PALURU_BUS_POSITION_SHADOW_ENABLED=${scenario !== 'position-off'};
 globalThis.PALURU_BUS_HOME_ROUTE_SOURCE={
  getTrainChoices:async(journeyId)=>{const r=await fetch('/preview/trains?journeyId='+encodeURIComponent(journeyId));if(!r.ok)throw Error('TRAIN_UNAVAILABLE');return r.json()},
  evaluate:async({journeyId,trainId})=>{const r=await fetch('/preview/home-route?journeyId='+encodeURIComponent(journeyId)+'&trainId='+encodeURIComponent(trainId)+'&previewCase=${scenario}');if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()}

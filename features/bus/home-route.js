@@ -7,7 +7,7 @@
 }(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
   const providerName = Object.freeze({ kawasaki: '川崎市バス', tokyu: '東急バス' });
-  let active = false, generation = 0, mounted = false, activate = null;
+  let active = false, expanded = false, generation = 0, mounted = false, activate = null;
   const clock = (epoch) => new Date((epoch + 9 * 3600) * 1000).toISOString().slice(11, 16);
   const node = (doc, tag, className, value) => {
     const result = doc.createElement(tag); result.className = className; result.textContent = value;
@@ -45,12 +45,18 @@
   function renderTrainChoices(doc, mount, trains, onSelect) {
     if (!mount || !Array.isArray(trains) || typeof onSelect !== 'function'
       || trains.some((train) => !train?.id || !train.label)) throw Error('BUS_TRAIN_CHOICES_INVALID');
-    const choices = trains.map((train) => {
-      const button = node(doc, 'button', 'bus-home-route-train-choice', train.label);
-      button.type = 'button'; button.addEventListener('click', () => onSelect(train.id));
-      return button;
-    });
-    mount.replaceChildren(...choices);
+    const label = node(doc, 'label', 'bus-home-route-train-label', '乗車する列車');
+    const select = node(doc, 'select', 'bus-home-route-train-choice', '');
+    const placeholder = node(doc, 'option', '', trains.length ? '列車を選択' : '列車候補がありません');
+    placeholder.value = ''; select.append(placeholder);
+    for (const train of trains) {
+      const option = node(doc, 'option', '', train.label);
+      option.value = train.id; select.append(option);
+    }
+    select.disabled = trains.length === 0;
+    select.addEventListener('change', () => { if (select.value) onSelect(select.value); });
+    label.append(select);
+    mount.replaceChildren(label);
   }
   function install(doc, root) {
     function mount() {
@@ -59,12 +65,23 @@
       if (!target) return;
       mounted = true;
       const source = root.PALURU_BUS_HOME_ROUTE_SOURCE;
-      const heading = node(doc, 'h2', 'bus-home-route-heading', '帰宅最速');
+      const toggle = node(doc, 'button', 'bus-home-route-toggle', '最速帰宅モード');
+      toggle.type = 'button'; toggle.setAttribute('aria-expanded', 'false');
+      toggle.setAttribute('aria-controls', 'busHomeRouteContent');
+      const content = node(doc, 'div', 'bus-home-route-content', '');
+      content.id = 'busHomeRouteContent'; content.hidden = true;
       const journeys = node(doc, 'div', 'bus-home-route-journeys', '');
       const choices = node(doc, 'div', 'bus-home-route-choices', '');
       const result = node(doc, 'div', 'bus-home-route-result', '');
       const status = node(doc, 'p', 'bus-home-route-status', '');
-      target.append(heading, journeys, choices, status, result);
+      content.append(journeys, choices, status, result);
+      target.append(toggle, content);
+      toggle.addEventListener('click', () => {
+        expanded = !expanded; content.hidden = !expanded;
+        toggle.setAttribute('aria-expanded', String(expanded));
+        if (expanded && active) activate?.();
+        if (!expanded) generation++;
+      });
       if (typeof source?.getTrainChoices !== 'function' || typeof source?.evaluate !== 'function') {
         status.textContent = '列車候補を読み込めません'; return;
       }
@@ -93,14 +110,14 @@
         button.addEventListener('click', () => selectJourney(id)); journeys.append(button);
       }
       target.hidden = false;
-      activate = () => selectJourney(selectedJourneyId);
-      if (active) activate();
+      activate = () => { if (expanded) selectJourney(selectedJourneyId); };
+      if (active && expanded) activate();
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();
   }
   return { renderDecision, renderTrainChoices, install,
     setActive(value) {
       active = !!value; if (!active) generation++;
-      if (active) activate?.();
+      if (active && expanded) activate?.();
     } };
 }));
