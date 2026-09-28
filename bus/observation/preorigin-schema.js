@@ -33,8 +33,9 @@ export function finalizePreoriginObservation(row, key) {
   value.distance_to_origin_m = round(value.distance_to_origin_m, 1);
   value.preorigin_distance_to_origin = round(value.preorigin_distance_to_origin, 1);
   value.gps_age_sec = round(value.gps_age_sec); value.rt_age_sec = round(value.rt_age_sec);
-  const canonical = [value.service_date, value.target_trip_id, value.record_kind, value.vehicle_hash,
-    value.vehicle_timestamp, value.feed_timestamp, value.evidence_level, value.trip_assignment_transition_at]
+  // A feed timestamp can be shared by several samples and overlapping runs.
+  // Hash the complete persisted row so one ID can never denote two different observations.
+  const canonical = PREORIGIN_HEADERS.slice(1).map((name) => value[name])
     .map((item) => item === null || item === undefined ? '' : String(item)).join('\u001f');
   value.preorigin_observation_id = `pre_${createHmac('sha256', key).update(canonical).digest('hex').slice(0, 32)}`;
   validatePreoriginObservation(value);

@@ -47,6 +47,16 @@ test('preorigin schema is deterministic, HMAC-only and leaves every Level decisi
   assert.throws(() => baseRow({ evidence_level: 'C' }), /ROW_INVALID/);
 });
 
+test('preorigin IDs distinguish overlapping runs and changed snapshots sharing a feed timestamp', () => {
+  const first = baseRow();
+  const overlap = baseRow({ run_id: 'run-2', sample_index: 3,
+    observed_at: '2026-09-14T06:40:32.000+09:00' });
+  const changed = baseRow({ assigned_count: 1 });
+  assert.notEqual(first.preorigin_observation_id, overlap.preorigin_observation_id);
+  assert.notEqual(first.preorigin_observation_id, changed.preorigin_observation_id);
+  assert.equal(first.preorigin_observation_id, baseRow().preorigin_observation_id);
+});
+
 test('collector limits itself to 12 trips and stores evidence without assigning A/B/C', () => {
   const collector = createPreoriginObservationCollector({ index, positionStatic, hashKey: HASH });
   assert.equal(collector.targetCount(NOW), 12); assert.equal(PREORIGIN_EXPECTED_START_TIMES.length, 12);
