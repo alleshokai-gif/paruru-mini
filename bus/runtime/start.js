@@ -23,6 +23,7 @@ import { createTokyuStaticProvider } from '../providers/tokyu/static.js';
 import { createSeibuProvider } from '../providers/seibu/provider.js';
 import { JOURNEYS } from '../journey/config.js';
 import { createJourneyService } from '../journey/service.js';
+import { createRailHomeRouteService } from '../rail/home-route-service.js';
 
 export function start({ env = process.env, log = (v) => console.log(JSON.stringify(v)) } = {}) {
   const started = performance.now(), config = runtimeConfig(env);
@@ -58,8 +59,14 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
     seibu: () => seibuProvider.getArrivals()
   } });
   const journeyService = createJourneyService({ journeys: JOURNEYS, hubService });
+  const odakyuStatic = JSON.parse(readFileSync(new URL('../release-static/rail-odakyu-static.json', import.meta.url), 'utf8'));
+  const jrStatic = JSON.parse(readFileSync(new URL('../release-static/rail-nambu-challenge-static.json', import.meta.url), 'utf8'));
+  const railHomeRouteService = createRailHomeRouteService({ odakyuStatic, jrStatic,
+    futureIndex: index, futureQueries: queries, providerContext, adapter,
+    odptToken: config.env.ODPT_ACCESS_TOKEN, challengeEnv: env });
   const handler = createHttpHandler(() => service, { health: true, hubServiceFactory: () => hubService,
-    journeyServiceFactory: () => journeyService });
+    journeyServiceFactory: () => journeyService,
+    railHomeRouteServiceFactory: () => railHomeRouteService });
   const server = createNodeServer({ handler, env: config.env, measure: log });
   server.listen(config.port, config.host, () => log({ event: 'bus_startup', build: 'bus-p2-5-noborito-mukougaoka-poc-v1',
     startupMs: performance.now() - started, staticStartupMs, positionStartupMs, positionStatus:position.status,
