@@ -142,7 +142,7 @@ function runLogSummary(entries, targetDate) {
 function rawSummary(values, targetDate) {
   const empty = { headerMatch: false, unexpectedColumns: 0, rows: 0, duplicates: 0, conflicts: 0,
     invalidRows: 0, invalidHmac: 0, rawId: 0, tokenLeak: 0, rawResponse: 0, trips: new Map(),
-    sampleKeys: new Set(), sampleCounters: new Map(), unassignedKeys: new Set(),
+    sampleKeys: new Set(), sampleRunKeys: new Set(), sampleCounters: new Map(), unassignedKeys: new Set(),
     assigned: 0, unassigned: 0, partial: 0, stale: 0, gpsMissing: 0,
     undetermined: 0, transitions: 0, levelA: 0, levelB: 0, secondsBefore: [] };
   if (!Array.isArray(values) || !values.length) return empty;
@@ -183,6 +183,7 @@ function rawSummary(values, targetDate) {
     if (!result.trips.has(tripId)) result.trips.set(tripId, { before: new Set(), after: new Set() });
     const sampleKey = `${value.run_id}:${value.sample_index}:${value.feed_timestamp}`;
     result.sampleKeys.add(sampleKey);
+    result.sampleRunKeys.add(`${value.run_id}:${value.sample_index}`);
     if (!result.sampleCounters.has(sampleKey)) result.sampleCounters.set(sampleKey, {
       assigned: integer(value.assigned_count) || 0, partial: integer(value.partial_descriptor_count) || 0,
       stale: integer(value.stale_count) || 0, gpsMissing: integer(value.gps_missing_count) || 0
@@ -242,8 +243,15 @@ export function evaluatePreoriginCanary({ targetDate, evaluatedAt = new Date().t
   const sufficientlyCovered = raw.trips.size === 12 && [...raw.trips.values()]
     .every((value) => value.before.size >= 10 && value.after.size >= 5);
   if (!sufficientlyCovered) reasons.add('TARGET_WINDOW_COVERAGE_INSUFFICIENT');
-  if (logs.samples.size < 280 || raw.sampleKeys.size < 280) reasons.add('SAMPLE_COVERAGE_INSUFFICIENT');
-  if (logs.samples.size !== raw.sampleKeys.size) reasons.add('SAMPLE_SOURCE_MISMATCH');
+  if (logs.samples.size < 280) reasons.add('SAMPLE_COVERAGE_INSUFFICIENT');
+  // A sampled feed can yield zero Raw rows. Compare only samples that logged a nonzero row count.
+  const rowCountsAvailable = [...logs.samples.values()].every((sample) => integer(sample.rows) !== null);
+  if (rowCountsAvailable) {
+    const expectedRawKeys = new Set([...logs.samples.entries()]
+      .filter(([, sample]) => integer(sample.rows) > 0).map(([key]) => key));
+    if (expectedRawKeys.size !== raw.sampleRunKeys.size
+      || [...expectedRawKeys].some((key) => !raw.sampleRunKeys.has(key))) reasons.add('SAMPLE_SOURCE_MISMATCH');
+  } else if (logs.samples.size !== raw.sampleKeys.size) reasons.add('SAMPLE_SOURCE_MISMATCH');
   if (logs.intervalAnomalies) reasons.add('SAMPLE_INTERVAL_ANOMALY');
   if (execution.overlaps) reasons.add('RUN_OVERLAP');
   // The deployed v1 Raw schema does not persist feed-wide unusable, identity-missing, or out-of-radius counts.
@@ -259,8 +267,8 @@ export function evaluatePreoriginCanary({ targetDate, evaluatedAt = new Date().t
       execution.count - execution.unique, execution.count - scheduler.expected),
     latest_completion_at: execution.latestCompletion, expected_observation_runs: 28,
     actual_observation_runs: Math.max(0, logs.starts.size - logs.skipped.size), expected_samples: 280,
-    actual_samples: Math.max(logs.samples.size, raw.sampleKeys.size),
-    missing_sample_count: Math.max(0, 280 - Math.min(logs.samples.size, raw.sampleKeys.size)),
+    actual_samples: logs.samples.size,
+    missing_sample_count: Math.max(0, 280 - logs.samples.size),
     sample_interval_anomaly_count: logs.intervalAnomalies, run_overlap_count: execution.overlaps,
     outside_time_band_count: logs.outside, no_target_service_count: logs.noTarget,
     static_mismatch_count: logs.staticMismatch, target_trip_coverage: raw.trips.size / 12,
