@@ -19,6 +19,15 @@ function stopIdFor(row, query) {
   fail('BUS_KAWASAKI_HUB_PLATFORM_INVALID');
 }
 
+function staticRowFor(row, query, index, routeId, stopId) {
+  const match = /^\d{8}:(.+)$/.exec(row.tripId);
+  if (!match) fail('BUS_KAWASAKI_HUB_TRIP_INVALID');
+  const rows = (index.directions?.[query.id] || []).filter((candidate) => candidate.tripId === match[1]
+    && candidate.routeId === routeId && candidate.fromStopId === stopId);
+  if (rows.length !== 1 || typeof rows[0].isOrigin !== 'boolean') fail('BUS_KAWASAKI_HUB_STATIC_ORIGIN_INVALID');
+  return rows[0];
+}
+
 function epoch(value) {
   const parsed = Date.parse(value) / 1000;
   if (!Number.isFinite(parsed)) fail('BUS_KAWASAKI_HUB_TIME_INVALID');
@@ -48,11 +57,13 @@ export function normalizeKawasakiHubResult(response, { index, queries }) {
     for (const row of direction.arrivals) {
       const stopId = stopIdFor(row, query), stop = index.stops[stopId];
       if (!stop) fail('BUS_KAWASAKI_HUB_INVALID');
+      const routeId = routeIdFor(row, query, index);
+      const staticRow = staticRowFor(row, query, index, routeId, stopId);
       const scheduledDeparture = epoch(row.scheduledAt);
       const estimatedDeparture = row.realtime ? epoch(row.estimatedAt) : null;
       arrivals.push({
         id: `kawasaki:${row.tripId}`, sourceId: direction.id, provider: 'kawasaki',
-        routeId: routeIdFor(row, query, index), routeLabel: row.routeLabel,
+        routeId, routeLabel: row.routeLabel, isOrigin: staticRow.isOrigin,
         destination: row.headsign || direction.to,
         originStop: { id: stopId, name: stop.name }, targetStop: { id: stopId, name: stop.name },
         scheduledDeparture, estimatedDeparture, effectiveDeparture: null,

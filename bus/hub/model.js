@@ -38,6 +38,7 @@ export function normalizeHubArrival(value, generatedAt, { etaConsistencySec = 90
     || !REALTIME_STATES.has(value.realtimeState)
     || !DEPARTURE_STATES.has(value.departureState)
     || value.actionability != null && !ACTIONABILITY.has(value.actionability)
+    || value.isOrigin != null && typeof value.isOrigin !== 'boolean'
     || value.confidence != null && (!finite(value.confidence) || value.confidence < 0 || value.confidence > 1))
     fail('BUS_HUB_ARRIVAL_INVALID');
   if (value.etaMinutes != null && value.estimatedDeparture != null
@@ -46,6 +47,7 @@ export function normalizeHubArrival(value, generatedAt, { etaConsistencySec = 90
   return {
     id: value.id, sourceId: value.sourceId, provider: value.provider,
     routeId: value.routeId, routeLabel: value.routeLabel, destination: value.destination,
+    isOrigin: value.isOrigin === true,
     originStop: normalizeStop(value.originStop), targetStop: normalizeStop(value.targetStop),
     scheduledDeparture: value.scheduledDeparture,
     estimatedDeparture: value.estimatedDeparture ?? null,

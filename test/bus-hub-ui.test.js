@@ -13,6 +13,22 @@ const fixture = (row = arrival()) => ({ success: true, hubId: 'kibukihoncho', hu
     url: 'https://www.odpt.org/' }], decisionGroups: [{ id: 'kibukihoncho_kajigaya', hubId: 'kibukihoncho',
     label: '梶が谷方面', destinations: ['梶が谷駅'], providers: ['tokyu'], arrivals: [row] }] });
 
+function fakeDocument() {
+  const create = (tagName) => ({ tagName, className: '', textContent: '', children: [], attributes: {},
+    classList: { add(value) { this.owner.className += ` ${value}`; } },
+    setAttribute(name, value) { this.attributes[name] = value; },
+    append(...children) { this.children.push(...children); } });
+  return { createElement(tagName) { const value = create(tagName); value.classList.owner = value; return value; },
+    createElementNS(_namespace, tagName) { const value = create(tagName); value.classList.owner = value; return value; } };
+}
+
+function descendants(node) { return [node, ...(node.children || []).filter((value) => typeof value === 'object').flatMap(descendants)]; }
+function renderedText(node) { return descendants(node).map((value) => value.textContent).join(''); }
+function renderOriginBadge(row, hubId = 'kibukihoncho') {
+  const list = hub.renderArrivalList(fakeDocument(), { arrivals: [row], recommendedArrivalId: null }, hubId);
+  return { list, nodes: descendants(list) };
+}
+
 test('Hub module stays fail-closed while production config explicitly enables it', () => {
   assert.equal(hub.HUB_UI_DEFAULT_ENABLED, false);
   const config = fs.readFileSync(require.resolve('../features/bus/config.js'), 'utf8');
@@ -114,6 +130,33 @@ test('Kawasaki realtime displays P0 delay wording while stale and pending states
     departureState: 'departure_uncertain' })).note, '発車済みの可能性あり');
   const source = fs.readFileSync(require.resolve('../features/bus/hub.js'), 'utf8');
   assert.doesNotMatch(source, /bus-position|latitude|longitude|stopsAway/);
+});
+
+test('Static origin badge is limited to Shinki Honcho boarding rows and coexists with overdue state', () => {
+  const originRow = arrival({ provider: 'kawasaki', routeLabel: '溝１７', destination: '溝口駅南口',
+    originStop: { id: '184_1', name: '神木本町' }, isOrigin: true,
+    departureState: 'departure_overdue', realtimeState: 'static_fallback' });
+  const origin = renderOriginBadge(originRow);
+  assert.equal(origin.nodes.filter((node) => node.className === 'bus-hub-origin-badge').length, 1);
+  assert.match(renderedText(origin.list), /始発/);
+  assert.match(renderedText(origin.list), /遅延中・発車未確認/);
+
+  const cases = [
+    { label: 'mid-route Shinki Honcho row', row: { ...originRow, isOrigin: false }, hubId: 'kibukihoncho' },
+    { label: 'Noborito origin', row: { ...originRow, originStop: { id: '362_1', name: '登戸駅' } }, hubId: 'noborito-eki' },
+    { label: 'Mizonokuchi origin', row: { ...originRow, originStop: { id: '434_2', name: '溝口駅南口' } },
+      hubId: 'mizonokuchi-minamiguchi' },
+    { label: 'Shinki origin in another Hub', row: originRow, hubId: 'showa-daiichi-gakuen' }
+  ];
+  for (const value of cases) {
+    const rendered = renderOriginBadge(value.row, value.hubId);
+    assert.equal(rendered.nodes.filter((node) => node.className === 'bus-hub-origin-badge').length, 0, value.label);
+  }
+});
+
+test('Hub response accepts only boolean Static origin metadata', () => {
+  assert.equal(hub.validate(fixture(arrival({ isOrigin: true }))).decisionGroups[0].arrivals[0].isOrigin, true);
+  assert.throws(() => hub.validate(fixture(arrival({ isOrigin: 'true' }))), /BUS_HUB_RESPONSE_INVALID/);
 });
 
 test('decision-group UI supports multiple locations and keeps provider, route, destination and delay DOM hooks', () => {

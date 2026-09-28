@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260927-generic-candidate-review-e2e-v1";
+globalThis.BUILD_ID = "v20260928-kibukihoncho-origin-badge-v1";

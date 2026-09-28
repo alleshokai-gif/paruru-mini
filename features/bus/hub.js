@@ -40,6 +40,7 @@
       for (const row of group.arrivals) {
         if (!text(row.id) || !text(row.provider) || !text(row.routeLabel) || !text(row.destination)
           || !Number.isFinite(row.scheduledDeparture) || !STATES.has(row.realtimeState)
+          || row.isOrigin != null && typeof row.isOrigin !== 'boolean'
           || row.etaMinutes != null && !Number.isFinite(row.etaMinutes)
           || row.delayMinutes != null && !Number.isFinite(row.delayMinutes)) throw Error('BUS_HUB_RESPONSE_INVALID');
         if (row.realtimeState === 'static_only' && (row.estimatedDeparture != null || row.etaMinutes != null || row.delayMinutes != null))
@@ -151,13 +152,15 @@
     return values.length ? values.join('＋') : '運行情報を確認できません';
   }
 
-  function renderArrivalList(doc, group) {
+  function renderArrivalList(doc, group, hubId) {
     const list = element(doc, 'ol', 'bus-hub-board');
     group.arrivals.slice(0, 3).forEach((row) => {
         const shown = displayArrival(row), recommended = row.id === group.recommendedArrivalId;
         const item = element(doc, 'li', `bus-hub-row is-${shown.kind}${recommended ? ' is-recommended' : ''}`);
         const heading = element(doc, 'div', 'bus-hub-row-heading');
         heading.append(providerLabel(doc, row.provider), element(doc, 'span', 'bus-hub-route', row.routeLabel));
+        if (hubId === 'kibukihoncho' && row.originStop?.name === '神木本町' && row.isOrigin === true)
+          heading.append(element(doc, 'span', 'bus-hub-origin-badge', '始発'));
         if (recommended) heading.append(element(doc, 'span', 'bus-hub-recommendation', '最速候補'));
         heading.append(element(doc, 'span', 'bus-hub-platform', row.platform
           ? /のりば$/.test(row.platform) ? row.platform : `${row.platform}のりば`
@@ -176,7 +179,7 @@
   function renderGroups(doc, groups, data) {
     groups.replaceChildren(...data.decisionGroups.filter((group) => group.arrivals.length).map((group) => {
       const section = element(doc, 'section', 'bus-hub-group'); section.dataset.decisionGroup = group.id;
-      section.append(element(doc, 'h3', 'bus-hub-purpose', group.label), renderArrivalList(doc, group));
+      section.append(element(doc, 'h3', 'bus-hub-purpose', group.label), renderArrivalList(doc, group, data.hubId));
       return section;
     }));
   }
