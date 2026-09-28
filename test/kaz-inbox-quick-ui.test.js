@@ -6,7 +6,7 @@ const inbox=require('../features/kaz-os/inbox');
 class Element {
   constructor(tag,doc){
     this.tagName=tag;this.ownerDocument=doc;this.children=[];this.dataset={};this.style={};this.attributes={};
-    this.className='';this.hidden=false;this.disabled=false;this.value='';this._text='';
+    this.className='';this.hidden=false;this.disabled=false;this.value='';this._text='';this.listeners={};
     this.classList={add:name=>{this.className+=' '+name;},toggle:(name,enabled)=>{
       const names=new Set(this.className.split(/\s+/).filter(Boolean));
       if(enabled)names.add(name);else names.delete(name);this.className=[...names].join(' ');
@@ -17,7 +17,7 @@ class Element {
   set textContent(value){this._text=String(value);this.children=[];}
   get textContent(){return this._text+this.children.map(node=>node.textContent).join('');}
   setAttribute(name,value){this.attributes[name]=value;}
-  addEventListener(){}
+  addEventListener(name,listener){this.listeners[name]=listener;}
   focus(){}
   querySelectorAll(selector){
     const tags=new Set(selector.split(',').map(value=>value.trim()));
@@ -48,7 +48,9 @@ let data={origin:'real_operational_sources',mode:'controlled_proposal',fixture_o
   work_items:[{id:'work-focus',source_revision:'rev'}],calendar_events:[],
   inbox_items:[focus,...[5,4,3,2,1].map(estimate)]};
 const health=value=>value?.status||'failed',calls=[];
-const answerApi=async answer=>{calls.push(answer);data={...data,inbox_items:data.inbox_items.filter(item=>item.id!==answer.decision_id)};return{inbox:data};};
+const answerApi=async answer=>{calls.push(answer);data={...data,inbox_items:data.inbox_items.filter(item=>item.id!==answer.decision_id)};
+  return answer.selected_option==='WORK'?{inbox:data,answer:{persistence_status:'DURABLE_PERSISTED',candidate_revision:answer.candidate_revision},
+    proposal:{change:{create_work_proposal:{kind:'CREATE_WORK',write_allowed:false,notion_write:0}}}}:{inbox:data};};
 const card=id=>find(host,node=>node.className.includes('kiq-current')&&node.dataset.decisionId===id);
 const button=(parent,label)=>find(parent,node=>node.tagName==='button'&&node.textContent===label);
 
@@ -87,6 +89,38 @@ const button=(parent,label)=>find(parent,node=>node.tagName==='button'&&node.tex
   assert.equal(calls[2].selected_option,'today');
   assert.equal(card('focus'),undefined);
   assert.equal(card('estimate-4'),undefined,'skip should survive another answer in the same view');
+  const commit='a'.repeat(40),blob='b'.repeat(40),revision=commit+':'+blob;
+  const candidateRef='github://alleshokai-gif/kaz-context/inbox/candidate.md@'+commit;
+  const candidate={id:'candidate-review-later',kind:'generic_candidate_review',contract:'generic-candidate-review-0.1',owner:'kaz',decision_requested:true,decision_status:'pending',
+    title:'Unified Intake closed loop and trigger boundary',question:'このCandidateの扱いを決めてな。',impact:'WORKだけproposalを作る',
+    candidate_ref:candidateRef,candidate_revision:revision,candidate_origin:'CHATGPT',question_revision:'question-sha256:'+'c'.repeat(64),
+    source_revision_references:refs,answer_contract:{inbox_item_id:'candidate-review-later',question_revision:'question-sha256:'+'c'.repeat(64),
+      choices:['CONTEXT','WORK','PROJECT','HOLD','REJECT','MERGE'].map(value=>({value,label:value}))}};
+  data={...data,projects:[{id:'project-1',title:'Kaz OS',status:'ACTIVE'}],work_items:[],inbox_items:[candidate],
+    sources:{...data.sources,github_candidates:{...source,source_revision:commit}}};
+  calls.length=0;
+  inbox.render(host,{page:'inbox',id:'all'},data,now,{health,tick:false,answerApi});
+  assert.equal(inbox.derive(data,now,health).today.length,0);
+  assert.equal(inbox.derive(data,now,health).later.length,1);
+  const filter=find(host,node=>node.tagName==='select'&&node.className==='ki-filter');filter.value='all';filter.listeners.change();
+  const start=button(host,'判断する');assert(start);
+  start.onclick();
+  assert.deepEqual(['CONTEXT','WORK','PROJECT','HOLD','REJECT','MERGE'].map(value=>Boolean(button(host,value))),[true,true,true,true,true,true]);
+  button(host,'WORK').onclick();
+  const project=find(host,node=>node.tagName==='select'&&node.children.some(option=>option.value==='project-1'));
+  const title=find(host,node=>node.tagName==='input'&&node.value===candidate.title);
+  assert(project);assert(title);
+  project.value='project-1';project.listeners.change();
+  title.value='Unified Intakeの定期BatchとReview Queue準備を実装する';title.listeners.input();
+  const save=button(host,'WORKを記録してproposalを作る');assert.equal(save.disabled,false);
+  await save.onclick();
+  assert.equal(calls.length,1,'use the existing Human Answer API exactly once');
+  assert.equal(calls[0].selected_option,'WORK');
+  assert.equal(calls[0].candidate_revision,revision);
+  assert.deepEqual(calls[0].work_fields,{project_id:'project-1',title:title.value,status:'READY',action_type:'ACTION',source:'CHATGPT',estimate_min:null});
+  assert.equal(calls[0].write_allowed,undefined);
+  assert.equal(find(host,node=>node.dataset?.inboxId===candidate.id),undefined,'saved Candidate leaves the pending list');
+  assert(host.textContent.includes('Candidate revision一致 · CREATE_WORK proposal生成 · write_allowed=false · Notion write 0'));
   inbox.dispose(host);
-  console.log('PASS INBOX per-Work planning, conditional estimate, skip, revision-bound save, and card removal');
+  console.log('PASS INBOX per-Work planning and later Candidate WORK through the existing revision-bound Human Answer API');
 })().catch(error=>{console.error(error);process.exitCode=1;});

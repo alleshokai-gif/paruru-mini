@@ -246,6 +246,53 @@
     const trusted=model.status==='ok';
     const statusLive=()=>health(data?.sources?.inbox,currentTime())==='ok';
     function field(parent,label,tag){const l=add(parent,'label','','ki-field');add(l,'span',label);return add(l,tag);}
+    const requestKeys=new Map();
+    async function persistAnswer(item,draft,active,skipped){
+      const key=requestKeys.get(item.id)||`paluru-${globalThis.crypto?.randomUUID?.()||String(Date.now())+'-'+Math.random().toString(16).slice(2)}`;
+      requestKeys.set(item.id,key);
+      active.querySelectorAll('button,input,select,textarea').forEach(control=>control.disabled=true);
+      const result=await answerApi({...draft,idempotency_key:key});
+      if(result?.inbox){
+        if(kind(item)==='generic_candidate_review'&&draft.selected_option==='WORK'){
+          const proposal=result.proposal?.change?.create_work_proposal;
+          const verified=result.answer?.persistence_status==='DURABLE_PERSISTED'
+            &&result.answer.candidate_revision===draft.candidate_revision
+            &&proposal?.kind==='CREATE_WORK'&&proposal.write_allowed===false&&proposal.notion_write===0;
+          result.inbox.feedback={...result.inbox.feedback,candidate_work_result:verified?'verified':'unverified',message:verified
+            ?'✓ 回答保存 · Candidate revision一致 · CREATE_WORK proposal生成 · write_allowed=false · Notion write 0'
+            :'回答結果のrevision / proposalを確認できません'};
+        }
+        render(host,selection,result.inbox,Date.now(),{health,workDetail,tick,answerApi,skippedEstimateIds:skipped||skippedEstimateIds});return;
+      }
+      throw Error('保存結果を再取得できません');
+    }
+    function candidateReviewControls(item,summary,actions,panel,error,submitCandidate){
+      actions.style.gridTemplateColumns='repeat(2, minmax(0,1fr))';
+      for(const choice of summary.choices){
+        const button=add(actions,'button',choice.label,'ki-button kiq-answer');button.type='button';button.dataset.answer=choice.value;
+        button.disabled=summary.issues.length>0||data?.mode==='read_only_display';
+        button.onclick=()=>{
+          if(sessions.get(host)!==session)return;
+          if(choice.value!=='WORK')return submitCandidate(choice,null,'');
+          panel.hidden=false;panel.replaceChildren();error.hidden=true;
+          actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded',String(b===button)));
+          add(panel,'p','CREATE_WORK proposalの項目を確認','kiq-check-heading');
+          const project=field(panel,'Project（既存Projectsから選択）','select');add(project,'option','Projectを選択').value='';
+          (list(data.projects)||[]).forEach(p=>{if(['ACTIVE','REVIEW','BLOCKED','BACKLOG'].includes(p.status)){const o=add(project,'option',p.title);o.value=p.id;}});
+          const title=field(panel,'Work title','input');title.type='text';title.maxLength=200;title.value=summary.title;
+          const status=field(panel,'Status','input');status.value='READY';status.readOnly=true;
+          const action=field(panel,'Action Type','input');action.value='ACTION';action.readOnly=true;
+          const source=field(panel,'Source','input');source.value=item.candidate_origin||'';source.readOnly=true;
+          const estimate=field(panel,'Estimate Min（任意）','input');estimate.type='number';estimate.min='1';estimate.max='100000';estimate.step='1';
+          const noteBox=add(panel,'div','','kiq-notes'),reason=field(noteBox,'理由（任意）','textarea');reason.rows=2;reason.maxLength=1000;
+          const controls=add(panel,'div','','kiq-review-controls');const submitWork=add(controls,'button','WORKを記録してproposalを作る','ki-button kiq-submit');submitWork.type='button';
+          const refresh=()=>{submitWork.disabled=!project.value||!title.value.trim()||!['CHATGPT','PALURU'].includes(item.candidate_origin)||data?.mode==='read_only_display'||!statusLive();};
+          project.addEventListener('change',refresh);title.addEventListener('input',refresh);refresh();
+          submitWork.onclick=()=>{const value=estimate.value.trim();return submitCandidate(choice,{project_id:project.value,title:title.value,status:'READY',action_type:'ACTION',source:item.candidate_origin,estimate_min:value===''?null:Number(value)},reason.value);};
+          const close=add(controls,'button','閉じる','kiq-text-button');close.type='button';close.onclick=()=>{panel.hidden=true;panel.replaceChildren();error.hidden=true;actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded','false'));};
+        };
+      }
+    }
     function detail(i,parent){
       const k=kind(i),info=entities(data,i,now,health),gate=evidenceGate(data,i,now,health);
       const title=i.title||info.entity?.title||'元項目は未取得';
@@ -300,7 +347,7 @@
       });
     }
     if(!detailId&&!allItems){
-      const quick=selectQuickQuestions(data,model,now),pool=quick.items,drafts=new Map(),notes=new Map(),requestKeys=new Map(),skipped=new Set(skippedEstimateIds||[]);let page=0;
+      const quick=selectQuickQuestions(data,model,now),pool=quick.items,drafts=new Map(),notes=new Map(),skipped=new Set(skippedEstimateIds||[]);let page=0;
       head.classList.add('kiq-header');
       if(todayOnly)add(head,'p','今日の判断のみ','kt-inbox-filter');
       const progress=add(head,'div','','kiq-progress'),feedback=add(host,'div','','kiq-feedback');feedback.setAttribute('role','status');
@@ -351,20 +398,16 @@
           const panel=add(active,'div','','kiq-review-panel');panel.hidden=true;panel.id='kiq-review-'+item.id;
           let pendingChoice=null,confirmed=null,note=null,submit=null,planningEstimateGroup=null;
           const error=add(active,'p','','kp-notice kiq-error');error.hidden=true;error.setAttribute('role','alert');
-          async function answer(choice,selectedOption=null,workFields=null){
+          async function answer(choice,selectedOption=null,workFields=null,answerReason=null){
             if(sessions.get(host)!==session)return;
             try{
-              const draft=inlineAnswer(data,item.id,{decision:choice.value,selected_option:selectedOption,work_fields:workFields,confirmed_summary:confirmed?.checked,reason:note?.value||notes.get(item.id)||''},currentTime(),health);
+              const draft=inlineAnswer(data,item.id,{decision:choice.value,selected_option:selectedOption,work_fields:workFields,confirmed_summary:confirmed?.checked,reason:answerReason===null?note?.value||notes.get(item.id)||'':answerReason},currentTime(),health);
             if(!answerApi){
               if(data?.mode==='read_only_display')throw Error('Live回答はまだ無効です');
               drafts.set(item.id,draft);totals();draw();return;
             }
-              const key=requestKeys.get(item.id)||`paluru-${globalThis.crypto?.randomUUID?.()||String(Date.now())+'-'+Math.random().toString(16).slice(2)}`;requestKeys.set(item.id,key);
-              active.querySelectorAll('button,input').forEach(control=>control.disabled=true);
-              const result=await answerApi({...draft,idempotency_key:key});
-              if(result?.inbox){render(host,selection,result.inbox,Date.now(),{health,workDetail,tick,answerApi,skippedEstimateIds:skipped});return;}
-              throw Error('保存結果を再取得できません');
-            }catch(e){error.hidden=false;error.textContent=e.message;active.querySelectorAll('button,input').forEach(control=>control.disabled=!statusLive());}
+              await persistAnswer(item,draft,active,skipped);
+            }catch(e){error.hidden=false;error.textContent=e.message;active.querySelectorAll('button,input,select,textarea').forEach(control=>control.disabled=!statusLive());}
           }
           function review(choice){
             pendingChoice=choice;panel.hidden=false;panel.replaceChildren();error.hidden=true;
@@ -384,7 +427,8 @@
             submit.onclick=()=>answer(pendingChoice);
             const close=add(controls,'button','閉じる','kiq-text-button');close.type='button';close.onclick=()=>{panel.hidden=true;panel.replaceChildren();confirmed=null;note=null;pendingChoice=null;error.hidden=true;actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded','false'));};
           }
-          for(const choice of summary.choices){
+          if(summary.kind==='generic_candidate_review')candidateReviewControls(item,summary,actions,panel,error,(choice,fields,reason)=>answer(choice,null,fields,reason));
+          else for(const choice of summary.choices){
             const button=add(actions,'button',summary.kind==='today_focus'&&choice.value==='today'?'今日やる':choice.label,'ki-button kiq-answer');button.type='button';button.dataset.answer=choice.value;
             button.disabled=summary.issues.length>0||data?.mode==='read_only_display';
             if(summary.review){button.setAttribute('aria-controls',panel.id);button.setAttribute('aria-expanded','false');}
@@ -395,24 +439,6 @@
                   planningEstimateGroup.hidden=false;
                   planningEstimateGroup.querySelectorAll('button')[0]?.focus();
                 }else answer(choice,{preference:choice.value});
-              }else if(summary.kind==='generic_candidate_review'&&choice.value==='WORK'){
-                pendingChoice=choice;panel.hidden=false;panel.replaceChildren();error.hidden=true;
-                actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded',String(b===button)));
-                add(panel,'p','CREATE_WORK proposalの項目を確認','kiq-check-heading');
-                const project=field(panel,'Project（既存Projectsから選択）','select');add(project,'option','Projectを選択').value='';
-                (list(data.projects)||[]).forEach(p=>{if(['ACTIVE','REVIEW','BLOCKED','BACKLOG'].includes(p.status)){const o=add(project,'option',p.title);o.value=p.id;}});
-                const title=field(panel,'Work title','input');title.type='text';title.maxLength=200;title.value=summary.title;
-                const status=field(panel,'Status','input');status.value='READY';status.readOnly=true;
-                const action=field(panel,'Action Type','input');action.value='ACTION';action.readOnly=true;
-                const source=field(panel,'Source','input');source.value=item.candidate_origin||'';source.readOnly=true;
-                const estimate=field(panel,'Estimate Min（任意）','input');estimate.type='number';estimate.min='1';estimate.max='100000';estimate.step='1';
-                const noteBox=add(panel,'div','','kiq-notes'),reason=field(noteBox,'理由（任意）','textarea');reason.rows=2;reason.maxLength=1000;reason.value=notes.get(item.id)||'';reason.addEventListener('input',()=>notes.set(item.id,reason.value));
-                const controls=add(panel,'div','','kiq-review-controls');const submitWork=add(controls,'button','WORKを記録してproposalを作る','ki-button kiq-submit');submitWork.type='button';
-                submitWork.disabled=!project.value||!title.value.trim()||!['CHATGPT','PALURU'].includes(item.candidate_origin)||data?.mode==='read_only_display';
-                const refresh=()=>{submitWork.disabled=!project.value||!title.value.trim()||!['CHATGPT','PALURU'].includes(item.candidate_origin)||data?.mode==='read_only_display'||!statusLive();};
-                project.addEventListener('change',refresh);title.addEventListener('input',refresh);
-                submitWork.onclick=()=>{const value=estimate.value.trim();answer(choice,null,{project_id:project.value,title:title.value,status:'READY',action_type:'ACTION',source:item.candidate_origin,estimate_min:value===''?null:Number(value)});};
-                const close=add(controls,'button','閉じる','kiq-text-button');close.type='button';close.onclick=()=>{panel.hidden=true;panel.replaceChildren();pendingChoice=null;error.hidden=true;actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded','false'));};
               }else if(summary.review)review(choice);else answer(choice);
             };
           }
@@ -510,6 +536,7 @@
       if(item)detail(item,host);else add(host,'p','この取得範囲に本人の未処理Decisionはありません。');
     }else{
       link(head,'← 今日の質問へ','inbox');
+      if(data?.feedback?.candidate_work_result)add(head,'p',data.feedback.message,'kiq-feedback-text');
       const count=add(head,'p','','ki-count');add(count,'strong',`${trusted?'':'取得済み '}${model.total}`);add(count,'span','本人の判断待ち');
       const kpis=add(head,'div','','ki-kpis');
       for(const [label,value] of [['今日中',model.today.length],['約',trusted?(model.minutes===null?'時間未確認':fmt(model.minutes)):'時間未確定'],['Review',model.counts.human_review],['Blocked',model.counts.blocker_decision]]){const item=add(kpis,'span');add(item,'small',label);add(item,'strong',String(value));}
@@ -520,13 +547,34 @@
         const body=add(host,'div','','ki-groups');
         let pages={today:0,later:0};
         function row(i,parent){
-          const info=entities(data,i,currentTime(),health),r=add(parent,'a','','ki-row');r.href='#kaz-os/inbox/'+encodeURIComponent(i.id);r.dataset.inboxId=i.id;
+          const candidate=kind(i)==='generic_candidate_review',container=candidate?add(parent,'div','','ki-candidate-row'):parent;
+          const info=entities(data,i,currentTime(),health),r=add(container,'a','','ki-row');r.href='#kaz-os/inbox/'+encodeURIComponent(i.id);r.dataset.inboxId=i.id;
           const top=add(r,'span','','ki-row-top');add(top,'span',TYPES[kind(i)],'ki-type');add(top,'span',fmt(i.estimate_min),'ki-estimate');
           add(r,'strong',i.title||info.entity?.title||'元項目は未取得','ki-title');
           const due=Number.isFinite(at(i.due_at))?new Date(at(i.due_at)).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):null;
           if(info.project)add(r,'span',`${info.project.title}${due?' · 期限 '+due:''}`,'ki-meta');
           else if(due)add(r,'span','期限 '+due,'ki-meta');
           add(r,'span','→ '+(i.impact||i.reason||rank(data,i,currentTime()).reason),'ki-impact');
+          if(!candidate)return;
+          const trigger=add(container,'button','判断する','ki-button kiq-submit');trigger.type='button';
+          trigger.disabled=!answerApi||data?.mode==='read_only_display'||!statusLive();
+          const review=add(container,'div','','kiq-review-panel');review.hidden=true;
+          trigger.onclick=()=>{
+            if(sessions.get(host)!==session)return;
+            if(!review.hidden){review.hidden=true;trigger.setAttribute('aria-expanded','false');return;}
+            review.replaceChildren();review.hidden=false;trigger.setAttribute('aria-expanded','true');
+            const summary=inlineSummary(data,i,currentTime(),health);
+            add(review,'p',summary.question,'kiq-question');
+            const warning=add(review,'p',summary.issues.join(' / '),'kp-notice kiq-warning');warning.hidden=!summary.issues.length;
+            const actions=add(review,'div','','kiq-actions'),panel=add(review,'div','','kiq-review-panel');panel.hidden=true;
+            const error=add(review,'p','','kp-notice kiq-error');error.hidden=true;error.setAttribute('role','alert');
+            candidateReviewControls(i,summary,actions,panel,error,async(choice,fields,reason)=>{
+              try{
+                const draft=inlineAnswer(data,i.id,{decision:choice.value,work_fields:fields,reason},currentTime(),health);
+                await persistAnswer(i,draft,container);
+              }catch(e){error.hidden=false;error.textContent=e.message;container.querySelectorAll('button,input,select,textarea').forEach(control=>control.disabled=!statusLive());}
+            });
+          };
         }
         function groups(){
           body.replaceChildren();
