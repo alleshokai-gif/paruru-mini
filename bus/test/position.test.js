@@ -223,3 +223,25 @@ test('P0 complete DTO and cached provider calls are unchanged when the Position 
   const reference=await createBusService(base).getArrivals(),service=createBusService({...base,positionObserver:{observe(){throw Error('synthetic position fault');}}});
   assert.deepEqual(await service.getArrivals(),reference);assert.deepEqual(await service.getArrivals(),reference);assert.equal(calls,2);
 });
+
+test('Hub-only Shadow snapshot leaves P0 DTO and Provider fetch count unchanged', async()=>{
+  let calls=0, observations=0;
+  const base={index:indexFixture(),...P0_INPUT,version:'test',now:()=>NOW,
+    adapter:{getRealtime:async()=>{calls++;return realtimeFixture();}}};
+  const reference=await createBusService(base).getArrivals();
+  const service=createBusService({...base,shadowPositionObserver:{
+    observe(){observations++;},snapshot(){return new Map([['private',{supported:true}]])},summary(){return {supported:1}}
+  }});
+  const p0=await service.getArrivals();
+  const hub=await service.getArrivals({forHub:true});
+  assert.deepEqual(p0,reference);
+  assert.deepEqual(hub.data,reference);
+  assert.deepEqual(hub.shadowPositions.get('private'),{supported:true});
+  assert.equal('shadowPositions' in p0,false);
+  assert.equal(calls,2);
+  assert.equal(observations,2);
+  const failing=createBusService({...base,shadowPositionObserver:{
+    observe(){},snapshot(){throw Error('synthetic shadow fault')}
+  }});
+  assert.deepEqual((await failing.getArrivals({forHub:true})).data,reference);
+});

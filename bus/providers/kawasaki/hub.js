@@ -1,5 +1,6 @@
 import { ATTRIBUTION } from './attribution.js';
 import { resolvePlatform } from './config.js';
+import { shadowPosition } from '../../position/shadow.js';
 
 const INCLUDED_SOURCES = new Set(['home_to_noborito', 'home_to_mizonokuchi', 'mizonokuchi_to_home',
   'noborito_to_home', 'mukougaoka_to_kibukihoncho', 'kibukihoncho_to_miyamae_washigamine',
@@ -47,7 +48,23 @@ function departureState(row) {
   return row.realtime ? 'realtime' : 'scheduled';
 }
 
-export function normalizeKawasakiHubResult(response, { index, queries }) {
+const waitingPosition = () => ({ supported: false, state: null, stopsAway: null,
+  previousStop: null, nextStop: null, confidence: null });
+
+function hubShadowPosition({ row, query, staticRow, shadowPositions, shadowArtifact }) {
+  if (query.id !== 'home_to_noborito' || staticRow.routeId !== '10044'
+    || staticRow.fromStopId !== '184_2' || !(shadowPositions instanceof Map)) return waitingPosition();
+  const match = /^(\d{8}):(.+)$/.exec(row.tripId);
+  if (!match) return waitingPosition();
+  const result = shadowPositions.get(`${match[1]}:${match[2]}:${staticRow.fromStopId}:${staticRow.stopSequence}`);
+  const checked = shadowPosition(result, shadowArtifact);
+  if (!checked.supported || !Number.isFinite(result.observedAt)) return waitingPosition();
+  return { supported: true, shadowReady: true, state: checked.state,
+    previousStop: checked.previousStop, nextStop: checked.nextStop,
+    stopsAway: checked.stopsAway, observedAt: result.observedAt };
+}
+
+export function normalizeKawasakiHubResult(response, { index, queries, shadowPositions, shadowArtifact }) {
   if (response?.success !== true || !Array.isArray(response.directions)) fail('BUS_KAWASAKI_HUB_INVALID');
   const queryMap = new Map(queries.filter((query) => INCLUDED_SOURCES.has(query.id)).map((query) => [query.id, query]));
   const arrivals = [];
@@ -60,6 +77,7 @@ export function normalizeKawasakiHubResult(response, { index, queries }) {
       if (!stop) fail('BUS_KAWASAKI_HUB_INVALID');
       const routeId = routeIdFor(row, query, index);
       const staticRow = staticRowFor(row, query, index, routeId, stopId);
+      const position = hubShadowPosition({ row, query, staticRow, shadowPositions, shadowArtifact });
       const scheduledDeparture = epoch(row.scheduledAt);
       const estimatedDeparture = row.realtime ? epoch(row.estimatedAt) : null;
       arrivals.push({
@@ -76,11 +94,7 @@ export function normalizeKawasakiHubResult(response, { index, queries }) {
         realtimeState: realtimeState(response, direction, row), departureState: departureState(row),
         actionability: row.state === 'departure_uncertain' ? 'do_not_recommend' : row.realtime ? 'catchable' : null,
         confidence: null,
-        position: row.position?.supported ? {
-          supported: true, state: row.position.status, stopsAway: row.position.stopsAway,
-          previousStop: row.position.previousStop, nextStop: row.position.nextStop,
-          confidence: row.position.confidence
-        } : { supported: false, state: null, stopsAway: null, previousStop: null, nextStop: null, confidence: null }
+        position
       });
     }
   }

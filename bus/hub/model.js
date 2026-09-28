@@ -1,3 +1,5 @@
+import { POSITION_POLICY } from '../position/policy.js';
+
 const REALTIME_STATES = new Set(['realtime', 'stale', 'static_only', 'static', 'static_fallback', 'realtime_stale', 'fetch_error', 'unknown']);
 const DEPARTURE_STATES = new Set(['scheduled', 'realtime', 'departure_pending', 'departure_overdue',
   'departure_uncertain', 'departed', 'cancelled', 'unknown']);
@@ -12,10 +14,24 @@ function normalizeStop(value) {
   return { id: value.id, name: value.name };
 }
 
-function normalizePosition(value) {
+function normalizePosition(value, generatedAt) {
   if (!value || typeof value.supported !== 'boolean') fail('BUS_HUB_POSITION_INVALID');
   if (!value.supported) return { supported: false, state: null, stopsAway: null,
     previousStop: null, nextStop: null, confidence: null };
+  if (value.shadowReady === true) {
+    if (!['between_stops', 'approaching', 'at_stop', 'departed'].includes(value.state)
+      || !Number.isInteger(value.stopsAway) || value.stopsAway < 0
+      || value.previousStop != null && !text(value.previousStop)
+      || !text(value.nextStop) || !finite(value.observedAt)
+      || value.confidence != null) fail('BUS_HUB_POSITION_INVALID');
+    if (generatedAt - value.observedAt > POSITION_POLICY.maxAgeSec
+      || value.observedAt - generatedAt > POSITION_POLICY.futureSec)
+      return { supported: false, state: null, stopsAway: null,
+        previousStop: null, nextStop: null, confidence: null };
+    return { supported: true, shadowReady: true, state: value.state,
+      stopsAway: value.stopsAway, previousStop: value.previousStop ?? null,
+      nextStop: value.nextStop, observedAt: value.observedAt };
+  }
   const confidence = value.confidence;
   if (!text(value.state) || !Number.isInteger(value.stopsAway) || value.stopsAway < 0
     || !text(value.previousStop) && value.previousStop != null
@@ -61,6 +77,6 @@ export function normalizeHubArrival(value, generatedAt, { etaConsistencySec = 90
     departureState: value.departureState,
     actionability: value.actionability ?? null,
     confidence: value.confidence ?? null,
-    position: normalizePosition(value.position)
+    position: normalizePosition(value.position, generatedAt)
   };
 }

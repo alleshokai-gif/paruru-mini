@@ -15,6 +15,7 @@ import { P0_QUERIES } from '../config/queries.js';
 import { KAWASAKI_JOURNEY_QUERIES } from '../providers/kawasaki/journey-config.js';
 import { mergeKawasakiStatic, validateKawasakiJourneyArtifact } from '../providers/kawasaki/journey-static.js';
 import { loadPosition } from './position.js';
+import { loadShadowPosition } from './shadow-position.js';
 import { createDepartureConfidence } from '../departure/confidence.js';
 import { HUBS } from '../hub/config.js';
 import { createHubService } from '../hub/service.js';
@@ -38,12 +39,14 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   const staticStartupMs = performance.now() - started;
   // The research-only Position index covers the P0 artifact. P2.5 trips remain unsupported until separately validated.
   const positionStarted=performance.now(),position=loadPosition({index:p0Index,provider:providerContext.id});
+  const shadowPosition=loadShadowPosition({index:p0Index,positionStatic:position.staticData});
   const positionStartupMs=performance.now()-positionStarted;
   const departureConfidence=createDepartureConfidence({index,positionStatic:position.staticData});
   const adapter = createKawasakiAdapter({ token: config.env.ODPT_ACCESS_TOKEN, measure: recordStages });
   // One provider instance owns its memory cache and pending fetches. No per-direction adapter construction.
   const allKawasakiService = createBusService({ index, adapter, queries, providerContext, version: index.sourceHash, measure: recordStages,
-    positionObserver:position.observer,departureObserver:departureConfidence,
+    positionObserver:position.observer,shadowPositionObserver:shadowPosition.observer,
+    departureObserver:departureConfidence,
     originDepartureResolver:value=>departureConfidence.evaluate(value) });
   const p0Ids = new Set(P0_QUERIES.map((query) => query.id));
   const service = { async getArrivals() {
@@ -54,7 +57,11 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   const seibuArtifact = JSON.parse(readFileSync(new URL('../generated/seibu-p2-4-static.json', import.meta.url), 'utf8'));
   const seibuProvider = createSeibuProvider({ artifact: seibuArtifact, token: config.env.ODPT_ACCESS_TOKEN });
   const hubService = createHubService({ hubs: HUBS, providerLoaders: {
-    kawasaki: async () => normalizeKawasakiHubResult(await allKawasakiService.getArrivals(), { index, queries }),
+    kawasaki: async () => {
+      const { data, shadowPositions } = await allKawasakiService.getArrivals({ forHub: true });
+      return normalizeKawasakiHubResult(data, { index, queries,
+        shadowPositions, shadowArtifact: shadowPosition.stats });
+    },
     tokyu: () => tokyuProvider.getArrivals(),
     seibu: () => seibuProvider.getArrivals()
   } });
@@ -70,7 +77,8 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   const server = createNodeServer({ handler, env: config.env, measure: log });
   server.listen(config.port, config.host, () => log({ event: 'bus_startup', build: 'bus-p2-5-noborito-mukougaoka-poc-v1',
     startupMs: performance.now() - started, staticStartupMs, positionStartupMs, positionStatus:position.status,
-    positionIndex:position.stats, rssBytes: process.memoryUsage().rss, port: config.port }));
+    positionIndex:position.stats, shadowPositionStatus:shadowPosition.status,
+    shadowPositionIndex:shadowPosition.stats, rssBytes: process.memoryUsage().rss, port: config.port }));
   const shutdown = () => {
     server.close(() => process.exit(0));
     server.closeIdleConnections();

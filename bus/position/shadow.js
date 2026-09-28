@@ -3,7 +3,7 @@ import { POSITION_POLICY } from './policy.js';
 const waiting = () => Object.freeze({ supported: false, state: null, previousStop: null,
   nextStop: null, stopsAway: null, confidence: null, shadowReady: false });
 
-// Local Stage 1 presentation only. Never pass raw coordinates into a Bus DTO.
+// Family Shadow presentation gate. Callers expose only stop-level fields, never raw coordinates.
 export function shadowPosition(engineResult, artifact) {
   if (artifact?.approvedForShadow !== true || artifact.approvedForPublic !== false
     || artifact.geometryReady !== false || engineResult?.supported !== true

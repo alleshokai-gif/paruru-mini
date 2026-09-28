@@ -2,7 +2,8 @@ import { getArrivals, prepareStatic } from './arrivals.js';
 import { LIMITS } from '../config/policy.js';
 
 export function createBusService({ index, adapter, queries, providerContext, cache = null, now = () => Date.now() / 1000, version, measure = () => {},
-  positionObserver = null, departureObserver = null, originDepartureResolver = null }) {
+  positionObserver = null, shadowPositionObserver = null,
+  departureObserver = null, originDepartureResolver = null }) {
   prepareStatic(index, queries, providerContext);
   const querySet = structuredClone(queries);
   const memory = new Map(), pending = new Map(), retryAfter = new Map();
@@ -45,7 +46,7 @@ export function createBusService({ index, adapter, queries, providerContext, cac
     try { return await task; } finally { pending.delete(kind); }
   }
   return {
-    async getArrivals() {
+    async getArrivals({ forHub = false } = {}) {
       const started = performance.now();
       // This is an object reference. There is no network/file/ZIP/CSV work for Static here.
       const staticIndex = index;
@@ -56,9 +57,11 @@ export function createBusService({ index, adapter, queries, providerContext, cac
       catch { rt = { data: null, error: true }; }
       const realtimeMs = performance.now() - rtStarted;
       const positionStarted=performance.now();
-      // Optional research observer uses the already fetched snapshot, never the public DTO.
+      // Optional observers reuse the feed. P0 never receives the private Shadow snapshot.
       // A broken observer cannot affect P0 ETA or cause another Provider fetch.
       try { positionObserver?.observe({ realtime: rt.data, now: now() }); } catch { /* Position is independently gated. */ }
+      try { shadowPositionObserver?.observe({ realtime: rt.data, now: now() }); }
+      catch { shadowPositionObserver?.clear?.(); }
       const positionMs=performance.now()-positionStarted;
       const departureStarted=performance.now();
       try { departureObserver?.observe({realtime:rt.data,now:now()}); }
@@ -67,8 +70,13 @@ export function createBusService({ index, adapter, queries, providerContext, cac
       const joinStarted = performance.now();
       const data = getArrivals({ index: staticIndex, realtime: rt.data, queries: querySet, providerContext, now: now(), fetchError: rt.error,
         originDepartureResolver });
-      measure({ staticMs, realtimeMs, positionMs, departureMs, joinMs: performance.now() - joinStarted, totalMs: performance.now() - started });
-      return data;
+      measure({ staticMs, realtimeMs, positionMs, departureMs, joinMs: performance.now() - joinStarted,
+        totalMs: performance.now() - started, shadowPosition: shadowPositionObserver?.summary?.() });
+      if (!forHub) return data;
+      let shadowPositions = new Map();
+      try { shadowPositions = shadowPositionObserver?.snapshot?.() ?? shadowPositions; }
+      catch { /* A failed position snapshot must not hide bus arrivals. */ }
+      return { data, shadowPositions };
     }
   };
 }

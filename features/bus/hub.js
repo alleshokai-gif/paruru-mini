@@ -68,9 +68,11 @@
       kind: 'live', delay };
   }
 
-  function displayShadowPosition(position) {
+  function displayShadowPosition(position, nowSeconds = Date.now() / 1000) {
     if (position?.supported !== true || position.shadowReady !== true
       || !Number.isInteger(position.stopsAway) || position.stopsAway < 0
+      || !Number.isFinite(position.observedAt) || nowSeconds - position.observedAt > 120
+      || position.observedAt - nowSeconds > 5
       || !text(position.nextStop)) return '位置確認中';
     if (position.state === 'at_stop') return `${position.nextStop}に停車中・あと${position.stopsAway}停留所`;
     if (position.state === 'approaching') return `${position.nextStop}に接近中・あと${position.stopsAway}停留所`;

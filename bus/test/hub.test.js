@@ -359,6 +359,40 @@ test('Kawasaki Provider adapter resolves verified 2/3/4 platform stops without e
   }] }, { index, queries: P0_INPUT.queries }), /BUS_KAWASAKI_HUB_PLATFORM_INVALID/);
 });
 
+test('approved Kawasaki Shadow result reaches only its matching Hub trip without private evidence', () => {
+  const index = indexFixture();
+  const query = P0_INPUT.queries.find((value) => value.id === 'home_to_noborito');
+  const staticRow = index.directions[query.id][0];
+  const now = Date.parse('2026-09-13T07:00:00+09:00') / 1000;
+  const response = { success: true, fetchError: false, directions: [{ id: query.id, to: query.to,
+    state: 'realtime', arrivals: [{ tripId: `20260913:${staticRow.tripId}`,
+      routeLabel: index.routes[staticRow.routeId].label, headsign: '登戸駅', platform: '2番',
+      scheduledAt: '2026-09-13T07:05:00+09:00', estimatedAt: '2026-09-13T07:06:00+09:00',
+      etaMinutes: 6, delayMinutes: 1, realtime: true, state: 'realtime', position: { supported: false } }] }] };
+  const approved = { approvedForShadow: true, approvedForPublic: false, geometryReady: false };
+  const engine = { supported: true, method: 'gps_validated_road_geometry_snap', state: 'between_stops',
+    confidence: 0.92, conflicts: [], stopsAway: 2, observedAt: now - 10,
+    previousStop: { name: '長尾橋' }, nextStop: { name: '神木本町' },
+    position: { lat: 35.6, lon: 139.5 }, vehicleId: 'private-id' };
+  const key = `20260913:${staticRow.tripId}:${staticRow.fromStopId}:${staticRow.stopSequence}`;
+  const normalize = (positions, artifact = approved) => normalizeKawasakiHubResult(response,
+    { index, queries: P0_INPUT.queries, shadowPositions: positions, shadowArtifact: artifact });
+  const result = normalize(new Map([[key, engine]]));
+  const hub = aggregateHub({ hub: KIBUKIHONCHO_HUB, generatedAt: now,
+    providerResults: [result] });
+  const position = hub.arrivals.find((row) => row.sourceId === query.id).position;
+  assert.deepEqual(position, { supported: true, shadowReady: true, state: 'between_stops',
+    stopsAway: 2, previousStop: '長尾橋', nextStop: '神木本町', observedAt: now - 10 });
+  assert.doesNotMatch(JSON.stringify(hub), /private-id|"lat"|"lon"|"confidence":0\.92/);
+  assert.equal(normalize(new Map([[key, { ...engine, confidence: 0.5 }]])).arrivals[0].position.supported, false);
+  assert.equal(normalize(new Map([[key, engine]]), { ...approved, approvedForShadow: false })
+    .arrivals[0].position.supported, false);
+  assert.equal(normalize(new Map([['wrong-trip', engine]])).arrivals[0].position.supported, false);
+  const stale = normalize(new Map([[key, { ...engine, observedAt: now - 121 }]]));
+  assert.equal(aggregateHub({ hub: KIBUKIHONCHO_HUB, generatedAt: now,
+    providerResults: [stale] }).arrivals[0].position.supported, false);
+});
+
 test('Kawasaki Hub preserves Static isOrigin only for the matching Shinki Honcho boarding trip', () => {
   const query = P0_INPUT.queries.find((value) => value.id === 'home_to_mizonokuchi');
   const index = indexFixture();
