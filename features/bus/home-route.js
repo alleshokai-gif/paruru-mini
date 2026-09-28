@@ -3,9 +3,11 @@
   const api = factory();
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.PALURUBusHomeRoute = api;
+  if (typeof document !== 'undefined') api.install(document, root);
 }(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
   const providerName = Object.freeze({ kawasaki: '川崎市バス', tokyu: '東急バス' });
+  let active = false, generation = 0, mounted = false, activate = null;
   const clock = (epoch) => new Date((epoch + 9 * 3600) * 1000).toISOString().slice(11, 16);
   const node = (doc, tag, className, value) => {
     const result = doc.createElement(tag); result.className = className; result.textContent = value;
@@ -50,5 +52,55 @@
     });
     mount.replaceChildren(...choices);
   }
-  return { renderDecision, renderTrainChoices };
+  function install(doc, root) {
+    function mount() {
+      if (mounted || root.PALURU_BUS_HOME_ROUTE_ENABLED !== true) return;
+      const target = doc.querySelector('#busHomeRouteMount');
+      if (!target) return;
+      mounted = true;
+      const source = root.PALURU_BUS_HOME_ROUTE_SOURCE;
+      const heading = node(doc, 'h2', 'bus-home-route-heading', '帰宅最速');
+      const journeys = node(doc, 'div', 'bus-home-route-journeys', '');
+      const choices = node(doc, 'div', 'bus-home-route-choices', '');
+      const result = node(doc, 'div', 'bus-home-route-result', '');
+      const status = node(doc, 'p', 'bus-home-route-status', '');
+      target.append(heading, journeys, choices, status, result);
+      if (typeof source?.getTrainChoices !== 'function' || typeof source?.evaluate !== 'function') {
+        status.textContent = '列車候補を読み込めません'; return;
+      }
+      let selectedJourneyId = 'university';
+      const selectJourney = (journeyId) => {
+        selectedJourneyId = journeyId;
+        const request = ++generation;
+        choices.replaceChildren(); result.replaceChildren(); status.textContent = '列車候補を読み込み中…';
+        for (const button of journeys.children) button.setAttribute('aria-pressed', String(button.dataset.journeyId === journeyId));
+        Promise.resolve().then(() => source.getTrainChoices(journeyId)).then((trains) => {
+          if (!active || request !== generation) return;
+          renderTrainChoices(doc, choices, trains, (trainId) => {
+            const evaluation = ++generation;
+            result.replaceChildren(); status.textContent = '帰宅経路を比較中…';
+            Promise.resolve().then(() => source.evaluate({ journeyId, trainId })).then((decision) => {
+              if (!active || evaluation !== generation) return;
+              renderDecision(doc, result, decision); status.textContent = '';
+            }).catch(() => { if (active && evaluation === generation) status.textContent = '帰宅経路を比較できません'; });
+          });
+          status.textContent = trains.length ? '乗車する列車を選んでください' : '列車候補がありません';
+        }).catch(() => { if (active && request === generation) status.textContent = '列車候補を読み込めません'; });
+      };
+      for (const [id, label] of [['university', '大学から'], ['high_school', '高校から']]) {
+        const button = node(doc, 'button', 'bus-home-route-journey-choice', label);
+        button.type = 'button'; button.dataset.journeyId = id;
+        button.addEventListener('click', () => selectJourney(id)); journeys.append(button);
+      }
+      target.hidden = false;
+      activate = () => selectJourney(selectedJourneyId);
+      if (active) activate();
+    }
+    if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();
+  }
+  return { renderDecision, renderTrainChoices, install,
+    setActive(value) {
+      active = !!value; if (!active) generation++;
+      if (active) activate?.();
+    } };
 }));

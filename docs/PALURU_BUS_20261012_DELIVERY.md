@@ -65,6 +65,6 @@ Future Bus Queryは選択列車の駅到着時刻に乗換時間を足した `bo
 
 Core/Hub/Static/Shadow UI部品は合成ケースで自動テスト済み。9/28には別ポートの一時HTMLで実ブラウザを開き、390px幅のHub行と帰宅比較部品について、多摩川口badge、位置区間と「位置確認中」、時刻表品質、2経路と5分差、カード内横はみ出しなしを確認した。一時HTMLは確認後に削除した。これは合成データによる**部品受入**であり、PALURU本体画面・実ODPT・Android実機の受入ではない。
 
-現時点でPublic APIへのFuture Bus・帰宅比較・Position Shadowの接続、鉄道候補の正規Provider、出口別乗換時間の計測、P3.3累積Evaluatorの自動Job接続は未実施。したがってPublic機能の完成・deploy GOとは報告しない。
+9/28に帰宅比較をPALURUのBus DOMへFeature Gate配下でマウントし、Shadow表示も既存Hub UIでローカル受入した。結果と合成入力の範囲は `PALURU_BUS_PRODUCT_ACCEPTANCE_20260928.md` に分離して記録した。認証済み本体・Android・Public APIへのFuture Bus/帰宅比較/Position Shadow接続、鉄道候補の正規Provider、出口別乗換時間の計測、P3.3累積Evaluatorの自動Job接続は未実施。したがってPublic機能の完成・deploy GOとは報告しない。観測Jobの反映準備は `PALURU_BUS_OBSERVATION_JOB_REFLECTION_PREP.md` を参照する。
 
 Repository full testには今回差分より前から3件のbaseline failureが残る。Bus全体テスト、対象テスト、Static preflight、diff/secret scanを個別に記録し、baseline失敗をPASSに読み替えない。

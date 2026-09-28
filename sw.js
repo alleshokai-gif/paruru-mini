@@ -26,6 +26,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/bus/journey.css"),
   versioned("features/bus/hub.js"),
   versioned("features/bus/hub.css"),
+  versioned("features/bus/home-route.js"),
+  versioned("features/bus/home-route.css"),
   versioned("features/kaz-os/inbox.js"),
   versioned("features/kaz-os/personal.js"),
   versioned("features/kaz-os/personal.css"),

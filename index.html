@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="./features/bus/bus.css">
   <link rel="stylesheet" href="./features/bus/hub.css">
   <link rel="stylesheet" href="./features/bus/journey.css">
+  <link rel="stylesheet" href="./features/bus/home-route.css">
     <link rel="stylesheet" href="./features/kaz-os/personal.css?v=v20260928-candidate-review-later-v2">
   </head>
   <body>
@@ -273,6 +274,7 @@
 
       <section id="busView" class="app-view" data-view="bus" aria-label="いつものバス" hidden>
         <div id="busMount" hidden></div>
+        <section id="busHomeRouteMount" class="bus-home-route" aria-label="帰宅最速" hidden></section>
         <div id="busHubMount"></div>
       </section>
 
@@ -494,6 +496,7 @@
     <script src="./features/bus/bus.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/bus/journey.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/bus/hub.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
+    <script src="./features/bus/home-route.js" defer></script>
     <script src="./features/kaz-os/inbox.js?v=v20260928-candidate-review-later-v2" defer></script>
     <script src="./features/kaz-os/personal.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/kaz-os/navigation.js?v=v20260928-candidate-review-later-v2" defer></script>

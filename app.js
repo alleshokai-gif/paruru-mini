@@ -801,6 +801,7 @@ function showAuthenticationState(message, state = "locked") {
     }
     try { globalThis.PALURUBus?.setActive(false); } catch { /* Bus lifecycle must not block authentication. */ }
     try { globalThis.PALURUBusHub?.setActive(false); } catch { /* Hub lifecycle must not block authentication. */ }
+    try { globalThis.PALURUBusHomeRoute?.setActive(false); } catch { /* Route decision must not block authentication. */ }
     activeMembershipContext = null;
     inboxItems = [];
     familyInboxReviews = [];
@@ -1745,6 +1746,7 @@ async function switchView(viewName) {
   activeView = resolvedView;
   try { globalThis.PALURUBus?.setActive(resolvedView === "bus"); } catch { /* Keep Bus failures inside its view. */ }
   try { globalThis.PALURUBusHub?.setActive(resolvedView === "bus"); } catch { /* Keep Hub failures inside its view. */ }
+  try { globalThis.PALURUBusHomeRoute?.setActive(resolvedView === "bus"); } catch { /* Keep Route decision failures inside Bus. */ }
   views.forEach((view) => {
     const allowed = isViewAllowed_(view.dataset.view);
     view.hidden = !allowed;

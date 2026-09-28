@@ -49,3 +49,18 @@ test('partial source failure is visible even when its station still has buses', 
     unavailablePlaces: [], unavailableSources: ['tokyu:mukougaoka_to_kibukihoncho'] });
   assert.match(renderedText(mount), /一部の経路情報を取得できませんでした/);
 });
+
+test('PALURU Bus view mounts manual train selection behind the disabled production gate', () => {
+  const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
+  const app = fs.readFileSync(require.resolve('../app.js'), 'utf8');
+  const sw = fs.readFileSync(require.resolve('../sw.js'), 'utf8');
+  const config = fs.readFileSync(require.resolve('../features/bus/config.js'), 'utf8');
+  assert.match(html, /id="busHomeRouteMount"[^>]*hidden/);
+  assert.match(html, /features\/bus\/home-route\.js/);
+  assert.match(html, /features\/bus\/home-route\.css/);
+  assert.match(app, /PALURUBusHomeRoute\?\.setActive\(resolvedView === "bus"\)/);
+  assert.match(sw, /versioned\("features\/bus\/home-route\.js"\)/);
+  assert.match(sw, /versioned\("features\/bus\/home-route\.css"\)/);
+  assert.match(config, /PALURU_BUS_HOME_ROUTE_ENABLED\s*=\s*false/);
+  assert.match(config, /PALURU_BUS_POSITION_SHADOW_ENABLED\s*=\s*false/);
+});

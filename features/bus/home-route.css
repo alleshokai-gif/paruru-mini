@@ -5,3 +5,10 @@
 .bus-home-route-option p { margin: 4px 0; }
 .bus-home-route-station { margin: 0 0 6px; font-size: 17px; }
 .bus-home-route-quality, .bus-home-route-partial { color: #526579; font-size: 13px; }
+.bus-home-route { margin: 0 0 18px; padding: 14px; border: 1px solid #d8e3ec; border-radius: 14px; min-width: 0; }
+.bus-home-route-heading { margin: 0 0 10px; font-size: 20px; }
+.bus-home-route-journeys, .bus-home-route-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.bus-home-route-journey-choice { min-height: 48px; padding: 9px 14px; font-size: 16px; }
+.bus-home-route-journey-choice[aria-pressed="true"] { background: #314e68; color: #fff; }
+.bus-home-route-status { min-height: 1.4em; color: #526579; }
+.bus-home-route-result { display: grid; gap: 8px; min-width: 0; }
