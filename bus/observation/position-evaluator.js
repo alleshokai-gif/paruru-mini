@@ -179,7 +179,8 @@ export function evaluatePositionObservations({ rawValues, serviceDate, evaluated
   if (!usable) reasons.add('NO_USABLE_GPS');
   if (geometry && geometry.candidate.eligible !== true) reasons.add('GEOMETRY_ARTIFACT_NOT_ELIGIBLE');
   if (tripMismatch) reasons.add('TRIP_GEOMETRY_MISMATCH');
-  if (serviceDays.size < 3) reasons.add('MULTI_DAY_COVERAGE_INSUFFICIENT');
+  // A Daily evaluation sees one service date by contract. Multi-day coverage
+  // belongs to the accumulated evaluator, not this per-day quality monitor.
   if (geometry && segments.size < Math.max(0, geometry.stops.rows.length - 1)) reasons.add('SEGMENT_COVERAGE_INSUFFICIENT');
   if (traces.traces === 0) reasons.add('DIRECTION_EVIDENCE_INSUFFICIENT');
   if (traces.reverseOrJump) reasons.add('DIRECTION_CONTRADICTION_PRESENT');
