@@ -48,13 +48,15 @@ test('Hub module stays fail-closed while production config explicitly enables it
 test('Position shadow has an explicit local gate and safely waits for weak evidence', () => {
   const row = arrival({ provider: 'kawasaki', routeLabel: '登０５', destination: '登戸駅',
     realtimeState: 'realtime', position: { supported: true, shadowReady: true,
-      state: 'between_stops', previousStop: '長尾橋', nextStop: '神木本町', stopsAway: 2 } });
+      state: 'between_stops', previousStop: '長尾橋', nextStop: '神木本町', stopsAway: 2,
+      observedAt: Date.now() / 1000 } });
   const group = { arrivals: [row], recommendedArrivalId: null };
   assert.doesNotMatch(renderedText(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho')), /停留所|位置確認中/);
   assert.match(renderedText(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho', true)),
     /長尾橋〜神木本町を走行中・あと2停留所/);
   assert.equal(hub.displayShadowPosition({ supported: false }), '位置確認中');
   assert.equal(hub.displayShadowPosition({ ...row.position, shadowReady: false }), '位置確認中');
+  assert.equal(hub.displayShadowPosition(row.position, row.position.observedAt + 121), '位置確認中');
 });
 
 test('Tamagawa exit badge remains conspicuous without changing destination or platform', () => {

@@ -57,7 +57,11 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   const seibuArtifact = JSON.parse(readFileSync(new URL('../generated/seibu-p2-4-static.json', import.meta.url), 'utf8'));
   const seibuProvider = createSeibuProvider({ artifact: seibuArtifact, token: config.env.ODPT_ACCESS_TOKEN });
   const hubService = createHubService({ hubs: HUBS, providerLoaders: {
-    kawasaki: async () => normalizeKawasakiHubResult(await allKawasakiService.getArrivals(), { index, queries }),
+    kawasaki: async () => {
+      const { data, shadowPositions } = await allKawasakiService.getArrivals({ forHub: true });
+      return normalizeKawasakiHubResult(data, { index, queries,
+        shadowPositions, shadowArtifact: shadowPosition.stats });
+    },
     tokyu: () => tokyuProvider.getArrivals(),
     seibu: () => seibuProvider.getArrivals()
   } });

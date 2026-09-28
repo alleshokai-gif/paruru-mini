@@ -2,7 +2,7 @@ import { createPositionEngine, normalizeVehicle } from './engine.js';
 import { serviceActive } from '../core/arrivals.js';
 import { clockSeconds } from '../core/time.js';
 import { POSITION_POLICY } from './policy.js';
-// Internal sink. Never returned by the HTTP handler or combined with a public Arrival via spread.
+// Internal sink. Only the gated stop-level projection may reach the family Hub DTO.
 export function createPositionObserver({routeIndex,index}) {
   const engine=createPositionEngine({routeIndex}),targets=new Map();
   for(const row of Object.values(index.directions).flat()) {
@@ -46,6 +46,7 @@ export function createPositionObserver({routeIndex,index}) {
     },
     summary:()=>structuredClone({...summary,details}),
     positionFor:({tripId,date,stopId,sequence})=>positions.get(`${date}:${tripId}:${stopId}:${sequence}`)||null,
+    snapshot:()=>structuredClone(positions),
     clear:()=>{positions=new Map();details=[];ambiguous=new Set();engine.clear();summary={evaluated:0,supported:0,reasons:{}};}
   };
 }

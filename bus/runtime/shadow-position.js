@@ -78,7 +78,8 @@ export function loadShadowPosition({ index, positionStatic,
       observer, status: 'shadow_geometry_loaded',
       stats: { supportedChains: 1, geometrySources: [source.sourceType],
         routeId: source.routeId, directionId: source.directionId,
-        approvalVersion: source.approvalVersion, approvedForPublic: false, geometryReady: false }
+        approvalVersion: source.approvalVersion, approvedForShadow: true,
+        approvedForPublic: false, geometryReady: false }
     };
   } catch {
     return unavailable('shadow_geometry_unavailable');
