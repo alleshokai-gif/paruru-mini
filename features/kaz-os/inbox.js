@@ -9,7 +9,8 @@
   const ALIASES={blocked:'blocker_decision',idea:'idea_triage'};
   const OUTCOMES={human_review:{ACCEPTED:'妥当',REWORK_REQUIRED:'手直し依頼',REJECTED:'却下'},acceptance:{ACCEPTED:'終了条件を満たす',REWORK_REQUIRED:'不足あり'},blocker_decision:{unblock:'解除方針',defer:'保留'},idea_triage:{promote:'採用',incubate:'保留',reject:'却下'},context_candidate:{review:'既存Reviewへ',defer:'保留',reject:'却下'},classification_required:{hard_constraint:'拘束',soft_constraint:'調整可能',informational:'参考',none:'関係なし',unknown:'未確定'},conflict_resolution:{resolve:'解消方針',defer:'保留'},stale_state_confirmation:{complete:'完了',still_open:'まだ'},calendar_event_impact:{all:'全部拘束',partial:'一部拘束',none:'拘束なし',unknown:'不明'},today_focus:{today:'今日',this_week:'今週',later:'あとで'},calendar_partial_window:{time_range:'拘束時間を指定'},daily_estimate:{}};
   const INLINE_CHOICES={human_review:[['ACCEPTED','承認'],['REWORK_REQUIRED','差戻し']],acceptance:[['ACCEPTED','承認'],['REWORK_REQUIRED','差戻し']],idea_triage:[['promote','やる'],['incubate','保留'],['reject','捨てる']],context_candidate:[['review','候補にする'],['reject','不要']],classification_required:[['hard_constraint','はい'],['none','いいえ'],['unknown','わからん']]};
-  const sessions=new WeakMap(), PAGE_SIZE=5, PREVIEW=3;
+  const sessions=new WeakMap(), PAGE_SIZE=5, PREVIEW=3, ESTIMATE_PREVIEW=3;
+  const ESTIMATE_QUICK_MINUTES=[5,15,30,60,90];
   const SECRETARY=new Set(['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window','daily_estimate']);
   const CANDIDATE_CHOICES=['CONTEXT','WORK','PROJECT','HOLD','REJECT','MERGE'];
   const kind=i=>{const k=String(i?.kind||'').toLowerCase();return ALIASES[k]||k;};
@@ -39,6 +40,15 @@
     if(!['ok','partial'].includes(status))return{status,items:[],today:[],later:[],total:null,minutes:null,counts:null};
     const ordered=[...items].sort(compare(data,now));
     return{status,items:ordered,today:ordered.filter(i=>isToday(data,i,now)),later:ordered.filter(i=>!isToday(data,i,now)),total:ordered.length,minutes:sum(ordered),counts:Object.fromEntries(Object.keys(TYPES).map(k=>[k,ordered.filter(i=>kind(i)===k).length]))};
+  }
+  function selectQuickQuestions(data,model,now){
+    // The Gateway appends Estimate questions in TODAY planner candidate order.
+    const sourceToday=(queueItems(data)||[]).filter(i=>isToday(data,i,now));
+    const focus=sourceToday.find(i=>kind(i)==='today_focus');
+    const estimates=sourceToday.filter(i=>kind(i)==='daily_estimate');
+    const shown=estimates.slice(0,ESTIMATE_PREVIEW);
+    return {items:[...(focus?[focus]:[]),...shown,...model.today.filter(i=>kind(i)!=='today_focus'&&kind(i)!=='daily_estimate')],
+      estimateRemaining:estimates.length-shown.length};
   }
   function entities(data,i,now,health){
     const k=kind(i), source=['human_review','acceptance','blocker_decision','stale_state_confirmation','today_focus','daily_estimate'].includes(k)?'tasks':['classification_required','calendar_event_impact','calendar_partial_window'].includes(k)?'calendar':'inbox';
@@ -197,7 +207,7 @@
     return{...draft,answer_label:choice.label,question:summary.question,summary_confirmed:summary.review?true:null};
   }
   function dispose(host){const s=sessions.get(host);if(s){clearInterval(s.timer);sessions.delete(host);}}
-  function render(host,selection,data,now,{health,workDetail,tick=true,answerApi=null}={}){
+  function render(host,selection,data,now,{health,workDetail,tick=true,answerApi=null,skippedEstimateIds=null}={}){
     dispose(host);host.replaceChildren();
     const doc=host.ownerDocument, session={timer:null};sessions.set(host,session);
     const start=Date.now(),currentTime=()=>now+(tick?Date.now()-start:0);
@@ -244,7 +254,7 @@
         add(trace,'p',`Human Review ${gate.packet.human_review_status} · Run revision ${gate.packet.source_revision}`,'kp-muted');
         for(const [key,ref] of Object.entries(gate.packet.refs||{}))add(trace,'p',`${key}: ${ref.ref} · SHA-256 ${ref.sha256}`,'kp-muted');}
       if(k==='daily_estimate'){
-        add(parent,'p','所要時間は「今日の質問」から分数を入力して保存できます。Notion Estimate Minは変更しません。','kp-notice');
+        add(parent,'p','所要時間は「今日の質問」で選べます。その他の分数も入力できます。Notion Estimate Minは変更しません。','kp-notice');
         link(parent,'← 今日の質問で回答','inbox');
         return;
       }
@@ -271,17 +281,19 @@
       });
     }
     if(!detailId&&!allItems){
-      const pool=model.today,drafts=new Map(),notes=new Map(),requestKeys=new Map();let page=0;
+      const quick=selectQuickQuestions(data,model,now),pool=quick.items,drafts=new Map(),notes=new Map(),requestKeys=new Map(),skipped=new Set(skippedEstimateIds||[]);let page=0;
       head.classList.add('kiq-header');
       if(todayOnly)add(head,'p','今日の判断のみ','kt-inbox-filter');
       const progress=add(head,'div','','kiq-progress'),feedback=add(host,'div','','kiq-feedback');feedback.setAttribute('role','status');
       const batch=add(host,'div','','kiq-batch'),footer=add(host,'div','','kiq-footer');
       function totals(){
         progress.replaceChildren();feedback.replaceChildren();delete feedback.dataset.answers;
-        const remaining=pool.filter(i=>!drafts.has(i.id)),minutes=trusted?sum(remaining):null;
+        const remaining=model.today.filter(i=>!drafts.has(i.id)),minutes=trusted?sum(remaining):null;
         add(progress,'strong',`今日中 ${remaining.length}件${trusted?'':'以上'}`);
         add(progress,'span',`あとで ${model.later.length}件${trusted?'':'以上'}`);
         add(progress,'span',trusted?(minutes===null?'時間未確認':`約${fmt(minutes)}`):'時間未確定');
+        if(quick.estimateRemaining)add(progress,'span',`所要時間の残り ${quick.estimateRemaining}件`);
+        if(skipped.size)add(progress,'span',`この画面でスキップ ${skipped.size}件`);
         if(drafts.size){feedback.dataset.answers=JSON.stringify([...drafts.values()]);add(feedback,'p',`✓ ${drafts.size}件の回答案 · 未保存（Plan・Taskは未変更）`,'kiq-feedback-text');}
         else if(data?.feedback?.message)add(feedback,'p',data.feedback.message,'kiq-feedback-text');
       }
@@ -301,7 +313,7 @@
           const title=add(active,'h3','','kiq-title');link(title,summary.title,'inbox/'+encodeURIComponent(item.id),'kiq-title-link');
           const origin=add(active,'p','','kiq-origin');
           if(item.source_label)add(origin,'span',item.source_label);
-          if(info.projectId)link(origin,info.project?.title||'Project未確認','projects/'+encodeURIComponent(info.projectId),'kiq-project');
+          if(info.projectId&&info.project)link(origin,info.project.title,'projects/'+encodeURIComponent(info.projectId),'kiq-project');
           if(['calendar_event_impact','calendar_partial_window'].includes(summary.kind)){
             const event=item.calendar_event;
             const time=v=>Number.isFinite(at(v))?new Date(at(v)).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):String(v||'時刻未確認');
@@ -331,7 +343,7 @@
               const key=requestKeys.get(item.id)||`paluru-${globalThis.crypto?.randomUUID?.()||String(Date.now())+'-'+Math.random().toString(16).slice(2)}`;requestKeys.set(item.id,key);
               active.querySelectorAll('button,input').forEach(control=>control.disabled=true);
               const result=await answerApi({...draft,idempotency_key:key});
-              if(result?.inbox){render(host,selection,result.inbox,Date.now(),{health,workDetail,tick,answerApi});return;}
+              if(result?.inbox){render(host,selection,result.inbox,Date.now(),{health,workDetail,tick,answerApi,skippedEstimateIds:skipped});return;}
               throw Error('保存結果を再取得できません');
             }catch(e){error.hidden=false;error.textContent=e.message;active.querySelectorAll('button,input').forEach(control=>control.disabled=!statusLive());}
           }
@@ -354,7 +366,7 @@
             const close=add(controls,'button','閉じる','kiq-text-button');close.type='button';close.onclick=()=>{panel.hidden=true;panel.replaceChildren();confirmed=null;note=null;pendingChoice=null;error.hidden=true;actions.querySelectorAll('button').forEach(b=>b.setAttribute('aria-expanded','false'));};
           }
           for(const choice of summary.choices){
-            const button=add(actions,'button',choice.label,'ki-button kiq-answer');button.type='button';button.dataset.answer=choice.value;
+            const button=add(actions,'button',summary.kind==='today_focus'&&choice.value==='today'?'今日やる':choice.label,'ki-button kiq-answer');button.type='button';button.dataset.answer=choice.value;
             button.disabled=summary.issues.length>0||data?.mode==='read_only_display';
             if(summary.review){button.setAttribute('aria-controls',panel.id);button.setAttribute('aria-expanded','false');}
             button.onclick=()=>{
@@ -405,13 +417,26 @@
             refreshRange();
           }
           if(summary.kind==='daily_estimate'){
-            const group=add(active,'div','','kiq-estimate-input');
-            const input=field(group,'所要時間（分）','input');input.type='number';input.min=String(item.input_contract?.min||1);input.max=String(item.input_contract?.max||100000);input.step='1';input.inputMode='numeric';
-            const submitEstimate=add(group,'button','分で保存','ki-button kiq-submit');submitEstimate.type='button';
+            const group=add(active,'div','','kiq-estimate');
+            const choices=add(group,'div','','kiq-estimate-choices');
+            for(const minutes of ESTIMATE_QUICK_MINUTES){
+              const button=add(choices,'button',minutes+'分','ki-button kiq-submit');button.type='button';
+              button.disabled=!answerApi||summary.issues.length>0||!statusLive()
+                ||minutes<item.input_contract?.min||minutes>item.input_contract?.max;
+              button.onclick=()=>answer({value:'minutes',label:minutes+'分'},minutes);
+            }
+            const other=add(choices,'button','その他','ki-button kiq-submit');other.type='button';
+            other.disabled=!answerApi||summary.issues.length>0||!statusLive();
+            const custom=add(group,'div','','kiq-estimate-custom');custom.hidden=true;
+            const input=field(custom,'所要時間（分）','input');input.type='number';input.min=String(item.input_contract?.min||1);input.max=String(item.input_contract?.max||100000);input.step='1';input.inputMode='numeric';
+            const submitEstimate=add(custom,'button','この分数で回答','ki-button kiq-submit');submitEstimate.type='button';
             const refreshEstimate=()=>{const minutes=Number(input.value);submitEstimate.disabled=!answerApi||summary.issues.length>0||!statusLive()||!Number.isInteger(minutes)||minutes<Number(input.min)||minutes>Number(input.max);};
+            other.onclick=()=>{custom.hidden=!custom.hidden;if(!custom.hidden)input.focus();};
             input.addEventListener('input',refreshEstimate);input.addEventListener('change',refreshEstimate);
-            submitEstimate.onclick=()=>{const minutes=Number(input.value);if(Number.isInteger(minutes))answer({value:'minutes',label:String(minutes)+'分'},minutes);};
+            submitEstimate.onclick=()=>{const minutes=Number(input.value);if(Number.isInteger(minutes))answer({value:'minutes',label:minutes+'分'},minutes);};
             refreshEstimate();
+            const skip=add(group,'button','スキップ','kiq-text-button kiq-estimate-skip');skip.type='button';
+            skip.onclick=()=>{skipped.add(item.id);showPage();};
           }
           if(summary.review)link(actions,'詳細','inbox/'+encodeURIComponent(item.id),'ki-button kiq-detail-link');
         }
@@ -419,18 +444,20 @@
       }
       function showPage(){
         batch.replaceChildren();footer.replaceChildren();totals();
-        if(!pool.length){add(batch,'p','今日必要な判断はありません','ki-empty');add(batch,'p','取得範囲内の状態です。あとで見る判断は全INBOXへ。','kp-muted');}
+        const visible=pool.filter(i=>!skipped.has(i.id));
+        if(visible.length&&page*PAGE_SIZE>=visible.length)page=Math.floor((visible.length-1)/PAGE_SIZE);
+        if(!visible.length){add(batch,'p',model.today.length?'今表示する質問はありません':'今日必要な判断はありません','ki-empty');add(batch,'p','取得範囲内の状態です。あとで見る判断は全INBOXへ。','kp-muted');}
         let calendarGroup=null;
-        pool.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).forEach(i=>{
+        visible.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).forEach(i=>{
           if(['calendar_event_impact','calendar_partial_window'].includes(kind(i))){
             if(!calendarGroup){calendarGroup=add(batch,'section','','kiq-calendar-group');add(calendarGroup,'h3','Family Calendar','kiq-calendar-heading');}
             row(i,calendarGroup);
           }else{calendarGroup=null;row(i,batch);}
         });
-        if(pool.length>PAGE_SIZE){
-          const pager=add(footer,'div','','ki-pager');add(pager,'span',`${page*PAGE_SIZE+1}–${Math.min((page+1)*PAGE_SIZE,pool.length)} / 今日${pool.length}件`,'kp-muted');
+        if(visible.length>PAGE_SIZE){
+          const pager=add(footer,'div','','ki-pager');add(pager,'span',`${page*PAGE_SIZE+1}–${Math.min((page+1)*PAGE_SIZE,visible.length)} / 今日${visible.length}件`,'kp-muted');
           for(const [label,offset] of [['前の5件',-1],['次の5件',1]]){
-            if(page+offset<0||(page+offset)*PAGE_SIZE>=pool.length)continue;
+            if(page+offset<0||(page+offset)*PAGE_SIZE>=visible.length)continue;
             const button=add(pager,'button',label,'ki-button');button.type='button';button.onclick=()=>{page+=offset;showPage();head.scrollIntoView({block:'start'});};
           }
         }
@@ -468,17 +495,20 @@
           const top=add(r,'span','','ki-row-top');add(top,'span',TYPES[kind(i)],'ki-type');add(top,'span',fmt(i.estimate_min),'ki-estimate');
           add(r,'strong',i.title||info.entity?.title||'元項目は未取得','ki-title');
           const due=Number.isFinite(at(i.due_at))?new Date(at(i.due_at)).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):null;
-          add(r,'span',`${info.project?.title||'Project未確認'}${due?' · 期限 '+due:''}`,'ki-meta');
+          if(info.project)add(r,'span',`${info.project.title}${due?' · 期限 '+due:''}`,'ki-meta');
+          else if(due)add(r,'span','期限 '+due,'ki-meta');
           add(r,'span','→ '+(i.impact||i.reason||rank(data,i,currentTime()).reason),'ki-impact');
         }
         function groups(){
           body.replaceChildren();
+          const estimateIds=new Set(selectQuickQuestions(data,model,now).items.filter(i=>kind(i)==='daily_estimate').map(i=>i.id));
           for(const [key,label,original] of [['today','TODAY',model.today],['later','LATER',model.later]]){
             if(todayOnly&&key==='later')continue;
-            const items=original.filter(i=>filter.value==='all'||kind(i)===filter.value),page=pages[key],limit=key==='later'&&page===0?PREVIEW:PAGE_SIZE;
+            const items=original.filter(i=>(kind(i)!=='daily_estimate'||estimateIds.has(i.id))&&(filter.value==='all'||kind(i)===filter.value)),page=pages[key],limit=key==='later'&&page===0?PREVIEW:PAGE_SIZE;
             const offset=key==='later'&&page>0?PREVIEW+(page-1)*PAGE_SIZE:page*PAGE_SIZE;
             const section=add(body,'section','','ki-group');section.dataset.decisionGroup=key;
             const heading=add(section,'h3',label);add(heading,'small',` ${items.length}${trusted?'':'件以上'}`);
+            if(key==='today'&&['all','daily_estimate'].includes(filter.value)&&model.counts.daily_estimate>estimateIds.size)add(section,'p',`所要時間の残り ${model.counts.daily_estimate-estimateIds.size}件`,'kp-muted');
             if(!items.length){add(section,'p',trusted?'対象の判断はありません':'取得済み範囲に対象なし','kp-muted');continue;}
             items.slice(offset,offset+limit).forEach(i=>row(i,section));
             if(items.length>limit||page>0){
@@ -497,5 +527,5 @@
       if(status!=='ok'){notice.hidden=false;notice.textContent=healthText(status);host.querySelectorAll('.ki-form button').forEach(b=>b.disabled=true);host.querySelectorAll('.ki-proposal').forEach(p=>{if(p.dataset.proposal){delete p.dataset.proposal;p.textContent='sourceが古くなりました。判断案は未採用・未保存です。';}});}
     },1000);session.timer.unref?.();}
   }
-  return {TYPES,OUTCOMES,kind,queueItems,todayItems,isToday,rank,derive,entities,evidenceGate,proposal,inlineSummary,inlineAnswer,render,dispose};
+  return {TYPES,OUTCOMES,kind,queueItems,todayItems,isToday,rank,derive,selectQuickQuestions,entities,evidenceGate,proposal,inlineSummary,inlineAnswer,render,dispose};
 });

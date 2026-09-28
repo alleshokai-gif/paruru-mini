@@ -66,6 +66,7 @@ assert(inboxScript >= 0 && inboxScript < personalScript, 'INBOX renderer must lo
 
 function navigationHarness() {
   const listeners = {};
+  const timers = new Map();
   const anchors = ['today', 'work', 'projects', 'inbox'].map(page => ({
     dataset: { kazPage: page },
     setAttribute(name, value) { this[name] = value; },
@@ -99,8 +100,8 @@ function navigationHarness() {
       scrollTo() {},
     },
     CustomEvent: class CustomEvent { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
-    setTimeout: () => 1,
-    clearTimeout() {},
+    setTimeout: callback => { const id = timers.size + 1; timers.set(id, callback); return id; },
+    clearTimeout: id => timers.delete(id),
     KazInboxView: { dispose() {} },
     KazPersonalView: {
       route: () => ({ page: 'inbox', id: null }),
@@ -109,7 +110,7 @@ function navigationHarness() {
   };
   vm.createContext(context);
   vm.runInContext(navigation, context, { filename: 'features/kaz-os/navigation.js' });
-  return { context, elements, listeners, renders };
+  return { context, elements, listeners, renders, timers };
 }
 
 const freshInbox = () => ({
@@ -161,8 +162,10 @@ const controlledInbox = (confirmedAnswers = []) => ({ ...freshInbox(), mode: 'co
   await new Promise(setImmediate);
   const controlledRender = controlled.renders.find(args => args[2]?.mode === 'controlled_proposal');
   assert.equal(typeof controlledRender[4].answerApi, 'function', 'controlled mode answer API missing');
+  assert.equal(controlled.timers.size, 1, 'initial INBOX snapshot expiry should be scheduled');
   await controlledRender[4].answerApi({ decision_id: 'd' });
   assert.equal(answerCalls, 1, 'answer API was not called exactly once');
+  assert.equal(controlled.timers.size, 0, 'saved answer must not restore the old INBOX snapshot');
 
   const reconciled = navigationHarness();
   let reconcileReads = 0;

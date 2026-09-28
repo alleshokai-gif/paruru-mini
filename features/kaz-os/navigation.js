@@ -173,6 +173,8 @@
         try {
           const result = await inboxAnswerApi(answer);
           if (!result?.inbox) throw Object.assign(new Error('KAZ_PERSISTENCE_FAILED'), { code: 'KAZ_PERSISTENCE_FAILED' });
+          clearTimeout(inboxExpiry);
+          inboxExpiry = null;
           return result;
         } catch (error) {
           if (error?.code !== 'HOME_CONTROL_UNAVAILABLE') throw error;
@@ -209,6 +211,8 @@
             ...(refreshed.feedback || {}),
             message: '✓ 保存済みを再確認したで。Operational Sourceはまだ変更してへん'
           };
+          clearTimeout(inboxExpiry);
+          inboxExpiry = null;
           return { inbox: refreshed, reconciled: true };
         }
       } : null;
