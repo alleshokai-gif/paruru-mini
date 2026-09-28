@@ -55,6 +55,8 @@ Position Shadow UIは `PALURU_BUS_POSITION_SHADOW_ENABLED=false` が初期値。
 
 Future Bus Queryは選択列車の駅到着時刻に乗換時間を足した `boardingAt` 以後のStatic/RT候補を返す。GTFS到着時刻が欠ければ神木本町到着はnull。RTの発車遅延だけで到着を補正した時は `departure_delay_projection` と明示し、直接の到着予測と区別する。未発車の可能性がある始発時刻超過便は参考候補として保持できるが、`recommendable=false` にする。
 
+東急向01の向ヶ丘遊園駅南口→神木本町は、既存Hubの停留所発時刻だけでは到着時刻を算出できない。9/28に正規ODPT `BusTimetable` をread-only検証したところ、該当route patternに平日39・土曜39・Holiday38件があり、全116件で乗車stop index 1の出発と神木本町index 10の到着時刻が対になった。停留所時刻表の日曜38件とtrip時刻表のHoliday38件は発車時刻集合が完全一致した。この対象pattern専用のStatic到着時刻Providerを追加し、`static_only`、delayなしとして返す。取得失敗時は川崎便を残して比較結果を `partial` にする。仮の列車選択と仮の乗換時間を入力したローカル結合では、川崎＋東急の38候補中12件が東急で、全候補の到着時刻が発車以後だった。実乗換時間やPublic利用可否を確認した結果ではない。[ODPT東急バス時刻表](https://ckan.odpt.org/dataset/tokyu_bus__b-bus_timetable)
+
 大学は登戸（通常/多摩川口）と向ヶ丘遊園、高校は登戸（通常/多摩川口）と武蔵溝ノ口を固定比較する。鉄道ProviderはBus Coreに混ぜない。v1はユーザーが列車を選び、駅ごとの到着時刻と出口別の実測乗換時間を入力する設計。小田急・JR東日本のODPT駅時刻表はChallenge 2026限定ライセンスで、Public PWAへの利用可否は未確定。公式アプリの内部通信を流用しない。
 
 参考: [小田急ODPT駅時刻表](https://ckan.odpt.org/dataset/odakyu__r_station_timetable)、[JR東日本ODPT駅時刻表](https://ckan.odpt.org/dataset/jreast__r_station_timetable)、[小田急公式時刻表一覧](https://www.odakyu.jp/station/timetables-download.html)。
