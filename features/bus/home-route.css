@@ -12,6 +12,17 @@
 .bus-home-route-heading { margin: 0 0 10px; font-size: 20px; }
 .bus-home-route-journeys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
 .bus-home-route-choices { margin: 8px 0; }
+.bus-home-route-sample { margin: 0 0 8px; color: #8a4216; font-size: 13px; line-height: 1.4; }
+.bus-home-route-train-details { margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+  background: #f1f6fb; color: #25445e; font-size: 14px; overflow-wrap: anywhere; }
+.bus-home-route-train-details:empty { display: none; }
+.bus-home-route-train-details p { margin: 2px 0; }
+.bus-home-route-train-pages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px; margin-top: 8px; }
+.bus-home-route-train-page { min-width: 0; min-height: 48px; padding: 8px;
+  border: 1px solid #b9cde0; border-radius: 8px; background: #f6f9fc;
+  color: #244761; font-size: 16px; }
+.bus-home-route-train-page:disabled { opacity: 0.45; }
 .bus-home-route-journey-choice { min-width: 0; min-height: 48px; padding: 9px 8px; border-radius: 9px; font-size: 16px; }
 .bus-home-route-journey-choice[data-journey-id="university"] { background: #e5f1fc; color: #22547a; border: 1px solid #9cc7e9; }
 .bus-home-route-journey-choice[data-journey-id="high_school"] { background: #edf2e4; color: #47622d; border: 1px solid #b8cf98; }

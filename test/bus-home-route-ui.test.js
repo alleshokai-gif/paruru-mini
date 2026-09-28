@@ -31,6 +31,25 @@ test('train choice uses an explicit accessible dropdown rather than GPS inferenc
   assert.match(config, /PALURU_BUS_HOME_ROUTE_ENABLED\s*=\s*false/);
 });
 
+test('user rail choices show source departure and both comparison arrivals with paging', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  const selected = [], pages = [];
+  ui.renderTrainChoices(doc, mount, [{ id: 'rail-1',
+    label: '18:00 玉川学園前発・各駅停車・向ヶ丘遊園18:18着／登戸18:21着',
+    sourceStation: '玉川学園前', sourceDeparture: '18:00', trainType: '各駅停車',
+    candidateStations: [{ label: '向ヶ丘遊園', arrival: '18:18' },
+      { label: '登戸', arrival: '18:21' }] }], (id) => selected.push(id),
+  { sample: true, hasPrevious: false, hasNext: true, onPage: (delta) => pages.push(delta) });
+  const select = mount.children[1].children[0];
+  assert.match(select.children[1].textContent, /18:00 玉川学園前発.*向ヶ丘遊園18:18着.*登戸18:21着/);
+  select.value = 'rail-1'; select.listeners.change();
+  assert.deepEqual(selected, ['rail-1']);
+  assert.match(renderedText(mount), /玉川学園前 18:00発.*向ヶ丘遊園 18:18着.*登戸 18:21着/s);
+  assert.match(renderedText(mount), /架空列車時刻/);
+  mount.children[3].children[1].listeners.click();
+  assert.deepEqual(pages, [1]);
+});
+
 test('route decision shows station, bus, home arrival and static quality without internal calculation detail', () => {
   const doc = fakeDocument(), mount = doc.createElement('div');
   const option = { stationLabel: '向ヶ丘遊園駅南口', stationArrivalAt: epoch('18:21'),

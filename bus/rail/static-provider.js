@@ -90,6 +90,8 @@ export function listRailTrains({ artifact, journeyId, now, page = 0, pageSize = 
       id: `${serviceDate}:${train.internalTripId}`, sourceDepartureAt,
       sourceDeparture: train.sourceDeparture, sourceStation: route.sourceLabel,
       trainType: train.trainType, destination: train.destination, arrivals,
+      label: `${train.sourceDeparture} ${route.sourceLabel}発・${train.trainType}・${route.candidates
+        .map((candidate, index) => `${candidate.label}${train.candidateStations[index].arrival}着`).join('／')}`,
       candidateStations: route.candidates.map((candidate, index) => ({
         station: candidate.station, label: candidate.label,
         arrival: train.candidateStations[index].arrival

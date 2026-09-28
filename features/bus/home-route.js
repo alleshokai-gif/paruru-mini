@@ -49,9 +49,13 @@
       '一部の経路情報を取得できませんでした'));
     mount.replaceChildren(...nodes);
   }
-  function renderTrainChoices(doc, mount, trains, onSelect) {
+  function renderTrainChoices(doc, mount, trains, onSelect, options = {}) {
     if (!mount || !Array.isArray(trains) || typeof onSelect !== 'function'
       || trains.some((train) => !train?.id || !train.label)) throw Error('BUS_TRAIN_CHOICES_INVALID');
+    const nodes = [];
+    if (options.sample === true)
+      nodes.push(node(doc, 'p', 'bus-home-route-sample',
+        '開発用の架空列車時刻です。実際のダイヤではありません。'));
     const label = node(doc, 'label', 'bus-home-route-train-label', '乗車する列車');
     const select = node(doc, 'select', 'bus-home-route-train-choice', '');
     const placeholder = node(doc, 'option', '', trains.length ? '列車を選択' : '列車候補がありません');
@@ -61,9 +65,33 @@
       option.value = train.id; select.append(option);
     }
     select.disabled = trains.length === 0;
-    select.addEventListener('change', () => { if (select.value) onSelect(select.value); });
+    const details = node(doc, 'div', 'bus-home-route-train-details', '');
+    select.addEventListener('change', () => {
+      const train = trains.find((row) => row.id === select.value);
+      if (!train) return;
+      details.replaceChildren();
+      if (train.sourceDeparture && train.sourceStation)
+        details.append(node(doc, 'p', '', `${train.sourceStation} ${train.sourceDeparture}発・${train.trainType}`));
+      if (Array.isArray(train.candidateStations))
+        for (const station of train.candidateStations)
+          details.append(node(doc, 'p', '', `${station.label} ${station.arrival}着`));
+      onSelect(train.id);
+    });
     label.append(select);
-    mount.replaceChildren(label);
+    nodes.push(label, details);
+    if (typeof options.onPage === 'function' && (options.hasPrevious || options.hasNext)) {
+      const navigation = node(doc, 'div', 'bus-home-route-train-pages', '');
+      for (const [text, enabled, delta] of [
+        ['前の列車', options.hasPrevious, -1], ['次の列車', options.hasNext, 1]
+      ]) {
+        const button = node(doc, 'button', 'bus-home-route-train-page', text);
+        button.type = 'button'; button.disabled = !enabled;
+        button.addEventListener('click', () => { if (enabled) options.onPage(delta); });
+        navigation.append(button);
+      }
+      nodes.push(navigation);
+    }
+    mount.replaceChildren(...nodes);
   }
   function install(doc, root) {
     function mount() {
@@ -92,36 +120,40 @@
       if (typeof source?.getTrainChoices !== 'function' || typeof source?.evaluate !== 'function') {
         status.textContent = '列車候補を読み込めません'; return;
       }
-      let selectedJourneyId = 'university';
-      const selectJourney = (journeyId) => {
-        selectedJourneyId = journeyId;
+      let selectedJourneyId = 'university', selectedPage = 0;
+      const selectJourney = (journeyId, page = 0) => {
+        selectedJourneyId = journeyId; selectedPage = page;
         const defaultHubId = hubForJourney(journeyId);
         if (defaultHubId) root.PALURUBusHub?.selectHub?.(defaultHubId);
         const request = ++generation;
         choices.replaceChildren(); result.replaceChildren(); status.textContent = '列車候補を読み込み中…';
         for (const button of journeys.children) button.setAttribute('aria-pressed', String(button.dataset.journeyId === journeyId));
-        Promise.resolve().then(() => source.getTrainChoices(journeyId)).then((trains) => {
+        Promise.resolve().then(() => source.getTrainChoices(journeyId, page)).then((response) => {
           if (!active || request !== generation) return;
-          renderTrainChoices(doc, choices, trains, (trainId) => {
+          const choicesData = Array.isArray(response) ? { trains: response } : response;
+          if (!Array.isArray(choicesData?.trains)) throw Error('BUS_TRAIN_CHOICES_INVALID');
+          renderTrainChoices(doc, choices, choicesData.trains, (trainId) => {
             const evaluation = ++generation;
             result.replaceChildren(); status.textContent = '帰宅経路を比較中…';
-            Promise.resolve().then(() => source.evaluate({ journeyId, trainId })).then((decision) => {
+            Promise.resolve().then(() => source.evaluate({ journeyId, trainId, page })).then((decision) => {
               if (!active || evaluation !== generation) return;
               renderDecision(doc, result, decision); status.textContent = '';
               const hubId = hubForJourney(journeyId, decision);
               if (hubId) root.PALURUBusHub?.selectHub?.(hubId);
             }).catch(() => { if (active && evaluation === generation) status.textContent = '帰宅経路を比較できません'; });
-          });
-          status.textContent = trains.length ? '乗車する列車を選んでください' : '列車候補がありません';
+          }, { sample: choicesData.sample, hasPrevious: choicesData.hasPrevious,
+            hasNext: choicesData.hasNext, onPage: (delta) => selectJourney(journeyId, page + delta) });
+          status.textContent = choicesData.trains.length
+            ? '乗車する列車を選んでください' : '列車候補がありません';
         }).catch(() => { if (active && request === generation) status.textContent = '列車候補を読み込めません'; });
       };
       for (const [id, label] of [['university', '大学から'], ['high_school', '高校から']]) {
         const button = node(doc, 'button', 'bus-home-route-journey-choice', label);
         button.type = 'button'; button.dataset.journeyId = id;
-        button.addEventListener('click', () => selectJourney(id)); journeys.append(button);
+        button.addEventListener('click', () => selectJourney(id, 0)); journeys.append(button);
       }
       target.hidden = false;
-      activate = () => { if (expanded) selectJourney(selectedJourneyId); };
+      activate = () => { if (expanded) selectJourney(selectedJourneyId, selectedPage); };
       if (active && expanded) activate();
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();

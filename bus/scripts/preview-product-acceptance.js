@@ -5,6 +5,14 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { extname, resolve, sep } from 'node:path';
 import { shadowPosition } from '../position/shadow.js';
+import { mergeKawasakiStatic } from '../providers/kawasaki/journey-static.js';
+import { P0_QUERIES } from '../config/queries.js';
+import { KAWASAKI_JOURNEY_QUERIES } from '../providers/kawasaki/journey-config.js';
+import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
+import { getFutureBuses } from '../journey/future-bus.js';
+import { createHomeBusLoader } from '../journey/home-bus-loader.js';
+import { compareHomeRoutes } from '../journey/home-route.js';
+import { listRailTrains } from '../rail/static-provider.js';
 
 const root = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const port = Number(process.env.PALURU_BUS_PREVIEW_PORT || 8792);
@@ -15,8 +23,8 @@ const scenarios = Object.freeze([
   ['position-safe', 'バスロケ・位置表示'],
   ['position-weak', 'バスロケ・確認中'],
   ['position-off', 'バスロケ・OFF'],
-  ['five', '帰宅最速・5分差'],
-  ['tie', '帰宅最速・ほぼ同着'],
+  ['five', '帰宅最速・大学'],
+  ['tie', '帰宅最速・高校'],
   ['partial', '帰宅最速・partial']
 ]);
 const scenarioIds = new Set(scenarios.map(([id]) => id));
@@ -31,29 +39,37 @@ const responseJson = (res, value, status = 200) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(value));
 };
-const jstDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric',
-  month: '2-digit', day: '2-digit' }).format(new Date());
-const fixtureTime = (hhmm) => Date.parse(`${jstDate()}T${hhmm}:00+09:00`) / 1000;
-const trains = (journeyId) => journeyId === 'university'
-  ? [{ id: 'preview-university', label: 'テスト列車：登戸18:18・遊園18:21着' }]
-  : journeyId === 'high_school'
-    ? [{ id: 'preview-school', label: 'テスト列車：登戸18:18・武蔵溝ノ口18:30着' }]
-    : [];
-function homeRouteFixture(journeyId, scenario) {
-  const school = journeyId === 'high_school';
-  const first = { stationId: school ? 'musashi_mizonokuchi' : 'mukougaoka',
-    stationLabel: school ? '溝の口駅南口' : '向ヶ丘遊園駅南口',
-    stationArrivalAt: fixtureTime(school ? '18:30' : '18:21'),
-    departureAt: fixtureTime(school ? '18:37' : '18:27'),
-    homeArrivalAt: fixtureTime('18:39'), provider: school ? 'kawasaki' : 'tokyu',
-    routeLabel: school ? '溝１７' : '向０１', timingQuality: school ? 'departure_delay_projection' : 'static_only' };
-  const second = { stationId: 'noborito', stationLabel: '登戸駅', stationArrivalAt: fixtureTime('18:18'),
-    departureAt: fixtureTime('18:31'), homeArrivalAt: fixtureTime(scenario === 'tie' ? '18:40' : '18:44'),
-    provider: 'kawasaki', routeLabel: '登０５', timingQuality: 'departure_delay_projection' };
-  if (scenario === 'partial') return { status: 'partial', fastest: second, alternate: null,
-    differenceMinutes: null, unavailablePlaces: [first.stationLabel], unavailableSources: [first.provider] };
-  return { status: 'available', fastest: first, alternate: second,
-    differenceMinutes: scenario === 'tie' ? 1 : 5, unavailablePlaces: [], unavailableSources: [] };
+const railStaticFile = process.env.PALURU_RAIL_STATIC_PATH
+  || fileURLToPath(new URL('../rail/rail-static.example.json', import.meta.url));
+const transferMinutes = Object.freeze({ 'noborito-normal': 8, 'noborito-tamagawa': 11,
+  mukougaoka: 5, mizonokuchi: 6 }); // Preview-only user-editable estimates, not measured walking times.
+const p0Static = JSON.parse(await readFile(new URL('../generated/p0-static.json', import.meta.url)));
+const journeyStatic = JSON.parse(await readFile(new URL('../generated/kawasaki-p2-5-static.json', import.meta.url)));
+const futureIndex = mergeKawasakiStatic(p0Static, journeyStatic);
+const futureQueries = [...P0_QUERIES, ...KAWASAKI_JOURNEY_QUERIES];
+const futureSourceIds = ['noborito_to_home', 'noborito_tamagawa_to_kibukihoncho',
+  'mukougaoka_to_kibukihoncho', 'mizonokuchi_to_home'];
+const futureQueryMap = new Map(futureQueries.map((query) => [query.id, query]));
+const previewNow = (url) => {
+  const at = url.searchParams.get('at');
+  if (at === null) return Math.floor(Date.now() / 1000);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/.test(at)) throw Error('PREVIEW_TIME_INVALID');
+  const value = Date.parse(at) / 1000;
+  if (!Number.isFinite(value)) throw Error('PREVIEW_TIME_INVALID');
+  return value;
+};
+const railChoices = async (journeyId, now, page = 0) => listRailTrains({
+  artifact: JSON.parse(await readFile(railStaticFile, 'utf8')), journeyId, now, page
+});
+function futureBusLoader(now) {
+  const sourceLoaders = Object.fromEntries(futureSourceIds.map((id) => [
+    `kawasaki:${id}`, ({ boardingAt }) => getFutureBuses({
+      index: futureIndex, queries: [futureQueryMap.get(id)], providerContext: KAWASAKI_CONTEXT,
+      now, boardingAt, realtime: null
+    }).results[0].arrivals
+  ]));
+  // Tokyu future-time data is unavailable in this local preview and remains explicitly partial.
+  return createHomeBusLoader(sourceLoaders);
 }
 const shadowArtifact = Object.freeze({ approvedForShadow: true, approvedForPublic: false, geometryReady: false });
 function positionFixture(scenario) {
@@ -61,7 +77,6 @@ function positionFixture(scenario) {
     method: 'gps_shape_snap', state: 'between_stops', conflicts: [],
     previousStop: { name: '長尾橋' }, nextStop: { name: '宿河原' }, stopsAway: 2 }, shadowArtifact);
 }
-const journeyStatic = JSON.parse(await readFile(new URL('../generated/kawasaki-p2-5-static.json', import.meta.url)));
 function tamagawaRow(direction) {
   const outbound = direction === 'outbound';
   const key = outbound ? 'kibukihoncho_to_noborito_tamagawa' : 'noborito_tamagawa_to_kibukihoncho';
@@ -108,8 +123,8 @@ async function validation(path, search, scenario) {
 function bootstrap(scenario) {
   const label = scenarios.find(([id]) => id === scenario)?.[1];
   const note = scenario === 'live'
-    ? 'Hubはvalidation実データ。帰宅最速の列車・比較時刻はUI確認用です。'
-    : `UI確認用fixture: ${label}。通常便はvalidation実データです。`;
+    ? 'Hubはvalidation実データ。帰宅最速の鉄道は編集可能な架空サンプル、バス比較はGTFS Staticです。'
+    : `${label}。鉄道は編集可能な架空サンプル、バス比較はGTFS Staticです。`;
   return `<style>
     #splash,#authLock{display:none!important}body{overflow:auto!important}
     .bus-preview-note{margin:0 0 10px;color:#526579;font-size:11px;line-height:1.4}
@@ -135,7 +150,8 @@ function bootstrap(scenario) {
         document.querySelectorAll('.app-view').forEach(view=>{view.hidden=view!==bus;view.classList.toggle('is-active',view===bus)});
         const note=document.createElement('p');
         note.className='bus-preview-note';
-        note.textContent=${JSON.stringify(note)};
+        const railAt=new URLSearchParams(location.search).get('at');
+        note.textContent=${JSON.stringify(note)}+(railAt?' 帰宅比較の検証時刻: '+railAt.replace('T',' ').slice(0,16)+' JST。通常Busカードは現在時刻です。':'');
         bus.prepend(note);
         window.PALURUBusHub?.setActive(true);
         window.PALURUBusHomeRoute?.setActive(true);
@@ -147,8 +163,8 @@ const configOverride = (scenario) => `\n;globalThis.PALURU_BUS_API_URL='/api/bus
 globalThis.PALURU_BUS_HOME_ROUTE_ENABLED=true;
 globalThis.PALURU_BUS_POSITION_SHADOW_ENABLED=${scenario !== 'position-off'};
 globalThis.PALURU_BUS_HOME_ROUTE_SOURCE={
- getTrainChoices:async(journeyId)=>{const r=await fetch('/preview/trains?journeyId='+encodeURIComponent(journeyId));if(!r.ok)throw Error('TRAIN_UNAVAILABLE');return r.json()},
- evaluate:async({journeyId,trainId})=>{const r=await fetch('/preview/home-route?journeyId='+encodeURIComponent(journeyId)+'&trainId='+encodeURIComponent(trainId)+'&previewCase=${scenario}');if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()}
+ getTrainChoices:async(journeyId,page=0)=>{const q=new URLSearchParams({journeyId,page:String(page)});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/trains?'+q);if(!r.ok)throw Error('TRAIN_UNAVAILABLE');return r.json()},
+ evaluate:async({journeyId,trainId,page=0})=>{const q=new URLSearchParams({journeyId,trainId,page:String(page)});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/home-route?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()}
 };`;
 const server = createServer(async (req, res) => {
   try {
@@ -160,12 +176,19 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const scenario = scenarioIds.has(url.searchParams.get('previewCase')) ? url.searchParams.get('previewCase')
       : scenarioIds.has(url.searchParams.get('case')) ? url.searchParams.get('case') : 'live';
-    if (url.pathname === '/preview/trains') return responseJson(res, trains(url.searchParams.get('journeyId')));
-    if (url.pathname === '/preview/home-route') {
+    if (url.pathname === '/preview/trains' || url.pathname === '/preview/home-route') {
+      const page = Number(url.searchParams.get('page') || 0);
+      if (!Number.isSafeInteger(page) || page < 0 || page > 50)
+        return responseJson(res, { error: 'PAGE_INVALID' }, 400);
       const journeyId = url.searchParams.get('journeyId');
-      if (!trains(journeyId).some((row) => row.id === url.searchParams.get('trainId')))
-        return responseJson(res, { error: 'TRAIN_INVALID' }, 400);
-      return responseJson(res, homeRouteFixture(journeyId, scenario));
+      const now = previewNow(url);
+      const choices = await railChoices(journeyId, now, page);
+      if (url.pathname === '/preview/trains') return responseJson(res, choices);
+      const selectedTrain = choices.trains.find((row) => row.id === url.searchParams.get('trainId'));
+      if (!selectedTrain) return responseJson(res, { error: 'TRAIN_INVALID' }, 400);
+      const decision = await compareHomeRoutes({ journeyId, selectedTrain, transferMinutes,
+        loadBuses: futureBusLoader(now), now });
+      return responseJson(res, decision);
     }
     if (['/health', '/api/bus/arrivals', '/api/bus/hub', '/api/bus/journey'].includes(url.pathname)) {
       const search = new URLSearchParams(url.searchParams); search.delete('previewCase'); search.delete('case');
