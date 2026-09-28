@@ -20,6 +20,10 @@
 !hub/**
 !journey
 !journey/**
+!rail
+!rail/*.js
+!release-static
+!release-static/**
 !observation
 !observation/**
 observation/node_modules

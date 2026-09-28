@@ -16,6 +16,8 @@ COPY departure ./departure
 COPY position ./position
 COPY hub ./hub
 COPY journey ./journey
+COPY rail ./rail
+COPY release-static ./release-static
 COPY providers/kawasaki/adapter.js providers/kawasaki/config.js providers/kawasaki/attribution.js providers/kawasaki/context.js providers/kawasaki/position-reference.js providers/kawasaki/departure.js providers/kawasaki/hub.js providers/kawasaki/journey-config.js providers/kawasaki/journey-static.js ./providers/kawasaki/
 COPY providers/tokyu ./providers/tokyu
 COPY providers/seibu ./providers/seibu
