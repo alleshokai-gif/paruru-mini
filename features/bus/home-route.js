@@ -24,8 +24,12 @@
     const section = node(doc, 'section', `bus-home-route-option${primary ? ' is-primary' : ''}`, '');
     const quality = option.timingQuality === 'static_only' ? '時刻表上の到着' :
       option.timingQuality === 'departure_delay_projection' ? '発車遅延からの推定' : '到着予測';
+    const stationTime = option.stationTimeAt ?? option.stationArrivalAt;
+    const marker = option.stationTimeSource === 'departure' ? '発（着時刻未提供）' : '着';
+    const railQuality = option.railTimingQuality === 'delay_projection'
+      ? '・遅延に基づく見込み' : '';
     section.append(node(doc, 'h3', 'bus-home-route-station', option.stationLabel),
-      node(doc, 'p', 'bus-home-route-rail', `列車 ${clock(option.stationArrivalAt)}着`),
+      node(doc, 'p', 'bus-home-route-rail', `列車 ${clock(stationTime)}${marker}${railQuality}`),
       node(doc, 'p', 'bus-home-route-bus',
         `${clock(option.departureAt)} ${providerName[option.provider] || option.provider} ${option.routeLabel}`),
       node(doc, 'p', 'bus-home-route-arrival', `神木本町 ${clock(option.homeArrivalAt)}着`),
@@ -74,7 +78,10 @@
         details.append(node(doc, 'p', '', `${train.sourceStation} ${train.sourceDeparture}発・${train.trainType}`));
       if (Array.isArray(train.candidateStations))
         for (const station of train.candidateStations)
-          details.append(node(doc, 'p', '', `${station.label} ${station.arrival}着`));
+          details.append(node(doc, 'p', '', `${station.label} ${station.stationTime}${
+            station.stationTimeSource === 'departure' ? '発（着時刻未提供）' : '着'}`));
+      if (train.railRealtimeState === 'confirmed_delay' && train.delaySeconds > 0)
+        details.append(node(doc, 'p', '', `列車遅延 +${Math.ceil(train.delaySeconds / 60)}分・遅延に基づく見込み`));
       onSelect(train.id);
     });
     label.append(select);

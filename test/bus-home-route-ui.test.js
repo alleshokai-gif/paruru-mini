@@ -37,8 +37,8 @@ test('user rail choices show source departure and both comparison arrivals with 
   ui.renderTrainChoices(doc, mount, [{ id: 'rail-1',
     label: '18:00 玉川学園前発・各駅停車・向ヶ丘遊園18:18着／登戸18:21着',
     sourceStation: '玉川学園前', sourceDeparture: '18:00', trainType: '各駅停車',
-    candidateStations: [{ label: '向ヶ丘遊園', arrival: '18:18' },
-      { label: '登戸', arrival: '18:21' }] }], (id) => selected.push(id),
+    candidateStations: [{ label: '向ヶ丘遊園', stationTime: '18:18', stationTimeSource: 'arrival' },
+      { label: '登戸', stationTime: '18:21', stationTimeSource: 'arrival' }] }], (id) => selected.push(id),
   { sample: true, hasPrevious: false, hasNext: true, onPage: (delta) => pages.push(delta) });
   const select = mount.children[1].children[0];
   assert.match(select.children[1].textContent, /18:00 玉川学園前発.*向ヶ丘遊園18:18着.*登戸18:21着/);
@@ -66,6 +66,27 @@ test('route decision shows station, bus, home arrival and static quality without
   assert.match(text, /登戸駅.*18:18.*登０５.*18:44/s);
   assert.match(text, /5分差/);
   assert.doesNotMatch(text, /confidence|GPS|lat|lon|sourceId/);
+});
+
+test('JR train choice and route result identify departure markers and confirmed delay', () => {
+  const doc = fakeDocument(), choice = doc.createElement('div'), result = doc.createElement('div');
+  ui.renderTrainChoices(doc, choice, [{ id: 'jr-4554f',
+    label: '15:54 立川発・快速・登戸16:15発／武蔵溝ノ口16:21発',
+    sourceStation: '立川', sourceDeparture: '15:54', trainType: '快速',
+    railRealtimeState: 'confirmed_delay', delaySeconds: 120,
+    candidateStations: [{ label: '登戸', stationTime: '16:15', stationTimeSource: 'departure' },
+      { label: '武蔵溝ノ口', stationTime: '16:21', stationTimeSource: 'departure' }] }], () => {});
+  choice.children[0].children[0].value = 'jr-4554f';
+  choice.children[0].children[0].listeners.change();
+  assert.match(renderedText(choice), /登戸 16:15発（着時刻未提供）/);
+  assert.match(renderedText(choice), /列車遅延 \+2分・遅延に基づく見込み/);
+  const option = { stationLabel: '登戸駅', stationTimeAt: epoch('16:17'),
+    stationTimeSource: 'departure', railTimingQuality: 'delay_projection',
+    departureAt: epoch('16:30'), provider: 'kawasaki', routeLabel: '登０５',
+    homeArrivalAt: epoch('16:44'), timingQuality: 'static_only' };
+  ui.renderDecision(doc, result, { status: 'available', fastest: option,
+    alternate: null, differenceMinutes: null, unavailablePlaces: [] });
+  assert.match(renderedText(result), /列車 16:17発（着時刻未提供）・遅延に基づく見込み/);
 });
 
 test('partial source failure is visible even when its station still has buses', () => {
