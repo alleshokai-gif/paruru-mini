@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTokyuApproachSource, parseTokyuApproaches, withTokyuApproaches } from '../providers/tokyu/approach.js';
-import { KIBUKIHONCHO_TO_MUKOUGAOKA } from '../providers/tokyu/config.js';
+import { createTokyuApproachSource, parseMukougaokaApproach, parseTokyuApproaches, withTokyuApproaches } from '../providers/tokyu/approach.js';
+import { KIBUKIHONCHO_TO_MUKOUGAOKA, MUKOUGAOKA_TO_KIBUKIHONCHO } from '../providers/tokyu/config.js';
 import { KIBUKIHONCHO_HUB } from '../hub/config.js';
 import { aggregateHub } from '../hub/aggregator.js';
 
@@ -84,6 +84,23 @@ test('opposite direction uses the official left-side bus block without trip matc
   assert.equal(approaches.kibukihoncho_to_kajigaya.matchedTripId, null);
 });
 
+test('Mukougaoka terminal official approach accepts turnaround buses and exposes ETA without trip matching', () => {
+  const terminal = `<div>09:21時点</div><h3>向01</h3><div>向ヶ丘遊園駅南口</div>
+    <div><img alt="バス">向０１ (折)梶谷駅行〖06分待ち〗</div>`;
+  const approaches = parseMukougaokaApproach(terminal, NOW);
+  assert.deepEqual(approaches[MUKOUGAOKA_TO_KIBUKIHONCHO.sourceId], {
+    matchedTripId: null, uniqueNext: true, sourceId: MUKOUGAOKA_TO_KIBUKIHONCHO.sourceId,
+    routeLabel: MUKOUGAOKA_TO_KIBUKIHONCHO.routeLabel,
+    destination: MUKOUGAOKA_TO_KIBUKIHONCHO.destinationName,
+    boardingStopId: MUKOUGAOKA_TO_KIBUKIHONCHO.fromStopId,
+    waitMinutes: 6, stopsAwayMin: null, stopsAwayMax: null,
+    retrievedAt: Date.parse('2026-09-29T09:21:00+09:00') / 1000
+  });
+  const arrived = parseMukougaokaApproach(terminal.replace('(折)梶谷駅行〖06分待ち〗', '梶谷駅行 到着済'), NOW);
+  assert.equal(arrived[MUKOUGAOKA_TO_KIBUKIHONCHO.sourceId].waitMinutes, 0);
+  assert.deepEqual(parseMukougaokaApproach(terminal.replace('向01', '向02'), NOW), {});
+});
+
 test('official fetch failure preserves Static, and bounded cache prevents repeated requests', async () => {
   let calls = 0;
   const source = createTokyuApproachSource({ now: () => NOW, fetcher: async () => {
@@ -92,12 +109,17 @@ test('official fetch failure preserves Static, and bounded cache prevents repeat
   } });
   assert.deepEqual(await source.getApproaches(), {});
   assert.deepEqual(await source.getApproaches(), {});
-  assert.equal(calls, 1);
-  assert.deepEqual(withTokyuApproaches({ provider: 'tokyu', arrivals: [row()] }, {}).arrivals[0].officialApproach, null);
-  const success = createTokyuApproachSource({ now: () => NOW, fetcher: async () => {
-    calls++;
-    return new Response(html(), { headers: { 'content-type': 'text/html; charset=UTF-8' } });
-  } });
-  assert.equal((await success.getApproaches())[KIBUKIHONCHO_TO_MUKOUGAOKA.sourceId].waitMinutes, 5);
   assert.equal(calls, 2);
+  assert.deepEqual(withTokyuApproaches({ provider: 'tokyu', arrivals: [row()] }, {}).arrivals[0].officialApproach, null);
+  const success = createTokyuApproachSource({ now: () => NOW, fetcher: async (url) => {
+    calls++;
+    const body = url.includes('/navis?')
+      ? '<div>09:21時点</div><h3>向01</h3><div>向ヶ丘遊園駅南口</div><div>向０１ (折)梶谷駅行〖06分待ち〗</div>'
+      : html();
+    return new Response(body, { headers: { 'content-type': 'text/html; charset=UTF-8' } });
+  } });
+  const approaches = await success.getApproaches();
+  assert.equal(approaches[KIBUKIHONCHO_TO_MUKOUGAOKA.sourceId].waitMinutes, 5);
+  assert.equal(approaches[MUKOUGAOKA_TO_KIBUKIHONCHO.sourceId].waitMinutes, 6);
+  assert.equal(calls, 4);
 });

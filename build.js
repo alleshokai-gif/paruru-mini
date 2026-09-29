@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260930-tokyu-eta-alignment-delay-v1";
+globalThis.BUILD_ID = "v20260930-tokyu-three-direction-approach-v1";
