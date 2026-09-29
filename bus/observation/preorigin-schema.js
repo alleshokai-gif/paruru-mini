@@ -4,7 +4,8 @@ export const PREORIGIN_RAW_SHEET = 'Bus_Preorigin_Raw';
 export const PREORIGIN_HEADERS = Object.freeze([
   'preorigin_observation_id', 'run_id', 'sample_index', 'observed_at', 'service_date', 'target_trip_id',
   'scheduled_departure', 'origin_stop_id', 'route_id', 'platform', 'record_kind', 'vehicle_classification',
-  'vehicle_hash', 'vehicle_timestamp', 'position_lat', 'position_lon', 'distance_to_origin_m', 'gps_age_sec',
+  'vehicle_hash', 'vehicle_timestamp', 'observed_trip_id', 'observed_route_id', 'observed_start_date',
+  'observed_schedule_relationship', 'position_lat', 'position_lon', 'distance_to_origin_m', 'gps_age_sec',
   'feed_timestamp', 'rt_age_sec', 'raw_vehicle_entities', 'assigned_count', 'tripless_count',
   'partial_descriptor_count', 'stale_count', 'gps_missing_count', 'runtime_dropped_count',
   'preorigin_vehicle_seen', 'preorigin_first_seen_at', 'preorigin_distance_to_origin', 'trip_assignment_transition_at',
@@ -52,7 +53,12 @@ export function validatePreoriginObservation(row) {
     || typeof row.platform !== 'string' || row.platform.length > 80 || !KINDS.has(row.record_kind)
     || !CLASSIFICATIONS.has(row.vehicle_classification)
     || !(row.vehicle_hash === null || /^veh_[a-f0-9]{32}$/.test(row.vehicle_hash))
-    || !integerOrNull(row.vehicle_timestamp) || !finiteOrNull(row.position_lat) || !finiteOrNull(row.position_lon)
+    || !integerOrNull(row.vehicle_timestamp)
+    || !(row.observed_trip_id === null || identifier(row.observed_trip_id))
+    || !(row.observed_route_id === null || identifier(row.observed_route_id))
+    || !(row.observed_start_date === null || /^\d{8}$/.test(row.observed_start_date))
+    || !integerOrNull(row.observed_schedule_relationship)
+    || !finiteOrNull(row.position_lat) || !finiteOrNull(row.position_lon)
     || (row.position_lat === null) !== (row.position_lon === null)
     || row.position_lat !== null && Math.abs(row.position_lat) > 90
     || row.position_lon !== null && Math.abs(row.position_lon) > 180
