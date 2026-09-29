@@ -97,6 +97,22 @@ test('official Tokyu approach adds one line only to the first Tokyu card without
     { recommendedArrivalId: null, arrivals: [tokyu] }, 'kibukihoncho')), /次の向01|位置確認中/);
 });
 
+test('Tokyu official approach derives approximate delay and keeps ETA in the shared timing row', () => {
+  const retrievedAt = NOW;
+  const row = arrival({ scheduledDeparture: NOW + 6 * 60, sourceId: 'kibukihoncho_to_mukougaoka',
+    destination: '向ヶ丘遊園駅南口',
+    officialApproach: { matchedTripId: null, uniqueNext: true, sourceId: 'kibukihoncho_to_mukougaoka',
+      routeLabel: '向01', destination: '向ヶ丘遊園駅南口', boardingStopId: 'tokyu-stop',
+      waitMinutes: 12, stopsAwayMin: 7, stopsAwayMax: 9, retrievedAt } });
+  const shown = renderedText(hub.renderArrivalList(fakeDocument(),
+    { recommendedArrivalId: null, arrivals: [row] }, 'kibukihoncho', true));
+  assert.match(shown, /07:06.*便.*あと12分.*約\+6分遅れ.*次の向01　約8停留所手前/s);
+  const source = fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8');
+  assert.match(source, /grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\)/);
+  assert.match(source, /bus-hub-quality \{ justify-self: center; \}/);
+  assert.match(source, /bus-hub-delay \{ justify-self: end;/);
+});
+
 test('official ETA degrades to coarse approach while invalid source or stale data falls back', () => {
   const base = { matchedTripId: null, uniqueNext: true, sourceId: 'kibukihoncho_to_mukougaoka', routeLabel: '向01',
     destination: '向ヶ丘遊園駅南口', boardingStopId: 'tokyu-stop',

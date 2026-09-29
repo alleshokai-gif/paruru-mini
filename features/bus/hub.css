@@ -38,7 +38,11 @@
   background: #fff2d7; color: #71420c; font-size: 12px; white-space: nowrap; }
 .bus-hub-position-shadow { margin: 6px 0 0; color: #36536d; font-size: 13px; overflow-wrap: anywhere; }
 .bus-hub-origin-notice { margin: 4px 0 0; color: #53657c; font-size: 12px; overflow-wrap: anywhere; }
-.bus-hub-timing { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.bus-hub-timing { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: baseline; column-gap: 10px; }
+.bus-hub-time { justify-self: start; }
+.bus-hub-quality { justify-self: center; }
+.bus-hub-delay { justify-self: end; text-align: right; }
 .bus-hub-time { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }
 .bus-hub-time-suffix { display: inline-block; font-size: 0.6em; line-height: 1; vertical-align: baseline; }
 .bus-hub-quality { border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 700; }
