@@ -38,8 +38,12 @@ export function createPositionEngine({routeIndex,policy:overrides={}}) {
       return reject('shared_corridor_not_entered');
     const targetIndex=trip.stops.findIndex(s=>s.id===target?.stopId&&s.sequence===target?.sequence);
     if(targetIndex<0)return reject('target_not_in_trip');
-    const candidates=snapCandidates(trip.geometry,vehicle.position,policy.routeMeters,policy.candidateSlackMeters);
-    if(!candidates.length)return reject('route_snap_failed');
+    const rawCandidates=snapCandidates(trip.geometry,vehicle.position,policy.routeMeters,policy.candidateSlackMeters);
+    if(!rawCandidates.length)return reject('route_snap_failed');
+    // A shared suffix may only use GPS projections inside that suffix.
+    const candidates=trip.sharedCorridorEntryAlong===undefined?rawCandidates:rawCandidates.filter(
+      candidate=>candidate.along>=trip.sharedCorridorEntryAlong);
+    if(!candidates.length)return reject('shared_corridor_gps_outside');
     // Work is bounded even on pathological self-overlapping shapes.
     if(candidates.length>16)return reject('route_candidates_excessive');
     let history=histories.get(key)?.points||[];

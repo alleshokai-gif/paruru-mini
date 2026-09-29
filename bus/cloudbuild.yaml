@@ -22,8 +22,8 @@ steps:
             const positionStatic=JSON.parse(readFileSync("/app/generated/p1-position-static.json"));
             const shadow=loadShadowPosition({index:p0,positionStatic});
             assert.equal(shadow.status,"shadow_geometry_loaded");
-            assert.equal(shadow.stats.supportedChains,2);
-            assert.equal(shadow.stats.sharedCorridorChains,1);
+            assert.equal(shadow.stats.supportedChains,4);
+            assert.equal(shadow.stats.sharedCorridorChains,3);
             assert.deepEqual(shadow.stats.geometrySources,["validated_road_geometry"]);
             assert.equal(shadow.stats.approvedForPublic,false);
             assert.equal(shadow.stats.geometryReady,false);
