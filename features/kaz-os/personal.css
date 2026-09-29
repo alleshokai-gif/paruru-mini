@@ -15,6 +15,7 @@
 .kp-project-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.kp-project-head>strong{font-size:16px;line-height:1.4;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kp-badge{display:inline-block;flex-shrink:0;border-radius:4px;padding:3px 5px;font-size:10px;font-weight:750;line-height:1.3;letter-spacing:.02em}
 .kp-badge:before{content:'●';margin-right:4px;font-size:8px}.kp-active,.kp-done{background:#dcefe4;color:#185c3f}.kp-review{background:#fff0c8;color:#78500b}.kp-blocked{background:#ffe1d9;color:#9c3525}.kp-backlog,.kp-unknown{background:#e8eceb;color:#58645e}
+.kp-reopen{background:#ffe1d9;color:#9c3525}.kp-corrective-action{background:#ffe9d1;color:#8a4b12}.kp-preventive-action{background:#fff0c8;color:#78500b}.kp-monitoring{background:#e2edf5;color:#295b7a}.kp-effective{background:#dcefe4;color:#185c3f}.kp-captured{background:#e8eceb;color:#58645e}
 .kp-backlog:before{content:'○'}.kp-done:before{content:'✓'}.kp-review:before{content:'◐'}
 .kp-focus,.kp-next,.kp-blocker{font-size:12px;line-height:1.4;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kp-focus{color:#68756e}.kp-next{color:#2a5042}.kp-blocker{color:#9c3525}
 .kp-milestones{display:flex;align-items:center;gap:8px;font-size:11px;color:#68756e;line-height:1.6;margin-top:3px}
@@ -37,7 +38,7 @@
 #kazOsDiagnosticsEntry{display:flex;flex-direction:column;align-items:flex-start;text-align:left;min-height:48px;margin:16px 0;width:100%}#kazOsDiagnosticsStatus{font-size:12px;font-weight:400}
 #kazOsDiagnosticsEntry[hidden],#kazOsNav[hidden],#kazPersonalContent[hidden],#kazOsContent[hidden],#kazOsRefresh[hidden]{display:none}
 @media(min-width:650px){.kp-project-head>strong{font-size:17px}.kp-focus,.kp-next,.kp-blocker{font-size:13px}}
-@media(max-width:340px){.kp-kpis{gap:16px}.kp-project-head{gap:5px}.kp-project-head>strong{font-size:15px}.kp-nav a{font-size:13px}}
+@media(max-width:480px){.kp-nav a{font-size:12px;letter-spacing:-.015em}}@media(max-width:340px){.kp-kpis{gap:16px}.kp-project-head{gap:5px}.kp-project-head>strong{font-size:15px}.kp-nav a{font-size:11px}}
 /* TODAY follows the same row density; context precedes action, diagnostics stay collapsed. */
 .kt-section{margin-bottom:18px}.kt-section h2{font-size:14px;letter-spacing:.045em;margin-bottom:4px}
 .kt-context{margin-bottom:12px}.kt-context>h2{font-size:11px;color:#64736c;display:inline-block;margin:0}
