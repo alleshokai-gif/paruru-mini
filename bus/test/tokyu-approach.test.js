@@ -32,7 +32,8 @@ function row() {
 test('official approach is independent of the scheduled trip and survives Hub DTO normalization', () => {
   const approaches = parseTokyuApproaches(html(), NOW);
   const official = approaches[KIBUKIHONCHO_TO_MUKOUGAOKA.sourceId];
-  assert.deepEqual(official, { matchedTripId: null, uniqueNext: true, routeLabel: '向０１',
+  assert.deepEqual(official, { matchedTripId: null, uniqueNext: true,
+    sourceId: KIBUKIHONCHO_TO_MUKOUGAOKA.sourceId, routeLabel: '向０１',
     destination: '向ヶ丘遊園駅南口', boardingStopId: KIBUKIHONCHO_TO_MUKOUGAOKA.fromStopId,
     waitMinutes: 5, stopsAwayMin: 4, stopsAwayMax: 5,
     retrievedAt: Date.parse('2026-09-29T09:21:00+09:00') / 1000 });
@@ -48,19 +49,29 @@ test('official approach is independent of the scheduled trip and survives Hub DT
   assert.equal(arrival.scheduledDeparture, NOW + 180);
   assert.equal(arrival.position.supported, false);
   assert.ok(!JSON.stringify(result).includes('PC_00.png'));
-  const stale = aggregateHub({ hub: KIBUKIHONCHO_HUB, generatedAt: NOW + 100, providerResults: [
+  const stale = aggregateHub({ hub: KIBUKIHONCHO_HUB, generatedAt: NOW + 181, providerResults: [
     { provider: 'kawasaki', arrivals: [] }, enriched
   ] });
   assert.equal(stale.decisionGroups[0].arrivals[0].officialApproach, undefined);
   assert.equal(stale.decisionGroups[0].arrivals[0].realtimeState, 'static_only');
 });
 
-test('stale, wrong route, folded bus and ambiguous vehicles fail closed', () => {
-  assert.deepEqual(parseTokyuApproaches(html({ time: '09:19' }), NOW), {});
+test('official ETA survives coarse position and multiple vehicles, while wrong route or missing ETA does not', () => {
+  assert.equal(parseTokyuApproaches(html({ time: '09:19' }), NOW)
+    [KIBUKIHONCHO_TO_MUKOUGAOKA.sourceId].waitMinutes, 5);
+  assert.deepEqual(parseTokyuApproaches(html({ time: '09:17' }), NOW), {});
   assert.deepEqual(parseTokyuApproaches(html({ route: '向02' }), NOW), {});
   assert.deepEqual(parseTokyuApproaches(html({ label: '(折)向丘駅行 05分待ち' }), NOW), {});
   assert.deepEqual(parseTokyuApproaches(html({ label: '向丘駅行' }), NOW), {});
-  assert.deepEqual(parseTokyuApproaches(html({ extra: bus('向丘駅行 07分待ち') }), NOW), {});
+  const next = parseTokyuApproaches(html({ extra: bus('向丘駅行 07分待ち') }), NOW)
+    [KIBUKIHONCHO_TO_MUKOUGAOKA.sourceId];
+  assert.equal(next.waitMinutes, 5);
+  assert.equal(next.uniqueNext, true);
+  const tied = parseTokyuApproaches(html({ extra: bus('向丘駅行 05分待ち') }), NOW)
+    [KIBUKIHONCHO_TO_MUKOUGAOKA.sourceId];
+  assert.equal(tied.waitMinutes, 5);
+  assert.equal(tied.uniqueNext, false);
+  assert.equal(tied.stopsAwayMin, null);
   assert.deepEqual(parseTokyuApproaches(html().replace('神木本町', '別の停留所'), NOW), {});
 });
 

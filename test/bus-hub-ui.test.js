@@ -62,9 +62,9 @@ test('Position shadow has an explicit local gate and safely waits for weak evide
 });
 
 test('official Tokyu approach adds one line only to the first Tokyu card without changing static time', () => {
-  const tokyu = arrival({ id: 'tokyu-first', destination: '向ヶ丘遊園駅南口',
+  const tokyu = arrival({ id: 'tokyu-first', sourceId: 'kibukihoncho_to_mukougaoka', destination: '向ヶ丘遊園駅南口',
     originStop: { id: 'odpt:BusstopPole:TokyuBus.Shibokuhonchou.00240751.b', name: '神木本町' },
-    officialApproach: { matchedTripId: null, uniqueNext: true, routeLabel: '向01',
+    officialApproach: { matchedTripId: null, uniqueNext: true, sourceId: 'kibukihoncho_to_mukougaoka', routeLabel: '向01',
       destination: '向ヶ丘遊園駅南口', boardingStopId: 'odpt:BusstopPole:TokyuBus.Shibokuhonchou.00240751.b',
       waitMinutes: 5, stopsAwayMin: 4, stopsAwayMax: 5, retrievedAt: Date.now() / 1000 } });
   const list = hub.renderArrivalList(fakeDocument(), { recommendedArrivalId: null, arrivals: [
@@ -73,7 +73,7 @@ test('official Tokyu approach adds one line only to the first Tokyu card without
   ] }, 'kibukihoncho', true);
   assert.equal(list.children.length, 3);
   const firstTokyu = renderedText(list.children[1]);
-  assert.match(firstTokyu, /07:05.*便.*時刻表のみ.*🚌 次の向01　あと5分・4〜5停留所手前/s);
+  assert.match(firstTokyu, /🚌 次の向01　あと5分・4〜5停留所手前.*07:05.*便.*時刻表のみ/s);
   assert.equal(descendants(list.children[1]).filter((node) => node.className === 'bus-hub-position-shadow').length, 1);
   assert.doesNotMatch(fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8'),
     /bus-hub-official-approach/);
@@ -84,13 +84,13 @@ test('official Tokyu approach adds one line only to the first Tokyu card without
     { recommendedArrivalId: null, arrivals: [tokyu] }, 'kibukihoncho')), /次の向01|位置確認中/);
 });
 
-test('stale, ambiguous or mismatched official approach falls back to static position pending', () => {
-  const base = { matchedTripId: null, uniqueNext: true, routeLabel: '向01',
+test('official ETA degrades to coarse approach while invalid source or stale data falls back', () => {
+  const base = { matchedTripId: null, uniqueNext: true, sourceId: 'kibukihoncho_to_mukougaoka', routeLabel: '向01',
     destination: '向ヶ丘遊園駅南口', boardingStopId: 'tokyu-stop',
     waitMinutes: 5, stopsAwayMin: 4, stopsAwayMax: 5, retrievedAt: Date.now() / 1000 };
   for (const override of [
-    { retrievedAt: base.retrievedAt - 91 }, { uniqueNext: false }, { matchedTripId: 'unverified-trip' },
-    { boardingStopId: 'other-stop' }, { destination: '梶が谷駅' }, { stopsAwayMax: 7 }
+    { retrievedAt: base.retrievedAt - 181 }, { matchedTripId: 'unverified-trip' },
+    { sourceId: 'other-direction' }
   ]) {
     const row = arrival({ destination: '向ヶ丘遊園駅南口', originStop: { id: 'tokyu-stop', name: '神木本町' },
       officialApproach: { ...base, ...override } });
@@ -99,6 +99,38 @@ test('stale, ambiguous or mismatched official approach falls back to static posi
     assert.match(shown, /時刻表のみ.*位置確認中/s);
     assert.doesNotMatch(shown, /次の向01/);
   }
+  const coarse = arrival({ destination: '向ヶ丘遊園駅南口', sourceId: base.sourceId,
+    officialApproach: { ...base, uniqueNext: false, stopsAwayMin: null, stopsAwayMax: null } });
+  assert.match(renderedText(hub.renderArrivalList(fakeDocument(),
+    { recommendedArrivalId: null, arrivals: [coarse] }, 'kibukihoncho', true)),
+  /次の向01　あと5分・接近中/);
+});
+
+test('Kawasaki stop-sequence position displays approximate progress without geometry', () => {
+  const observedAt = Date.now() / 1000;
+  assert.equal(hub.displayShadowPosition({ supported: true, fidelity: 'stop_sequence',
+    state: 'near_stop', nextStop: '蔵敷団地', previousStop: '前の停留所',
+    stopsAway: 6, observedAt }), '蔵敷団地付近・あと6停留所');
+  assert.equal(hub.displayShadowPosition({ supported: true, fidelity: 'stop_sequence',
+    state: 'approaching', nextStop: '蔵敷団地', stopsAway: 6, observedAt }),
+  '蔵敷団地に接近中・あと6停留所');
+  assert.equal(hub.displayShadowPosition({ supported: true, fidelity: 'stop_sequence',
+    state: 'near_stop', nextStop: '蔵敷団地', stopsAway: 6, observedAt: observedAt - 121 }),
+  '位置確認中');
+});
+
+test('origin schedule and platform remain visible without vehicle evidence or turnaround', () => {
+  const row = arrival({ provider: 'kawasaki', routeLabel: '溝17', isOrigin: true,
+    originStop: { id: '434_2', name: '溝の口駅南口' }, platform: '2番',
+    originNotice: 'vehicle_unconfirmed' });
+  const shown = renderedText(hub.renderArrivalList(fakeDocument(),
+    { arrivals: [row], recommendedArrivalId: null }, 'mizonokuchi-minamiguchi', true));
+  assert.match(shown, /2番のりば.*07:05便.*始発予定・車両未確認/s);
+  assert.match(shown, /位置確認中/);
+  const candidate = renderedText(hub.renderArrivalList(fakeDocument(),
+    { arrivals: [{ ...row, originNotice: 'turnaround_candidate' }], recommendedArrivalId: null },
+    'mizonokuchi-minamiguchi', true));
+  assert.match(candidate, /折返し候補/);
 });
 
 test('Tamagawa exit badge remains conspicuous without changing destination or platform', () => {
