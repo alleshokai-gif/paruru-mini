@@ -203,11 +203,12 @@ test('Position observer validates calendar and trip start without changing Provi
   rt.vehicles[0].trip.startTime='08:00:00';observer.observe({realtime:rt,now:NOW});assert.equal(observer.summary().reasons.service_instance_mismatch,1);
   rt.timestamp=NOW-121;observer.observe({realtime:rt,now:NOW});assert.equal(observer.summary().reasons.feed_stale,1);
 });
-test('generic Position graph excludes provider code and Navi, with explicit Docker index allowlist',async()=>{
+test('generic Position graph excludes providers; only Tokyu public HTML is added to runtime',async()=>{
   const bundle=await build({entryPoints:[new URL('../position/engine.js',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1')],bundle:true,platform:'node',format:'esm',write:false,metafile:true,logLevel:'silent'});
   const graph=Object.keys(bundle.metafile.inputs).join('\n');assert.ok(!/providers|kawasaki|scripts|runtime/.test(graph));
   const runtime=await build({entryPoints:[new URL('../runtime/start.js',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1')],bundle:true,platform:'node',format:'esm',write:false,logLevel:'silent'});
-  assert.ok(!/busMarkImg|bus-navigation\.jp|bus-location\.jp/.test(runtime.outputFiles[0].text));
+  assert.ok(!/busMarkImg|bus-navigation\.jp/.test(runtime.outputFiles[0].text));
+  assert.ok(runtime.outputFiles[0].text.includes('tokyu.bus-location.jp/blsys/navi'));
   for(const name of ['.dockerignore','.gcloudignore']) {
     const text=readFileSync(new URL(`../${name}`,import.meta.url),'utf8');assert.ok(text.includes('!position/**'));assert.ok(text.includes('!generated/p1-position-static.json'));assert.ok(!text.includes('!generated/**'));
   }
