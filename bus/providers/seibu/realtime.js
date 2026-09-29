@@ -79,6 +79,7 @@ export function parseSeibuRealtime({ tripUpdatesBytes, vehicleBytes, fetchedAt }
     const value = entity.vehicle, trip = descriptor(value?.trip);
     if (!trip) continue;
     vehicles.push({ provider: 'seibu', tripId: trip.tripId, routeId: trip.routeId,
+      startDate: trip.startDate, startTime: trip.startTime,
       timestamp: epoch(value.timestamp), vehicleId: vehicleId(value.vehicle),
       position: { lat: own(value.position, 'latitude') ? coordinate(value.position.latitude, 90) : null,
         lon: own(value.position, 'longitude') ? coordinate(value.position.longitude, 180) : null },

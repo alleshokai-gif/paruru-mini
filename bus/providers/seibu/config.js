@@ -1,5 +1,5 @@
 export const PROVIDER_ID = 'seibu';
-export const ARTIFACT_SCHEMA_VERSION = 1;
+export const ARTIFACT_SCHEMA_VERSION = 2;
 export const API_ROOT = 'https://api.odpt.org/api/v4/';
 export const STATIC_PATH = 'files/SeibuBus/data/SeibuBus-GTFS.zip';
 export const TRIP_UPDATE_PATH = 'gtfs/realtime/SeibuBus_trip_update';

@@ -71,6 +71,17 @@ export function validateSeibuArtifact(value) {
         || !Number.isInteger(row.stopSequence) || !Number.isInteger(row.alightSequence)
         || row.stopSequence >= row.alightSequence || !Number.isFinite(row.scheduledSeconds)
         || row.platform != null && typeof row.platform !== 'string') fail('BUS_SEIBU_ARTIFACT_ROW');
+      if (!Array.isArray(row.positionStops) || row.positionStops.length < 2
+        || row.positionStops.at(-1).sequence !== row.alightSequence
+        || row.positionStops.at(-1).stopId !== row.toStopId) fail('BUS_SEIBU_ARTIFACT_CHAIN');
+      let previous = -1, boardingFound = false;
+      for (const stop of row.positionStops) {
+        if (!Number.isInteger(stop.sequence) || stop.sequence <= previous || !stop.stopId || !stop.name)
+          fail('BUS_SEIBU_ARTIFACT_CHAIN');
+        if (stop.sequence === row.stopSequence && stop.stopId === row.fromStopId) boardingFound = true;
+        previous = stop.sequence;
+      }
+      if (!boardingFound) fail('BUS_SEIBU_ARTIFACT_CHAIN');
     }
   }
   return value;
@@ -114,11 +125,16 @@ export function buildSeibuStatic(bytes, { now = Date.now() / 1000 } = {}) {
     const route = routes.get(trip.route_id), fromStop = stopMap.get(pair.from.stop_id);
     const headsign = pair.from.stop_headsign || trip.trip_headsign || route.route_long_name;
     if (!headsign) fail('BUS_SEIBU_STATIC_HEADSIGN');
+    const positionStops = chain.filter((row) => Number(row.stop_sequence) <= toSequence).map((row) => {
+      const stop = stopMap.get(row.stop_id), sequence = Number(row.stop_sequence);
+      if (!stop?.stop_name || !Number.isInteger(sequence)) fail('BUS_SEIBU_STATIC_CHAIN');
+      return { sequence, stopId: row.stop_id, name: stop.stop_name };
+    });
     directions[pair.sourceId].push({ tripId, routeId: trip.route_id, routeLabel: config.routeLabel,
       serviceId: trip.service_id, directionId: trip.direction_id || null,
       fromStopId: pair.from.stop_id, toStopId: pair.to.stop_id,
       stopSequence: fromSequence, alightSequence: toSequence, scheduledSeconds,
-      headsign, platform: fromStop.platform_code || null });
+      headsign, platform: fromStop.platform_code || null, positionStops });
     selectedStopIds.add(pair.from.stop_id); selectedStopIds.add(pair.to.stop_id);
     selectedRouteIds.add(trip.route_id); serviceIds.add(trip.service_id);
   }

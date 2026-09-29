@@ -20,6 +20,10 @@ steps:
             const {loadShadowPosition}=await import("/app/runtime/shadow-position.js");
             const p0=JSON.parse(readFileSync("/app/generated/p0-static.json"));
             const journey=JSON.parse(readFileSync("/app/generated/kawasaki-p2-5-static.json"));
+            const seibu=JSON.parse(readFileSync("/app/generated/seibu-p2-4-static.json"));
+            assert.equal(seibu.schemaVersion,2);
+            assert.ok(seibu.directions.tachikawa_to_showa_daiichi_gakuen.every(x=>x.positionStops.length>=2));
+            assert.ok(seibu.directions.showa_daiichi_gakuen_to_tachikawa.every(x=>x.positionStops.length>=2));
             const positionStatic=JSON.parse(readFileSync("/app/generated/p1-position-static.json"));
             const {mergeKawasakiStatic}=await import("/app/providers/kawasaki/journey-static.js");
             const {loadPosition}=await import("/app/runtime/position.js");
