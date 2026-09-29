@@ -1,7 +1,7 @@
 // Build-time screening with the same OSM route stitching used for the approved 登05 artifact.
 // This never approves geometry. It prints stop-order and gap evidence only.
 import { readFileSync } from 'node:fs';
-import { stitchOsmRoute, validateRoadGeometry } from '../position/road-geometry.js';
+import { isGapZeroFullStopOrderCandidate, stitchOsmRoute, validateRoadGeometry } from '../position/road-geometry.js';
 import { mergeKawasakiStatic } from '../providers/kawasaki/journey-static.js';
 
 const read = name => JSON.parse(readFileSync(new URL(name, import.meta.url), 'utf8'));
@@ -33,7 +33,8 @@ try {
     routeId: Object.values(position.trips).find(trip => trip.chainId === chainId)?.routeId }));
   const results = new Map(chains.map(({ chainId, routeId, chain }) => [chainId,
     { chainId, routeId, stops: chain.stops.length, candidates: 0, fullStopOrderCandidates: 0,
-      gapZeroCandidates: 0, bestProjectedStops: 0, bestRelationId: null, reasons: [] }]));
+      gapZeroCandidates: 0, gapZeroFullStopOrderCandidates: 0, relationCandidates: [],
+      bestProjectedStops: 0, bestRelationId: null, reasons: [] }]));
   const relations = [];
   for (const [routeId, ids] of candidates) for (const relationId of ids) {
     await sleep(4500);
@@ -60,11 +61,23 @@ try {
       for (const { chainId, chain } of chains.filter(item => item.routeId === routeId)) {
         const target = results.get(chainId);
         target.candidates++;
-        if (stitched.gaps === 0) target.gapZeroCandidates++;
         const validation = validateRoadGeometry({ points: stitched.points, chain,
           stops: position.stops });
         const projected = validation.evidence.stops.projected;
-        if (projected === chain.stops.length) target.fullStopOrderCandidates++;
+        const allStopsOrdered = projected === chain.stops.length
+          && !validation.reasons.includes('stop_projection_failed')
+          && !validation.reasons.includes('stop_projection_ambiguous');
+        const gapZero = stitched.gaps === 0;
+        const gapZeroFullStopOrder = isGapZeroFullStopOrderCandidate({ gaps: stitched.gaps,
+          validation, stopCount: chain.stops.length });
+        if (allStopsOrdered) target.fullStopOrderCandidates++;
+        if (gapZero) target.gapZeroCandidates++;
+        if (gapZeroFullStopOrder) target.gapZeroFullStopOrderCandidates++;
+        target.relationCandidates.push({ relationId, relationVersion: stitched.relation.version,
+          gaps: stitched.gaps, gapMeters: Math.round(stitched.gapMeters * 100) / 100,
+          projectedStops: projected, totalStops: chain.stops.length, allStopsOrdered,
+          stopProjectionAmbiguous: validation.reasons.includes('stop_projection_ambiguous'),
+          gapZeroFullStopOrder });
         if (projected > target.bestProjectedStops) {
           target.bestProjectedStops = projected;
           target.bestRelationId = relationId;
