@@ -21,6 +21,7 @@ import { HUBS } from '../hub/config.js';
 import { createHubService } from '../hub/service.js';
 import { normalizeKawasakiHubResult } from '../providers/kawasaki/hub.js';
 import { createTokyuStaticProvider } from '../providers/tokyu/static.js';
+import { createTokyuApproachSource, withTokyuApproaches } from '../providers/tokyu/approach.js';
 import { createSeibuProvider } from '../providers/seibu/provider.js';
 import { JOURNEYS } from '../journey/config.js';
 import { createJourneyService } from '../journey/service.js';
@@ -54,6 +55,7 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
     return { ...data, directions: data.directions.filter((direction) => p0Ids.has(direction.id)) };
   } };
   const tokyuProvider = createTokyuStaticProvider({ token: config.env.ODPT_ACCESS_TOKEN });
+  const tokyuApproach = createTokyuApproachSource();
   const seibuArtifact = JSON.parse(readFileSync(new URL('../generated/seibu-p2-4-static.json', import.meta.url), 'utf8'));
   const seibuProvider = createSeibuProvider({ artifact: seibuArtifact, token: config.env.ODPT_ACCESS_TOKEN });
   const hubService = createHubService({ hubs: HUBS, providerLoaders: {
@@ -62,7 +64,10 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
       return normalizeKawasakiHubResult(data, { index, queries,
         shadowPositions, shadowArtifact: shadowPosition.stats });
     },
-    tokyu: () => tokyuProvider.getArrivals(),
+    tokyu: async () => {
+      const [staticResult, approaches] = await Promise.all([tokyuProvider.getArrivals(), tokyuApproach.getApproaches()]);
+      return withTokyuApproaches(staticResult, approaches);
+    },
     seibu: () => seibuProvider.getArrivals()
   } });
   const journeyService = createJourneyService({ journeys: JOURNEYS, hubService });

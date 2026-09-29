@@ -41,6 +41,23 @@ function normalizePosition(value, generatedAt) {
     previousStop: value.previousStop ?? null, nextStop: value.nextStop ?? null, confidence };
 }
 
+function normalizeOfficialApproach(value, arrival, generatedAt) {
+  if (value == null) return null;
+  if (arrival.provider !== 'tokyu' || arrival.realtimeState !== 'static_only'
+    || value.matchedTripId !== null || value.uniqueNext !== true
+    || value.routeLabel !== arrival.routeLabel || value.destination !== arrival.destination
+    || value.boardingStopId !== arrival.originStop?.id
+    || !Number.isInteger(value.waitMinutes) || value.waitMinutes < 0 || value.waitMinutes > 60
+    || !Number.isInteger(value.stopsAwayMin) || !Number.isInteger(value.stopsAwayMax)
+    || value.stopsAwayMin < 0 || value.stopsAwayMax > 6 || value.stopsAwayMin > value.stopsAwayMax
+    || !finite(value.retrievedAt) || generatedAt - value.retrievedAt > 90
+    || value.retrievedAt - generatedAt > 5) return null;
+  return { matchedTripId: null, uniqueNext: true, routeLabel: value.routeLabel,
+    destination: value.destination, boardingStopId: value.boardingStopId,
+    waitMinutes: value.waitMinutes, stopsAwayMin: value.stopsAwayMin,
+    stopsAwayMax: value.stopsAwayMax, retrievedAt: value.retrievedAt };
+}
+
 export function normalizeHubArrival(value, generatedAt, { etaConsistencySec = 90 } = {}) {
   if (!finite(generatedAt) || generatedAt < 0 || !finite(etaConsistencySec) || etaConsistencySec < 0)
     fail('BUS_HUB_TIME_INVALID');
@@ -61,6 +78,7 @@ export function normalizeHubArrival(value, generatedAt, { etaConsistencySec = 90
   if (value.etaMinutes != null && value.estimatedDeparture != null
     && Math.abs(value.estimatedDeparture - (generatedAt + value.etaMinutes * 60)) > etaConsistencySec)
     fail('BUS_HUB_ETA_CONTRADICTION');
+  const officialApproach = normalizeOfficialApproach(value.officialApproach, value, generatedAt);
   return {
     id: value.id, sourceId: value.sourceId, provider: value.provider,
     routeId: value.routeId, routeLabel: value.routeLabel, destination: value.destination,
@@ -77,6 +95,7 @@ export function normalizeHubArrival(value, generatedAt, { etaConsistencySec = 90
     departureState: value.departureState,
     actionability: value.actionability ?? null,
     confidence: value.confidence ?? null,
-    position: normalizePosition(value.position, generatedAt)
+    position: normalizePosition(value.position, generatedAt),
+    ...(officialApproach ? { officialApproach } : {})
   };
 }
