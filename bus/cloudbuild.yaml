@@ -19,8 +19,14 @@ steps:
             assert.equal(existsSync("/app/.dev.vars"),false);
             const {loadShadowPosition}=await import("/app/runtime/shadow-position.js");
             const p0=JSON.parse(readFileSync("/app/generated/p0-static.json"));
+            const journey=JSON.parse(readFileSync("/app/generated/kawasaki-p2-5-static.json"));
             const positionStatic=JSON.parse(readFileSync("/app/generated/p1-position-static.json"));
-            const shadow=loadShadowPosition({index:p0,positionStatic});
+            const {mergeKawasakiStatic}=await import("/app/providers/kawasaki/journey-static.js");
+            const {loadPosition}=await import("/app/runtime/position.js");
+            const index=mergeKawasakiStatic(p0,journey);
+            const position=loadPosition({index,provider:"kawasaki"});
+            assert.equal(Object.keys(position.staticData?.directions||{}).length,8);
+            const shadow=loadShadowPosition({index,positionStatic});
             assert.equal(shadow.status,"shadow_geometry_loaded");
             assert.equal(shadow.stats.supportedChains,2);
             assert.equal(shadow.stats.sharedCorridorChains,1);
