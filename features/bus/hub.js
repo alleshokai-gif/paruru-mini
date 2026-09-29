@@ -95,7 +95,7 @@
       || approach.retrievedAt - nowSeconds > 5) return null;
     const stops = approach.stopsAwayMin === approach.stopsAwayMax
       ? `${approach.stopsAwayMin}` : `${approach.stopsAwayMin}〜${approach.stopsAwayMax}`;
-    return `🚌 次の${row.routeLabel.normalize('NFKC')}　あと${approach.waitMinutes}分・${stops}停留所手前`;
+    return `次の${row.routeLabel.normalize('NFKC')}　あと${approach.waitMinutes}分・${stops}停留所手前`;
   }
 
   function sourceSummary(data) {
@@ -208,8 +208,8 @@
         timing.append(departureTime, element(doc, 'span', 'bus-hub-quality', shown.note));
         if (shown.delay) timing.append(element(doc, 'span', 'bus-hub-delay', shown.delay));
       item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing);
-      if (positionShadowEnabled) item.append(element(doc, 'p', officialApproach
-        ? 'bus-hub-official-approach' : 'bus-hub-position-shadow', officialApproach || displayShadowPosition(row.position)));
+      if (positionShadowEnabled) item.append(element(doc, 'p', 'bus-hub-position-shadow',
+        `🚌 ${officialApproach || displayShadowPosition(row.position)}`));
       list.append(item);
     });
     return list;

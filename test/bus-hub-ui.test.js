@@ -53,7 +53,9 @@ test('Position shadow has an explicit local gate and safely waits for weak evide
   const group = { arrivals: [row], recommendedArrivalId: null };
   assert.doesNotMatch(renderedText(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho')), /停留所|位置確認中/);
   assert.match(renderedText(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho', true)),
-    /長尾橋〜神木本町を走行中・あと2停留所/);
+    /🚌 長尾橋〜神木本町を走行中・あと2停留所/);
+  assert.equal(descendants(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho', true))
+    .filter((node) => node.className === 'bus-hub-position-shadow').length, 1);
   assert.equal(hub.displayShadowPosition({ supported: false }), '位置確認中');
   assert.equal(hub.displayShadowPosition({ ...row.position, shadowReady: false }), '位置確認中');
   assert.equal(hub.displayShadowPosition(row.position, row.position.observedAt + 121), '位置確認中');
@@ -72,6 +74,9 @@ test('official Tokyu approach adds one line only to the first Tokyu card without
   assert.equal(list.children.length, 3);
   const firstTokyu = renderedText(list.children[1]);
   assert.match(firstTokyu, /07:05.*予定.*時刻表のみ.*🚌 次の向01　あと5分・4〜5停留所手前/s);
+  assert.equal(descendants(list.children[1]).filter((node) => node.className === 'bus-hub-position-shadow').length, 1);
+  assert.doesNotMatch(fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8'),
+    /bus-hub-official-approach/);
   assert.doesNotMatch(firstTokyu, /位置確認中|便未照合|取得/);
   assert.doesNotMatch(renderedText(list.children[2]), /次の向01/);
   assert.match(renderedText(list.children[2]), /位置確認中/);
