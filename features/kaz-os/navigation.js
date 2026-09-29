@@ -2,8 +2,8 @@
 (() => {
   'use strict';
   const byId = id => document.getElementById(id);
-  let context = null, projectsApi = null, workApi = null, todayApi = null, inboxApi = null, inboxAnswerApi = null;
-  let projectEpoch = 0, workEpoch = 0, todayEpoch = 0, inboxEpoch = 0, projectExpiry = null, workExpiry = null, todayExpiry = null, inboxExpiry = null;
+  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, inboxAnswerApi = null;
+  let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
   const isKazHash = () => /^#kaz-os(?:\/|$)/.test(location.hash);
@@ -23,14 +23,17 @@
   function clear() {
     projectEpoch++;
     workEpoch++;
+    capaEpoch++;
     todayEpoch++;
     inboxEpoch++;
     clearTimeout(projectExpiry);
     clearTimeout(workExpiry);
+    clearTimeout(capaExpiry);
     clearTimeout(todayExpiry);
     clearTimeout(inboxExpiry);
     projectExpiry = null;
     workExpiry = null;
+    capaExpiry = null;
     todayExpiry = null;
     inboxExpiry = null;
     globalThis.KazInboxView?.dispose(byId('kazPersonalContent'));
@@ -113,6 +116,40 @@
         fixture_only: false,
         sources: { work_items: { status, complete: false } },
         work_items: null,
+        writes: { notion: 0, calendar: 0, context: 0 },
+      });
+    }
+  }
+
+  async function renderCapa(selection) {
+    const host = byId('kazPersonalContent');
+    if (!host) return;
+    if (!capaApi || !active()) {
+      globalThis.KazPersonalView.render(host, selection, null);
+      return;
+    }
+    const requestEpoch = capaEpoch;
+    host.textContent = 'CAPAを確認中…';
+    const current = () => requestEpoch === capaEpoch && allowed() && active() && !document.hidden;
+    try {
+      const data = await capaApi();
+      if (!current()) return;
+      globalThis.KazPersonalView.render(host, selection, data);
+      const until = Date.parse(data?.sources?.capa?.valid_until);
+      if (Number.isFinite(until) && until > Date.now()) {
+        capaExpiry = setTimeout(() => {
+          if (current()) globalThis.KazPersonalView.render(host, selection, data);
+        }, Math.max(1, until - Date.now() + 1));
+      }
+    } catch (error) {
+      if (!current()) return;
+      const status = error?.code === 'KAZ_NOT_CONNECTED' ? 'not_connected' : 'failed';
+      globalThis.KazPersonalView.render(host, selection, {
+        origin: 'notion_official_api',
+        mode: 'read_only',
+        fixture_only: false,
+        sources: { capa: { status, complete: false } },
+        capa_items: null,
         writes: { notion: 0, calendar: 0, context: 0 },
       });
     }
@@ -256,7 +293,7 @@
     }
     clear();
     const selection = globalThis.KazPersonalView.route(location.hash);
-    const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', inbox: '確認待ち' }[selection.page] || 'やること・確認';
+    const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', inbox: '確認待ち' }[selection.page] || 'やること・確認';
     byId('kazOsView')?.setAttribute('aria-label', pageLabel);
     document.querySelectorAll('#kazOsNav a').forEach(a => {
       if (a.dataset.kazPage === selection.page) a.setAttribute('aria-current', 'page');
@@ -269,6 +306,7 @@
     if (selection.page === 'today') await renderToday(selection);
     else if (selection.page === 'inbox') await renderInbox(selection);
     else if (selection.page === 'work') await renderWork(selection);
+    else if (selection.page === 'capa') await renderCapa(selection);
     else await renderProjects(selection);
   }
 
@@ -281,6 +319,7 @@
     context = event.detail?.context || null;
     projectsApi = event.detail?.kazOsProjectsApi || null;
     workApi = event.detail?.kazOsWorkApi || null;
+    capaApi = event.detail?.kazOsCapaApi || null;
     todayApi = event.detail?.kazOsTodayApi || null;
     inboxApi = event.detail?.kazOsInboxApi || null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
@@ -295,6 +334,7 @@
     context = null;
     projectsApi = null;
     workApi = null;
+    capaApi = null;
     todayApi = null;
     inboxApi = null;
     inboxAnswerApi = null;
