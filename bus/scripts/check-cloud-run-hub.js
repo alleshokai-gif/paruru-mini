@@ -126,7 +126,13 @@ function validateSeibuArrival(row) {
   assert.ok(Number.isFinite(row.scheduledDeparture));
   assert.ok(Object.hasOwn(row, 'estimatedDeparture') && Object.hasOwn(row, 'etaMinutes')
     && Object.hasOwn(row, 'delayMinutes') && Object.hasOwn(row, 'realtimeState'));
-  assert.equal(row.position.supported, false);
+  assert.equal(typeof row.position.supported, 'boolean');
+  if (row.position.supported) {
+    assert.equal(row.position.fidelity, 'stop_sequence');
+    assert.ok(Number.isInteger(row.position.stopsAway) && row.position.stopsAway >= 0);
+    assert.ok(typeof row.position.nextStop === 'string' && row.position.nextStop.length > 0);
+    assert.ok(Number.isFinite(row.position.observedAt));
+  }
   assert.equal(row.effectiveDeparture, null);
   if (row.realtimeState === 'realtime') {
     assert.ok(Number.isFinite(row.estimatedDeparture));

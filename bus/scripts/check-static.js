@@ -5,13 +5,19 @@ import { validateArtifact } from './p0-static.js';
 import { getArrivals } from '../core/arrivals.js';
 import { P0_QUERIES } from '../config/queries.js';
 import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
+import { validateSeibuArtifact } from '../providers/seibu/static-build.js';
 try {
   const text = readFileSync(new URL('../generated/p0-static.json', import.meta.url), 'utf8');
   const index = validateArtifact(JSON.parse(text), source.sourceDate);
   const data = getArrivals({ index, queries: P0_QUERIES, providerContext: KAWASAKI_CONTEXT, now: Date.now() / 1000 });
   if (data.directions.some((d) => !d.arrivals.length)) throw Error('STATIC_NEXT_TRIP_MISSING');
+  const seibu = validateSeibuArtifact(JSON.parse(readFileSync(
+    new URL('../generated/seibu-p2-4-static.json', import.meta.url), 'utf8')));
+  if (seibu.schemaVersion !== 2 || Object.values(seibu.directions).some((rows) => !rows.length))
+    throw Error('BUS_SEIBU_ARTIFACT_INVALID');
   console.log(JSON.stringify({ status: 'STATIC_PREFLIGHT_PASS', sourceVersion: index.sourceVersion,
-    bytes: Buffer.byteLength(text), counts: index.stats.selectedRows }));
+    bytes: Buffer.byteLength(text), counts: index.stats.selectedRows,
+    seibuVersion: seibu.sourceVersion, seibuTrips: seibu.stats.selectedTrips }));
 } catch (error) {
   console.log(JSON.stringify({ error: /^[A-Z_]+$/.test(error?.message || '') ? error.message : 'STATIC_PREFLIGHT_FAILED' }));
   process.exitCode = 1;

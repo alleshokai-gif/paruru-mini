@@ -3,6 +3,7 @@ import { serviceActive } from '../../core/arrivals.js';
 import { ATTRIBUTION } from './attribution.js';
 import { ARTIFACT_SCHEMA_VERSION, DIRECTIONS, PROVIDER_ID, RT_CACHE_SEC } from './config.js';
 import { fetchSeibuRealtime } from './realtime.js';
+import { seibuStopPosition } from './position.js';
 
 const DAY = 86400, JST = 9 * 3600, RT_JOIN_WINDOW_SEC = 6 * 3600;
 const fail = (code) => { throw new Error(code); };
@@ -42,6 +43,11 @@ export function buildSeibuArrivals({ artifact, realtime = null, now, realtimeErr
     if (!updates.has(update.trip.tripId)) updates.set(update.trip.tripId, []);
     updates.get(update.trip.tripId).push(update);
   }
+  const vehicles = new Map();
+  for (const vehicle of realtime?.vehicles || []) {
+    if (!vehicles.has(vehicle.tripId)) vehicles.set(vehicle.tripId, []);
+    vehicles.get(vehicle.tripId).push(vehicle);
+  }
   const active = new Map(), result = [];
   for (const direction of DIRECTIONS) {
     const candidates = [];
@@ -71,6 +77,12 @@ export function buildSeibuArrivals({ artifact, realtime = null, now, realtimeErr
         const realtimeState = estimatedDeparture != null ? 'realtime'
           : realtime && !feedFresh || update && !updateFresh ? 'realtime_stale'
             : realtimeError || realtime ? 'static_fallback' : 'static_only';
+        const vehicleMatches = (vehicles.get(row.tripId) || []).filter((vehicle) =>
+          (!vehicle.routeId || vehicle.routeId === row.routeId)
+          && (!vehicle.startDate || vehicle.startDate === date));
+        const position = vehicleMatches.length === 1 && (vehicles.get(row.tripId) || []).length === 1
+          ? seibuStopPosition({ row, vehicle: vehicleMatches[0], now, scheduledDeparture,
+            vehicleFeedTimestamp: realtime.vehicleTimestamp }) : unsupportedPosition();
         candidates.push({
           id: `seibu:${date}:${row.tripId}`, sourceId: direction.id, provider: PROVIDER_ID,
           routeId: row.routeId, routeLabel: row.routeLabel, destination: row.headsign,
@@ -82,7 +94,7 @@ export function buildSeibuArrivals({ artifact, realtime = null, now, realtimeErr
           platform: row.platform ? `${row.platform}${row.platform.endsWith('番') ? '' : '番'}` : null, realtimeState,
           departureState: estimatedDeparture == null ? 'scheduled' : 'realtime',
           actionability: estimatedDeparture == null ? null : 'catchable', confidence: null,
-          position: unsupportedPosition()
+          position
         });
       }
     }

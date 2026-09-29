@@ -10,9 +10,11 @@ import { TARGET_ROUTES, STOPS, SCHOOL_TO_TACHIKAWA_SOURCE, TACHIKAWA_TO_SCHOOL_S
 import { buildSeibuPositionResearchIndex, buildSeibuStatic } from '../providers/seibu/static-build.js';
 import { buildSeibuArrivals, createSeibuProvider } from '../providers/seibu/provider.js';
 import { parseSeibuRealtime } from '../providers/seibu/realtime.js';
+import { seibuStopPosition } from '../providers/seibu/position.js';
 import { analyzeSeibuPositionSample, summarizeSeibuPositionObservations } from '../research/seibu-position.js';
 
 const NOW = Date.parse('2026-09-14T07:00:00+09:00') / 1000;
+const UPSTREAM_STOP = 'synthetic-upstream';
 const csv = (headers, rows) => `${headers.join(',')}\r\n${rows.map((row) => headers.map((key) => row[key] ?? '').join(',')).join('\r\n')}\r\n`;
 
 function gtfsFixture() {
@@ -21,7 +23,8 @@ function gtfsFixture() {
     [STOPS.tachikawaPlatform7Secondary]: ['立川駅北口', '7'], [STOPS.tachikawaPlatform8]: ['立川駅北口', '8'],
     [STOPS.tachikawaPlatform9]: ['立川駅北口', '9'], [STOPS.tachikawaArrival]: ['立川駅北口', ''],
     [STOPS.schoolOutbound]: ['昭和第一学園', ''], [STOPS.schoolInbound]: ['昭和第一学園', ''],
-    [STOPS.schoolWestOutbound]: ['昭和第一学園西門', ''], [STOPS.schoolWestInbound]: ['昭和第一学園西門', '']
+    [STOPS.schoolWestOutbound]: ['昭和第一学園西門', ''], [STOPS.schoolWestInbound]: ['昭和第一学園西門', ''],
+    [UPSTREAM_STOP]: ['学園前交差点', '']
   };
   const routes = TARGET_ROUTES.map((row) => ({ route_id: row.routeId,
     route_short_name: row.routeLabel === '系統番号なし' ? '' : row.routeLabel,
@@ -41,7 +44,10 @@ function gtfsFixture() {
     const inboundTrip = `in-${index}`;
     trips.push({ route_id: route.routeId, service_id: 'weekday', trip_id: inboundTrip,
       trip_headsign: '立川駅北口', direction_id: '2' });
-    stopTimes.push({ trip_id: inboundTrip, arrival_time: `07:${inboundMinute}:00`, departure_time: `07:${inboundMinute}:00`,
+    stopTimes.push({ trip_id: inboundTrip, arrival_time: `07:${String(15 + index).padStart(2, '0')}:00`,
+      departure_time: `07:${String(15 + index).padStart(2, '0')}:00`,
+      stop_id: UPSTREAM_STOP, stop_sequence: '3' },
+    { trip_id: inboundTrip, arrival_time: `07:${inboundMinute}:00`, departure_time: `07:${inboundMinute}:00`,
       stop_id: route.inboundFrom, stop_sequence: '7' },
     { trip_id: inboundTrip, arrival_time: `07:${String(33 + index).padStart(2, '0')}:00`, departure_time: `07:${String(33 + index).padStart(2, '0')}:00`,
       stop_id: STOPS.tachikawaArrival, stop_sequence: '13' });
@@ -90,6 +96,7 @@ test('Seibu GTFS build fixes all verified 6/7/8/9 platform routes and both schoo
   assert.ok(artifact.directions[TACHIKAWA_TO_SCHOOL_SOURCE].some((row) => row.toStopId === STOPS.schoolWestOutbound));
   assert.ok(artifact.directions[SCHOOL_TO_TACHIKAWA_SOURCE].some((row) => row.fromStopId === STOPS.schoolWestInbound));
   assert.equal(artifact.routes['251006'].label, '系統番号なし');
+  assert.deepEqual(artifact.directions[SCHOOL_TO_TACHIKAWA_SOURCE][0].positionStops.map((stop) => stop.sequence), [3, 7, 13]);
 });
 
 test('Seibu GTFS-RT retains internal GPS and reconstructs scheduled, estimated, ETA and delay', () => {
@@ -107,7 +114,8 @@ test('Seibu GTFS-RT retains internal GPS and reconstructs scheduled, estimated, 
   assert.equal(live.delayMinutes, 3);
   assert.equal(live.platform, '7番');
   assert.equal(live.realtimeState, 'realtime');
-  assert.deepEqual(live.position, { supported: false, state: null, stopsAway: null, previousStop: null, nextStop: null, confidence: null });
+  assert.deepEqual(live.position, { supported: true, fidelity: 'stop_sequence', state: 'near_stop',
+    stopsAway: 0, previousStop: null, nextStop: '立川駅北口', observedAt: NOW });
   assert.doesNotMatch(JSON.stringify(arrivals), /private-vehicle|"lat"|"lon"/);
 });
 
@@ -128,7 +136,41 @@ test('Seibu Provider shares its two-feed cache and falls back to static without 
   const failed = await fallback.getArrivals();
   assert.equal(failed.arrivals.length, 6);
   assert.ok(failed.arrivals.every((row) => row.realtimeState === 'static_fallback'
-    && row.estimatedDeparture === null && row.etaMinutes === null && row.delayMinutes === null));
+    && row.estimatedDeparture === null && row.etaMinutes === null && row.delayMinutes === null
+    && row.position.supported === false));
+});
+
+test('Seibu stop sequence adds coarse location before the school stop without fabricating ETA', () => {
+  const artifact = artifactFixture(), row = artifact.directions[SCHOOL_TO_TACHIKAWA_SOURCE][0];
+  const vehicle = { tripId: row.tripId, routeId: row.routeId, timestamp: NOW,
+    rawState: { sequence: 3, stopId: UPSTREAM_STOP, status: null } };
+  const realtime = { timestamp: NOW, vehicleTimestamp: NOW, updates: [], vehicles: [vehicle] };
+  const arrivals = buildSeibuArrivals({ artifact, realtime, now: NOW });
+  const inbound = arrivals.find((arrival) => arrival.id.endsWith(`:${row.tripId}`));
+  assert.equal(inbound.realtimeState, 'static_fallback');
+  assert.equal(inbound.etaMinutes, null);
+  assert.deepEqual(inbound.position, { supported: true, fidelity: 'stop_sequence', state: 'near_stop',
+    stopsAway: 1, previousStop: null, nextStop: '学園前交差点', observedAt: NOW });
+  const hub = aggregateHub({ hub: SHOWA_DAIICHI_GAKUEN_HUB, generatedAt: NOW,
+    providerResults: [{ provider: 'seibu', arrivals }] });
+  assert.equal(hub.decisionGroups[0].arrivals[0].position.supported, true);
+  assert.doesNotMatch(JSON.stringify(hub), /synthetic-vehicle|"lat"|"lon"/);
+});
+
+test('Seibu coarse location rejects stale, conflicting, duplicate and already-passed vehicle evidence', () => {
+  const row = artifactFixture().directions[SCHOOL_TO_TACHIKAWA_SOURCE][0];
+  const vehicle = { tripId: row.tripId, routeId: row.routeId, timestamp: NOW,
+    rawState: { sequence: 3, stopId: UPSTREAM_STOP, status: null } };
+  const at = (value, feedTime = NOW) => seibuStopPosition({ row, vehicle: value,
+    now: NOW, scheduledDeparture: NOW + 1200, vehicleFeedTimestamp: feedTime });
+  assert.equal(at({ ...vehicle, timestamp: NOW - 121 }).supported, false);
+  assert.equal(at(vehicle, NOW - 121).supported, false);
+  assert.equal(at({ ...vehicle, rawState: { sequence: 3, stopId: row.fromStopId } }).supported, false);
+  assert.equal(at({ ...vehicle, rawState: { sequence: 13, stopId: STOPS.tachikawaArrival } }).supported, false);
+  assert.equal(at({ ...vehicle, routeId: 'wrong-route' }).supported, false);
+  const realtime = { timestamp: NOW, vehicleTimestamp: NOW, updates: [], vehicles: [vehicle, vehicle] };
+  const arrivals = buildSeibuArrivals({ artifact: artifactFixture(), realtime, now: NOW });
+  assert.equal(arrivals.find((arrival) => arrival.id.endsWith(`:${row.tripId}`)).position.supported, false);
 });
 
 const arrival = (changes = {}) => ({ id: 'seibu-a', sourceId: TACHIKAWA_TO_SCHOOL_SOURCE, provider: 'seibu',
@@ -172,12 +214,13 @@ test('Seibu failure is isolated and does not introduce Provider logic into Hub c
   assert.doesNotMatch(hubCore.join('\n'), /Seibu|西武|providers\/seibu/);
 });
 
-test('Seibu runtime uses only official ODPT endpoints and keeps Position public gate closed', async () => {
+test('Seibu runtime uses only official ODPT endpoints and keeps public Position gate closed', async () => {
   const code = (await Promise.all(['config.js', 'provider.js', 'realtime.js', 'static-source.js'].map((name) =>
     readFile(new URL(`../providers/seibu/${name}`, import.meta.url), 'utf8')))).join('\n');
   assert.match(code, /api\.odpt\.org/);
   assert.doesNotMatch(code, /transfer-cloud|navitime|scrap|bus-location/);
-  assert.doesNotMatch(code, /supported:\s*true/);
+  assert.match(await readFile(new URL('../config/policy.js', import.meta.url), 'utf8'),
+    /BUS_POSITION_UI_ENABLED = false/);
 });
 
 test('Seibu Position research index keeps the complete stop order outside the runtime graph', () => {
@@ -188,7 +231,7 @@ test('Seibu Position research index keeps the complete stop order outside the ru
   assert.deepEqual(outbound.stops.map((row) => row.sequence), [1, 7]);
   assert.equal(inbound.sourceId, SCHOOL_TO_TACHIKAWA_SOURCE);
   assert.equal(inbound.targetStopId, TARGET_ROUTES[0].inboundFrom);
-  assert.deepEqual(inbound.stops.map((row) => row.sequence), [7, 13]);
+  assert.deepEqual(inbound.stops.map((row) => row.sequence), [3, 7, 13]);
 });
 
 test('sequence difference remains a candidate while missing current_status keeps Public Position unsupported', () => {
@@ -200,7 +243,7 @@ test('sequence difference remains a candidate while missing current_status keeps
     rawState: { stopId: start.stopId, sequence: start.sequence, status: null }
   }] });
   assert.equal(rows[0].candidateValid, true);
-  assert.equal(rows[0].stopsAwayCandidate, 0);
+  assert.equal(rows[0].stopsAwayCandidate, 1);
   assert.equal(rows[0].publicationBlock, 'current_status_missing');
   assert.deepEqual(rows[0].position, { supported: false, state: null, stopsAway: null,
     previousStop: null, nextStop: null, confidence: null });
