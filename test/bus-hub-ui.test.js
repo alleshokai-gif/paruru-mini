@@ -348,6 +348,10 @@ test('Hub selector uses accessible tabs, session state and four non-scrolling co
   assert.match(css, /\.bus-hub-row \{[^}]*padding: 10px 0/s);
   assert.match(css, /\.bus-hub-row\.is-recommended \{[^}]*width: calc\(100% \+ 16px\)[^}]*max-width: none[^}]*margin: 0 -8px[^}]*padding: 10px 8px/s);
   assert.match(css, /\.bus-hub-time-suffix \{[^}]*font-size: 0\.6em[^}]*vertical-align: baseline/s);
+  assert.match(css, /\.bus-hub-row\.is-static \.bus-hub-quality,[\s\S]*grid-column: 3;[\s\S]*justify-self: end;/);
+  assert.match(css, /\.bus-hub-row\.is-fallback \.bus-hub-quality/);
+  assert.match(css, /\.bus-hub-row\.is-stale \.bus-hub-quality/);
+
   assert.match(css, /\.bus-hub-provider\.is-kawasaki \.bus-hub-provider-icon \{ color: #1f6fb2; \}/);
   assert.match(css, /\.bus-hub-provider\.is-tokyu \.bus-hub-provider-icon \{ color: #c62828; \}/);
   assert.match(css, /\.bus-hub-provider\.is-seibu \.bus-hub-provider-icon \{ color: #238636; \}/);
