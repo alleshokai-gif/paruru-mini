@@ -48,8 +48,28 @@ test('user rail choices show source departure and both comparison arrivals with 
   assert.deepEqual(selected, ['rail-1']);
   assert.match(renderedText(mount), /玉川学園前 18:00発.*向ヶ丘遊園 18:18着.*登戸 18:21着/s);
   assert.match(renderedText(mount), /架空列車時刻/);
+  assert.equal(mount.children[3].children[0].textContent, '前の5本');
+  assert.equal(mount.children[3].children[0].disabled, true);
+  assert.equal(mount.children[3].children[1].textContent, '次の5本');
   mount.children[3].children[1].listeners.click();
   assert.deepEqual(pages, [1]);
+});
+
+test('previous and next five buttons disable at service-date edges', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div'), pages = [];
+  const trains = [{ id: 'earlier', label: '前の列車' }];
+  ui.renderTrainChoices(doc, mount, trains, () => {},
+    { hasPrevious: true, hasNext: false, onPage: (delta) => pages.push(delta) });
+  const navigation = mount.children.at(-1);
+  assert.equal(navigation.children[0].textContent, '前の5本');
+  assert.equal(navigation.children[0].disabled, false);
+  assert.equal(navigation.children[1].textContent, '次の5本');
+  assert.equal(navigation.children[1].disabled, true);
+  navigation.children[0].listeners.click();
+  assert.deepEqual(pages, [-1]);
+  ui.renderTrainChoices(doc, mount, trains, () => {},
+    { hasPrevious: false, hasNext: false, onPage: (delta) => pages.push(delta) });
+  assert.ok(mount.children.at(-1).children.every((button) => button.disabled));
 });
 
 test('route decision shows station, bus, home arrival and static quality without internal calculation detail', () => {

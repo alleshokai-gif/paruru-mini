@@ -107,10 +107,10 @@
     });
     label.append(select);
     nodes.push(label, details);
-    if (typeof options.onPage === 'function' && (options.hasPrevious || options.hasNext)) {
+    if (typeof options.onPage === 'function') {
       const navigation = node(doc, 'div', 'bus-home-route-train-pages', '');
       for (const [text, enabled, delta] of [
-        ['前の列車', options.hasPrevious, -1], ['次の列車', options.hasNext, 1]
+        ['前の5本', options.hasPrevious, -1], ['次の5本', options.hasNext, 1]
       ]) {
         const button = node(doc, 'button', 'bus-home-route-train-page', text);
         button.type = 'button'; button.disabled = !enabled;
