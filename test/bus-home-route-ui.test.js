@@ -43,7 +43,7 @@ test('user rail choices show source departure and both comparison arrivals with 
       { label: '登戸', stationTime: '18:21', stationTimeSource: 'arrival' }] }], (id) => selected.push(id),
   { sample: true, hasPrevious: false, hasNext: true, onPage: (delta) => pages.push(delta) });
   const select = mount.children[1].children[0];
-  assert.match(select.children[1].textContent, /18:00 玉川学園前発.*向ヶ丘遊園18:18着.*登戸18:21着/);
+  assert.match(select.children[1].textContent, /玉川学園前 18:00発.*向ヶ丘遊園 18:18着.*登戸 18:21着/);
   select.value = 'rail-1'; select.listeners.change();
   assert.deepEqual(selected, ['rail-1']);
   assert.match(renderedText(mount), /玉川学園前 18:00発.*向ヶ丘遊園 18:18着.*登戸 18:21着/s);
@@ -54,41 +54,64 @@ test('user rail choices show source departure and both comparison arrivals with 
 
 test('route decision shows station, bus, home arrival and static quality without internal calculation detail', () => {
   const doc = fakeDocument(), mount = doc.createElement('div');
-  const option = { stationLabel: '向ヶ丘遊園駅南口', stationArrivalAt: epoch('18:21'),
+  const option = { stationId: 'mukougaoka', stationLabel: '向ヶ丘遊園駅南口', stationArrivalAt: epoch('18:21'),
     departureAt: epoch('18:27'), provider: 'tokyu', routeLabel: '向０１',
     homeArrivalAt: epoch('18:39'), timingQuality: 'static_only' };
   ui.renderDecision(doc, mount, { status: 'available', fastest: option,
-    alternate: { ...option, stationLabel: '登戸駅', stationArrivalAt: epoch('18:18'),
+    alternate: { ...option, stationId: 'noborito', stationLabel: '登戸駅', stationArrivalAt: epoch('18:18'),
       departureAt: epoch('18:31'), provider: 'kawasaki', routeLabel: '登０５',
       homeArrivalAt: epoch('18:44'), timingQuality: 'realtime_arrival' },
     differenceMinutes: 5, unavailablePlaces: [] });
   const text = renderedText(mount);
   assert.match(text, /時刻表上の最速候補/);
-  assert.match(text, /向ヶ丘遊園駅南口.*18:21.*18:27.*向０１.*18:39/s);
-  assert.match(text, /登戸駅.*18:18.*登０５.*18:44/s);
+  assert.match(text, /向ヶ丘遊園下車.*🚃 向ヶ丘遊園 18:21着.*🚌 18:27 東急バス 向０１.*乗り場：向ヶ丘遊園駅南口.*🏠 神木本町 18:39着/s);
+  assert.match(text, /登戸下車.*🚃 登戸 18:18着.*🚌 18:31 川崎市バス 登０５.*🏠 神木本町 18:44着/s);
   assert.match(text, /5分差/);
-  assert.doesNotMatch(text, /confidence|GPS|lat|lon|sourceId/);
+  assert.doesNotMatch(text, /confidence|GPS|lat|lon|sourceId|stationTimeSource|着時刻未提供/);
+  const css = fs.readFileSync(require.resolve('../features/bus/home-route.css'), 'utf8');
+  assert.match(css, /\.bus-home-route-station\s*\{[^}]*border-radius: 999px/);
+  assert.match(css, /\.bus-home-route-option\.is-primary \.bus-home-route-station\s*\{[^}]*font-size: 19px/);
 });
 
-test('JR train choice and route result identify departure markers and confirmed delay', () => {
+test('JR train choice presents station times as arrivals while preserving departure metadata', () => {
   const doc = fakeDocument(), choice = doc.createElement('div'), result = doc.createElement('div');
-  ui.renderTrainChoices(doc, choice, [{ id: 'jr-4554f',
+  const train = { id: 'jr-4554f',
     label: '15:54 立川発・快速・登戸16:15発／武蔵溝ノ口16:21発',
     sourceStation: '立川', sourceDeparture: '15:54', trainType: '快速',
     railRealtimeState: 'confirmed_delay', delaySeconds: 120,
     candidateStations: [{ label: '登戸', stationTime: '16:15', stationTimeSource: 'departure' },
-      { label: '武蔵溝ノ口', stationTime: '16:21', stationTimeSource: 'departure' }] }], () => {});
+      { label: '武蔵溝ノ口', stationTime: '16:21', stationTimeSource: 'departure' }] };
+  ui.renderTrainChoices(doc, choice, [train], () => {});
+  assert.match(choice.children[0].children[0].children[1].textContent,
+    /立川 15:54発.*登戸 16:15着.*武蔵溝ノ口 16:21着/);
   choice.children[0].children[0].value = 'jr-4554f';
   choice.children[0].children[0].listeners.change();
-  assert.match(renderedText(choice), /登戸 16:15発（着時刻未提供）/);
+  assert.match(renderedText(choice), /登戸 16:15着/);
+  assert.match(renderedText(choice), /武蔵溝ノ口 16:21着/);
   assert.match(renderedText(choice), /列車遅延 \+2分・遅延に基づく見込み/);
-  const option = { stationLabel: '登戸駅', stationTimeAt: epoch('16:17'),
+  assert.doesNotMatch(renderedText(choice), /着時刻未提供|stationTimeSource/);
+  assert.equal(train.candidateStations[0].stationTimeSource, 'departure');
+  const option = { stationId: 'noborito', stationLabel: '登戸駅', stationTimeAt: epoch('16:17'),
     stationTimeSource: 'departure', railTimingQuality: 'delay_projection',
     departureAt: epoch('16:30'), provider: 'kawasaki', routeLabel: '登０５',
     homeArrivalAt: epoch('16:44'), timingQuality: 'static_only' };
   ui.renderDecision(doc, result, { status: 'available', fastest: option,
     alternate: null, differenceMinutes: null, unavailablePlaces: [] });
-  assert.match(renderedText(result), /列車 16:17発（着時刻未提供）・遅延に基づく見込み/);
+  assert.match(renderedText(result), /登戸下車.*🚃 登戸 16:17着・遅延に基づく見込み/s);
+  assert.doesNotMatch(renderedText(result), /着時刻未提供|stationTimeSource/);
+  assert.equal(option.stationTimeSource, 'departure');
+});
+
+test('Musashi-Mizonokuchi decision keeps its rail station distinct from the bus stop', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  ui.renderDecision(doc, mount, { status: 'available', fastest: {
+    stationId: 'musashi_mizonokuchi', stationLabel: '溝の口駅南口',
+    stationTimeAt: epoch('13:04'), stationTimeSource: 'departure',
+    departureAt: epoch('13:10'), provider: 'kawasaki', routeLabel: '溝１８',
+    homeArrivalAt: epoch('13:17'), timingQuality: 'static_only'
+  }, alternate: null, differenceMinutes: null, unavailablePlaces: [] });
+  const text = renderedText(mount);
+  assert.match(text, /武蔵溝ノ口下車.*🚃 武蔵溝ノ口 13:04着.*🚌 13:10 川崎市バス 溝１８.*乗り場：溝の口駅南口.*🏠 神木本町 13:17着/s);
 });
 
 test('partial source failure is visible even when its station still has buses', () => {
