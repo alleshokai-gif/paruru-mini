@@ -30,9 +30,18 @@
     const station = railStationName[option.stationId] ?? option.stationLabel;
     const railQuality = option.railTimingQuality === 'delay_projection'
       ? '・遅延に基づく見込み' : '';
-    section.append(node(doc, 'h3', 'bus-home-route-station', `${station}下車`),
+    const header = node(doc, 'div', 'bus-home-route-option-header', '');
+    header.append(node(doc, 'h3', 'bus-home-route-station', `${station}で下車`));
+    const transferLabel = option.placeId === 'noborito-tamagawa' ? '多摩川口側へ移動'
+      : option.placeId === 'mizonokuchi' ? '溝の口駅南口へ移動' : null;
+    if (option.placeId === 'noborito-tamagawa')
+      header.append(node(doc, 'span', 'bus-home-route-area', '多摩川口'));
+    section.append(header,
       node(doc, 'p', 'bus-home-route-rail', `🚃 ${station} ${clock(stationTime)}着${railQuality}`),
-      node(doc, 'p', 'bus-home-route-arrow', '↓'),
+      node(doc, 'p', 'bus-home-route-arrow', '↓'));
+    if (transferLabel) section.append(node(doc, 'p', 'bus-home-route-walk', `🚶 ${transferLabel}`),
+      node(doc, 'p', 'bus-home-route-arrow', '↓'));
+    section.append(
       node(doc, 'p', 'bus-home-route-bus',
         `🚌 ${clock(option.departureAt)} ${providerName[option.provider] || option.provider} ${option.routeLabel}`),
       node(doc, 'p', 'bus-home-route-board', `乗り場：${option.stationLabel}`),
