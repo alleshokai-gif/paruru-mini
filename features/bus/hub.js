@@ -99,7 +99,8 @@
     const stops = Number.isInteger(count) && Number.isInteger(max) && count <= max
       ? max <= 6 ? count === max ? `${count}停留所手前` : `${count}〜${max}停留所手前`
         : `約${Math.round((count + max) / 2)}停留所手前` : '接近中';
-    return `次の${row.routeLabel.normalize('NFKC')}　あと${age > 90 ? '約' : ''}${wait}分・${stops}`;
+    const waitLabel = wait === 0 ? 'まもなく' : `あと${age > 90 ? '約' : ''}${wait}分`;
+    return `次の${row.routeLabel.normalize('NFKC')}　${waitLabel}・${stops}`;
   }
 
   function sourceSummary(data) {
@@ -192,9 +193,11 @@
     const visible = group.arrivals.slice(0, 3);
     const firstTokyuIndex = visible.findIndex((row) => row.provider === 'tokyu');
     visible.forEach((row, index) => {
-        const shown = displayArrival(row), recommended = row.id === group.recommendedArrivalId;
+        const recommended = row.id === group.recommendedArrivalId;
         const officialApproach = positionShadowEnabled && index === firstTokyuIndex
           ? displayOfficialApproach(row.officialApproach, row) : null;
+        const baseShown = displayArrival(row);
+        const shown = officialApproach ? { ...baseShown, note: '公式接近', kind: 'live' } : baseShown;
         const item = element(doc, 'li', `bus-hub-row is-${shown.kind}${recommended ? ' is-recommended' : ''}`);
         const heading = element(doc, 'div', 'bus-hub-row-heading');
         heading.append(providerLabel(doc, row.provider), element(doc, 'span', 'bus-hub-route', row.routeLabel));
