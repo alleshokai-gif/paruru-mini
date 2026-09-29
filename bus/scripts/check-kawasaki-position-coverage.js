@@ -10,8 +10,8 @@ const journey = read('../generated/kawasaki-p2-5-static.json');
 const position = read('../generated/p1-position-static.json');
 const bundle = read('../release-static/position-shadow-geometry.json');
 const index = mergeKawasakiStatic(p0, journey);
-validatePositionArtifact(position, p0, 'kawasaki');
-const shadow = loadShadowPosition({ index: p0, positionStatic: position });
+validatePositionArtifact(position, index, 'kawasaki');
+const shadow = loadShadowPosition({ index, positionStatic: position });
 if (shadow.status !== 'shadow_geometry_loaded' || bundle.sources.length !== 1) {
   throw Error('POSITION_COVERAGE_GEOMETRY_INVALID');
 }
@@ -34,7 +34,7 @@ function classify(row, queryId) {
     ? 'exact_shared_corridor' : 'geometry_missing', chainId: trip.chainId };
 }
 
-const queries = {}, uniqueTrips = new Map();
+const queries = {}, uniqueTrips = new Map(), chainCoverage = new Map();
 for (const [queryId, rows] of Object.entries(index.directions)) {
   const counts = {}, groups = new Map();
   for (const row of rows) {
@@ -43,6 +43,15 @@ for (const [queryId, rows] of Object.entries(index.directions)) {
     const previous = uniqueTrips.get(row.tripId);
     if (previous && previous.status !== result.status) throw Error('POSITION_COVERAGE_TRIP_CONFLICT');
     uniqueTrips.set(row.tripId, result);
+    const chainKey = result.chainId || 'not_in_sidecar';
+    const chainEntry = chainCoverage.get(chainKey) || { chainId: result.chainId,
+      routeId: row.routeId, status: result.status, tripIds: new Set(), queryIds: new Set() };
+    if (chainEntry.routeId !== row.routeId || chainEntry.status !== result.status) {
+      throw Error('POSITION_COVERAGE_CHAIN_CONFLICT');
+    }
+    chainEntry.tripIds.add(row.tripId);
+    chainEntry.queryIds.add(queryId);
+    chainCoverage.set(chainKey, chainEntry);
     const key = `${row.routeId}:${result.chainId || 'not_in_sidecar'}:${result.status}`;
     const group = groups.get(key) || { routeId: row.routeId, chainId: result.chainId,
       status: result.status, rows: 0 };
@@ -58,4 +67,8 @@ for (const { status } of uniqueTrips.values()) uniqueCounts[status] = (uniqueCou
 console.log(JSON.stringify({ status: 'KAWASAKI_POSITION_COVERAGE', staticSourceVersion: index.sourceVersion,
   staticSourceHash: index.sourceHash, geometryApprovalVersion: source.approvalVersion,
   approvedForPublic: source.approvedForPublic, geometryReady: source.geometryReady,
-  uniqueTrips: uniqueTrips.size, uniqueCounts, queries }));
+  uniqueTrips: uniqueTrips.size, uniqueCounts,
+  chainCoverage: [...chainCoverage.values()].map(({ chainId, routeId, status, tripIds, queryIds }) =>
+    ({ chainId, routeId, status, trips: tripIds.size, queryIds: [...queryIds].sort() }))
+    .sort((a, b) => a.routeId.localeCompare(b.routeId) || String(a.chainId).localeCompare(String(b.chainId))),
+  queries }));
