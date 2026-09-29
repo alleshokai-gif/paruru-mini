@@ -16,6 +16,8 @@ import { KAWASAKI_JOURNEY_QUERIES } from '../providers/kawasaki/journey-config.j
 import { mergeKawasakiStatic, validateKawasakiJourneyArtifact } from '../providers/kawasaki/journey-static.js';
 import { loadPosition } from './position.js';
 import { loadShadowPosition } from './shadow-position.js';
+import { createStopSequenceObserver } from '../position/stop-sequence.js';
+import { createTurnaroundObserver } from '../departure/turnaround-observer.js';
 import { createDepartureConfidence } from '../departure/confidence.js';
 import { HUBS } from '../hub/config.js';
 import { createHubService } from '../hub/service.js';
@@ -38,15 +40,17 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   // Validate feed validity before advertising health. No ODPT call occurs at startup.
   getArrivals({ index, queries, providerContext, now: Date.now() / 1000 });
   const staticStartupMs = performance.now() - started;
-  // The research-only Position index covers the P0 artifact. P2.5 trips remain unsupported until separately validated.
-  const positionStarted=performance.now(),position=loadPosition({index:p0Index,provider:providerContext.id});
-  const shadowPosition=loadShadowPosition({index:p0Index,positionStatic:position.staticData});
+  const positionStarted=performance.now(),position=loadPosition({index,provider:providerContext.id});
+  const shadowPosition=loadShadowPosition({index,positionStatic:position.staticData});
+  const stopSequenceObserver=createStopSequenceObserver({index,positionStatic:position.staticData});
+  const turnaroundObserver=createTurnaroundObserver({index,positionStatic:position.staticData});
   const positionStartupMs=performance.now()-positionStarted;
   const departureConfidence=createDepartureConfidence({index,positionStatic:position.staticData});
   const adapter = createKawasakiAdapter({ token: config.env.ODPT_ACCESS_TOKEN, measure: recordStages });
   // One provider instance owns its memory cache and pending fetches. No per-direction adapter construction.
   const allKawasakiService = createBusService({ index, adapter, queries, providerContext, version: index.sourceHash, measure: recordStages,
     positionObserver:position.observer,shadowPositionObserver:shadowPosition.observer,
+    stopSequenceObserver,turnaroundObserver,
     departureObserver:departureConfidence,
     originDepartureResolver:value=>departureConfidence.evaluate(value) });
   const p0Ids = new Set(P0_QUERIES.map((query) => query.id));
@@ -60,9 +64,9 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   const seibuProvider = createSeibuProvider({ artifact: seibuArtifact, token: config.env.ODPT_ACCESS_TOKEN });
   const hubService = createHubService({ hubs: HUBS, providerLoaders: {
     kawasaki: async () => {
-      const { data, shadowPositions } = await allKawasakiService.getArrivals({ forHub: true });
+      const { data, shadowPositions, stopSequencePositions, turnarounds } = await allKawasakiService.getArrivals({ forHub: true });
       return normalizeKawasakiHubResult(data, { index, queries,
-        shadowPositions, shadowArtifact: shadowPosition.stats });
+        shadowPositions, stopSequencePositions, turnarounds, shadowArtifact: shadowPosition.stats });
     },
     tokyu: async () => {
       const [staticResult, approaches] = await Promise.all([tokyuProvider.getArrivals(), tokyuApproach.getApproaches()]);

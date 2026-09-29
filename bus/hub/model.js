@@ -32,6 +32,19 @@ function normalizePosition(value, generatedAt) {
       stopsAway: value.stopsAway, previousStop: value.previousStop ?? null,
       nextStop: value.nextStop, observedAt: value.observedAt };
   }
+  if (value.fidelity === 'stop_sequence') {
+    if (!['near_stop', 'approaching', 'at_stop'].includes(value.state)
+      || !Number.isInteger(value.stopsAway) || value.stopsAway < 0
+      || value.previousStop != null && !text(value.previousStop)
+      || !text(value.nextStop) || !finite(value.observedAt)) fail('BUS_HUB_POSITION_INVALID');
+    if (generatedAt - value.observedAt > POSITION_POLICY.maxAgeSec
+      || value.observedAt - generatedAt > POSITION_POLICY.futureSec)
+      return { supported: false, state: null, stopsAway: null,
+        previousStop: null, nextStop: null, confidence: null };
+    return { supported: true, fidelity: 'stop_sequence', state: value.state,
+      stopsAway: value.stopsAway, previousStop: value.previousStop ?? null,
+      nextStop: value.nextStop, observedAt: value.observedAt };
+  }
   const confidence = value.confidence;
   if (!text(value.state) || !Number.isInteger(value.stopsAway) || value.stopsAway < 0
     || !text(value.previousStop) && value.previousStop != null
@@ -44,18 +57,18 @@ function normalizePosition(value, generatedAt) {
 function normalizeOfficialApproach(value, arrival, generatedAt) {
   if (value == null) return null;
   if (arrival.provider !== 'tokyu' || arrival.realtimeState !== 'static_only'
-    || value.matchedTripId !== null || value.uniqueNext !== true
-    || value.routeLabel !== arrival.routeLabel || value.destination !== arrival.destination
-    || value.boardingStopId !== arrival.originStop?.id
+    || value.matchedTripId !== null || value.sourceId !== arrival.sourceId
+    || typeof value.uniqueNext !== 'boolean'
     || !Number.isInteger(value.waitMinutes) || value.waitMinutes < 0 || value.waitMinutes > 60
-    || !Number.isInteger(value.stopsAwayMin) || !Number.isInteger(value.stopsAwayMax)
-    || value.stopsAwayMin < 0 || value.stopsAwayMax > 6 || value.stopsAwayMin > value.stopsAwayMax
-    || !finite(value.retrievedAt) || generatedAt - value.retrievedAt > 90
+    || value.stopsAwayMin != null && (!Number.isInteger(value.stopsAwayMin) || value.stopsAwayMin < 0)
+    || value.stopsAwayMax != null && (!Number.isInteger(value.stopsAwayMax) || value.stopsAwayMax < 0)
+    || value.stopsAwayMin != null && value.stopsAwayMax != null && value.stopsAwayMin > value.stopsAwayMax
+    || !finite(value.retrievedAt) || generatedAt - value.retrievedAt > 180
     || value.retrievedAt - generatedAt > 5) return null;
-  return { matchedTripId: null, uniqueNext: true, routeLabel: value.routeLabel,
+  return { matchedTripId: null, sourceId: value.sourceId, uniqueNext: value.uniqueNext, routeLabel: value.routeLabel,
     destination: value.destination, boardingStopId: value.boardingStopId,
-    waitMinutes: value.waitMinutes, stopsAwayMin: value.stopsAwayMin,
-    stopsAwayMax: value.stopsAwayMax, retrievedAt: value.retrievedAt };
+    waitMinutes: value.waitMinutes, stopsAwayMin: value.stopsAwayMin ?? null,
+    stopsAwayMax: value.stopsAwayMax ?? null, retrievedAt: value.retrievedAt };
 }
 
 export function normalizeHubArrival(value, generatedAt, { etaConsistencySec = 90 } = {}) {
@@ -72,6 +85,8 @@ export function normalizeHubArrival(value, generatedAt, { etaConsistencySec = 90
     || !DEPARTURE_STATES.has(value.departureState)
     || value.actionability != null && !ACTIONABILITY.has(value.actionability)
     || value.isOrigin != null && typeof value.isOrigin !== 'boolean'
+    || value.originNotice != null && !['vehicle_unconfirmed', 'vehicle_assigned',
+      'turnaround_candidate', 'likely_turnaround'].includes(value.originNotice)
     || value.areaBadge != null && !text(value.areaBadge)
     || value.confidence != null && (!finite(value.confidence) || value.confidence < 0 || value.confidence > 1))
     fail('BUS_HUB_ARRIVAL_INVALID');
@@ -83,6 +98,7 @@ export function normalizeHubArrival(value, generatedAt, { etaConsistencySec = 90
     id: value.id, sourceId: value.sourceId, provider: value.provider,
     routeId: value.routeId, routeLabel: value.routeLabel, destination: value.destination,
     isOrigin: value.isOrigin === true,
+    originNotice: value.isOrigin === true ? value.originNotice ?? null : null,
     areaBadge: value.areaBadge ?? null,
     originStop: normalizeStop(value.originStop), targetStop: normalizeStop(value.targetStop),
     scheduledDeparture: value.scheduledDeparture,

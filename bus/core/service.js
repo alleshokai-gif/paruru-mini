@@ -2,7 +2,8 @@ import { getArrivals, prepareStatic } from './arrivals.js';
 import { LIMITS } from '../config/policy.js';
 
 export function createBusService({ index, adapter, queries, providerContext, cache = null, now = () => Date.now() / 1000, version, measure = () => {},
-  positionObserver = null, shadowPositionObserver = null,
+  positionObserver = null, shadowPositionObserver = null, stopSequenceObserver = null,
+  turnaroundObserver = null,
   departureObserver = null, originDepartureResolver = null }) {
   prepareStatic(index, queries, providerContext);
   const querySet = structuredClone(queries);
@@ -62,6 +63,10 @@ export function createBusService({ index, adapter, queries, providerContext, cac
       try { positionObserver?.observe({ realtime: rt.data, now: now() }); } catch { /* Position is independently gated. */ }
       try { shadowPositionObserver?.observe({ realtime: rt.data, now: now() }); }
       catch { shadowPositionObserver?.clear?.(); }
+      try { stopSequenceObserver?.observe({ realtime: rt.data, now: now() }); }
+      catch { stopSequenceObserver?.clear?.(); }
+      try { turnaroundObserver?.observe({ realtime: rt.data, now: now() }); }
+      catch { turnaroundObserver?.clear?.(); }
       const positionMs=performance.now()-positionStarted;
       const departureStarted=performance.now();
       try { departureObserver?.observe({realtime:rt.data,now:now()}); }
@@ -76,7 +81,13 @@ export function createBusService({ index, adapter, queries, providerContext, cac
       let shadowPositions = new Map();
       try { shadowPositions = shadowPositionObserver?.snapshot?.() ?? shadowPositions; }
       catch { /* A failed position snapshot must not hide bus arrivals. */ }
-      return { data, shadowPositions };
+      let stopSequencePositions = new Map();
+      try { stopSequencePositions = stopSequenceObserver?.snapshot?.() ?? stopSequencePositions; }
+      catch { /* A failed stop-level snapshot must not hide bus arrivals. */ }
+      let turnarounds = new Map();
+      try { turnarounds = turnaroundObserver?.snapshot?.() ?? turnarounds; }
+      catch { /* A failed turnaround hint must not hide bus arrivals. */ }
+      return { data, shadowPositions, stopSequencePositions, turnarounds };
     }
   };
 }

@@ -4,8 +4,12 @@ import { readLocalToken } from './local-secret.js';
 import { fetchStatic } from '../providers/kawasaki/static-source.js';
 import { PROVIDER_ID } from '../providers/kawasaki/config.js';
 import { buildPositionStatic,publishPositionStatic } from './position-static.js';
+import { mergeKawasakiStatic } from '../providers/kawasaki/journey-static.js';
 try {
-  const token=readLocalToken(),index=JSON.parse(readFileSync(new URL('../generated/p0-static.json',import.meta.url),'utf8'));
+  const token=readLocalToken();
+  const p0=JSON.parse(readFileSync(new URL('../generated/p0-static.json',import.meta.url),'utf8'));
+  const journey=JSON.parse(readFileSync(new URL('../generated/kawasaki-p2-5-static.json',import.meta.url),'utf8'));
+  const index=mergeKawasakiStatic(p0,journey);
   const bytes=await fetchStatic(token,index.sourceDate);
   const artifact=buildPositionStatic(bytes,{index,provider:PROVIDER_ID});
   if([token,encodeURIComponent(token)].some(s=>JSON.stringify(artifact).includes(s)))throw Error('POSITION_SECRET_LEAK');

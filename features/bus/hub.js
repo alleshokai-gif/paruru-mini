@@ -69,11 +69,16 @@
   }
 
   function displayShadowPosition(position, nowSeconds = Date.now() / 1000) {
-    if (position?.supported !== true || position.shadowReady !== true
+    if (position?.supported !== true || position.shadowReady !== true && position.fidelity !== 'stop_sequence'
       || !Number.isInteger(position.stopsAway) || position.stopsAway < 0
       || !Number.isFinite(position.observedAt) || nowSeconds - position.observedAt > 120
       || position.observedAt - nowSeconds > 5
       || !text(position.nextStop)) return '位置確認中';
+    if (position.fidelity === 'stop_sequence') {
+      if (position.state === 'at_stop') return `${position.nextStop}に停車中・あと${position.stopsAway}停留所`;
+      if (position.state === 'approaching') return `${position.nextStop}に接近中・あと${position.stopsAway}停留所`;
+      return `${position.nextStop}付近・あと${position.stopsAway}停留所`;
+    }
     if (position.state === 'at_stop') return `${position.nextStop}に停車中・あと${position.stopsAway}停留所`;
     if (position.state === 'approaching') return `${position.nextStop}に接近中・あと${position.stopsAway}停留所`;
     if (position.state === 'between_stops' && text(position.previousStop))
@@ -84,18 +89,17 @@
 
   function displayOfficialApproach(approach, row, nowSeconds = Date.now() / 1000) {
     if (row.provider !== 'tokyu' || row.realtimeState !== 'static_only'
-      || !approach || approach.matchedTripId !== null || approach.uniqueNext !== true
-      || !text(approach.routeLabel) || approach.routeLabel.normalize('NFKC') !== row.routeLabel.normalize('NFKC')
-      || approach.destination !== row.destination || approach.boardingStopId !== row.originStop?.id
+      || !approach || approach.matchedTripId !== null || approach.sourceId !== row.sourceId
       || !Number.isInteger(approach.waitMinutes) || approach.waitMinutes < 0 || approach.waitMinutes > 60
-      || !Number.isInteger(approach.stopsAwayMin) || !Number.isInteger(approach.stopsAwayMax)
-      || approach.stopsAwayMin < 0 || approach.stopsAwayMax > 6
-      || approach.stopsAwayMin > approach.stopsAwayMax
-      || !Number.isFinite(approach.retrievedAt) || nowSeconds - approach.retrievedAt > 90
+      || !Number.isFinite(approach.retrievedAt) || nowSeconds - approach.retrievedAt > 180
       || approach.retrievedAt - nowSeconds > 5) return null;
-    const stops = approach.stopsAwayMin === approach.stopsAwayMax
-      ? `${approach.stopsAwayMin}` : `${approach.stopsAwayMin}〜${approach.stopsAwayMax}`;
-    return `次の${row.routeLabel.normalize('NFKC')}　あと${approach.waitMinutes}分・${stops}停留所手前`;
+    const age = Math.max(0, nowSeconds - approach.retrievedAt);
+    const wait = Math.max(0, approach.waitMinutes - Math.floor(age / 60));
+    const count = approach.stopsAwayMin, max = approach.stopsAwayMax;
+    const stops = Number.isInteger(count) && Number.isInteger(max) && count <= max
+      ? max <= 6 ? count === max ? `${count}停留所手前` : `${count}〜${max}停留所手前`
+        : `約${Math.round((count + max) / 2)}停留所手前` : '接近中';
+    return `次の${row.routeLabel.normalize('NFKC')}　あと${age > 90 ? '約' : ''}${wait}分・${stops}`;
   }
 
   function sourceSummary(data) {
@@ -207,9 +211,19 @@
           element(doc, 'span', 'bus-hub-time-suffix', shown.timeSuffix));
         timing.append(departureTime, element(doc, 'span', 'bus-hub-quality', shown.note));
         if (shown.delay) timing.append(element(doc, 'span', 'bus-hub-delay', shown.delay));
-      item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing);
-      if (positionShadowEnabled) item.append(element(doc, 'p', 'bus-hub-position-shadow',
-        `🚌 ${officialApproach || displayShadowPosition(row.position)}`));
+      item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`));
+      if (officialApproach) item.append(element(doc, 'p', 'bus-hub-position-shadow', `🚌 ${officialApproach}`));
+      item.append(timing);
+      if (row.provider === 'kawasaki' && row.isOrigin === true
+        && ['kibukihoncho', 'mizonokuchi-minamiguchi'].includes(hubId)) {
+        const notice = row.originNotice === 'likely_turnaround' ? '到着車両が折返す可能性高い'
+          : row.originNotice === 'turnaround_candidate' ? '折返し候補'
+            : row.originNotice === 'vehicle_assigned' ? '始発便・車両確認'
+            : '始発予定・車両未確認';
+        item.append(element(doc, 'p', 'bus-hub-origin-notice', notice));
+      }
+      if (positionShadowEnabled && !officialApproach) item.append(element(doc, 'p', 'bus-hub-position-shadow',
+        `🚌 ${displayShadowPosition(row.position)}`));
       list.append(item);
     });
     return list;

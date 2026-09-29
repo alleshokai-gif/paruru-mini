@@ -51,20 +51,21 @@ function departureState(row) {
 const waitingPosition = () => ({ supported: false, state: null, stopsAway: null,
   previousStop: null, nextStop: null, confidence: null });
 
-function hubShadowPosition({ row, query, staticRow, shadowPositions, shadowArtifact }) {
-  if (query.id !== 'home_to_noborito' || staticRow.routeId !== '10044'
-    || staticRow.fromStopId !== '184_2' || !(shadowPositions instanceof Map)) return waitingPosition();
+function hubPosition({ row, staticRow, shadowPositions, stopSequencePositions, shadowArtifact }) {
   const match = /^(\d{8}):(.+)$/.exec(row.tripId);
   if (!match) return waitingPosition();
-  const result = shadowPositions.get(`${match[1]}:${match[2]}:${staticRow.fromStopId}:${staticRow.stopSequence}`);
+  const key = `${match[1]}:${match[2]}:${staticRow.fromStopId}:${staticRow.stopSequence}`;
+  const result = shadowPositions?.get(key);
   const checked = shadowPosition(result, shadowArtifact);
-  if (!checked.supported || !Number.isFinite(result.observedAt)) return waitingPosition();
-  return { supported: true, shadowReady: true, state: checked.state,
+  if (checked.supported && Number.isFinite(result.observedAt)) return {
+    supported: true, shadowReady: true, state: checked.state,
     previousStop: checked.previousStop, nextStop: checked.nextStop,
     stopsAway: checked.stopsAway, observedAt: result.observedAt };
+  return stopSequencePositions?.get(key) || waitingPosition();
 }
 
-export function normalizeKawasakiHubResult(response, { index, queries, shadowPositions, shadowArtifact }) {
+export function normalizeKawasakiHubResult(response, { index, queries, shadowPositions, stopSequencePositions,
+  turnarounds, shadowArtifact }) {
   if (response?.success !== true || !Array.isArray(response.directions)) fail('BUS_KAWASAKI_HUB_INVALID');
   const queryMap = new Map(queries.filter((query) => INCLUDED_SOURCES.has(query.id)).map((query) => [query.id, query]));
   const arrivals = [];
@@ -77,12 +78,18 @@ export function normalizeKawasakiHubResult(response, { index, queries, shadowPos
       if (!stop) fail('BUS_KAWASAKI_HUB_INVALID');
       const routeId = routeIdFor(row, query, index);
       const staticRow = staticRowFor(row, query, index, routeId, stopId);
-      const position = hubShadowPosition({ row, query, staticRow, shadowPositions, shadowArtifact });
+      const position = hubPosition({ row, staticRow, shadowPositions, stopSequencePositions, shadowArtifact });
+      const match = /^(\d{8}):(.+)$/.exec(row.tripId);
+      const turnaround = staticRow.isOrigin && match ? turnarounds?.get(
+        `${match[1]}:${match[2]}:${staticRow.fromStopId}:${staticRow.stopSequence}`) : null;
       const scheduledDeparture = epoch(row.scheduledAt);
       const estimatedDeparture = row.realtime ? epoch(row.estimatedAt) : null;
       arrivals.push({
         id: `kawasaki:${row.tripId}`, sourceId: direction.id, provider: 'kawasaki',
         routeId, routeLabel: row.routeLabel, isOrigin: staticRow.isOrigin,
+        originNotice: staticRow.isOrigin ? turnaround?.status === 'high' ? 'likely_turnaround'
+          : turnaround?.status === 'candidate' ? 'turnaround_candidate'
+            : position.supported ? 'vehicle_assigned' : 'vehicle_unconfirmed' : null,
         areaBadge: ['365_1', '365_2'].includes(staticRow.fromStopId)
           || ['365_1', '365_2'].includes(staticRow.toStopId) ? '多摩川口' : null,
         destination: row.headsign || direction.to,

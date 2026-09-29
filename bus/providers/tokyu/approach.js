@@ -4,7 +4,7 @@ const NAVI_URL = 'https://tokyu.bus-location.jp/blsys/navi?VID=rsi&EID=st&CID=rt
 const MAX_HTML_BYTES = 256 * 1024;
 const TIMEOUT_MS = 3500;
 const CACHE_SECONDS = 25;
-const MAX_AGE_SECONDS = 90;
+const MAX_AGE_SECONDS = 180;
 const JST_SECONDS = 9 * 3600;
 
 const clean = (value) => value.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;|&#xA0;/gi, ' ')
@@ -40,18 +40,22 @@ function selectApproach(rows, selectedIndex, { side, source, destination, headin
     const count = rows.reduce((total, row, stopIndex) => total + (stopRow(row)
       && (side === 'balloonR' ? stopIndex > index && stopIndex <= selectedIndex
         : stopIndex >= selectedIndex && stopIndex < index) ? 1 : 0), 0);
-    if (count < 1 || count > 6) continue;
     for (const label of busBlocks(rows[index], side)) {
       if (label.startsWith('(折)') || label.startsWith('（折）')) continue;
       if (!label.includes(heading)) continue;
       const wait = label.match(/(?:^|\s)(\d{1,2})分待ち(?:\s|$)/);
-      candidates.push({ waitMinutes: wait ? Number(wait[1]) : null, stopsAwayMin: count - 1,
-        stopsAwayMax: count, source, destination });
+      if (wait) candidates.push({ waitMinutes: Number(wait[1]), stopsAwayMin: count > 0 ? count - 1 : null,
+        stopsAwayMax: count > 0 ? count : null, source, destination });
     }
   }
-  if (candidates.length !== 1 || !Number.isInteger(candidates[0].waitMinutes)
-    || candidates[0].waitMinutes > 60) return null;
-  return candidates[0];
+  const ordered = candidates.filter((value) => value.waitMinutes <= 60)
+    .sort((a, b) => a.waitMinutes - b.waitMinutes);
+  if (!ordered.length) return null;
+  const first = ordered[0], uniqueNext = ordered.length === 1 || ordered[1].waitMinutes > first.waitMinutes;
+  return { ...first, uniqueNext,
+    // When two vehicles share the earliest wait, the stop count cannot be attributed safely.
+    stopsAwayMin: uniqueNext ? first.stopsAwayMin : null,
+    stopsAwayMax: uniqueNext ? first.stopsAwayMax : null };
 }
 
 // The public page has no trip/vehicle key. This is an independent stop-level approach,
@@ -74,7 +78,8 @@ export function parseTokyuApproaches(html, now) {
   return Object.fromEntries(directions.flatMap((direction) => {
     const result = selectApproach(rows, selected[0], direction);
     if (!result) return [];
-    return [[direction.source.sourceId, { matchedTripId: null, uniqueNext: true,
+    return [[direction.source.sourceId, { matchedTripId: null, uniqueNext: result.uniqueNext,
+      sourceId: direction.source.sourceId,
       routeLabel: direction.source.routeLabel, destination: direction.destination,
       boardingStopId: direction.source.fromStopId, waitMinutes: result.waitMinutes,
       stopsAwayMin: result.stopsAwayMin, stopsAwayMax: result.stopsAwayMax, retrievedAt }]];
