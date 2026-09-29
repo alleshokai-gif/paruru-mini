@@ -10,7 +10,7 @@ function verifyHomeControlDevicePairingReadOnly_(deviceId, pairingToken) {
 function kazOsProgress_(body, inboxTrace, transportTrace) {
   try {
     const input = body || {};
-    if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.work.get', 'kazOs.today.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
+    if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.work.get', 'kazOs.capa.get', 'kazOs.today.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
     if (!isKazOsLiveEnabled_()) throw homeMembershipError_('KAZ_NOT_CONNECTED');
     recordKazOsTransport_(transportTrace, 'AUTH_RESOLVE_START', { outcome: 'progress' });
     const actor = resolveFirebaseAuthenticatedActorForRead_(input);
@@ -32,6 +32,15 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
       const work = sanitizeKazOsWork_(rawWork);
       recordKazOsTransport_(transportTrace, 'SANITIZE_END', { outcome: 'progress' });
       const response = json_({ success: true, data: work, message: 'read only' });
+      recordKazOsTransport_(transportTrace, 'RESPONSE_READY', { outcome: 'success' });
+      return response;
+    }
+    if (input.action === 'kazOs.capa.get') {
+      const rawCapa = readKazOsCapa_(transportTrace);
+      recordKazOsTransport_(transportTrace, 'SANITIZE_START', { outcome: 'progress' });
+      const capa = sanitizeKazOsCapa_(rawCapa);
+      recordKazOsTransport_(transportTrace, 'SANITIZE_END', { outcome: 'progress' });
+      const response = json_({ success: true, data: capa, message: 'read only' });
       recordKazOsTransport_(transportTrace, 'RESPONSE_READY', { outcome: 'success' });
       return response;
     }
