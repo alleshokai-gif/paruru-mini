@@ -41,6 +41,25 @@ test('High school compares Noborito and Mizonokuchi without assuming a train fro
     ['noborito-normal', 'mizonokuchi', 10]);
 });
 
+test('a train that has already reached both stations is evaluated without suggesting a past bus', async () => {
+  const boarding = {};
+  const result = await compareHomeRoutes({ ...base, journeyId: 'university',
+    selectedTrain: { id: 'earlier-train', arrivals: {
+      noborito: epoch('17:30'), mukougaoka: epoch('17:25') } },
+    loadBuses: async ({ placeId, sourceIds, boardingAt }) => {
+      boarding[placeId] = boardingAt;
+      const queryId = placeId === 'mukougaoka' ? 'mukougaoka_to_kibukihoncho'
+        : placeId === 'noborito-tamagawa' ? 'noborito_tamagawa_to_kibukihoncho'
+          : 'noborito_to_home';
+      return loaded(sourceIds, [bus('kawasaki', queryId, '17:45', '17:58'),
+        bus('kawasaki', queryId, '18:20', '18:36')]);
+    } });
+  assert.deepEqual(boarding, { 'noborito-normal': epoch('18:08'),
+    'noborito-tamagawa': epoch('18:11'), mukougaoka: epoch('18:05') });
+  assert.equal(result.status, 'available');
+  assert.ok(result.options.every((option) => option.departureAt >= epoch('18:00')));
+});
+
 test('Uncertain buses are retained as explanation but never selected as fastest', async () => {
   const result = await compareHomeRoutes({ ...base, journeyId: 'university',
     loadBuses: async ({ placeId, sourceIds }) => loaded(sourceIds, placeId === 'mukougaoka'

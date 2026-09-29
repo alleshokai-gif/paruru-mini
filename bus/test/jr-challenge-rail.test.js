@@ -51,7 +51,7 @@ test('Challenge mapper retains only after-noon trains and real departure provena
   assert.equal(built.sample, false);
   assert.equal(built.trains[0].destination, '川崎');
   assert.equal(built.trains[0].destinationStationId, 'odpt.Station:JR-East.Nambu.Kawasaki');
-  const weekday = listRailTrains({ artifact: built, journeyId: 'high_school', now: at('16:00') });
+  const weekday = listRailTrains({ artifact: built, journeyId: 'high_school', now: at('15:50') });
   assert.equal(weekday.trains[0].trainNumber, '4554F');
   assert.deepEqual(weekday.trains[0].candidateStations.map((s) => s.station),
     ['noborito', 'musashi_mizonokuchi']);
@@ -61,8 +61,8 @@ test('Challenge mapper retains only after-noon trains and real departure provena
   assert.equal(weekday.trains[0].stationTimes.musashi_mizonokuchi, at('16:21'));
   assert.match(weekday.trains[0].label, /登戸16:15発／武蔵溝ノ口16:21発/);
   assert.equal(listRailTrains({ artifact: built, journeyId: 'high_school',
-    now: Date.parse('2026-10-03T16:00:00+09:00') / 1000 }).trains[0].trainNumber, '5554F');
-  const night = listRailTrains({ artifact: built, journeyId: 'high_school', now: at('23:50') });
+    now: Date.parse('2026-10-03T15:50:00+09:00') / 1000 }).trains[0].trainNumber, '5554F');
+  const night = listRailTrains({ artifact: built, journeyId: 'high_school', now: at('23:40') });
   assert.equal(night.trains[0].stationTimes.noborito,
     Date.parse('2026-09-29T00:12:00+09:00') / 1000);
 });
@@ -78,7 +78,7 @@ test('reverse order, duplicate train and absent published time fail closed', () 
 });
 
 test('exact unique fresh train number joins position and confirmed delay', () => {
-  const train = listRailTrains({ artifact: artifact(), journeyId: 'high_school', now: at('16:00') }).trains[0];
+  const train = listRailTrains({ artifact: artifact(), journeyId: 'high_school', now: at('15:50') }).trains[0];
   const [matched] = attachJrNambuLocations([train], [location()], at('16:01'));
   assert.equal(matched.railRealtimeState, 'confirmed_delay');
   assert.equal(matched.delaySeconds, 120);
@@ -101,7 +101,7 @@ test('exact unique fresh train number joins position and confirmed delay', () =>
 });
 
 test('Home Route Core uses departure marker plus confirmed delay as an estimate', async () => {
-  const train = listRailTrains({ artifact: artifact(), journeyId: 'high_school', now: at('16:00') }).trains[0];
+  const train = listRailTrains({ artifact: artifact(), journeyId: 'high_school', now: at('15:50') }).trains[0];
   const [selectedTrain] = attachJrNambuLocations([train], [location()], at('16:01'));
   const sourceIds = {
     'noborito-normal': 'kawasaki:noborito_to_home',

@@ -58,9 +58,9 @@ test('Challenge departure joins confirmed same-train stop times for both calenda
   assert.deepEqual(artifact.trains[0].candidateStations.map((stop) => stop.stationTimeSource),
     ['arrival', 'arrival']);
   const weekday = listRailTrains({ artifact, journeyId: 'university',
-    now: Date.parse('2026-09-28T12:10:00+09:00') / 1000 });
+    now: Date.parse('2026-09-28T12:05:00+09:00') / 1000 });
   const weekend = listRailTrains({ artifact, journeyId: 'university',
-    now: Date.parse('2026-10-04T12:10:00+09:00') / 1000 });
+    now: Date.parse('2026-10-04T12:05:00+09:00') / 1000 });
   assert.equal(weekday.trains[0].sourceDeparture, '12:06');
   assert.equal(weekend.trains[0].sourceDeparture, '12:07');
   assert.match(weekday.trains[0].label, /向ヶ丘遊園12:23着／登戸12:25着/);

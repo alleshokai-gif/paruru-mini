@@ -84,7 +84,7 @@ export function listRailTrains({ artifact, journeyId, now, page = 0, pageSize = 
   enrichTrain = (train) => train } = {}) {
   validateRailStatic(artifact);
   const route = RAIL_ROUTES[journeyId];
-  if (!route || !Number.isFinite(now) || !Number.isSafeInteger(page) || page < 0
+  if (!route || !Number.isFinite(now) || !Number.isSafeInteger(page) || Math.abs(page) > 50
     || !Number.isSafeInteger(pageSize) || pageSize < 3 || pageSize > 5
     || typeof enrichTrain !== 'function') fail();
   const local = new Date((now + JST_SECONDS) * 1000);
@@ -119,14 +119,19 @@ export function listRailTrains({ artifact, journeyId, now, page = 0, pageSize = 
         stationTimeSource: train.candidateStations[index].stationTimeSource
       }))
     };
-  }).map(enrichTrain).filter((train) =>
-    (train.effectiveStationTimes ?? train.stationTimes)[route.candidates[0].station] >= now)
+  }).map(enrichTrain)
     .sort((a, b) => a.sourceDepartureAt - b.sourceDepartureAt || a.id.localeCompare(b.id));
-  const start = page * pageSize;
+  // Signed pages are anchored at the first source departure at/after now.
+  // 0 is the next five, -1 the preceding five, +1 the following five.
+  const nextIndex = rows.findIndex((train) => train.sourceDepartureAt >= now);
+  const anchor = nextIndex < 0 ? rows.length : nextIndex;
+  const end = page < 0 ? Math.max(0, anchor + (page + 1) * pageSize) : null;
+  const start = page < 0 ? Math.max(0, end - pageSize) : Math.min(rows.length, anchor + page * pageSize);
+  const pageEnd = end ?? Math.min(rows.length, start + pageSize);
   return {
     journeyId, serviceDate, calendarType, sample: artifact.sample,
     stationTimeSource: journeyId === 'high_school' ? 'departure' : 'arrival',
-    trains: rows.slice(start, start + pageSize),
-    hasPrevious: page > 0, hasNext: start + pageSize < rows.length
+    trains: rows.slice(start, pageEnd),
+    hasPrevious: start > 0, hasNext: pageEnd < rows.length
   };
 }

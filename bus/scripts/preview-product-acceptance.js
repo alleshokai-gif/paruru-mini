@@ -17,7 +17,7 @@ import { attachJrNambuLocations, loadJrNambuLocations } from '../rail/jr-challen
 
 const root = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const port = Number(process.env.PALURU_BUS_PREVIEW_PORT || 8792);
-const validationProxy = 'http://127.0.0.1:8789';
+const validationProxy = process.env.PALURU_BUS_VALIDATION_PROXY || 'http://127.0.0.1:8789';
 const scenarios = Object.freeze([
   ['live', '通常Bus（validation）'],
   ['tamagawa', '多摩川口・往復'],
@@ -198,7 +198,7 @@ const server = createServer(async (req, res) => {
       : scenarioIds.has(url.searchParams.get('case')) ? url.searchParams.get('case') : 'live';
     if (url.pathname === '/preview/trains' || url.pathname === '/preview/home-route') {
       const page = Number(url.searchParams.get('page') || 0);
-      if (!Number.isSafeInteger(page) || page < 0 || page > 50)
+      if (!Number.isSafeInteger(page) || Math.abs(page) > 50)
         return responseJson(res, { error: 'PAGE_INVALID' }, 400);
       const journeyId = url.searchParams.get('journeyId');
       const now = previewNow(url);

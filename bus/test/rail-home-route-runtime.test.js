@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHttpHandler } from '../http/handler.js';
 import { createRailHomeRouteService } from '../rail/home-route-service.js';
 import { validateRailStatic } from '../rail/static-provider.js';
+import { listRailTrains } from '../rail/static-provider.js';
 import { mergeKawasakiStatic } from '../providers/kawasaki/journey-static.js';
 import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
 import { P0_QUERIES } from '../config/queries.js';
@@ -47,6 +48,22 @@ test('production composition serves both Rail selectors and retains Static bus f
   assert.ok(schoolResult.fastest?.homeArrivalAt >= schoolResult.fastest?.departureAt);
 });
 
+test('Odakyu and Nambu both page backward into selectable past trains', async () => {
+  for (const [journeyId, artifact] of [['university', odakyuStatic], ['high_school', jrStatic]]) {
+    const current = listRailTrains({ artifact, journeyId, now });
+    const previous = listRailTrains({ artifact, journeyId, now, page: -1 });
+    assert.equal(current.trains.length, 5);
+    assert.equal(previous.trains.length, 5);
+    assert.ok(previous.trains.every((train) => train.sourceDepartureAt < now));
+    assert.ok(previous.trains.at(-1).sourceDepartureAt < current.trains[0].sourceDepartureAt);
+    const evaluated = await service.evaluate({ journeyId, page: -1, trainId: previous.trains.at(-1).id });
+    assert.ok(['available', 'partial', 'insufficient_data'].includes(evaluated.status));
+    const earlier = listRailTrains({ artifact, journeyId, now, page: -3 });
+    const historical = await service.evaluate({ journeyId, page: -3, trainId: earlier.trains[0].id });
+    assert.ok(['available', 'partial', 'insufficient_data'].includes(historical.status));
+  }
+});
+
 test('GET-only Rail endpoints retain CORS and reject malformed requests', async () => {
   const handler = createHttpHandler(() => ({ getArrivals: async () => ({}) }), {
     health: true, railHomeRouteServiceFactory: () => service
@@ -60,5 +77,7 @@ test('GET-only Rail endpoints retain CORS and reject malformed requests', async 
   assert.equal((await trains.json()).trains.length, 5);
   assert.equal((await request('/api/bus/trains?journeyId=university', 'https://other.invalid')).status, 403);
   assert.equal((await request('/api/bus/trains?journeyId=university&trainId=foo')).status, 404);
+  assert.equal((await request('/api/bus/trains?journeyId=university&page=-1')).status, 200);
+  assert.equal((await request('/api/bus/trains?journeyId=university&page=-51')).status, 404);
   assert.equal((await request('/api/bus/trains?journeyId=university', env.ALLOWED_ORIGINS, 'POST')).status, 405);
 });

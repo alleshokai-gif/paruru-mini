@@ -17,19 +17,19 @@ test('user-managed sample has both calendars and no fictional Nambu trains', () 
   assert.equal(example.trains.filter((row) => row.route === 'tachikawa_to_mizonokuchi').length, 0);
 });
 
-test('selector keeps a departed train until its first comparison station and shows five choices', () => {
+test('selector starts with the next five source departures and can page back to a departed train', () => {
   const result = listRailTrains({ artifact: example, journeyId: 'university',
     now: epoch('2026-09-28', '18:02') });
   assert.equal(result.calendarType, 'weekday');
   assert.equal(result.trains.length, 5);
-  assert.equal(result.trains[0].sourceDeparture, '18:00');
-  assert.equal(result.trains[0].stationTimes.mukougaoka, epoch('2026-09-28', '18:18'));
-  assert.equal(result.trains[0].stationTimes.noborito, epoch('2026-09-28', '18:21'));
-  assert.equal(result.trains[0].trainType, '各駅停車');
-  assert.equal(result.hasNext, true);
-  const expired = listRailTrains({ artifact: example, journeyId: 'university',
-    now: epoch('2026-09-28', '18:19') });
-  assert.equal(expired.trains[0].sourceDeparture, '18:20');
+  assert.equal(result.trains[0].sourceDeparture, '18:20');
+  assert.equal(result.hasPrevious, true);
+  const previous = listRailTrains({ artifact: example, journeyId: 'university',
+    now: epoch('2026-09-28', '18:02'), page: -1 });
+  assert.equal(previous.trains.at(-1).sourceDeparture, '18:00');
+  assert.equal(previous.trains.at(-1).stationTimes.mukougaoka, epoch('2026-09-28', '18:18'));
+  assert.equal(previous.trains.at(-1).stationTimes.noborito, epoch('2026-09-28', '18:21'));
+  assert.equal(previous.hasNext, true);
 });
 
 test('school stations remain in the actual Noborito then Musashi-Mizonokuchi order', () => {
@@ -51,15 +51,29 @@ test('weekend and explicit user calendar overrides select their own rows', () =>
   assert.equal(holiday.trains[0].sourceDeparture, '18:05');
 });
 
-test('next-page navigation only moves among still-usable user trains', () => {
+test('signed pages move in five-train blocks and stop at service-date boundaries', () => {
   const first = listRailTrains({ artifact: example, journeyId: 'university',
     now: epoch('2026-09-28', '17:55') });
   const next = listRailTrains({ artifact: example, journeyId: 'university',
     now: epoch('2026-09-28', '17:55'), page: 1 });
-  assert.equal(first.hasPrevious, false);
+  assert.equal(first.hasPrevious, true);
   assert.equal(next.hasPrevious, true);
   assert.ok(next.trains[0].sourceDepartureAt > first.trains[4].sourceDepartureAt);
   assert.equal(new Set([...first.trains, ...next.trains].map((row) => row.id)).size, 10);
+  const start = listRailTrains({ artifact: example, journeyId: 'university',
+    now: epoch('2026-09-28', '06:00') });
+  assert.equal(start.hasPrevious, false);
+  const end = listRailTrains({ artifact: example, journeyId: 'university',
+    now: epoch('2026-09-28', '21:59') });
+  assert.equal(end.hasNext, false);
+  const afterLast = listRailTrains({ artifact: example, journeyId: 'university',
+    now: epoch('2026-09-28', '22:30') });
+  const lastFive = listRailTrains({ artifact: example, journeyId: 'university',
+    now: epoch('2026-09-28', '22:30'), page: -1 });
+  assert.equal(afterLast.trains.length, 0);
+  assert.equal(afterLast.hasPrevious, true);
+  assert.equal(lastFive.trains.length, 5);
+  assert.equal(lastFive.hasNext, false);
 });
 
 test('malformed, duplicated and reverse-order input fails closed', () => {

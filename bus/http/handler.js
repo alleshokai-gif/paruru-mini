@@ -31,8 +31,8 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
         && ['university', 'high_school'].includes(url.searchParams.get('journeyId'))
         && (!railTrainsPath || !railKeys.includes('trainId'))
         && (!homeRoutePath || /^[a-zA-Z0-9:_-]{1,100}$/.test(url.searchParams.get('trainId') || ''))
-        && (!railKeys.includes('page') || /^(?:0|[1-9]\d?)$/.test(url.searchParams.get('page'))
-          && Number(url.searchParams.get('page')) <= 50);
+        && (!railKeys.includes('page') || /^(?:0|-?[1-9]\d?)$/.test(url.searchParams.get('page'))
+          && Math.abs(Number(url.searchParams.get('page'))) <= 50);
       if (!arrivalsPath && !hubQuery && !journeyQuery && !railQuery)
         return reply({ success: false, error: { code: 'BUS_NOT_FOUND' } }, 404);
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '600' } });

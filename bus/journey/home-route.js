@@ -33,14 +33,17 @@ export async function compareHomeRoutes({ journeyId, selectedTrain, transferMinu
   for (const place of places) {
     const stationTimeAt = (selectedTrain.effectiveStationTimes ?? selectedTrain.stationTimes
       ?? selectedTrain.arrivals)?.[place.stationId], transfer = transferMinutes[place.placeId];
-    if (!validTime(stationTimeAt) || stationTimeAt < now || !Number.isFinite(transfer)
+    if (!validTime(stationTimeAt) || !Number.isFinite(transfer)
       || transfer < 0 || transfer > 60) fail();
   }
   const tasks = places.map(async (place) => {
     const stationTimeAt = (selectedTrain.effectiveStationTimes ?? selectedTrain.stationTimes
       ?? selectedTrain.arrivals)[place.stationId], transfer = transferMinutes[place.placeId];
     const stationTimeSource = selectedTrain.stationTimeSources?.[place.stationId] ?? 'arrival';
-    const boardingAt = stationTimeAt + transfer * 60;
+    // A selected earlier train may already have reached this station. Never
+    // suggest a past bus: reserve the full transfer time from the later of the
+    // train's station time and the current time.
+    const boardingAt = Math.max(stationTimeAt, now) + transfer * 60;
     const loaded = await loadBuses({ placeId: place.placeId, boardingAt, sourceIds: place.sourceIds });
     const sourceStates = loaded?.sourceStates;
     if (!Array.isArray(loaded?.arrivals) || !sourceStates || typeof sourceStates !== 'object'
