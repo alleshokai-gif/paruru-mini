@@ -61,6 +61,18 @@ test('Position shadow has an explicit local gate and safely waits for weak evide
   assert.equal(hub.displayShadowPosition(row.position, row.position.observedAt + 121), '位置確認中');
 });
 
+test('Seibu imminent ETA and coarse stop location use the shared Hub card without static quality', () => {
+  const observedAt = Date.now() / 1000;
+  const row = arrival({ provider: 'seibu', routeLabel: '立３４', destination: '立川駅北口',
+    realtimeState: 'realtime', etaMinutes: 0, delayMinutes: 2,
+    position: { supported: true, fidelity: 'stop_sequence', state: 'near_stop',
+      nextStop: '昭和第一学園', stopsAway: 0, observedAt } });
+  const shown = renderedText(hub.renderArrivalList(fakeDocument(),
+    { arrivals: [row], recommendedArrivalId: row.id }, 'showa-daiichi-gakuen', true));
+  assert.match(shown, /西武バス.*立３４.*まもなく.*\+2分遅れ.*🚌 昭和第一学園付近・あと0停留所/s);
+  assert.doesNotMatch(shown, /時刻表のみ|位置確認中/);
+});
+
 test('official Tokyu approach adds one line only to the first Tokyu card without changing static time', () => {
   const tokyu = arrival({ id: 'tokyu-first', sourceId: 'kibukihoncho_to_mukougaoka', destination: '向ヶ丘遊園駅南口',
     originStop: { id: 'odpt:BusstopPole:TokyuBus.Shibokuhonchou.00240751.b', name: '神木本町' },

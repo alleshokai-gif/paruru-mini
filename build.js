@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260929-bus-progressive-location-v1";
+globalThis.BUILD_ID = "v20260929-seibu-location-v1";
