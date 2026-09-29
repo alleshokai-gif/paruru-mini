@@ -59,9 +59,9 @@
       return { time: scheduled, timeSuffix: '便', note: '発車済みの可能性あり', kind: 'stale', delay: '' };
     if (['stale', 'realtime_stale'].includes(row.realtimeState))
       return { time: scheduled, timeSuffix: '便', note: '前回情報・更新待ち', kind: 'stale', delay: '' };
-    if (row.realtimeState === 'static_only') return { time: scheduled, timeSuffix: '予定', note: '時刻表のみ', kind: 'static', delay: '' };
+    if (row.realtimeState === 'static_only') return { time: scheduled, timeSuffix: '便', note: '時刻表のみ', kind: 'static', delay: '' };
     if (row.realtimeState === 'static_fallback')
-      return { time: scheduled, timeSuffix: '予定', note: 'リアルタイム予測なし', kind: 'fallback', delay: '' };
+      return { time: scheduled, timeSuffix: '便', note: 'リアルタイム予測なし', kind: 'fallback', delay: '' };
     const delay = row.delayMinutes > 0 ? `+${row.delayMinutes}分遅れ`
       : row.delayMinutes < 0 ? `${Math.abs(row.delayMinutes)}分早い予測` : '';
     return { time: scheduled, timeSuffix: '便', note: Number.isFinite(row.etaMinutes) ? `あと${row.etaMinutes}分` : '予測更新待ち',

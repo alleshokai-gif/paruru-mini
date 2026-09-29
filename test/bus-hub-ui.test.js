@@ -73,7 +73,7 @@ test('official Tokyu approach adds one line only to the first Tokyu card without
   ] }, 'kibukihoncho', true);
   assert.equal(list.children.length, 3);
   const firstTokyu = renderedText(list.children[1]);
-  assert.match(firstTokyu, /07:05.*予定.*時刻表のみ.*🚌 次の向01　あと5分・4〜5停留所手前/s);
+  assert.match(firstTokyu, /07:05.*便.*時刻表のみ.*🚌 次の向01　あと5分・4〜5停留所手前/s);
   assert.equal(descendants(list.children[1]).filter((node) => node.className === 'bus-hub-position-shadow').length, 1);
   assert.doesNotMatch(fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8'),
     /bus-hub-official-approach/);
@@ -149,11 +149,25 @@ test('production shell loads the Hub mount, script and stylesheet without enabli
 test('Tokyu static-only UI never presents ETA or realtime wording', () => {
   const value = hub.validate(fixture()).decisionGroups[0].arrivals[0];
   const shown = hub.displayArrival(value);
-  assert.deepEqual(shown, { time: '07:05', timeSuffix: '予定', note: '時刻表のみ', kind: 'static', delay: '' });
+  assert.deepEqual(shown, { time: '07:05', timeSuffix: '便', note: '時刻表のみ', kind: 'static', delay: '' });
   assert.doesNotMatch(`${shown.time}${shown.note}${shown.delay}`, /あと|リアルタイム|遅れ/);
   assert.throws(() => hub.validate(fixture(arrival({ etaMinutes: 5 }))), /BUS_HUB_STATIC_AS_REALTIME/);
   assert.throws(() => hub.validate(fixture(arrival({ estimatedDeparture: NOW + 360 }))), /BUS_HUB_STATIC_AS_REALTIME/);
   assert.throws(() => hub.validate(fixture(arrival({ delayMinutes: 3 }))), /BUS_HUB_STATIC_AS_REALTIME/);
+});
+
+test('Hub scheduled time suffix is independent of provider and realtime quality', () => {
+  for (const changes of [
+    { provider: 'tokyu', realtimeState: 'static_only' },
+    { provider: 'kawasaki', realtimeState: 'static_fallback' },
+    { provider: 'kawasaki', realtimeState: 'realtime', etaMinutes: 4, delayMinutes: 7 },
+    { provider: 'kawasaki', realtimeState: 'realtime_stale' }
+  ]) {
+    assert.equal(hub.displayArrival(arrival(changes)).timeSuffix, '便');
+  }
+  assert.equal(hub.displayArrival(arrival({ provider: 'tokyu', realtimeState: 'static_only' })).note, '時刻表のみ');
+  assert.equal(hub.displayArrival(arrival({ provider: 'kawasaki', realtimeState: 'static_fallback' })).note,
+    'リアルタイム予測なし');
 });
 
 test('Hub response identity and URL are resolved per configured location', () => {

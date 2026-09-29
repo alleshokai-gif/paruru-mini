@@ -45,7 +45,7 @@
     let delay = '';
     if (live) delay = row.delayMinutes > 0 ? `+${row.delayMinutes}分遅れ` : row.delayMinutes < 0 ? `${Math.abs(row.delayMinutes)}分早い予測` : row.delaySeconds === 0 ? '遅れなし' : '1分未満の差';
     const date = tokyo(row.scheduledAt).slice(0, 10), today = tokyo(data.generatedAt).slice(0, 10);
-    return { ...row, live, eta, note, delay, timeLabel: `${date !== today ? `${date.slice(5).replace('-', '/')} ` : ''}${row.scheduledTime}${live || held ? '便' : '予定'}` };
+    return { ...row, live, eta, note, delay, timeLabel: `${date !== today ? `${date.slice(5).replace('-', '/')} ` : ''}${row.scheduledTime}便` };
   }
   function createController({ fetchData, render, hidden, validateData = validate, now = () => performance.now(), timers = globalThis }) {
     let active = false, data = null, error = false, pending = null, generation = 0, pollTimer, paintTimer, receivedAt = 0;
