@@ -42,6 +42,9 @@
   align-items: baseline; column-gap: 10px; }
 .bus-hub-time { justify-self: start; }
 .bus-hub-quality { justify-self: center; }
+.bus-hub-row.is-static .bus-hub-quality,
+.bus-hub-row.is-fallback .bus-hub-quality,
+.bus-hub-row.is-stale .bus-hub-quality { grid-column: 3; justify-self: end; text-align: right; }
 .bus-hub-delay { justify-self: end; text-align: right; }
 .bus-hub-time { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }
 .bus-hub-time-suffix { display: inline-block; font-size: 0.6em; line-height: 1; vertical-align: baseline; }
