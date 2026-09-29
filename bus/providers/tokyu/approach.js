@@ -1,6 +1,7 @@
-import { KIBUKIHONCHO_TO_KAJIGAYA, KIBUKIHONCHO_TO_MUKOUGAOKA } from './config.js';
+import { KIBUKIHONCHO_TO_KAJIGAYA, KIBUKIHONCHO_TO_MUKOUGAOKA, MUKOUGAOKA_TO_KIBUKIHONCHO } from './config.js';
 
 const NAVI_URL = 'https://tokyu.bus-location.jp/blsys/navi?VID=rsi&EID=st&CID=rtl&FID=rtl&RAMK=64&DOF=9&SKF=3072&SSC=1';
+const MUKOUGAOKA_NAVI_URL = 'https://tokyu.bus-location.jp/blsys/navis?DPMK=7065&DSMK=2972&EID=nt&VID=ldt';
 const MAX_HTML_BYTES = 256 * 1024;
 const TIMEOUT_MS = 3500;
 const CACHE_SECONDS = 25;
@@ -11,8 +12,8 @@ const clean = (value) => value.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;|&
   .replace(/\s+/g, ' ').trim();
 
 function pageTime(html, now) {
-  const matches = [...html.matchAll(/([01]\d|2[0-3]):([0-5]\d)\s*時点の情報/g)];
-  if (!matches.length || matches.some((value) => value[0] !== matches[0][0])) return null;
+  const matches = [...html.matchAll(/([01]\d|2[0-3]):([0-5]\d)\s*(?:時点の情報|時点)/g)];
+  if (!matches.length || matches.some((value) => value[1] !== matches[0][1] || value[2] !== matches[0][2])) return null;
   const dayStart = Math.floor((now + JST_SECONDS) / 86400) * 86400 - JST_SECONDS;
   let observedAt = dayStart + Number(matches[0][1]) * 3600 + Number(matches[0][2]) * 60;
   if (observedAt > now + 5) observedAt -= 86400;
@@ -86,6 +87,27 @@ export function parseTokyuApproaches(html, now) {
   }));
 }
 
+export function parseMukougaokaApproach(html, now) {
+  if (typeof html !== 'string' || html.length > MAX_HTML_BYTES || !Number.isFinite(now)) return {};
+  const retrievedAt = pageTime(html, now);
+  if (retrievedAt == null) return {};
+  const body = clean(html).normalize('NFKC');
+  if (!body.includes('向ヶ丘遊園駅南口') || !body.includes('向01')) return {};
+  const waits = [...body.matchAll(/向01\s*(?:\(折\))?\s*梶谷駅行[^0-9]{0,16}(\d{1,2})分待ち/g)]
+    .map((value) => Number(value[1])).filter((value) => value >= 0 && value <= 60);
+  if (/向01\s*(?:\(折\))?\s*梶谷駅行[^。]{0,24}到着済/.test(body)) waits.push(0);
+  if (!waits.length) return {};
+  waits.sort((x, y) => x - y);
+  const waitMinutes = waits[0], uniqueNext = waits.length === 1 || waits[1] > waitMinutes;
+  return { [MUKOUGAOKA_TO_KIBUKIHONCHO.sourceId]: {
+    matchedTripId: null, uniqueNext, sourceId: MUKOUGAOKA_TO_KIBUKIHONCHO.sourceId,
+    routeLabel: MUKOUGAOKA_TO_KIBUKIHONCHO.routeLabel,
+    destination: MUKOUGAOKA_TO_KIBUKIHONCHO.destinationName,
+    boardingStopId: MUKOUGAOKA_TO_KIBUKIHONCHO.fromStopId,
+    waitMinutes, stopsAwayMin: null, stopsAwayMax: null, retrievedAt
+  } };
+}
+
 async function readBoundedHtml(response) {
   if (!response.ok || Number(response.headers.get('content-length')) > MAX_HTML_BYTES
     || !/^text\/html(?:;|$)/i.test(response.headers.get('content-type') || '')
@@ -107,17 +129,23 @@ async function readBoundedHtml(response) {
 
 export function createTokyuApproachSource({ fetcher = fetch, now = () => Date.now() / 1000 } = {}) {
   let cached = null, pending = null;
+  async function load(url, parser) {
+    try {
+      const response = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const html = await readBoundedHtml(response);
+      return html ? parser(html, now()) : {};
+    } catch { return {}; }
+  }
   return {
     async getApproaches() {
       if (cached && now() - cached.at >= 0 && now() - cached.at < CACHE_SECONDS) return cached.value;
       if (pending) return pending;
       pending = (async () => {
-        let value = {};
-        try {
-          const response = await fetcher(NAVI_URL, { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) });
-          const html = await readBoundedHtml(response);
-          if (html) value = parseTokyuApproaches(html, now());
-        } catch { /* Official approach is optional; retain ODPT Static when unavailable. */ }
+        const [routeApproaches, mukougaokaApproach] = await Promise.all([
+          load(NAVI_URL, parseTokyuApproaches),
+          load(MUKOUGAOKA_NAVI_URL, parseMukougaokaApproach)
+        ]);
+        const value = { ...routeApproaches, ...mukougaokaApproach };
         cached = { at: now(), value };
         return value;
       })();
