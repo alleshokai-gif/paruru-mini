@@ -59,9 +59,9 @@
       return { time: scheduled, timeSuffix: '便', note: '発車済みの可能性あり', kind: 'stale', delay: '' };
     if (['stale', 'realtime_stale'].includes(row.realtimeState))
       return { time: scheduled, timeSuffix: '便', note: '前回情報・更新待ち', kind: 'stale', delay: '' };
-    if (row.realtimeState === 'static_only') return { time: scheduled, timeSuffix: '予定', note: '時刻表のみ', kind: 'static', delay: '' };
+    if (row.realtimeState === 'static_only') return { time: scheduled, timeSuffix: '便', note: '時刻表のみ', kind: 'static', delay: '' };
     if (row.realtimeState === 'static_fallback')
-      return { time: scheduled, timeSuffix: '予定', note: 'リアルタイム予測なし', kind: 'fallback', delay: '' };
+      return { time: scheduled, timeSuffix: '便', note: 'リアルタイム予測なし', kind: 'fallback', delay: '' };
     const delay = row.delayMinutes > 0 ? `+${row.delayMinutes}分遅れ`
       : row.delayMinutes < 0 ? `${Math.abs(row.delayMinutes)}分早い予測` : '';
     return { time: scheduled, timeSuffix: '便', note: Number.isFinite(row.etaMinutes) ? `あと${row.etaMinutes}分` : '予測更新待ち',
@@ -80,6 +80,22 @@
       return `${position.previousStop}〜${position.nextStop}を走行中・あと${position.stopsAway}停留所`;
     if (position.state === 'departed') return `${position.nextStop}へ走行中・あと${position.stopsAway}停留所`;
     return '位置確認中';
+  }
+
+  function displayOfficialApproach(approach, row, nowSeconds = Date.now() / 1000) {
+    if (row.provider !== 'tokyu' || row.realtimeState !== 'static_only'
+      || !approach || approach.matchedTripId !== null || approach.uniqueNext !== true
+      || !text(approach.routeLabel) || approach.routeLabel.normalize('NFKC') !== row.routeLabel.normalize('NFKC')
+      || approach.destination !== row.destination || approach.boardingStopId !== row.originStop?.id
+      || !Number.isInteger(approach.waitMinutes) || approach.waitMinutes < 0 || approach.waitMinutes > 60
+      || !Number.isInteger(approach.stopsAwayMin) || !Number.isInteger(approach.stopsAwayMax)
+      || approach.stopsAwayMin < 0 || approach.stopsAwayMax > 6
+      || approach.stopsAwayMin > approach.stopsAwayMax
+      || !Number.isFinite(approach.retrievedAt) || nowSeconds - approach.retrievedAt > 90
+      || approach.retrievedAt - nowSeconds > 5) return null;
+    const stops = approach.stopsAwayMin === approach.stopsAwayMax
+      ? `${approach.stopsAwayMin}` : `${approach.stopsAwayMin}〜${approach.stopsAwayMax}`;
+    return `次の${row.routeLabel.normalize('NFKC')}　あと${approach.waitMinutes}分・${stops}停留所手前`;
   }
 
   function sourceSummary(data) {
@@ -169,8 +185,12 @@
 
   function renderArrivalList(doc, group, hubId, positionShadowEnabled = false) {
     const list = element(doc, 'ol', 'bus-hub-board');
-    group.arrivals.slice(0, 3).forEach((row) => {
+    const visible = group.arrivals.slice(0, 3);
+    const firstTokyuIndex = visible.findIndex((row) => row.provider === 'tokyu');
+    visible.forEach((row, index) => {
         const shown = displayArrival(row), recommended = row.id === group.recommendedArrivalId;
+        const officialApproach = positionShadowEnabled && index === firstTokyuIndex
+          ? displayOfficialApproach(row.officialApproach, row) : null;
         const item = element(doc, 'li', `bus-hub-row is-${shown.kind}${recommended ? ' is-recommended' : ''}`);
         const heading = element(doc, 'div', 'bus-hub-row-heading');
         heading.append(providerLabel(doc, row.provider), element(doc, 'span', 'bus-hub-route', row.routeLabel));
@@ -188,7 +208,8 @@
         timing.append(departureTime, element(doc, 'span', 'bus-hub-quality', shown.note));
         if (shown.delay) timing.append(element(doc, 'span', 'bus-hub-delay', shown.delay));
       item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing);
-      if (positionShadowEnabled) item.append(element(doc, 'p', 'bus-hub-position-shadow', displayShadowPosition(row.position)));
+      if (positionShadowEnabled) item.append(element(doc, 'p', 'bus-hub-position-shadow',
+        `🚌 ${officialApproach || displayShadowPosition(row.position)}`));
       list.append(item);
     });
     return list;

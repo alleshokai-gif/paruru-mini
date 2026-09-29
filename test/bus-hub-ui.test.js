@@ -53,10 +53,52 @@ test('Position shadow has an explicit local gate and safely waits for weak evide
   const group = { arrivals: [row], recommendedArrivalId: null };
   assert.doesNotMatch(renderedText(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho')), /停留所|位置確認中/);
   assert.match(renderedText(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho', true)),
-    /長尾橋〜神木本町を走行中・あと2停留所/);
+    /🚌 長尾橋〜神木本町を走行中・あと2停留所/);
+  assert.equal(descendants(hub.renderArrivalList(fakeDocument(), group, 'kibukihoncho', true))
+    .filter((node) => node.className === 'bus-hub-position-shadow').length, 1);
   assert.equal(hub.displayShadowPosition({ supported: false }), '位置確認中');
   assert.equal(hub.displayShadowPosition({ ...row.position, shadowReady: false }), '位置確認中');
   assert.equal(hub.displayShadowPosition(row.position, row.position.observedAt + 121), '位置確認中');
+});
+
+test('official Tokyu approach adds one line only to the first Tokyu card without changing static time', () => {
+  const tokyu = arrival({ id: 'tokyu-first', destination: '向ヶ丘遊園駅南口',
+    originStop: { id: 'odpt:BusstopPole:TokyuBus.Shibokuhonchou.00240751.b', name: '神木本町' },
+    officialApproach: { matchedTripId: null, uniqueNext: true, routeLabel: '向01',
+      destination: '向ヶ丘遊園駅南口', boardingStopId: 'odpt:BusstopPole:TokyuBus.Shibokuhonchou.00240751.b',
+      waitMinutes: 5, stopsAwayMin: 4, stopsAwayMax: 5, retrievedAt: Date.now() / 1000 } });
+  const list = hub.renderArrivalList(fakeDocument(), { recommendedArrivalId: null, arrivals: [
+    arrival({ id: 'kawasaki', provider: 'kawasaki', routeLabel: '登０５' }), tokyu,
+    { ...tokyu, id: 'tokyu-second', scheduledDeparture: NOW + 1800 }
+  ] }, 'kibukihoncho', true);
+  assert.equal(list.children.length, 3);
+  const firstTokyu = renderedText(list.children[1]);
+  assert.match(firstTokyu, /07:05.*便.*時刻表のみ.*🚌 次の向01　あと5分・4〜5停留所手前/s);
+  assert.equal(descendants(list.children[1]).filter((node) => node.className === 'bus-hub-position-shadow').length, 1);
+  assert.doesNotMatch(fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8'),
+    /bus-hub-official-approach/);
+  assert.doesNotMatch(firstTokyu, /位置確認中|便未照合|取得/);
+  assert.doesNotMatch(renderedText(list.children[2]), /次の向01/);
+  assert.match(renderedText(list.children[2]), /位置確認中/);
+  assert.doesNotMatch(renderedText(hub.renderArrivalList(fakeDocument(),
+    { recommendedArrivalId: null, arrivals: [tokyu] }, 'kibukihoncho')), /次の向01|位置確認中/);
+});
+
+test('stale, ambiguous or mismatched official approach falls back to static position pending', () => {
+  const base = { matchedTripId: null, uniqueNext: true, routeLabel: '向01',
+    destination: '向ヶ丘遊園駅南口', boardingStopId: 'tokyu-stop',
+    waitMinutes: 5, stopsAwayMin: 4, stopsAwayMax: 5, retrievedAt: Date.now() / 1000 };
+  for (const override of [
+    { retrievedAt: base.retrievedAt - 91 }, { uniqueNext: false }, { matchedTripId: 'unverified-trip' },
+    { boardingStopId: 'other-stop' }, { destination: '梶が谷駅' }, { stopsAwayMax: 7 }
+  ]) {
+    const row = arrival({ destination: '向ヶ丘遊園駅南口', originStop: { id: 'tokyu-stop', name: '神木本町' },
+      officialApproach: { ...base, ...override } });
+    const shown = renderedText(hub.renderArrivalList(fakeDocument(),
+      { recommendedArrivalId: null, arrivals: [row] }, 'kibukihoncho', true));
+    assert.match(shown, /時刻表のみ.*位置確認中/s);
+    assert.doesNotMatch(shown, /次の向01/);
+  }
 });
 
 test('Tamagawa exit badge remains conspicuous without changing destination or platform', () => {
@@ -107,11 +149,25 @@ test('production shell loads the Hub mount, script and stylesheet without enabli
 test('Tokyu static-only UI never presents ETA or realtime wording', () => {
   const value = hub.validate(fixture()).decisionGroups[0].arrivals[0];
   const shown = hub.displayArrival(value);
-  assert.deepEqual(shown, { time: '07:05', timeSuffix: '予定', note: '時刻表のみ', kind: 'static', delay: '' });
+  assert.deepEqual(shown, { time: '07:05', timeSuffix: '便', note: '時刻表のみ', kind: 'static', delay: '' });
   assert.doesNotMatch(`${shown.time}${shown.note}${shown.delay}`, /あと|リアルタイム|遅れ/);
   assert.throws(() => hub.validate(fixture(arrival({ etaMinutes: 5 }))), /BUS_HUB_STATIC_AS_REALTIME/);
   assert.throws(() => hub.validate(fixture(arrival({ estimatedDeparture: NOW + 360 }))), /BUS_HUB_STATIC_AS_REALTIME/);
   assert.throws(() => hub.validate(fixture(arrival({ delayMinutes: 3 }))), /BUS_HUB_STATIC_AS_REALTIME/);
+});
+
+test('Hub scheduled time suffix is independent of provider and realtime quality', () => {
+  for (const changes of [
+    { provider: 'tokyu', realtimeState: 'static_only' },
+    { provider: 'kawasaki', realtimeState: 'static_fallback' },
+    { provider: 'kawasaki', realtimeState: 'realtime', etaMinutes: 4, delayMinutes: 7 },
+    { provider: 'kawasaki', realtimeState: 'realtime_stale' }
+  ]) {
+    assert.equal(hub.displayArrival(arrival(changes)).timeSuffix, '便');
+  }
+  assert.equal(hub.displayArrival(arrival({ provider: 'tokyu', realtimeState: 'static_only' })).note, '時刻表のみ');
+  assert.equal(hub.displayArrival(arrival({ provider: 'kawasaki', realtimeState: 'static_fallback' })).note,
+    'リアルタイム予測なし');
 });
 
 test('Hub response identity and URL are resolved per configured location', () => {
