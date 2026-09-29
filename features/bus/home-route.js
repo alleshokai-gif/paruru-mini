@@ -7,6 +7,8 @@
 }(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
   const providerName = Object.freeze({ kawasaki: '川崎市バス', tokyu: '東急バス' });
+  const railStationName = Object.freeze({ noborito: '登戸', mukougaoka: '向ヶ丘遊園',
+    musashi_mizonokuchi: '武蔵溝ノ口' });
   let active = false, expanded = false, generation = 0, mounted = false, activate = null;
   const clock = (epoch) => new Date((epoch + 9 * 3600) * 1000).toISOString().slice(11, 16);
   const node = (doc, tag, className, value) => {
@@ -25,16 +27,36 @@
     const quality = option.timingQuality === 'static_only' ? '時刻表上の到着' :
       option.timingQuality === 'departure_delay_projection' ? '発車遅延からの推定' : '到着予測';
     const stationTime = option.stationTimeAt ?? option.stationArrivalAt;
-    const marker = option.stationTimeSource === 'departure' ? '発（着時刻未提供）' : '着';
+    const station = railStationName[option.stationId] ?? option.stationLabel;
     const railQuality = option.railTimingQuality === 'delay_projection'
       ? '・遅延に基づく見込み' : '';
-    section.append(node(doc, 'h3', 'bus-home-route-station', option.stationLabel),
-      node(doc, 'p', 'bus-home-route-rail', `列車 ${clock(stationTime)}${marker}${railQuality}`),
+    const header = node(doc, 'div', 'bus-home-route-option-header', '');
+    header.append(node(doc, 'h3', 'bus-home-route-station', `${station}で下車`));
+    const transferLabel = option.placeId === 'noborito-tamagawa' ? '多摩川口側へ移動'
+      : option.placeId === 'mizonokuchi' ? '溝の口駅南口へ移動' : null;
+    if (option.placeId === 'noborito-tamagawa')
+      header.append(node(doc, 'span', 'bus-home-route-area', '多摩川口'));
+    section.append(header,
+      node(doc, 'p', 'bus-home-route-rail', `🚃 ${station} ${clock(stationTime)}着${railQuality}`),
+      node(doc, 'p', 'bus-home-route-arrow', '↓'));
+    if (transferLabel) section.append(node(doc, 'p', 'bus-home-route-walk', `🚶 ${transferLabel}`),
+      node(doc, 'p', 'bus-home-route-arrow', '↓'));
+    section.append(
       node(doc, 'p', 'bus-home-route-bus',
-        `${clock(option.departureAt)} ${providerName[option.provider] || option.provider} ${option.routeLabel}`),
-      node(doc, 'p', 'bus-home-route-arrival', `神木本町 ${clock(option.homeArrivalAt)}着`),
+        `🚌 ${clock(option.departureAt)} ${providerName[option.provider] || option.provider} ${option.routeLabel}`),
+      node(doc, 'p', 'bus-home-route-board', `乗り場：${option.stationLabel}`),
+      node(doc, 'p', 'bus-home-route-arrow', '↓'),
+      node(doc, 'p', 'bus-home-route-arrival', `🏠 神木本町 ${clock(option.homeArrivalAt)}着`),
       node(doc, 'p', 'bus-home-route-quality', quality));
     return section;
+  }
+  function trainChoiceLabel(train) {
+    if (!train.sourceStation || !train.sourceDeparture || !train.trainType
+      || !Array.isArray(train.candidateStations)
+      || train.candidateStations.some((station) => !station.label || !station.stationTime))
+      return train.label;
+    return `${train.sourceStation} ${train.sourceDeparture}発・${train.trainType}・${train.candidateStations
+      .map((station) => `${station.label} ${station.stationTime}着`).join('／')}`;
   }
   function renderDecision(doc, mount, result) {
     if (!mount || !result || !['available', 'partial', 'insufficient_data'].includes(result.status))
@@ -65,7 +87,7 @@
     const placeholder = node(doc, 'option', '', trains.length ? '列車を選択' : '列車候補がありません');
     placeholder.value = ''; select.append(placeholder);
     for (const train of trains) {
-      const option = node(doc, 'option', '', train.label);
+      const option = node(doc, 'option', '', trainChoiceLabel(train));
       option.value = train.id; select.append(option);
     }
     select.disabled = trains.length === 0;
@@ -78,8 +100,7 @@
         details.append(node(doc, 'p', '', `${train.sourceStation} ${train.sourceDeparture}発・${train.trainType}`));
       if (Array.isArray(train.candidateStations))
         for (const station of train.candidateStations)
-          details.append(node(doc, 'p', '', `${station.label} ${station.stationTime}${
-            station.stationTimeSource === 'departure' ? '発（着時刻未提供）' : '着'}`));
+          details.append(node(doc, 'p', '', `${station.label} ${station.stationTime}着`));
       if (train.railRealtimeState === 'confirmed_delay' && train.delaySeconds > 0)
         details.append(node(doc, 'p', '', `列車遅延 +${Math.ceil(train.delaySeconds / 60)}分・遅延に基づく見込み`));
       onSelect(train.id);
