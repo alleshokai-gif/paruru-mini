@@ -64,13 +64,13 @@ test('route decision shows station, bus, home arrival and static quality without
     differenceMinutes: 5, unavailablePlaces: [] });
   const text = renderedText(mount);
   assert.match(text, /時刻表上の最速候補/);
-  assert.match(text, /向ヶ丘遊園下車.*🚃 向ヶ丘遊園 18:21着.*🚌 18:27 東急バス 向０１.*乗り場：向ヶ丘遊園駅南口.*🏠 神木本町 18:39着/s);
-  assert.match(text, /登戸下車.*🚃 登戸 18:18着.*🚌 18:31 川崎市バス 登０５.*🏠 神木本町 18:44着/s);
+  assert.match(text, /向ヶ丘遊園で下車.*🚃 向ヶ丘遊園 18:21着.*↓.*🚌 18:27 東急バス 向０１.*乗り場：向ヶ丘遊園駅南口.*↓.*🏠 神木本町 18:39着/s);
+  assert.match(text, /登戸で下車.*🚃 登戸 18:18着.*↓.*🚌 18:31 川崎市バス 登０５.*↓.*🏠 神木本町 18:44着/s);
   assert.match(text, /5分差/);
   assert.doesNotMatch(text, /confidence|GPS|lat|lon|sourceId|stationTimeSource|着時刻未提供/);
   const css = fs.readFileSync(require.resolve('../features/bus/home-route.css'), 'utf8');
   assert.match(css, /\.bus-home-route-station\s*\{[^}]*border-radius: 999px/);
-  assert.match(css, /\.bus-home-route-option\.is-primary \.bus-home-route-station\s*\{[^}]*font-size: 19px/);
+  assert.match(css, /\.bus-home-route-option\.is-primary \.bus-home-route-station\s*\{[^}]*font-size: 21px/);
 });
 
 test('JR train choice presents station times as arrivals while preserving departure metadata', () => {
@@ -97,7 +97,7 @@ test('JR train choice presents station times as arrivals while preserving depart
     homeArrivalAt: epoch('16:44'), timingQuality: 'static_only' };
   ui.renderDecision(doc, result, { status: 'available', fastest: option,
     alternate: null, differenceMinutes: null, unavailablePlaces: [] });
-  assert.match(renderedText(result), /登戸下車.*🚃 登戸 16:17着・遅延に基づく見込み/s);
+  assert.match(renderedText(result), /登戸で下車.*🚃 登戸 16:17着・遅延に基づく見込み/s);
   assert.doesNotMatch(renderedText(result), /着時刻未提供|stationTimeSource/);
   assert.equal(option.stationTimeSource, 'departure');
 });
@@ -105,13 +105,26 @@ test('JR train choice presents station times as arrivals while preserving depart
 test('Musashi-Mizonokuchi decision keeps its rail station distinct from the bus stop', () => {
   const doc = fakeDocument(), mount = doc.createElement('div');
   ui.renderDecision(doc, mount, { status: 'available', fastest: {
-    stationId: 'musashi_mizonokuchi', stationLabel: '溝の口駅南口',
+    placeId: 'mizonokuchi', stationId: 'musashi_mizonokuchi', stationLabel: '溝の口駅南口',
     stationTimeAt: epoch('13:04'), stationTimeSource: 'departure',
     departureAt: epoch('13:10'), provider: 'kawasaki', routeLabel: '溝１８',
     homeArrivalAt: epoch('13:17'), timingQuality: 'static_only'
   }, alternate: null, differenceMinutes: null, unavailablePlaces: [] });
   const text = renderedText(mount);
-  assert.match(text, /武蔵溝ノ口下車.*🚃 武蔵溝ノ口 13:04着.*🚌 13:10 川崎市バス 溝１８.*乗り場：溝の口駅南口.*🏠 神木本町 13:17着/s);
+  assert.match(text, /武蔵溝ノ口で下車.*🚃 武蔵溝ノ口 13:04着.*↓.*🚶 溝の口駅南口へ移動.*↓.*🚌 13:10 川崎市バス 溝１８.*乗り場：溝の口駅南口.*↓.*🏠 神木本町 13:17着/s);
+});
+
+test('Tamagawa route keeps Noborito as the rail station and highlights the separate walk', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  ui.renderDecision(doc, mount, { status: 'available', fastest: {
+    placeId: 'noborito-tamagawa', stationId: 'noborito', stationLabel: '登戸駅多摩川口',
+    stationTimeAt: epoch('12:35'), stationTimeSource: 'departure',
+    departureAt: epoch('12:48'), provider: 'kawasaki', routeLabel: '登０６',
+    homeArrivalAt: epoch('12:59'), timingQuality: 'static_only'
+  }, alternate: null, differenceMinutes: null, unavailablePlaces: [] });
+  const text = renderedText(mount);
+  assert.match(text, /登戸で下車.*多摩川口.*🚃 登戸 12:35着.*↓.*🚶 多摩川口側へ移動.*↓.*🚌 12:48 川崎市バス 登０６.*🏠 神木本町 12:59着/s);
+  assert.doesNotMatch(text, /🚃 登戸駅多摩川口/);
 });
 
 test('partial source failure is visible even when its station still has buses', () => {

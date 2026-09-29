@@ -144,7 +144,7 @@ function bootstrap(scenario) {
   const label = scenarios.find(([id]) => id === scenario)?.[1];
   const note = scenario === 'live'
     ? 'Hubはvalidation実データ。大学列車は小田急公式表示とChallenge発時刻から生成したローカルStatic、南武線はChallengeから生成したローカルStaticです。バス比較はGTFS Staticです。'
-    : `${label}。大学列車は小田急公式表示とChallenge発時刻から生成したローカルStatic、南武線はChallengeから生成したローカルStaticです。バス比較はGTFS Staticです。`;
+    : `${label}。大学列車は小田急公式表示とChallenge発時刻から生成したローカルStatic、南武線はChallengeから生成したローカルStaticです。バス比較はGTFS Staticです。${scenario === 'tamagawa' ? ' 多摩川口の比較カードは表示確認用fixtureです。' : ''}`;
   return `<style>
     #splash,#authLock{display:none!important}body{overflow:auto!important}
     .bus-preview-note{margin:0 0 10px;color:#526579;font-size:11px;line-height:1.4}
@@ -184,7 +184,7 @@ globalThis.PALURU_BUS_HOME_ROUTE_ENABLED=true;
 globalThis.PALURU_BUS_POSITION_SHADOW_ENABLED=${scenario !== 'position-off'};
 globalThis.PALURU_BUS_HOME_ROUTE_SOURCE={
  getTrainChoices:async(journeyId,page=0)=>{const q=new URLSearchParams({journeyId,page:String(page)});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/trains?'+q);if(!r.ok)throw Error('TRAIN_UNAVAILABLE');return r.json()},
- evaluate:async({journeyId,trainId,page=0})=>{const q=new URLSearchParams({journeyId,trainId,page:String(page)});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/home-route?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()}
+ evaluate:async({journeyId,trainId,page=0})=>{const q=new URLSearchParams({journeyId,trainId,page:String(page),case:${JSON.stringify(scenario)}});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/home-route?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()}
 };`;
 const server = createServer(async (req, res) => {
   try {
@@ -208,7 +208,11 @@ const server = createServer(async (req, res) => {
       if (!selectedTrain) return responseJson(res, { error: 'TRAIN_INVALID' }, 400);
       const decision = await compareHomeRoutes({ journeyId, selectedTrain, transferMinutes,
         loadBuses: futureBusLoader(now), now });
-      return responseJson(res, decision);
+      const tamagawa = scenario === 'tamagawa' && decision.fastest?.placeId !== 'noborito-tamagawa'
+        ? decision.options.find((option) => option.placeId === 'noborito-tamagawa'
+          && Number.isFinite(option.homeArrivalAt)) : null;
+      return responseJson(res, tamagawa
+        ? { ...decision, alternate: tamagawa, differenceMinutes: null } : decision);
     }
     if (['/health', '/api/bus/arrivals', '/api/bus/hub', '/api/bus/journey'].includes(url.pathname)) {
       const search = new URLSearchParams(url.searchParams); search.delete('previewCase'); search.delete('case');

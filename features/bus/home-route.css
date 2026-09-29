@@ -3,12 +3,17 @@
   border-radius: 12px; overflow-wrap: anywhere; }
 .bus-home-route-option.is-primary { background: #edf5fc; border-color: #90b5d6; }
 .bus-home-route-option p { margin: 4px 0; }
+.bus-home-route-title { margin: 4px 0 0; font-size: 15px; color: #526579; }
+.bus-home-route-option-header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-bottom: 10px; }
 .bus-home-route-station { display: inline-block; max-width: 100%; box-sizing: border-box;
-  margin: 0 0 10px; padding: 5px 12px; border-radius: 999px; background: #dcebf7;
-  color: #174a73; font-size: 17px; font-weight: 700; }
+  margin: 0; padding: 5px 12px; border-radius: 999px; background: #dcebf7;
+  color: #174a73; font-size: 18px; font-weight: 700; }
 .bus-home-route-option.is-primary .bus-home-route-station { background: #174a73;
-  color: #fff; font-size: 19px; }
-.bus-home-route-rail, .bus-home-route-bus, .bus-home-route-arrival {
+  color: #fff; font-size: 21px; }
+.bus-home-route-area { padding: 4px 8px; border-radius: 999px; background: #fff0cf;
+  color: #674300; font-size: 13px; font-weight: 700; }
+.bus-home-route-rail, .bus-home-route-walk, .bus-home-route-bus, .bus-home-route-arrival {
   font-size: 16px; font-weight: 600; line-height: 1.45; }
 .bus-home-route-board { color: #526579; font-size: 12px; }
 .bus-home-route-arrow { padding-left: 9px; color: #6b8296; line-height: 1; }
