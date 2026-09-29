@@ -38,9 +38,8 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   // Validate feed validity before advertising health. No ODPT call occurs at startup.
   getArrivals({ index, queries, providerContext, now: Date.now() / 1000 });
   const staticStartupMs = performance.now() - started;
-  // The research-only Position index covers the P0 artifact. P2.5 trips remain unsupported until separately validated.
-  const positionStarted=performance.now(),position=loadPosition({index:p0Index,provider:providerContext.id});
-  const shadowPosition=loadShadowPosition({index:p0Index,positionStatic:position.staticData});
+  const positionStarted=performance.now(),position=loadPosition({index,provider:providerContext.id});
+  const shadowPosition=loadShadowPosition({index,positionStatic:position.staticData});
   const positionStartupMs=performance.now()-positionStarted;
   const departureConfidence=createDepartureConfidence({index,positionStatic:position.staticData});
   const adapter = createKawasakiAdapter({ token: config.env.ODPT_ACCESS_TOKEN, measure: recordStages });
