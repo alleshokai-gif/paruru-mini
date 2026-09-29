@@ -56,6 +56,22 @@ test('421 seconds of internal delay are displayed as 7 minutes, never raw second
   const display = ui.displayRow(row, direction, data, 0, false);
   assert.equal(display.delay, '+7分遅れ'); assert(!display.delay.includes('421'));
 });
+test('P0 scheduled time stays a service time across live, fallback and stale quality', () => {
+  const data = fixture(), direction = data.directions[0], live = { ...direction.arrivals[0],
+    scheduledAt: '2026-09-10T07:55:00+09:00', scheduledTime: '07:55',
+    estimatedAt: '2026-09-10T07:56:20+09:00' };
+  const fallback = { ...live, realtime: false, estimatedAt: null, delayMinutes: null, delaySeconds: null };
+  const cases = [
+    ui.displayRow(live, direction, data, 0, false),
+    ui.displayRow(fallback, direction, data, 0, false),
+    ui.displayRow(live, direction, data, 0, true)
+  ];
+  assert.deepEqual(cases.map((row) => row.timeLabel), ['07:55便', '07:55便', '07:55便']);
+  assert.equal(cases[0].note, 'あと7分');
+  assert.equal(cases[0].delay, '+1分遅れ');
+  assert.equal(cases[1].note, 'リアルタイム予測なし');
+  assert.equal(cases[2].note, '前回の情報・予測更新待ち');
+});
 test('Bus controller accepts an injected validator without changing its polling contract', async () => {
   const timers = clock(); let calls = 0, rendered;
   const controller = ui.createController({ timers, now: timers.now, hidden: () => false,
