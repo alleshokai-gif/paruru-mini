@@ -29,6 +29,13 @@ export function createPositionEngine({routeIndex,policy:overrides={}}) {
     const trip=routeIndex.getTrip(vehicle.tripId);
     if(!trip||trip.routeId!==vehicle.routeId)return reject('trip_static_mismatch');
     if(!trip.supported)return reject(trip.reason);
+    // A longer trip may reuse an approved suffix only after its reported stop sequence
+    // has passed the common entry stop. Sequence grants no position by itself: GPS,
+    // trajectory and every existing safety gate still decide the projected location.
+    if(trip.sharedCorridorEntrySequence!==undefined
+      && (!Number.isInteger(vehicle.rawState?.sequence)
+        || vehicle.rawState.sequence<=trip.sharedCorridorEntrySequence))
+      return reject('shared_corridor_not_entered');
     const targetIndex=trip.stops.findIndex(s=>s.id===target?.stopId&&s.sequence===target?.sequence);
     if(targetIndex<0)return reject('target_not_in_trip');
     const candidates=snapCandidates(trip.geometry,vehicle.position,policy.routeMeters,policy.candidateSlackMeters);
