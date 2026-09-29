@@ -55,6 +55,71 @@ test('three fresh matched GPS points can support only the internal Shadow result
     stopId: target.stopId, sequence: target.sequence }), null);
 });
 
+test('12:39-style longer trip uses only the exact approved suffix after entering it', () => {
+  const longer = structuredClone(positionStatic), longerIndex = structuredClone(index);
+  const longerTripId = 'longer-1239-trip', longerChainId = 'longer-chain';
+  longer.chains[longerChainId] = { stops: [
+    ...[1, 2, 3, 4].map(sequence => ({ stopId: `prefix-${sequence}`, sequence })),
+    ...stopRows.map(stop => ({ stopId: stop.stopId, sequence: stop.sequence + 4 }))
+  ] };
+  longer.trips[longerTripId] = { tripId: longerTripId, chainId: longerChainId, routeId: '10044' };
+  longerIndex.directions.home_to_noborito.push({ tripId: longerTripId, routeId: '10044',
+    fromStopId: target.stopId, stopSequence: target.sequence + 4,
+    serviceId: 'weekday', startTime: '07:00:00' });
+  const loaded = loadShadowPosition({ index: longerIndex, positionStatic: longer });
+  assert.equal(loaded.stats.supportedChains, 2);
+  assert.equal(loaded.stats.sharedCorridorChains, 1);
+  const base = serviceDay + 7 * 3600;
+  loaded.observer.observe({ now: base, realtime: { timestamp: base, vehicles: [{
+    trip: { tripId: longerTripId, routeId: '10044', startDate: date,
+      startTime: '07:00:00', relationship: 0 },
+    timestamp: base, sequence: 4, position: candidate.points[132]
+  }] } });
+  assert.equal(loaded.observer.summary().reasons.shared_corridor_not_entered, 1);
+  for (let sample = 0; sample < 3; sample++) {
+    const timestamp = base + 32 * (sample + 1);
+    loaded.observer.observe({ now: timestamp, realtime: { timestamp, vehicles: [{
+      trip: { tripId: longerTripId, routeId: '10044', startDate: date,
+        startTime: '07:00:00', relationship: 0 },
+      timestamp, sequence: target.sequence + 4, position: candidate.points[132 + sample]
+    }] } });
+  }
+  assert.equal(loaded.observer.summary().supported, 1);
+  assert.equal(loaded.observer.positionFor({ tripId: longerTripId, date,
+    stopId: target.stopId, sequence: target.sequence + 4 }).supported, true);
+  const noSequence = base + 128;
+  loaded.observer.observe({ now: noSequence, realtime: { timestamp: noSequence, vehicles: [{
+    trip: { tripId: longerTripId, routeId: '10044', startDate: date,
+      startTime: '07:00:00', relationship: 0 },
+    timestamp: noSequence, position: candidate.points[135]
+  }] } });
+  assert.equal(loaded.observer.summary().reasons.shared_corridor_not_entered, 1);
+  assert.equal(publicPosition().supported, false);
+});
+
+test('a different suffix remains unsupported even with matching route and fresh GPS', () => {
+  const other = structuredClone(positionStatic), otherIndex = structuredClone(index);
+  const otherTripId = 'different-suffix-trip', otherChainId = 'different-suffix-chain';
+  other.chains[otherChainId] = { stops: [
+    { stopId: 'prefix', sequence: 1 },
+    ...stopRows.map(stop => ({ stopId: stop.stopId, sequence: stop.sequence + 1 }))
+  ] };
+  other.chains[otherChainId].stops[3].stopId = 'different-stop';
+  other.trips[otherTripId] = { tripId: otherTripId, chainId: otherChainId, routeId: '10044' };
+  otherIndex.directions.home_to_noborito.push({ tripId: otherTripId, routeId: '10044',
+    fromStopId: target.stopId, stopSequence: target.sequence + 1,
+    serviceId: 'weekday', startTime: '07:00:00' });
+  const loaded = loadShadowPosition({ index: otherIndex, positionStatic: other });
+  assert.equal(loaded.stats.supportedChains, 1);
+  const timestamp = serviceDay + 7 * 3600;
+  loaded.observer.observe({ now: timestamp, realtime: { timestamp, vehicles: [{
+    trip: { tripId: otherTripId, routeId: '10044', startDate: date,
+      startTime: '07:00:00', relationship: 0 },
+    timestamp, sequence: target.sequence + 1, position: candidate.points[132]
+  }] } });
+  assert.equal(loaded.observer.summary().reasons.trip_static_mismatch, 1);
+});
+
 test('stale, wrong Static hash and missing geometry fail closed', () => {
   const loaded = loadShadowPosition({ index, positionStatic });
   loaded.observer.observe({ now: serviceDay + 7 * 3600 + 200,

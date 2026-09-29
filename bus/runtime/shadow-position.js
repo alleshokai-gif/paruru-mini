@@ -58,25 +58,46 @@ export function loadShadowPosition({ index, positionStatic,
         ordinal, along: projection.along, position: stop.position };
     });
     const trips = positionStatic.trips;
+    const approvedStops = positionStatic.chains[chainId].stops;
+    const sharedChains = new Map();
+    const direction = index.directions[source.directionId];
+    if (!Array.isArray(direction) || !direction.some(row => row.routeId === source.routeId
+      && row.fromStopId === candidate.corridor.fromStopId)) throw Error('SHADOW_GEOMETRY_TARGET');
+    for (const row of direction) {
+      if (row.routeId !== source.routeId || row.fromStopId !== candidate.corridor.fromStopId) continue;
+      const trip = trips[row.tripId], other = positionStatic.chains[trip?.chainId];
+      if (!trip || trip.routeId !== source.routeId || !other) throw Error('SHADOW_GEOMETRY_TRIP');
+      if (trip.chainId === chainId || sharedChains.has(trip.chainId)) continue;
+      const prefixCount = other.stops.length - approvedStops.length;
+      if (prefixCount < 1) continue;
+      const suffix = other.stops.slice(prefixCount);
+      const sequenceOffset = suffix[0].sequence - approvedStops[0].sequence;
+      if (sequenceOffset < 1 || !suffix.every((stop, ordinal) =>
+        stop.stopId === approvedStops[ordinal].stopId
+        && stop.sequence === approvedStops[ordinal].sequence + sequenceOffset)) continue;
+      sharedChains.set(trip.chainId, { sequenceOffset,
+        entrySequence: suffix[0].sequence });
+    }
     const routeIndex = {
       provider: source.provider, sourceHash: positionStatic.sourceHash,
       getTrip(tripId) {
         const trip = trips[tripId];
-        return trip?.chainId === chainId && trip.routeId === source.routeId
-          ? { ...trip, supported: true, geometry, stops,
-            geometrySourceType: source.sourceType, geometrySourceVersion: source.sourceVersion,
-            geometryId: candidate.geometryId } : null;
+        const shared = sharedChains.get(trip?.chainId);
+        if (trip?.routeId !== source.routeId || trip.chainId !== chainId && !shared) return null;
+        return { ...trip, supported: true, geometry,
+          stops: shared ? stops.map(stop => ({ ...stop, sequence: stop.sequence + shared.sequenceOffset })) : stops,
+          ...(shared ? { sharedCorridorEntrySequence: shared.entrySequence } : {}),
+          geometrySourceType: source.sourceType, geometrySourceVersion: source.sourceVersion,
+          geometryId: candidate.geometryId };
       }
     };
-    const direction = index.directions[source.directionId];
-    if (!Array.isArray(direction) || !direction.some(row => row.routeId === source.routeId
-      && row.fromStopId === candidate.corridor.fromStopId)) throw Error('SHADOW_GEOMETRY_TARGET');
     const scopedIndex = { ...index, directions: { [source.directionId]: direction.filter(row =>
       row.routeId === source.routeId && row.fromStopId === candidate.corridor.fromStopId) } };
     const observer = createPositionObserver({ routeIndex, index: scopedIndex });
     return {
       observer, status: 'shadow_geometry_loaded',
-      stats: { supportedChains: 1, geometrySources: [source.sourceType],
+      stats: { supportedChains: 1 + sharedChains.size, sharedCorridorChains: sharedChains.size,
+        geometrySources: [source.sourceType],
         routeId: source.routeId, directionId: source.directionId,
         approvalVersion: source.approvalVersion, approvedForShadow: true,
         approvedForPublic: false, geometryReady: false }
