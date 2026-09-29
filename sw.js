@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260929-bus-location-ui-v1");
-// Release: v20260929-bus-location-ui-v1
+importScripts("./build.js?v=v20260929-home-route-ux-v1");
+// Release: v20260929-home-route-ux-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

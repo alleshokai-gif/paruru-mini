@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260929-bus-location-ui-v1";
+globalThis.BUILD_ID = "v20260929-home-route-ux-v1";
