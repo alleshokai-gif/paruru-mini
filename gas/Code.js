@@ -221,6 +221,10 @@ function doPost(e) {
       return kazOsProgress_(body, null, transportTrace);
     }
 
+    if (action === 'kazOs.capa.get') {
+      return kazOsProgress_(body, null, transportTrace);
+    }
+
     if (action === 'kazOs.today.get') {
       return kazOsProgress_(body, null, transportTrace);
     }
