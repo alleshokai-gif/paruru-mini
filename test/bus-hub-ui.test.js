@@ -73,7 +73,8 @@ test('official Tokyu approach adds one line only to the first Tokyu card without
   ] }, 'kibukihoncho', true);
   assert.equal(list.children.length, 3);
   const firstTokyu = renderedText(list.children[1]);
-  assert.match(firstTokyu, /🚌 次の向01　あと5分・4〜5停留所手前.*07:05.*便.*時刻表のみ/s);
+  assert.match(firstTokyu, /🚌 次の向01　あと5分・4〜5停留所手前.*07:05.*便.*公式接近/s);
+  assert.doesNotMatch(firstTokyu, /時刻表のみ/);
   assert.equal(descendants(list.children[1]).filter((node) => node.className === 'bus-hub-position-shadow').length, 1);
   assert.doesNotMatch(fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8'),
     /bus-hub-official-approach/);
@@ -104,6 +105,11 @@ test('official ETA degrades to coarse approach while invalid source or stale dat
   assert.match(renderedText(hub.renderArrivalList(fakeDocument(),
     { recommendedArrivalId: null, arrivals: [coarse] }, 'kibukihoncho', true)),
   /次の向01　あと5分・接近中/);
+  const imminent = arrival({ destination: '向ヶ丘遊園駅南口', sourceId: base.sourceId,
+    officialApproach: { ...base, waitMinutes: 0 } });
+  assert.match(renderedText(hub.renderArrivalList(fakeDocument(),
+    { recommendedArrivalId: null, arrivals: [imminent] }, 'kibukihoncho', true)),
+  /次の向01　まもなく・4〜5停留所手前.*公式接近/s);
 });
 
 test('Kawasaki stop-sequence position displays approximate progress without geometry', () => {
