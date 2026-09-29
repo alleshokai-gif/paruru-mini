@@ -24,6 +24,7 @@ const scenarios = Object.freeze([
   ['position-safe', 'バスロケ・位置表示'],
   ['position-weak', 'バスロケ・確認中'],
   ['position-off', 'バスロケ・OFF'],
+  ['tokyu-approach', '東急向01・表示確認fixture'],
   ['five', '帰宅最速・大学'],
   ['tie', '帰宅最速・高校'],
   ['partial', '帰宅最速・partial']
@@ -112,6 +113,15 @@ function tamagawaRow(direction) {
     position: { supported: false, status: null, stopsAway: null, previousStop: null, nextStop: null } };
 }
 function overlay(data, path, scenario) {
+  if (scenario === 'tokyu-approach' && path === '/api/bus/hub' && data.hubId === 'kibukihoncho') {
+    const north = data.decisionGroups.find((row) => row.id === 'kibukihoncho_north');
+    const firstTokyu = north?.arrivals.slice(0, 3).find((row) => row.provider === 'tokyu');
+    if (firstTokyu) firstTokyu.officialApproach = {
+      matchedTripId: null, uniqueNext: true, routeLabel: '向01', destination: firstTokyu.destination,
+      boardingStopId: firstTokyu.originStop.id, waitMinutes: 5, stopsAwayMin: 4,
+      stopsAwayMax: 5, retrievedAt: Date.now() / 1000
+    };
+  }
   if (scenario === 'tamagawa') {
     if (path === '/api/bus/hub' && data.hubId === 'kibukihoncho') {
       const group = data.decisionGroups.find((row) => row.id === 'kibukihoncho_north');
@@ -162,7 +172,7 @@ function bootstrap(scenario) {
         }
         return originalFetch(input,options);
       };
-      if(previewCase==='tamagawa'||previewCase.startsWith('position-'))
+      if(previewCase==='tamagawa'||previewCase==='tokyu-approach'||previewCase.startsWith('position-'))
         sessionStorage.setItem('paluru.bus.hub.selected.v1','kibukihoncho');
       window.addEventListener('DOMContentLoaded',()=>{
         document.body.classList.add('is-authenticated');

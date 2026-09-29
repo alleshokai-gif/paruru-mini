@@ -59,6 +59,43 @@ test('Position shadow has an explicit local gate and safely waits for weak evide
   assert.equal(hub.displayShadowPosition(row.position, row.position.observedAt + 121), '位置確認中');
 });
 
+test('official Tokyu approach adds one line only to the first Tokyu card without changing static time', () => {
+  const tokyu = arrival({ id: 'tokyu-first', destination: '向ヶ丘遊園駅南口',
+    originStop: { id: 'odpt:BusstopPole:TokyuBus.Shibokuhonchou.00240751.b', name: '神木本町' },
+    officialApproach: { matchedTripId: null, uniqueNext: true, routeLabel: '向01',
+      destination: '向ヶ丘遊園駅南口', boardingStopId: 'odpt:BusstopPole:TokyuBus.Shibokuhonchou.00240751.b',
+      waitMinutes: 5, stopsAwayMin: 4, stopsAwayMax: 5, retrievedAt: Date.now() / 1000 } });
+  const list = hub.renderArrivalList(fakeDocument(), { recommendedArrivalId: null, arrivals: [
+    arrival({ id: 'kawasaki', provider: 'kawasaki', routeLabel: '登０５' }), tokyu,
+    { ...tokyu, id: 'tokyu-second', scheduledDeparture: NOW + 1800 }
+  ] }, 'kibukihoncho', true);
+  assert.equal(list.children.length, 3);
+  const firstTokyu = renderedText(list.children[1]);
+  assert.match(firstTokyu, /07:05.*予定.*時刻表のみ.*🚌 次の向01　あと5分・4〜5停留所手前/s);
+  assert.doesNotMatch(firstTokyu, /位置確認中|便未照合|取得/);
+  assert.doesNotMatch(renderedText(list.children[2]), /次の向01/);
+  assert.match(renderedText(list.children[2]), /位置確認中/);
+  assert.doesNotMatch(renderedText(hub.renderArrivalList(fakeDocument(),
+    { recommendedArrivalId: null, arrivals: [tokyu] }, 'kibukihoncho')), /次の向01|位置確認中/);
+});
+
+test('stale, ambiguous or mismatched official approach falls back to static position pending', () => {
+  const base = { matchedTripId: null, uniqueNext: true, routeLabel: '向01',
+    destination: '向ヶ丘遊園駅南口', boardingStopId: 'tokyu-stop',
+    waitMinutes: 5, stopsAwayMin: 4, stopsAwayMax: 5, retrievedAt: Date.now() / 1000 };
+  for (const override of [
+    { retrievedAt: base.retrievedAt - 91 }, { uniqueNext: false }, { matchedTripId: 'unverified-trip' },
+    { boardingStopId: 'other-stop' }, { destination: '梶が谷駅' }, { stopsAwayMax: 7 }
+  ]) {
+    const row = arrival({ destination: '向ヶ丘遊園駅南口', originStop: { id: 'tokyu-stop', name: '神木本町' },
+      officialApproach: { ...base, ...override } });
+    const shown = renderedText(hub.renderArrivalList(fakeDocument(),
+      { recommendedArrivalId: null, arrivals: [row] }, 'kibukihoncho', true));
+    assert.match(shown, /時刻表のみ.*位置確認中/s);
+    assert.doesNotMatch(shown, /次の向01/);
+  }
+});
+
 test('Tamagawa exit badge remains conspicuous without changing destination or platform', () => {
   const row = arrival({ provider: 'kawasaki', routeLabel: '登０６', destination: '鷲ヶ峰営業所前',
     platform: '多摩川口2番のりば', areaBadge: '多摩川口' });

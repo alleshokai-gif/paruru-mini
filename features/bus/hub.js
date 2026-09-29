@@ -82,6 +82,22 @@
     return '位置確認中';
   }
 
+  function displayOfficialApproach(approach, row, nowSeconds = Date.now() / 1000) {
+    if (row.provider !== 'tokyu' || row.realtimeState !== 'static_only'
+      || !approach || approach.matchedTripId !== null || approach.uniqueNext !== true
+      || !text(approach.routeLabel) || approach.routeLabel.normalize('NFKC') !== row.routeLabel.normalize('NFKC')
+      || approach.destination !== row.destination || approach.boardingStopId !== row.originStop?.id
+      || !Number.isInteger(approach.waitMinutes) || approach.waitMinutes < 0 || approach.waitMinutes > 60
+      || !Number.isInteger(approach.stopsAwayMin) || !Number.isInteger(approach.stopsAwayMax)
+      || approach.stopsAwayMin < 0 || approach.stopsAwayMax > 6
+      || approach.stopsAwayMin > approach.stopsAwayMax
+      || !Number.isFinite(approach.retrievedAt) || nowSeconds - approach.retrievedAt > 90
+      || approach.retrievedAt - nowSeconds > 5) return null;
+    const stops = approach.stopsAwayMin === approach.stopsAwayMax
+      ? `${approach.stopsAwayMin}` : `${approach.stopsAwayMin}〜${approach.stopsAwayMax}`;
+    return `🚌 次の${row.routeLabel.normalize('NFKC')}　あと${approach.waitMinutes}分・${stops}停留所手前`;
+  }
+
   function sourceSummary(data) {
     const tokyu = data.providers.find((value) => value.provider === 'tokyu' && Number.isFinite(value.retrievedAt));
     return `${tokyu ? `東急時刻表取得 ${dateClock(tokyu.retrievedAt)} / ` : ''}出典: ${data.attributions
@@ -169,8 +185,12 @@
 
   function renderArrivalList(doc, group, hubId, positionShadowEnabled = false) {
     const list = element(doc, 'ol', 'bus-hub-board');
-    group.arrivals.slice(0, 3).forEach((row) => {
+    const visible = group.arrivals.slice(0, 3);
+    const firstTokyuIndex = visible.findIndex((row) => row.provider === 'tokyu');
+    visible.forEach((row, index) => {
         const shown = displayArrival(row), recommended = row.id === group.recommendedArrivalId;
+        const officialApproach = positionShadowEnabled && index === firstTokyuIndex
+          ? displayOfficialApproach(row.officialApproach, row) : null;
         const item = element(doc, 'li', `bus-hub-row is-${shown.kind}${recommended ? ' is-recommended' : ''}`);
         const heading = element(doc, 'div', 'bus-hub-row-heading');
         heading.append(providerLabel(doc, row.provider), element(doc, 'span', 'bus-hub-route', row.routeLabel));
@@ -188,7 +208,8 @@
         timing.append(departureTime, element(doc, 'span', 'bus-hub-quality', shown.note));
         if (shown.delay) timing.append(element(doc, 'span', 'bus-hub-delay', shown.delay));
       item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`), timing);
-      if (positionShadowEnabled) item.append(element(doc, 'p', 'bus-hub-position-shadow', displayShadowPosition(row.position)));
+      if (positionShadowEnabled) item.append(element(doc, 'p', officialApproach
+        ? 'bus-hub-official-approach' : 'bus-hub-position-shadow', officialApproach || displayShadowPosition(row.position)));
       list.append(item);
     });
     return list;
