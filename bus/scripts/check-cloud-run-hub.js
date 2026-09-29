@@ -52,6 +52,19 @@ function validateP0(value) {
   assert.ok(value.directions.every((direction) => direction.arrivals.length === 3));
 }
 
+function validateKawasakiPosition(row) {
+  const position = row.position;
+  assert.equal(typeof position?.supported, 'boolean');
+  if (!position.supported) return;
+  assert.ok(['stop_sequence', 'geometry'].includes(position.fidelity));
+  assert.ok(Number.isInteger(position.stopsAway) && position.stopsAway >= 0);
+  assert.ok(typeof position.nextStop === 'string' && position.nextStop.length > 0);
+  assert.ok(Number.isFinite(position.observedAt));
+  assert.equal(Object.hasOwn(position, 'latitude'), false);
+  assert.equal(Object.hasOwn(position, 'longitude'), false);
+  assert.equal(Object.hasOwn(position, 'vehicleId'), false);
+}
+
 function validateKibukihoncho(value) {
   assert.equal(value.success, true); assert.equal(value.hubId, 'kibukihoncho'); assert.equal(value.hubLabel, '神木本町');
   const groups = Object.fromEntries(value.decisionGroups.map((group) => [group.id, group]));
@@ -92,7 +105,8 @@ function validateMizonokuchi(value) {
     && row.destination.length > 0
     && allowedPlatforms.has(row.platform) && Object.hasOwn(row, 'scheduledDeparture')
     && Object.hasOwn(row, 'estimatedDeparture') && Object.hasOwn(row, 'etaMinutes')
-    && Object.hasOwn(row, 'delayMinutes') && row.position.supported === false));
+    && Object.hasOwn(row, 'delayMinutes')));
+  for (const row of group.arrivals) validateKawasakiPosition(row);
   const recommended = group.arrivals.filter((row) => row.id === group.recommendedArrivalId);
   assert.ok(group.recommendedArrivalId === null || recommended.length === 1);
   if (recommended.length) {
@@ -171,7 +185,7 @@ function validateJourney(value) {
   assert.equal(mukougaoka?.hubId, 'mukougaoka-yuen-minamiguchi'); assert.equal(mukougaoka?.state, 'available');
   assert.equal(noborito.decisionGroup.arrivals.length, 3); assert.equal(mukougaoka.decisionGroup.arrivals.length, 3);
   assert.ok(noborito.decisionGroup.arrivals.every((row) => {
-    if (row.provider !== 'kawasaki' || !Object.hasOwn(row, 'delayMinutes') || row.position.supported !== false) return false;
+    if (row.provider !== 'kawasaki' || !Object.hasOwn(row, 'delayMinutes')) return false;
     if (row.routeId === '10044') return row.originStop.id === '362_1' && row.areaBadge !== '多摩川口';
     if (row.routeId === '10045') return row.originStop.id === '365_2' && row.areaBadge === '多摩川口';
     return false;
@@ -179,13 +193,14 @@ function validateJourney(value) {
   const mukougaokaProviders = new Map(mukougaoka.providers.map((row) => [row.provider, row]));
   assert.notEqual(mukougaokaProviders.get('kawasaki')?.state, 'unavailable');
   assert.notEqual(mukougaokaProviders.get('tokyu')?.state, 'unavailable');
-  assert.ok(mukougaoka.decisionGroup.arrivals.every((row) => ['kawasaki', 'tokyu'].includes(row.provider)
-    && row.position.supported === false));
+  assert.ok(mukougaoka.decisionGroup.arrivals.every((row) => ['kawasaki', 'tokyu'].includes(row.provider)));
   for (const row of mukougaoka.decisionGroup.arrivals) {
     if (row.provider === 'kawasaki') {
+      validateKawasakiPosition(row);
       assert.equal(row.routeId, '10037'); assert.equal(row.originStop.id, '474_5');
       assert.equal(row.platform, '5番'); assert.ok(Object.hasOwn(row, 'delayMinutes'));
     } else {
+      assert.equal(row.position.supported, false);
       assert.equal(row.routeId, 'odpt.Busroute:TokyuBus.Kou01'); assert.equal(row.realtimeState, 'static_only');
       assert.equal(row.platform, '6'); assert.equal(row.estimatedDeparture, null);
       assert.equal(row.etaMinutes, null); assert.equal(row.delayMinutes, null);
