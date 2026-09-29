@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260929-rail-train-paging-v1");
-// Release: v20260929-rail-train-paging-v1
+importScripts("./build.js?v=v20260929-kaz-capa-readonly-v1");
+// Release: v20260929-kaz-capa-readonly-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

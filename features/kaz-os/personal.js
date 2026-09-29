@@ -58,7 +58,7 @@
     return result;
   }
   function route(hash) {
-    const match = /^#kaz-os(?:\/(today|work|projects|inbox)(?:\/([^/]+))?)?$/.exec(hash || '');
+    const match = /^#kaz-os(?:\/(today|work|projects|capa|inbox)(?:\/([^/]+))?)?$/.exec(hash || '');
     if (!match) return { page: 'today', id: null };
     const page = match[1] || 'today';
     let id = null;
@@ -66,7 +66,7 @@
     return { page, id };
   }
   function render(host, selection, data, now = Date.now(), options = {}) {
-    if (!selection || !['today', 'work', 'projects', 'inbox'].includes(selection.page)) selection = { page: 'today', id: null };
+    if (!selection || !['today', 'work', 'projects', 'capa', 'inbox'].includes(selection.page)) selection = { page: 'today', id: null };
     todayView?.dispose(host);
     inboxView?.dispose(host);
     host.replaceChildren();
@@ -86,7 +86,7 @@
       if (status !== 'ok') add('p', `${status.toUpperCase().replace('_', ' ')} · ${status === 'partial' ? '一部情報を取得できていません。表示は取得済み範囲です。' : status === 'not_connected' ? '実データsourceは未接続です。0件ではありません。' : status === 'stale' ? '情報が古いため現況を確定できません。' : name === 'projects' ? 'Projectsを取得できません。0件ではありません。' : '取得できませんでした。0件ではありません。'}`, 'kp-notice', parent);
       return status;
     }
-    const projects = list(data?.projects), work = list(data?.work_items);
+    const projects = list(data?.projects), work = list(data?.work_items), capa = list(data?.capa_items);
     const project = id => projects?.find(p => p.id === id);
     const wi = id => work?.find(w => w.id === id);
     function workDetail(w, parent) {
@@ -230,6 +230,50 @@
           add('p', `${w.project_name} · ${w.work_id} · ${w.state}`, 'kp-muted', row);
         });
       }
+      return;
+    }
+
+    if (selection.page === 'capa') {
+      const head = part('CAPA');
+      add('p', '不適合・是正・予防・効果確認を眺める', 'kp-subtitle', head);
+      const capaHealth = notice('capa', head);
+      if (data?.origin === 'notion_official_api' && data?.sources?.capa) {
+        const source = data.sources.capa;
+        const fetched = Number.isFinite(stamp(source.fetched_at)) ? new Date(source.fetched_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST' : '取得時刻未確認';
+        add('p', `実データ · Notion / READ-ONLY · ${source.fetch_status} · ${fetched}`, 'kp-muted', head);
+        head.dataset.snapshotRef = source.snapshot_ref || '';
+      }
+      if (!['ok', 'partial'].includes(capaHealth)) return;
+      if (!capa) { add('p', 'CAPA一覧を確認できません。重複・欠落を解消してください。', 'kp-notice'); return; }
+      const activeItems = capa.filter(item => item.status !== 'Effective');
+      const effectiveItems = capa.filter(item => item.status === 'Effective');
+      add('p', `${capa.length} CAPA · Open ${activeItems.length} · Effective ${effectiveItems.length}`, 'kp-muted', head);
+      if (!capa.length) { add('p', 'この取得範囲のCAPAは0件です。'); return; }
+      const rows = add('div', '', 'kp-work-list');
+      const renderCapa = (item, parent) => {
+        const row = add('article', '', 'kp-work-row', parent); row.dataset.capaItem = item.id;
+        const top = add('div', '', 'kp-project-head', row);
+        top.append(el('strong', item.title));
+        top.append(el('span', item.status, 'kp-badge kp-' + String(item.status || '').toLowerCase().replaceAll(' ', '-')));
+        add('p', `${item.project} · ${item.created} · Effectiveness: ${item.effectiveness}`, 'kp-muted', row);
+        if (Array.isArray(item.failure_classes) && item.failure_classes.length)
+          add('p', item.failure_classes.join(' / '), 'kp-muted', row);
+        if (item.trigger) add('p', `TRIGGER ${item.trigger}`, 'kp-blocker', row);
+        if (item.corrective_action) add('p', `CA ${item.corrective_action}`, 'kp-next', row);
+        if (item.preventive_action) add('p', `PA ${item.preventive_action}`, 'kp-muted', row);
+        const detail = fold('Context / Source', row);
+        add('p', item.context_path || 'Context path未確認', 'kp-muted', detail);
+        if (item.source_url) {
+          const a = el('a', 'Sourceを開く', 'kp-back'); a.href = item.source_url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          detail.append(a);
+        }
+      };
+      activeItems.forEach(item => renderCapa(item, rows));
+      if (effectiveItems.length) {
+        const closed = fold(`Effective ${effectiveItems.length}件`);
+        effectiveItems.forEach(item => renderCapa(item, closed));
+      }
+      add('p', '閲覧のみ。CAPAの正本・AI実行規則はContext Hub、進捗と効果確認はNotion CAPAで管理します。', 'kp-muted');
       return;
     }
 
