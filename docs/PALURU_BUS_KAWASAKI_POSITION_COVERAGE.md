@@ -52,6 +52,8 @@ Journey専用の268 unique tripはP0位置用sidecarにない。まず同一sour
 
 2026-09-29に指定日`20260828`で公式GTFSをread-only取得したところ、返却されたfeedは`20260701_20260928`であり、production StaticとZIP hashが異なった。8 queryの方向別選択行、停留所、route、calendarは完全一致したが、`calendar_dates`は異なる。最新feedから全8 queryの位置用chainをメモリ上で再構成すると40 unique chain、shape付きtrip 0で、既存P0の8,856 tripについてchain IDおよび全stop列は**8,856/8,856一致**した。Journey専用6 chainの候補IDは、10033 `0ecee3242d08839776d8bbba`、10036 `62ad3d72d962e80a758c742f`、10045 `2c7df62c649c6a7f246575fa` / `60b57f22440a721cbeb5be60` / `67ace8d630924f198e1512f3` / `ad3ddf201845e5c98e0993cc`。これらは**新feedでの候補**であって、旧production ZIPのchainが同一だと証明したものではない。今回の実行ではStaticを置換していない。
 
+2026-09-29 15:23 JSTのODPT read-only単発観測では、VP 148 entity、うちPALURU対象Static tripと一致する車両は32件だった。神木本町→登戸の3件はgeometry候補、残り29件はgeometry未承認または位置用sidecar未収録である。例えば神木本町→溝の口15件、溝の口→神木本町11件、登戸→神木本町1件にVPがあり、単純な「VPがない」問題ではない。この1回の取得だけでは各便の連続GPS・confidence・実位置表示までは判定できない。集計にraw vehicle ID、GPS座標、trip IDは保存していない。
+
 ## 本番化の停止線
 
 1. 36未対応chain（P0側30、Journey専用6）の正規stop列を同一Static版で確定する。
