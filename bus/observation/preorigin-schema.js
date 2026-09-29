@@ -4,12 +4,12 @@ export const PREORIGIN_RAW_SHEET = 'Bus_Preorigin_Raw';
 export const PREORIGIN_HEADERS = Object.freeze([
   'preorigin_observation_id', 'run_id', 'sample_index', 'observed_at', 'service_date', 'target_trip_id',
   'scheduled_departure', 'origin_stop_id', 'route_id', 'platform', 'record_kind', 'vehicle_classification',
-  'vehicle_hash', 'vehicle_timestamp', 'observed_trip_id', 'observed_route_id', 'observed_start_date',
-  'observed_schedule_relationship', 'position_lat', 'position_lon', 'distance_to_origin_m', 'gps_age_sec',
+  'vehicle_hash', 'vehicle_timestamp', 'position_lat', 'position_lon', 'distance_to_origin_m', 'gps_age_sec',
   'feed_timestamp', 'rt_age_sec', 'raw_vehicle_entities', 'assigned_count', 'tripless_count',
   'partial_descriptor_count', 'stale_count', 'gps_missing_count', 'runtime_dropped_count',
   'preorigin_vehicle_seen', 'preorigin_first_seen_at', 'preorigin_distance_to_origin', 'trip_assignment_transition_at',
-  'seconds_before_scheduled', 'arrival_to_origin', 'departure_positive_evidence', 'evidence_level', 'censored'
+  'seconds_before_scheduled', 'arrival_to_origin', 'departure_positive_evidence', 'evidence_level', 'censored',
+  'observed_trip_id', 'observed_route_id', 'observed_start_date', 'observed_schedule_relationship'
 ]);
 
 const KINDS = new Set(['target_snapshot', 'vehicle_observation', 'assignment_transition']);
