@@ -97,6 +97,57 @@ test('12:39-style longer trip uses only the exact approved suffix after entering
   assert.equal(publicPosition().supported, false);
 });
 
+test('terminal shared corridors reuse approved geometry only after entry, including shorter trips', () => {
+  const expanded = structuredClone(positionStatic), expandedIndex = structuredClone(index);
+  const variants = [
+    { id: 'shorter-suffix', approvedStart: 8, prefix: 0 },
+    { id: 'partial-longer-suffix', approvedStart: 4, prefix: 8 }
+  ];
+  for (const variant of variants) {
+    const suffix = stopRows.slice(variant.approvedStart).map((stop, ordinal) =>
+      ({ stopId: stop.stopId, sequence: ordinal + variant.prefix + 1 }));
+    expanded.chains[variant.id] = { stops: [
+      ...Array.from({ length: variant.prefix }, (_, ordinal) =>
+        ({ stopId: `prefix-${variant.id}-${ordinal}`, sequence: ordinal + 1 })), ...suffix
+    ] };
+    expanded.trips[variant.id] = { tripId: variant.id, chainId: variant.id, routeId: '10044' };
+    expandedIndex.directions.home_to_noborito.push({ tripId: variant.id, routeId: '10044',
+      fromStopId: target.stopId,
+      stopSequence: suffix.find((stop) => stop.stopId === target.stopId).sequence,
+      serviceId: 'weekday', startTime: '07:00:00' });
+  }
+  const loaded = loadShadowPosition({ index: expandedIndex, positionStatic: expanded });
+  assert.equal(loaded.stats.supportedChains, 3);
+  assert.equal(loaded.stats.sharedCorridorChains, 2);
+  const base = serviceDay + 7 * 3600;
+  loaded.observer.observe({ now: base, realtime: { timestamp: base, vehicles: [{
+    trip: { tripId: 'shorter-suffix', routeId: '10044', startDate: date,
+      startTime: '07:00:00', relationship: 0 },
+    timestamp: base, sequence: 5, position: candidate.points[0]
+  }] } });
+  assert.equal(loaded.observer.summary().reasons.shared_corridor_gps_outside, 1);
+  for (const variant of variants) {
+    const row = expandedIndex.directions.home_to_noborito.find((item) => item.tripId === variant.id);
+    loaded.observer.observe({ now: base, realtime: { timestamp: base, vehicles: [{
+      trip: { tripId: variant.id, routeId: '10044', startDate: date,
+        startTime: '07:00:00', relationship: 0 },
+      timestamp: base, sequence: variant.prefix + 1, position: candidate.points[132]
+    }] } });
+    assert.equal(loaded.observer.summary().reasons.shared_corridor_not_entered, 1);
+    for (let sample = 0; sample < 3; sample++) {
+      const timestamp = base + (sample + 1) * 32;
+      loaded.observer.observe({ now: timestamp, realtime: { timestamp, vehicles: [{
+        trip: { tripId: variant.id, routeId: '10044', startDate: date,
+          startTime: '07:00:00', relationship: 0 },
+        timestamp, sequence: row.stopSequence, position: candidate.points[132 + sample]
+      }] } });
+    }
+    assert.equal(loaded.observer.positionFor({ tripId: variant.id, date,
+      stopId: target.stopId, sequence: row.stopSequence }).supported, true);
+  }
+  assert.equal(publicPosition().supported, false);
+});
+
 test('a different suffix remains unsupported even with matching route and fresh GPS', () => {
   const other = structuredClone(positionStatic), otherIndex = structuredClone(index);
   const otherTripId = 'different-suffix-trip', otherChainId = 'different-suffix-chain';
@@ -104,7 +155,7 @@ test('a different suffix remains unsupported even with matching route and fresh 
     { stopId: 'prefix', sequence: 1 },
     ...stopRows.map(stop => ({ stopId: stop.stopId, sequence: stop.sequence + 1 }))
   ] };
-  other.chains[otherChainId].stops[3].stopId = 'different-stop';
+  other.chains[otherChainId].stops.at(-2).stopId = 'different-stop';
   other.trips[otherTripId] = { tripId: otherTripId, chainId: otherChainId, routeId: '10044' };
   otherIndex.directions.home_to_noborito.push({ tripId: otherTripId, routeId: '10044',
     fromStopId: target.stopId, stopSequence: target.sequence + 1,

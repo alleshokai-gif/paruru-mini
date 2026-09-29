@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stitchOsmRoute,validateRoadGeometry } from '../position/road-geometry.js';
+import { isGapZeroFullStopOrderCandidate, stitchOsmRoute,validateRoadGeometry } from '../position/road-geometry.js';
 
 const latitude=35,longitude=139,m=1/(6371008.8*Math.PI/180),scale=Math.cos(latitude*Math.PI/180);
 const point=(x,y=0)=>({lat:latitude+y*m,lon:longitude+x*m/scale});
@@ -48,4 +48,14 @@ test('insufficient multi-day and official evidence keeps an otherwise valid road
   const result=validateRoadGeometry({points,chain,stops,gpsSamples:samples(),corroboratingLines:[points]});
   assert.equal(result.eligible,false);assert.ok(result.reasons.includes('service_days_insufficient'));
   assert.ok(result.reasons.includes('official_reference_insufficient'));
+});
+
+test('candidate screen requires gap zero and full unambiguous stop projection on the same relation',()=>{
+  const validation={evidence:{stops:{total:4,projected:4}},reasons:[]};
+  assert.equal(isGapZeroFullStopOrderCandidate({gaps:0,validation,stopCount:4}),true);
+  assert.equal(isGapZeroFullStopOrderCandidate({gaps:1,validation,stopCount:4}),false);
+  assert.equal(isGapZeroFullStopOrderCandidate({gaps:0,
+    validation:{evidence:{stops:{total:4,projected:3}},reasons:[]},stopCount:4}),false);
+  assert.equal(isGapZeroFullStopOrderCandidate({gaps:0,
+    validation:{evidence:{stops:{total:4,projected:4}},reasons:['stop_projection_ambiguous']},stopCount:4}),false);
 });

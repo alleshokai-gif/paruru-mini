@@ -393,6 +393,33 @@ test('approved Kawasaki Shadow result reaches only its matching Hub trip without
     providerResults: [stale] }).arrivals[0].position.supported, false);
 });
 
+test('Kawasaki Hub forwards a separately gated Shadow result for any configured city-bus query', () => {
+  const index = indexFixture();
+  const query = P0_INPUT.queries.find((value) => value.id === 'home_to_mizonokuchi');
+  const staticRow = index.directions[query.id][0];
+  const now = Date.parse('2026-09-13T07:00:00+09:00') / 1000;
+  const response = { success: true, fetchError: false, directions: [{ id: query.id, to: query.to,
+    state: 'realtime', arrivals: [{ tripId: `20260913:${staticRow.tripId}`,
+      routeLabel: index.routes[staticRow.routeId].label, headsign: '溝口駅南口',
+      platform: staticRow.platform, scheduledAt: '2026-09-13T07:05:00+09:00',
+      estimatedAt: '2026-09-13T07:06:00+09:00', etaMinutes: 6,
+      delayMinutes: 1, realtime: true, state: 'realtime' }] }] };
+  const approved = { approvedForShadow: true, approvedForPublic: false, geometryReady: false };
+  const engine = { supported: true, method: 'gps_validated_road_geometry_snap',
+    state: 'between_stops', confidence: 0.92, conflicts: [], stopsAway: 2,
+    observedAt: now - 10, previousStop: { name: '神木本町' },
+    nextStop: { name: '長尾橋' }, vehicleId: 'private-id', position: { lat: 35.6, lon: 139.5 } };
+  const key = `20260913:${staticRow.tripId}:${staticRow.fromStopId}:${staticRow.stopSequence}`;
+  const result = normalizeKawasakiHubResult(response, { index, queries: P0_INPUT.queries,
+    shadowPositions: new Map([[key, engine]]), shadowArtifact: approved });
+  assert.equal(result.arrivals[0].position.supported, true);
+  assert.equal(result.arrivals[0].position.nextStop, '長尾橋');
+  assert.doesNotMatch(JSON.stringify(result), /private-id|"lat"|"lon"|"confidence":0\.92/);
+  const absent = normalizeKawasakiHubResult(response, { index, queries: P0_INPUT.queries,
+    shadowPositions: new Map(), shadowArtifact: approved });
+  assert.equal(absent.arrivals[0].position.supported, false);
+});
+
 test('Kawasaki Hub preserves Static isOrigin only for the matching Shinki Honcho boarding trip', () => {
   const query = P0_INPUT.queries.find((value) => value.id === 'home_to_mizonokuchi');
   const index = indexFixture();

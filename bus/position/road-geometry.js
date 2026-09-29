@@ -6,6 +6,14 @@ export const ROAD_VALIDATION_POLICY=Object.freeze({
   jumpAllowanceMeters:20,minServiceDays:3,minTrips:5,minTripsPerSegment:3,
   minGpsMatchRate:0.95,minN07MatchRate:0.95,minOfficialPairs:20,minOfficialAgreement:0.95
 });
+export function isGapZeroFullStopOrderCandidate({gaps,validation,stopCount}) {
+  const reasons=Array.isArray(validation?.reasons)?validation.reasons:[];
+  return Number(gaps)===0 && Number.isInteger(stopCount) && stopCount>0
+    && validation?.evidence?.stops?.total===stopCount
+    && validation.evidence.stops.projected===stopCount
+    && !reasons.includes('stop_projection_failed')
+    && !reasons.includes('stop_projection_ambiguous');
+}
 const finite=value=>Number.isFinite(value);
 const percentile=(values,p)=>{if(!values.length)return null;const rows=[...values].sort((a,b)=>a-b);
   return rows[Math.min(rows.length-1,Math.floor((rows.length-1)*p))];};

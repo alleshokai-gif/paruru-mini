@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "staticSourceHash": "dcbd2e24a6fdd46c7af6e7c3145593774bcf4817fde1ea91517b7c1f387860eb",
+  "staticSourceHash": "e27ef68c6ac2f398c8a3c7cd21eef53e9ed28efcf268c3bc0de9b7a26c4252b8",
   "generatedAt": "2026-09-16T04:09:46.944Z",
   "sources": [
     {
@@ -10,7 +10,7 @@
       "directionId": "home_to_noborito",
       "sourceType": "validated_road_geometry",
       "sourceVersion": "osm:7109917:v14+mlit:n07:2022",
-      "staticSourceHash": "dcbd2e24a6fdd46c7af6e7c3145593774bcf4817fde1ea91517b7c1f387860eb",
+      "staticSourceHash": "e27ef68c6ac2f398c8a3c7cd21eef53e9ed28efcf268c3bc0de9b7a26c4252b8",
       "generatedAt": "2026-09-16T04:09:46.944Z",
       "approvedForShadow": true,
       "approvedForPublic": false,

@@ -6,6 +6,24 @@ const unavailable = status => ({ observer: null, status,
   stats: { supportedChains: 0, geometrySources: [] } });
 const fail = () => { throw Error('SHADOW_GEOMETRY_INVALID'); };
 
+export function terminalCorridor(approved, other, target) {
+  let common = 0;
+  while (common < Math.min(approved.length, other.length)
+    && approved[approved.length - 1 - common].id === other[other.length - 1 - common].stopId) common++;
+  if (common < 3) return null;
+  const approvedStart = approved.length - common, otherStart = other.length - common;
+  const offset = other[otherStart].sequence - approved[approvedStart].sequence;
+  if (!other.slice(otherStart).every((stop, ordinal) =>
+    stop.stopId === approved[approvedStart + ordinal].id
+    && stop.sequence === approved[approvedStart + ordinal].sequence + offset)) return null;
+  const targetOrdinal = other.findIndex((stop) =>
+    stop.stopId === target.fromStopId && stop.sequence === target.stopSequence);
+  // Require the boarding stop and two preceding stops inside the verified corridor.
+  if (targetOrdinal < otherStart + 2) return null;
+  return { approvedStart, entrySequence: other[otherStart].sequence,
+    entryAlong: approved[approvedStart].along, sequenceOffset: offset };
+}
+
 function validatedSource(bundle, positionStatic) {
   if (bundle?.schemaVersion !== 1 || bundle.staticSourceHash !== positionStatic?.sourceHash
     || bundle.sources?.length !== 1) fail();
@@ -58,7 +76,6 @@ export function loadShadowPosition({ index, positionStatic,
         ordinal, along: projection.along, position: stop.position };
     });
     const trips = positionStatic.trips;
-    const approvedStops = positionStatic.chains[chainId].stops;
     const sharedChains = new Map();
     const direction = index.directions[source.directionId];
     if (!Array.isArray(direction) || !direction.some(row => row.routeId === source.routeId
@@ -68,15 +85,8 @@ export function loadShadowPosition({ index, positionStatic,
       const trip = trips[row.tripId], other = positionStatic.chains[trip?.chainId];
       if (!trip || trip.routeId !== source.routeId || !other) throw Error('SHADOW_GEOMETRY_TRIP');
       if (trip.chainId === chainId || sharedChains.has(trip.chainId)) continue;
-      const prefixCount = other.stops.length - approvedStops.length;
-      if (prefixCount < 1) continue;
-      const suffix = other.stops.slice(prefixCount);
-      const sequenceOffset = suffix[0].sequence - approvedStops[0].sequence;
-      if (sequenceOffset < 1 || !suffix.every((stop, ordinal) =>
-        stop.stopId === approvedStops[ordinal].stopId
-        && stop.sequence === approvedStops[ordinal].sequence + sequenceOffset)) continue;
-      sharedChains.set(trip.chainId, { sequenceOffset,
-        entrySequence: suffix[0].sequence });
+      const shared = terminalCorridor(stops, other.stops, row);
+      if (shared) sharedChains.set(trip.chainId, shared);
     }
     const routeIndex = {
       provider: source.provider, sourceHash: positionStatic.sourceHash,
@@ -85,8 +95,10 @@ export function loadShadowPosition({ index, positionStatic,
         const shared = sharedChains.get(trip?.chainId);
         if (trip?.routeId !== source.routeId || trip.chainId !== chainId && !shared) return null;
         return { ...trip, supported: true, geometry,
-          stops: shared ? stops.map(stop => ({ ...stop, sequence: stop.sequence + shared.sequenceOffset })) : stops,
-          ...(shared ? { sharedCorridorEntrySequence: shared.entrySequence } : {}),
+          stops: shared ? stops.slice(shared.approvedStart).map((stop, ordinal) =>
+            ({ ...stop, ordinal, sequence: stop.sequence + shared.sequenceOffset })) : stops,
+          ...(shared ? { sharedCorridorEntrySequence: shared.entrySequence,
+            sharedCorridorEntryAlong: shared.entryAlong } : {}),
           geometrySourceType: source.sourceType, geometrySourceVersion: source.sourceVersion,
           geometryId: candidate.geometryId };
       }

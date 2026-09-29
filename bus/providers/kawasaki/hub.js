@@ -52,8 +52,7 @@ const waitingPosition = () => ({ supported: false, state: null, stopsAway: null,
   previousStop: null, nextStop: null, confidence: null });
 
 function hubShadowPosition({ row, query, staticRow, shadowPositions, shadowArtifact }) {
-  if (query.id !== 'home_to_noborito' || staticRow.routeId !== '10044'
-    || staticRow.fromStopId !== '184_2' || !(shadowPositions instanceof Map)) return waitingPosition();
+  if (!(shadowPositions instanceof Map)) return waitingPosition();
   const match = /^(\d{8}):(.+)$/.exec(row.tripId);
   if (!match) return waitingPosition();
   const result = shadowPositions.get(`${match[1]}:${match[2]}:${staticRow.fromStopId}:${staticRow.stopSequence}`);
