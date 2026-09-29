@@ -70,9 +70,26 @@
 | `67ace8d630924f198e1512f3` | 10045 | 神木→宮前、多摩川口→神木 | 52 | 未承認 | 0 |
 | `ad3ddf201845e5c98e0993cc` | 10045 | 神木→宮前、多摩川口→神木 | 64 | 未承認 | 0 |
 
-**判定: 全40 chainのsidecarはPASS、geometryは4/40候補・36/40未承認、実VP gateの全chain受入は未達。全対象便バスロケの本番化はNO-GO。** OSM route relationとMLIT N07を使う登05方式をバッチ適用するには、36 chainの道路形状とstop投影順序を検証する必要がある。公開OSM一覧は候補を示すが、relation full取得は一部HTTP 429で全件取得できず、一覧だけで承認していない。Public PositionはOFF、既存gateは不変。
+### 同じOSM手順による道路候補の一括screen
 
-## 範囲と判定の意味
+既存登05と同じOSM route relation取得・way stitch・GTFS停留所順序投影を、OSM route master内の分岐relationまで含めて一括実施した。8系統31 relation候補から、全停留所の順序を投影できたchainは22/40。残り18 chainではこの候補群から全停留所の経路を再現できなかった。1 relationはHTTP 410で取得不能だった。特に溝16・溝18・溝19は候補relationにgapまたはstop投影失敗があり、現時点で一括承認できない。
+
+| Route | Chain数 | OSM候補で全stop順序を投影 |
+|---|---:|---:|
+| 10032 溝11 | 3 | 3 |
+| 10033 溝15 | 7 | 3 |
+| 10034 溝16 | 4 | 0 |
+| 10035 溝17 | 4 | 4 |
+| 10036 溝18 | 7 | 0 |
+| 10037 溝19 | 3 | 0 |
+| 10044 登05 | 8 | 8 |
+| 10045 登06 | 4 | 4 |
+
+22件は**道路候補**であって承認済みgeometryではない。gap 0、stop投影の一意性、MLIT N07照合、GPS時系列・全区間検証、既存safety gateをまだ全件で通していない。OSM一覧の近似やGPS点間の直線接続で不足形状を補完しない。
+
+**判定: 全40 chainのsidecarはPASS、geometryは4/40候補・36/40未承認、実VP gateの全chain受入は未達。全対象便バスロケの本番化はNO-GO。** Public PositionはOFF、既存gateは不変。
+
+## PR #58初回棚卸し時点の記録（上記一括再生成より前）
 
 対象はPALURUのP0、Hub、Journeyが選択する川崎市バス8 queryである。`displayLimit=3`より前のStatic候補を数えた。`VehiclePosition`があっても、trip/service JOIN、承認済みgeometry、対象区間への進入、GPS時系列、freshness、confidence、conflictの全gateを通った便だけが停留所単位の位置を表示する。gate不成立は「位置確認中」のままとする。Public PositionはOFF、Shadow専用geometryの`approvedForPublic=false`と`geometryReady=false`は不変。
 
