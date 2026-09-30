@@ -55,6 +55,26 @@ const corridorStatus = (id) => ({ id, firstAction: CORRIDORS[id].firstAction,
   status: 'unavailable', rank: null, reason: 'RAIL_TIMETABLE_UNAVAILABLE',
   steps: [], homeArrivalAt: null, durationMinutes: null });
 
+function throughChiyodaTrain(states, leg, artifact, departureAt) {
+  if (!leg.segment.startsWith('odakyu_uehara_')) return null;
+  const destination = DESTINATIONS[leg.destination] || leg.destination;
+  const matchingOdakyu = new Set(artifact.legs.filter((candidate) =>
+    candidate.calendarType === leg.calendarType
+    && candidate.segment.startsWith('odakyu_uehara_')
+    && candidate.departure === leg.departure
+    && candidate.trainType === leg.trainType
+    && (DESTINATIONS[candidate.destination] || candidate.destination) === destination)
+    .map((candidate) => candidate.trainId));
+  if (matchingOdakyu.size !== 1) return null;
+  const matches = states.filter((state) => state.leg?.segment === 'chiyoda'
+    && state.leg.stationTimeSource === 'arrival'
+    && state.leg.trainType === leg.trainType
+    && (DESTINATIONS[state.leg.destination] || state.leg.destination) === destination
+    && destination !== LABELS.yoyogiuehara
+    && departureAt >= state.at && departureAt - state.at <= 120);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 function findRailPath(artifact, calendarType, day, now, corridor) {
   const paths = [];
   for (const sequence of corridor.paths) {
@@ -69,16 +89,20 @@ function findRailPath(artifact, calendarType, day, now, corridor) {
         const stationTimeAt = legTime(day, leg.stationTime)
           + (minutes(leg.stationTime) < minutes(leg.departure) ? 86400 : 0);
         if (stationTimeAt <= departureAt || stationTimeAt > now + 5 * 3600) continue;
-        const previous = states.find((state) => departureAt >= state.at
+        const through = throughChiyodaTrain(states, leg, artifact, departureAt);
+        const previous = through || states.find((state) => departureAt >= state.at
           + (state.steps.length && state.trainId !== leg.trainId
             ? (KAZU_TRANSFER_MINUTES[config.from] ?? 4) * 60 : 0));
         if (!previous) continue;
-        const change = previous.steps.length && stateChange(previous, leg);
+        const change = previous.steps.length && previous.trainId !== leg.trainId && !through;
         const transfer = change ? { type: 'transfer', station: LABELS[config.from],
           nextLine: config.line, nextTrainType: leg.trainType,
           nextDestination: DESTINATIONS[leg.destination] || leg.destination } : null;
-        next.push({ at: stationTimeAt, trainId: leg.trainId,
-          steps: [...previous.steps, ...(transfer ? [transfer] : []), {
+        const continuation = through ? { type: 'through', station: LABELS[config.from],
+          nextLine: config.line } : null;
+        next.push({ at: stationTimeAt, trainId: leg.trainId, leg,
+          steps: [...previous.steps, ...(transfer ? [transfer] : []),
+            ...(continuation ? [continuation] : []), {
             type: 'train', line: config.line, from: LABELS[config.from], to: LABELS[config.to],
             departureAt, stationTimeAt, stationTimeSource: leg.stationTimeSource,
             trainType: leg.trainType, destination: DESTINATIONS[leg.destination] || leg.destination,
@@ -95,7 +119,6 @@ function findRailPath(artifact, calendarType, day, now, corridor) {
   }
   return paths.sort((a, b) => a.at - b.at);
 }
-const stateChange = (state, leg) => state.trainId !== leg.trainId;
 
 export function createKazuRouteService({ artifact, loadBuses, clock = () => Date.now() / 1000 } = {}) {
   validateKazuStatic(artifact);

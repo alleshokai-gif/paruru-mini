@@ -98,6 +98,8 @@
             ? `🚃 ${clock(step.departureAt)} ${step.from}発　${step.line} ${step.trainType} ${step.destination}行 → ${clock(step.stationTimeAt)} ${step.to}着`
             : step.type === 'transfer'
               ? `🚶 ${step.station}で${step.nextLine} ${step.nextTrainType} ${step.nextDestination}行へ乗換`
+              : step.type === 'through'
+                ? `🚃 ${step.station}から${step.nextLine}へ直通（乗換なし）`
               : step.type === 'walk'
                 ? `🚶 ${step.to}へ移動（約${step.minutes}分）`
               : step.type === 'bus'
