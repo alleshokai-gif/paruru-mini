@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -240,6 +241,38 @@ async function main() {
       items: [{}, {}, {}], basis: ['availability'] };
     await assert.rejects(harness.create({ fetchImpl: async () => response(200, tooManyNext),
       config: phase2Config }).today(), error => error.code === 'TODAY_CONTRACT_INVALID');
+  }
+
+  {
+    const base = inboxDto();
+    const uuid = '13c232c5-8bc4-4f47-8f3a-1d03a9d2817f';
+    const digest = 'a'.repeat(64);
+    const revision = 'paluru-inbox-sha256:' + digest;
+    const candidateRef = 'paluru-inbox://' + uuid + '@sha256:' + digest;
+    const id = 'candidate-review-' + crypto.createHash('sha256')
+      .update(candidateRef + '\0' + revision).digest('hex').slice(0, 24);
+    const choices = ['CONTEXT','WORK','PROJECT','HOLD','REJECT','MERGE']
+      .map(value => ({value,label:value,effect:'review'}));
+    const candidate = { id, kind: 'generic_candidate_review',
+      contract: 'generic-candidate-review-0.1', owner: 'kaz', decision_requested: true,
+      decision_status: 'pending', write_allowed: false, title: 'PALURU Candidate',
+      entity_ref: candidateRef, candidate_ref: candidateRef, candidate_revision: revision,
+      candidate_origin: 'PALURU', question_revision: 'question-sha256:' + 'b'.repeat(64),
+      source_revision_references: {projects:'projects-revision',work_items:'tasks-revision',calendar:'calendar-revision'},
+      answer_contract: {inbox_item_id:id,question_revision:'question-sha256:' + 'b'.repeat(64),
+        question:'review',choices} };
+    base.inbox_items.push(candidate);
+    base.sources.paluru_candidates = healthy('paluru-inbox-source-sha256:' + 'c'.repeat(64));
+    const harness = load(async () => response(200, base));
+    const config = { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+      routeModes: { inbox: 'DIRECT_V2' } };
+    assert.deepEqual(await harness.create({config}).inbox(), base,
+      'DIRECT_V2 INBOX must accept the Version 182 PALURU Candidate revision contract');
+
+    const stale = structuredClone(base);
+    stale.inbox_items[0].candidate_ref = candidateRef.replace(digest, 'd'.repeat(64));
+    await assert.rejects(load(async () => response(200, stale)).create({config}).inbox(),
+      error => error.code === 'INBOX_CONTRACT_INVALID');
   }
 
   {

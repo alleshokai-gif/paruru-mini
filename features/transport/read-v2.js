@@ -138,20 +138,32 @@
           || !item.source_revision_references || !item.answer_contract
           || item.answer_contract.question_revision !== item.question_revision
           || (item.kind === 'generic_candidate_review'
-            && (item.contract !== 'generic-candidate-review-0.1'
-              || !value.sources.github_candidates || value.sources.github_candidates.status !== 'ok'
-              || value.sources.github_candidates.complete !== true
-              || typeof item.candidate_ref !== 'string' || !/^github:\/\/.+\/inbox\/.+\.md@[a-f0-9]{40}$/.test(item.candidate_ref)
-              || typeof item.candidate_revision !== 'string' || !/^([a-f0-9]{40}):([a-f0-9]{40})$/.test(item.candidate_revision)
-              || value.sources.github_candidates.source_revision !== item.candidate_revision.split(':')[0]
-              || item.entity_ref !== item.candidate_ref
-              || !/^question-sha256:[a-f0-9]{64}$/.test(item.question_revision)
-              || !Array.isArray(item.answer_contract.choices)
-              || item.answer_contract.choices.map(choice => choice?.value).join(',')
-                !== 'CONTEXT,WORK,PROJECT,HOLD,REJECT,MERGE')))) {
+            && !validCandidateReview_(item, value.sources)))) {
       throw codedError_('INBOX_CONTRACT_INVALID', { transportClassification: 'parse' });
     }
     return value;
+  }
+
+  function validCandidateReview_(item, sources) {
+    if (item.contract !== 'generic-candidate-review-0.1'
+        || !/^question-sha256:[a-f0-9]{64}$/.test(item.question_revision)
+        || !Array.isArray(item.answer_contract.choices)
+        || item.answer_contract.choices.map(choice => choice?.value).join(',')
+          !== 'CONTEXT,WORK,PROJECT,HOLD,REJECT,MERGE'
+        || item.entity_ref !== item.candidate_ref) return false;
+    const paluru = item.candidate_origin === 'PALURU';
+    const source = sources[paluru ? 'paluru_candidates' : 'github_candidates'];
+    if (!source || source.status !== 'ok' || source.complete !== true
+        || typeof source.source_revision !== 'string' || !source.source_revision) return false;
+    if (paluru) {
+      const ref = /^paluru-inbox:\/\/([0-9a-f-]{36})@sha256:([a-f0-9]{64})$/i.exec(item.candidate_ref);
+      const revision = /^paluru-inbox-sha256:([a-f0-9]{64})$/.exec(item.candidate_revision);
+      return !!ref && !!revision && ref[1] === ref[1].toLowerCase()
+        && ref[2] === revision[1] && source.source_revision.startsWith('paluru-inbox-source-sha256:');
+    }
+    const revision = /^([a-f0-9]{40}):([a-f0-9]{40})$/.exec(item.candidate_revision);
+    return !!revision && source.source_revision === revision[1]
+      && /^github:\/\/.+\/inbox\/.+\.md@[a-f0-9]{40}$/.test(item.candidate_ref);
   }
 
   function parseTiming_(value) {
