@@ -2398,16 +2398,19 @@ function isKazOsReadRetryable_(error) {
 function logKazOsReadDiagnostic_(diagnostic, action, attempt, elapsedMs, error, outcome) {
   try {
     const diagnostics = transportDiagnostics_();
+    const serverDiagnostic = action === "kazOs.inbox.get" ? safeKazOsInboxFailureDiagnostic_(error?.response?.diagnostics) : null;
+    const classification = serverDiagnostic?.gatewayHttpStatus != null && serverDiagnostic.gatewayHttpStatus !== 200
+      ? "http" : error ? diagnostics?.classifyError(error) : "none";
     if (diagnostics && diagnostic) {
       diagnostics.record(diagnostic, {
         attempt: Number(attempt) + 1,
-        elapsedMs,
-        classification: error ? diagnostics.classifyError(error) : "none",
-        httpStatus: Number.isFinite(error?.httpStatus) ? error.httpStatus : null,
-        backendStage: error ? "MINI_RESPONSE" : "MINI_COMPLETE",
+        elapsedMs: serverDiagnostic?.elapsedMs ?? elapsedMs,
+        classification,
+        httpStatus: serverDiagnostic?.gatewayHttpStatus ?? (Number.isFinite(error?.httpStatus) ? error.httpStatus : null),
+        backendStage: serverDiagnostic?.failedStage || (error?.transportClassification === "timeout" ? "CLIENT_TIMEOUT" : error ? "MINI_RESPONSE" : "MINI_COMPLETE"),
         transportType: "GAS",
         outcome,
-        errorCode: error?.code || null,
+        errorCode: serverDiagnostic?.errorCode || error?.code || null,
       });
       return;
     }
@@ -2424,6 +2427,24 @@ function logKazOsReadDiagnostic_(diagnostic, action, attempt, elapsedMs, error, 
   } catch (_) {
     // Diagnostics must never affect read results.
   }
+}
+
+function safeKazOsInboxFailureDiagnostic_(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const stages = new Set(["AUTH_RESOLVE", "CALENDAR_CAPTURE", "GATEWAY_CONFIG", "GATEWAY_POST", "GATEWAY_HTTP_RESPONSE",
+    "GATEWAY_RESPONSE_PARSE", "CANDIDATE_MERGE", "DTO_SANITIZE", "DECISION_LEDGER"]);
+  const codes = new Set(["FORBIDDEN", "UNAUTHORIZED_DEVICE", "MEMBERSHIP_NOT_FOUND", "KAZ_NOT_CONNECTED",
+    "KAZ_READ_ONLY", "KAZ_REQUEST_ID_INVALID", "KAZ_SOURCE_FAILED"]);
+  const gatewayHttpStatus = Number(value.gateway_http_status);
+  const elapsedMs = Number(value.elapsed_ms);
+  const errorCode = String(value.error_code || "");
+  const failedStage = String(value.failed_stage || "");
+  return {
+    gatewayHttpStatus: Number.isInteger(gatewayHttpStatus) && gatewayHttpStatus >= 100 && gatewayHttpStatus <= 599 ? gatewayHttpStatus : null,
+    errorCode: codes.has(errorCode) ? errorCode : null,
+    failedStage: stages.has(failedStage) ? failedStage : null,
+    elapsedMs: Number.isInteger(elapsedMs) && elapsedMs >= 0 && elapsedMs <= 600000 ? elapsedMs : null,
+  };
 }
 
 async function readHomeControlErrorResponse_(response) {

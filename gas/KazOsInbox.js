@@ -8,7 +8,26 @@ var KAZ_OS_INBOX_TRACE_ERROR_CODES_ = ['FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'MEMB
 function createKazOsInboxTrace_(requestId) {
   const normalized = String(requestId || '').trim().toLowerCase();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(normalized)) return null;
-  return { request_id: normalized, started_at_ms: Date.now() };
+  return { request_id: normalized, request_id_suffix: normalized.replace(/-/g, '').slice(-8),
+    started_at_ms: Date.now(), failure_stage: 'AUTH_RESOLVE', gateway_http_status: null };
+}
+
+function setKazOsInboxFailureStage_(trace, stage) {
+  const allowed = ['AUTH_RESOLVE', 'CALENDAR_CAPTURE', 'GATEWAY_CONFIG', 'GATEWAY_POST', 'GATEWAY_HTTP_RESPONSE',
+    'GATEWAY_RESPONSE_PARSE', 'CANDIDATE_MERGE', 'DTO_SANITIZE', 'DECISION_LEDGER'];
+  if (trace && (stage === null || allowed.indexOf(stage) >= 0)) trace.failure_stage = stage;
+}
+
+function createKazOsInboxFailureDiagnostics_(trace, error) {
+  if (!trace) return null;
+  const status = Number(trace.gateway_http_status);
+  return {
+    gateway_http_status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+    error_code: safeKazOsInboxTraceErrorCode_(error),
+    failed_stage: trace.failure_stage || 'GATEWAY_POST',
+    request_id_suffix: /^[a-f0-9]{8}$/.test(trace.request_id_suffix || '') ? trace.request_id_suffix : null,
+    elapsed_ms: Math.min(600000, Math.max(0, Date.now() - trace.started_at_ms))
+  };
 }
 
 function recordKazOsInboxTrace_(trace, stage, values) {
@@ -40,11 +59,13 @@ function safeKazOsInboxTraceErrorCode_(error) {
 }
 
 function readKazOsInbox_(trace, transportTrace) {
+  setKazOsInboxFailureStage_(trace, 'GATEWAY_CONFIG');
   const props = PropertiesService.getScriptProperties();
   const url = String(props.getProperty('KAZ_OS_INBOX_READ_URL') || '');
   const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
   if (!/^https:\/\/[^\s?#]+\/v1\/inbox$/.test(url) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
   let capture;
+  setKazOsInboxFailureStage_(trace, 'CALENDAR_CAPTURE');
   recordKazOsTransport_(transportTrace, 'CALENDAR_CAPTURE_START', { outcome: 'progress' });
   try {
     capture = buildKazOsCalendarCapture_();
@@ -58,7 +79,9 @@ function readKazOsInbox_(trace, transportTrace) {
     throw error;
   }
   const eventCount = capture.response.events.length;
+  setKazOsInboxFailureStage_(trace, 'GATEWAY_POST');
   recordKazOsInboxTrace_(trace, 'GATEWAY_POST_STARTED', { event_count: eventCount });
+  setKazOsInboxFailureStage_(trace, 'GATEWAY_POST');
   recordKazOsTransport_(transportTrace, 'CLOUD_RUN_START', { outcome: 'progress' });
   let response;
   try {
@@ -82,6 +105,8 @@ function readKazOsInbox_(trace, transportTrace) {
     throw homeMembershipError_('KAZ_SOURCE_FAILED');
   }
   const httpStatus = response.getResponseCode();
+  trace.gateway_http_status = httpStatus;
+  setKazOsInboxFailureStage_(trace, 'GATEWAY_HTTP_RESPONSE');
   recordKazOsTransport_(transportTrace, 'CLOUD_RUN_END', {
     classification: httpStatus === 200 ? 'none' : 'http',
     outcome: httpStatus === 200 ? 'progress' : 'unresolved',
@@ -91,6 +116,7 @@ function readKazOsInbox_(trace, transportTrace) {
   recordKazOsInboxTrace_(trace, 'GATEWAY_RESPONSE', { event_count: eventCount, http_status: httpStatus,
     error_code: httpStatus === 200 ? null : 'KAZ_SOURCE_FAILED' });
   if (httpStatus !== 200) throw homeMembershipError_('KAZ_SOURCE_FAILED');
+  setKazOsInboxFailureStage_(trace, 'GATEWAY_RESPONSE_PARSE');
   const text = response.getContentText();
   if (text.length > 524288) throw homeMembershipError_('KAZ_SOURCE_FAILED');
   return JSON.parse(text);

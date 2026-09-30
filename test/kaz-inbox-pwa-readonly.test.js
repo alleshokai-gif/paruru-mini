@@ -25,6 +25,9 @@ assert(personal.includes('MAX_SOURCE_CLOCK_SKEW_MS = 60_000'), '60 second source
 assert(app.includes('kazOsInboxApi: callAuthenticatedKazOsInbox_'), 'authenticated event omits INBOX read API');
 assert(app.includes('buildMemoCredentialPayload("kazOs.inbox.get")'), 'INBOX read action missing');
 assert(app.includes('request_id: requestId'), 'opaque INBOX request id missing');
+assert(app.includes('safeKazOsInboxFailureDiagnostic_(error?.response?.diagnostics)'), 'safe Gateway diagnostics are not extracted from failed INBOX responses');
+assert(app.includes('serverDiagnostic?.failedStage') && app.includes('serverDiagnostic?.gatewayHttpStatus'), 'failed INBOX diagnostic status/stage are not persisted through the safe transport allowlist');
+assert(app.includes('CLIENT_TIMEOUT'), 'client timeout failure stage is not recorded');
 assert(app.includes('typeof cryptoApi.randomUUID !== "function"'), 'request id generation must fail closed');
 assert(app.includes('buildMemoCredentialPayload("kazOs.inbox.answer")'), 'answer action missing');
 assert(app.includes('const KAZ_OS_READ_TIMEOUT_MS = 8000'), 'Kaz OS read timeout missing');

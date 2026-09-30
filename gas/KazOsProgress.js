@@ -12,6 +12,7 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
     const input = body || {};
     if (['kazOs.progress.get', 'kazOs.projects.get', 'kazOs.work.get', 'kazOs.capa.get', 'kazOs.today.get', 'kazOs.inbox.get'].indexOf(input.action) < 0) throw homeMembershipError_('KAZ_READ_ONLY');
     if (!isKazOsLiveEnabled_()) throw homeMembershipError_('KAZ_NOT_CONNECTED');
+    if (inboxTrace) recordKazOsInboxFailureStage_(inboxTrace, 'AUTH_RESOLVE');
     recordKazOsTransport_(transportTrace, 'AUTH_RESOLVE_START', { outcome: 'progress' });
     const actor = resolveFirebaseAuthenticatedActorForRead_(input);
     authorizeKazOsOwner_(actor);
@@ -55,9 +56,14 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
     }
     if (input.action === 'kazOs.inbox.get') {
       recordKazOsInboxTrace_(inboxTrace, 'INBOX_READ_STARTED');
-      const rawInbox = buildKazOsInboxWithPaluruCandidates_(readKazOsInbox_(inboxTrace, transportTrace), actor);
+      recordKazOsInboxFailureStage_(inboxTrace, 'GATEWAY_POST');
+      const gatewayInbox = readKazOsInbox_(inboxTrace, transportTrace);
+      recordKazOsInboxFailureStage_(inboxTrace, 'CANDIDATE_MERGE');
+      const rawInbox = buildKazOsInboxWithPaluruCandidates_(gatewayInbox, actor);
+      recordKazOsInboxFailureStage_(inboxTrace, 'DTO_SANITIZE');
       recordKazOsTransport_(transportTrace, 'SANITIZE_START', { outcome: 'progress' });
       const sanitized = sanitizeKazOsInbox_(rawInbox);
+      recordKazOsInboxFailureStage_(inboxTrace, 'DECISION_LEDGER');
       recordKazOsTransport_(transportTrace, 'SANITIZE_END', { outcome: 'progress' });
       recordKazOsTransport_(transportTrace, 'DECISION_LEDGER_READ_START', { outcome: 'progress' });
       const projected = typeof applyKazOsDecisionLedger_ === 'function' ? applyKazOsDecisionLedger_(sanitized) : sanitized;
@@ -65,6 +71,7 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
       const questionCount = Array.isArray(projected.inbox_items) ? projected.inbox_items.length : null;
       recordKazOsInboxTrace_(inboxTrace, 'SANITIZER_OK', { question_count: questionCount });
       recordKazOsInboxTrace_(inboxTrace, 'RESPONSE_SENT', { question_count: questionCount });
+      recordKazOsInboxFailureStage_(inboxTrace, null);
       const response = json_({ success: true, data: projected, message: projected.mode === 'controlled_proposal' ? 'controlled proposal' : 'read only' });
       recordKazOsTransport_(transportTrace, 'RESPONSE_READY', { outcome: 'success' });
       return response;
@@ -77,8 +84,14 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
     recordKazOsTransport_(transportTrace, 'KAZ_READ_FAILED', {
       classification: 'business', outcome: 'unresolved', errorCode: code
     });
-    return json_({ success: false, data: null, error: { code: code }, message: code });
+    const response = { success: false, data: null, error: { code: code }, message: code };
+    if (inboxTrace) response.diagnostics = createKazOsInboxFailureDiagnostics_(inboxTrace, { code: code });
+    return json_(response);
   }
+}
+
+function recordKazOsInboxFailureStage_(trace, stage) {
+  if (typeof setKazOsInboxFailureStage_ === 'function') setKazOsInboxFailureStage_(trace, stage);
 }
 
 function recordKazOsTransport_(trace, stage, values) {

@@ -26,7 +26,7 @@ const requestId='123e4567-e89b-42d3-a456-426614174000';
 const call=(device='admin-local',extra={})=>h.call(h.body(device,{action:'kazOs.inbox.get',request_id:requestId,...extra}));
 function test(name,fn){fn();checks++;}
 
-test('owner receives only live read-only Secretary Questions',()=>{value.private_payload='SECRET';const r=call();assert(r.success);assert.equal(r.data.mode,'read_only_display');assert.equal(r.data.inbox_items.length,1);assert.equal(r.data.inbox_items[0].write_allowed,false);assert(!JSON.stringify(r).includes('SECRET'));});
+test('owner receives only live read-only Secretary Questions',()=>{value.private_payload='SECRET';const r=call();assert(r.success);assert.equal(r.data.mode,'read_only_display');assert.equal(r.data.inbox_items.length,1);assert.equal(r.data.inbox_items[0].write_allowed,false);assert(!Object.hasOwn(r,'diagnostics'));assert(!JSON.stringify(r).includes('SECRET'));});
 test('Secretary queue remains bounded at 20 even after Gardener support',()=>{
   value=snapshot();
   const base=value.inbox_items[0];
@@ -95,6 +95,13 @@ test('missing or malformed request id is rejected before source read',()=>{
   assert.equal(h.stats().reads,before);
 });
 test('failed or stale source never becomes an empty queue',()=>{fail=true;let r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);fail=false;value=snapshot();value.sources.inbox.valid_until=iso(-1);r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);});
+test('DTO validation failure identifies its safe stage without exposing the DTO',()=>{
+  value=snapshot();value.sources.inbox.status='failed';value.private_candidate_body='PRIVATE CANDIDATE';
+  const r=call();assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);
+  assert.equal(r.diagnostics.failed_stage,'DTO_SANITIZE');assert.equal(r.diagnostics.gateway_http_status,null);
+  assert.equal(r.diagnostics.request_id_suffix,requestId.replace(/-/g,'').slice(-8));
+  assert(!JSON.stringify(r).includes('PRIVATE CANDIDATE'));
+});
 test('expired Secretary Decisions are hidden from the live INBOX projection',()=>{
   value=snapshot();
   value.inbox_items[0].expires_at=iso(-1);
@@ -139,6 +146,22 @@ test('GAS INBOX read sends one bounded V2 envelope and no raw IDs',()=>{
   const allowed=['elapsed_ms','error_code','event_count','gas_version','http_status','question_count','request_id','stage','timestamp'].sort();
   for(const entry of entries){assert.deepEqual(Object.keys(entry).sort(),allowed);assert.equal(entry.request_id,requestId);}
   const traceText=JSON.stringify(entries);for(const forbidden of ['raw-event-id','private-calendar-id','家族予定',h.props.KAZ_OS_PROGRESS_READ_TOKEN,h.props.KAZ_OS_INBOX_READ_URL])assert(!traceText.includes(forbidden));
+});
+
+test('Gateway failure returns only the requested safe INBOX diagnostics',()=>{
+  value=snapshot();h.props.KAZ_OS_INBOX_READ_URL='https://reader.invalid/v1/inbox';h.props.KAZ_OS_PROGRESS_READ_TOKEN='synthetic-reader-token-01234567890123456789';
+  h.ctx.CalendarApp={EventTransparency:{TRANSPARENT:'TRANSPARENT'}};
+  h.ctx.getCalendarConfig_=()=>({calendarId:'private-calendar-id'});
+  h.ctx.getCalendarByConfig_=()=>({getName:()=> 'ファミリー',getEvents:()=>[]});
+  h.ctx.Utilities.formatDate=(date,_zone,format)=>format==='yyyy-MM-dd'?new Date(date).toISOString().slice(0,10):new Date(date).toISOString();
+  h.ctx.UrlFetchApp.fetch=()=>({getResponseCode:()=>503,getContentText:()=>{throw Error('BODY_MUST_NOT_BE_READ');}});
+  const r=call();
+  assert.equal(r.success,false);assert.equal(r.error.code,'KAZ_SOURCE_FAILED');assert.equal(r.data,null);
+  assert.deepEqual(Object.keys(r.diagnostics).sort(),['elapsed_ms','error_code','failed_stage','gateway_http_status','request_id_suffix'].sort());
+  assert.equal(r.diagnostics.gateway_http_status,503,JSON.stringify(r));assert.equal(r.diagnostics.error_code,'KAZ_SOURCE_FAILED');
+  assert.equal(r.diagnostics.failed_stage,'GATEWAY_HTTP_RESPONSE');assert.equal(r.diagnostics.request_id_suffix,requestId.replace(/-/g,'').slice(-8));
+  assert(Number.isInteger(r.diagnostics.elapsed_ms)&&r.diagnostics.elapsed_ms>=0&&r.diagnostics.elapsed_ms<=600000);
+  const serialized=JSON.stringify(r);for(const forbidden of ['private-calendar-id','private-calendar-name','synthetic-reader-token','BODY_MUST_NOT_BE_READ','inbox_items'])assert(!serialized.includes(forbidden));
 });
 
 test('Calendar failure records only the safe failed stage and never calls the gateway',()=>{

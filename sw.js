@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260930-paluru-inbox-work-promotion-v1");
-// Release: v20260930-paluru-inbox-work-promotion-v1
+importScripts("./build.js?v=v20260930-inbox-safe-failure-diagnostics-v1");
+// Release: v20260930-inbox-safe-failure-diagnostics-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
