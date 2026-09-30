@@ -10,6 +10,11 @@ import { fetchTokyuJourneyTimetables, getFutureTokyuBuses } from '../providers/t
 export const HOME_TRANSFER_MINUTES = Object.freeze({
   'noborito-normal': 8, 'noborito-tamagawa': 11, mukougaoka: 5, mizonokuchi: 6
 });
+export const HOME_RUSH_TRANSFER_MINUTES = Object.freeze({
+  // 登戸（生田緑地口）は、急げば6分乗換を候補として残す。
+  // Other exits retain their normal allowance until a measured rush time exists.
+  'noborito-normal': 6
+});
 
 const SOURCE_IDS = Object.freeze([
   'noborito_to_home', 'noborito_tamagawa_to_kibukihoncho',
@@ -69,7 +74,8 @@ export function createRailHomeRouteService({ odakyuStatic, jrStatic, futureIndex
     sourceLoaders['tokyu:mukougaoka_to_kibukihoncho'] = async ({ boardingAt }) =>
       getFutureTokyuBuses({ index: await tokyuIndex(), now, boardingAt });
     return compareHomeRoutes({ journeyId, selectedTrain,
-      transferMinutes: HOME_TRANSFER_MINUTES, loadBuses: createHomeBusLoader(sourceLoaders), now });
+      transferMinutes: HOME_TRANSFER_MINUTES, rushTransferMinutes: HOME_RUSH_TRANSFER_MINUTES,
+      loadBuses: createHomeBusLoader(sourceLoaders), now });
   }
 
   return Object.freeze({ getTrainChoices, evaluate });
