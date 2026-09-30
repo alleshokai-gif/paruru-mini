@@ -49,6 +49,11 @@ steps:
             assert.equal(new Set(kazu.legs.map(x=>x.segment)).size,12);
             assert.ok(kazu.legs.some(x=>x.calendarType==="weekday"&&x.departure<"12:00"));
             assert.ok(kazu.legs.some(x=>x.calendarType==="weekend"&&x.departure<"12:00"));
+            const {createKazuRouteService}=await import("/app/rail/kazu-route-service.js");
+            const direct=await createKazuRouteService({artifact:kazu,
+              clock:()=>Date.parse("2026-09-30T11:02:00+09:00")/1000,
+              loadBuses:async()=>[]}).evaluate("pharmacy");
+            assert.ok(direct.routes[0].steps.some(x=>x.type==="through"));
             const university=await fetch("http://127.0.0.1:8080/api/bus/trains?journeyId=university");
             const school=await fetch("http://127.0.0.1:8080/api/bus/trains?journeyId=high_school");
             assert.equal(university.status,200); assert.equal(school.status,200);

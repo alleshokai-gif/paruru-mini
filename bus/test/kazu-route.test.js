@@ -92,6 +92,29 @@ test('Tamachi is single corridor and pharmacy stops at Noborito without Bus', as
   assert.equal(busCalls, 1);
 });
 
+test('a uniquely timed Chiyoda train continuing into Odakyu needs no transfer', async () => {
+  const throughArtifact = { ...artifact, legs: [
+    ...legs.filter((leg) => !['chiyoda', 'odakyu_uehara_noborito'].includes(leg.segment)),
+    { ...make('chiyoda', '17:34', '17:57', 'metro-through', '急行'), destination: 'Karakida' },
+    { ...make('odakyu_uehara_noborito', '17:58', '18:12', 'odakyu-through', '急行'),
+      destination: '唐木田' }
+  ] };
+  const result = await createKazuRouteService({ artifact: throughArtifact,
+    clock: () => at('17:28'), loadBuses: async () => [] }).evaluate('pharmacy');
+  assert.equal(result.routes[0].stationTimeAt, at('18:12'));
+  assert.equal(result.routes[0].steps.some((step) => step.type === 'through'
+    && step.station === '代々木上原'), true);
+  assert.equal(result.routes[0].steps.some((step) => step.type === 'transfer'
+    && step.station === '代々木上原'), false);
+
+  const mismatched = { ...throughArtifact, legs: throughArtifact.legs.map((leg) =>
+    leg.segment === 'chiyoda' ? { ...leg, destination: 'HonAtsugi' } : leg) };
+  const fallback = await createKazuRouteService({ artifact: mismatched,
+    clock: () => at('17:28'), loadBuses: async () => [] }).evaluate('pharmacy');
+  assert.equal(fallback.routes[0].steps.some((step) => step.type === 'through'), false);
+  assert.equal(fallback.routes[0].stationTimeAt, at('18:20'));
+});
+
 test('corrupt timetable fails closed', () => {
   assert.throws(() => validateKazuStatic({ ...artifact, legs: [...legs, legs[0]] }),
     /KAZU_RAIL_STATIC_INVALID/);

@@ -190,6 +190,21 @@ test('Kazu commute cards prioritize first action, transfer train and home arriva
   assert.match(css, /bus-home-route-commute-choice[^}]*min-height: 48px/s);
 });
 
+test('Kazu through service is clearly distinct from a platform transfer', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  ui.renderCommute(doc, mount, { mode: 'pharmacy', firstAction: '千代田線へ', routes: [{
+    rank: 1, firstAction: '千代田線へ', durationMinutes: 44, steps: [
+      { type: 'train', from: '日比谷', to: '代々木上原', line: '千代田線',
+        trainType: '急行', destination: '唐木田', departureAt: epoch('17:34'), stationTimeAt: epoch('17:57') },
+      { type: 'through', station: '代々木上原', nextLine: '小田急線' },
+      { type: 'train', from: '代々木上原', to: '登戸', line: '小田急線',
+        trainType: '急行', destination: '唐木田', departureAt: epoch('17:58'), stationTimeAt: epoch('18:12') }
+    ] }] });
+  const text = renderedText(mount);
+  assert.match(text, /17:34 日比谷発.*代々木上原から小田急線へ直通（乗換なし）.*17:58 代々木上原発/s);
+  assert.doesNotMatch(text, /🚶 代々木上原で/);
+});
+
 test('PALURU Bus view mounts the accepted manual train selector with a production source', () => {
   const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
   const app = fs.readFileSync(require.resolve('../app.js'), 'utf8');

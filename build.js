@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260930-kazu-commute-v1";
+globalThis.BUILD_ID = "v20260930-kazu-through-service-v2";

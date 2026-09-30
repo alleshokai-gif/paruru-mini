@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20260930-kazu-commute-v1");
-// Release: v20260930-kazu-commute-v1
+importScripts("./build.js?v=v20260930-kazu-through-service-v2");
+// Release: v20260930-kazu-through-service-v2
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
