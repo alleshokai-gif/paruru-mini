@@ -41,6 +41,8 @@
       node(doc, 'p', 'bus-home-route-arrow', '↓'));
     if (transferLabel) section.append(node(doc, 'p', 'bus-home-route-walk', `🚶 ${transferLabel}`),
       node(doc, 'p', 'bus-home-route-arrow', '↓'));
+    if (option.transferMode === 'rush')
+      section.append(node(doc, 'p', 'bus-home-route-rush', '🏃 急げば間に合う'));
     section.append(
       node(doc, 'p', 'bus-home-route-bus',
         `🚌 ${clock(option.departureAt)} ${providerName[option.provider] || option.provider} ${option.routeLabel}`),
