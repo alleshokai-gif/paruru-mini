@@ -96,6 +96,11 @@ function readKazOsInbox_(trace, transportTrace) {
   return JSON.parse(text);
 }
 
+function paluruInboxCandidateOrigin_(item) {
+  const source = String(item && item.source || '').trim().toLowerCase();
+  return source === 'pwa' || source === 'ai' ? 'PALURU' : null;
+}
+
 function buildKazOsInboxWithPaluruCandidates_(data, actor) {
   if (!data || !Array.isArray(data.inbox_items) || !actor || typeof readOwnedInboxItems_ !== 'function') {
     throw homeMembershipError_('KAZ_SOURCE_FAILED');
@@ -109,7 +114,7 @@ function buildKazOsInboxWithPaluruCandidates_(data, actor) {
     { value: 'MERGE', label: 'MERGE', effect: '既存項目との統合候補にする' }
   ];
   const rows = readOwnedInboxItems_(actor).filter(function(item) {
-    return item && String(item.source || '').trim() === 'PWA'
+    return item && paluruInboxCandidateOrigin_(item) === 'PALURU'
       && String(item.status || '').trim().toLowerCase() === 'inbox'
       && String(item.ownerUserId || '') === String(actor.memberUserId || '')
       && /^[0-9a-f-]{36}$/i.test(String(item.id || ''));
@@ -128,15 +133,16 @@ function buildKazOsInboxWithPaluruCandidates_(data, actor) {
     const candidateRef = 'paluru-inbox://' + snapshot.id.toLowerCase() + '@sha256:' + digest;
     const id = 'candidate-review-' + kazOsSha256_(candidateRef + '\u0000' + revision).slice(0, 24);
     const question = 'このPALURU入力をどう扱う？';
+    const candidateOrigin = paluruInboxCandidateOrigin_(item);
     const seed = { id: id, candidate_ref: candidateRef, candidate_revision: revision,
-      candidate_origin: 'PALURU', title: snapshot.title, choices: choices };
+      candidate_origin: candidateOrigin, title: snapshot.title, choices: choices };
     const questionRevision = 'question-sha256:' + kazOsSha256_(stableKazOsJson_(seed));
     const content = (snapshot.title + (snapshot.memo ? '\n\n' + snapshot.memo : '')).slice(0, 16384);
     return { id: id, kind: 'generic_candidate_review', contract: 'generic-candidate-review-0.1',
       owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
       title: snapshot.title, question: question, reason: 'PALURUで本人が入力した未処理Inbox項目',
       impact: 'WORK選択時はCREATE_WORK proposalだけを作成する', entity_ref: candidateRef,
-      candidate_ref: candidateRef, candidate_revision: revision, candidate_origin: 'PALURU',
+      candidate_ref: candidateRef, candidate_revision: revision, candidate_origin: candidateOrigin,
       candidate_source: 'PALURU INBOX', candidate_content: content, source_label: 'PALURU INBOX',
       question_revision: questionRevision, source_revision_references: references,
       answer_contract: { inbox_item_id: id, question_revision: questionRevision,
@@ -158,7 +164,7 @@ function buildKazOsInboxWithPaluruCandidates_(data, actor) {
   const result = Object.assign({}, data, { sources: Object.assign({}, data.sources, {
     paluru_candidates: { status: 'ok', complete: true, fetched_at: now,
       valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      source_revision: indexRevision, scope: 'Authenticated owner PWA Inbox' }
+      source_revision: indexRevision, scope: 'Authenticated owner PALURU Inbox' }
   }), inbox_items: otherItems.concat(selectedCandidates) });
   return result;
 }

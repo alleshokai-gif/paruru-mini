@@ -176,17 +176,24 @@ test('Generic Candidate non-WORK answer is recorded as PENDING_APPLY without cal
   const item=candidate.inbox_items[0],result=harness.call(harness.body('admin-local',{action:'kazOs.inbox.answer',request_id:requestId(),decision_id:item.id,question_revision:item.question_revision,source_revision_references:item.source_revision_references,selected_option:'CONTEXT',candidate_ref:item.candidate_ref,candidate_revision:item.candidate_revision,reason:null,idempotency_key:'candidate-context-e2e-0001'}));
   assert(result.success,JSON.stringify(result));assert.equal(calls,0);assert.equal(result.data.proposal.change.apply_status,'PENDING_APPLY');assert.equal(result.data.proposal.change.create_work_proposal,null);assert.equal(result.data.inbox.inbox_items.length,0);assert.equal(harness.rows.Kaz_OS_Decision_Ledger.length,2);
 });
-test('PALURU PWA Inbox input is projected as a revision-bound Candidate and creates only a read-only Work proposal',()=>{
-  const base=snapshot(),row={id:'00000000-0000-4000-8000-000000000123',title:'PALURU入力からWorkへ',memo:'Human ReviewからWork proposalまで確認する',source:'PWA',status:'Inbox',ownerUserId:'father',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+test('PALURU Inbox inputs from createWithAI and PWA are projected, while unrelated sources stay excluded',()=>{
+  const base=snapshot(),gateway=candidateSnapshot(),githubCandidate=gateway.inbox_items[0],row={id:'00000000-0000-4000-8000-000000000123',title:'PALURU入力からWorkへ',memo:'Human ReviewからWork proposalまで確認する',source:'ai',status:'Inbox',ownerUserId:'father',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  base.sources.github_candidates=gateway.sources.github_candidates;base.inbox_items.push(githubCandidate);
+  const directPwa={...row,id:'00000000-0000-4000-8000-000000000124',title:'PWA直接入力',source:'PWA'};
+  const unrelated={...row,id:'00000000-0000-4000-8000-000000000125',title:'別Source入力',source:'paluru-agent'};
   const foreign={...row,id:'00000000-0000-4000-8000-000000000999',ownerUserId:'second_son',title:'別ユーザーの入力'};
   const harness=createHarness({root,answerEnabled:true,decisionLedgerRows:null,inboxProvider:()=>base});
-  harness.setupDecisionLedger();harness.resetStats();harness.ctx.readOwnedInboxItems_=()=>[row,foreign];
+  harness.setupDecisionLedger();harness.resetStats();harness.ctx.readOwnedInboxItems_=()=>[row,directPwa,unrelated,foreign];
   harness.props.KAZ_OS_INBOX_READ_URL='https://gateway.example/v1/inbox';harness.props.KAZ_OS_PROGRESS_READ_TOKEN='x'.repeat(40);
   const read=harness.call(harness.body('admin-local',{action:'kazOs.inbox.get',request_id:requestId()}));
   assert(read.success,JSON.stringify(read));
-  const item=read.data.inbox_items.find(entry=>entry.kind==='generic_candidate_review');
+  const paluruCandidates=read.data.inbox_items.filter(entry=>entry.kind==='generic_candidate_review'&&entry.candidate_origin==='PALURU');
+  assert.equal(paluruCandidates.length,2);
+  const item=paluruCandidates.find(entry=>entry.title==='PALURU入力からWorkへ');
   assert(item);assert.equal(item.candidate_origin,'PALURU');assert.equal(item.candidate_source,'PALURU INBOX');
+  assert.equal(read.data.inbox_items.find(entry=>entry.id===githubCandidate.id)?.candidate_origin,'CHATGPT');
   assert.equal(read.data.inbox_items.some(entry=>entry.title==='別ユーザーの入力'),false);
+  assert.equal(read.data.inbox_items.some(entry=>entry.title==='別Source入力'),false);
   assert.match(item.candidate_revision,/^paluru-inbox-sha256:[a-f0-9]{64}$/);
   assert.equal(item.source_revision_references.projects,base.sources.projects.source_revision);
   let proposalCalls=0;
@@ -206,8 +213,8 @@ test('PALURU PWA Inbox input is projected as a revision-bound Candidate and crea
   assert.equal(answered.data.proposal.notion_write,0);assert.equal(answered.data.inbox.inbox_items.some(entry=>entry.id===item.id),false);
   assert.equal(harness.rows.Kaz_OS_Decision_Ledger.length,2);
 });
-test('PALURU candidate revision is rechecked against the current owner Inbox row before answer persistence',()=>{
-  const base=snapshot(),row={id:'00000000-0000-4000-8000-000000000124',title:'Original title',memo:'Original memo',source:'PWA',status:'Inbox',ownerUserId:'father',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+test('PALURU createWithAI candidate revision is rechecked against the current owner Inbox row before answer persistence',()=>{
+  const base=snapshot(),row={id:'00000000-0000-4000-8000-000000000124',title:'Original title',memo:'Original memo',source:'ai',status:'Inbox',ownerUserId:'father',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
   const harness=createHarness({root,answerEnabled:true,decisionLedgerRows:null,inboxProvider:()=>base});
   harness.setupDecisionLedger();harness.resetStats();harness.ctx.readOwnedInboxItems_=()=>[row];
   const read=harness.call(harness.body('admin-local',{action:'kazOs.inbox.get',request_id:requestId()})),item=read.data.inbox_items.find(entry=>entry.kind==='generic_candidate_review');
