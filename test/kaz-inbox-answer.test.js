@@ -176,6 +176,50 @@ test('Generic Candidate non-WORK answer is recorded as PENDING_APPLY without cal
   const item=candidate.inbox_items[0],result=harness.call(harness.body('admin-local',{action:'kazOs.inbox.answer',request_id:requestId(),decision_id:item.id,question_revision:item.question_revision,source_revision_references:item.source_revision_references,selected_option:'CONTEXT',candidate_ref:item.candidate_ref,candidate_revision:item.candidate_revision,reason:null,idempotency_key:'candidate-context-e2e-0001'}));
   assert(result.success,JSON.stringify(result));assert.equal(calls,0);assert.equal(result.data.proposal.change.apply_status,'PENDING_APPLY');assert.equal(result.data.proposal.change.create_work_proposal,null);assert.equal(result.data.inbox.inbox_items.length,0);assert.equal(harness.rows.Kaz_OS_Decision_Ledger.length,2);
 });
+test('PALURU PWA Inbox input is projected as a revision-bound Candidate and creates only a read-only Work proposal',()=>{
+  const base=snapshot(),row={id:'00000000-0000-4000-8000-000000000123',title:'PALURU入力からWorkへ',memo:'Human ReviewからWork proposalまで確認する',source:'PWA',status:'Inbox',ownerUserId:'father',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  const foreign={...row,id:'00000000-0000-4000-8000-000000000999',ownerUserId:'second_son',title:'別ユーザーの入力'};
+  const harness=createHarness({root,answerEnabled:true,decisionLedgerRows:null,inboxProvider:()=>base});
+  harness.setupDecisionLedger();harness.resetStats();harness.ctx.readOwnedInboxItems_=()=>[row,foreign];
+  harness.props.KAZ_OS_INBOX_READ_URL='https://gateway.example/v1/inbox';harness.props.KAZ_OS_PROGRESS_READ_TOKEN='x'.repeat(40);
+  const read=harness.call(harness.body('admin-local',{action:'kazOs.inbox.get',request_id:requestId()}));
+  assert(read.success,JSON.stringify(read));
+  const item=read.data.inbox_items.find(entry=>entry.kind==='generic_candidate_review');
+  assert(item);assert.equal(item.candidate_origin,'PALURU');assert.equal(item.candidate_source,'PALURU INBOX');
+  assert.equal(read.data.inbox_items.some(entry=>entry.title==='別ユーザーの入力'),false);
+  assert.match(item.candidate_revision,/^paluru-inbox-sha256:[a-f0-9]{64}$/);
+  assert.equal(item.source_revision_references.projects,base.sources.projects.source_revision);
+  let proposalCalls=0;
+  harness.ctx.UrlFetchApp.fetch=(url,options)=>{proposalCalls++;assert.equal(url,'https://gateway.example/v1/candidate-work-proposal');const sent=JSON.parse(options.payload);
+    assert.equal(sent.candidate_ref,item.candidate_ref);assert.equal(sent.candidate_revision,item.candidate_revision);assert.equal(sent.work_fields.source,'PALURU');
+    const proposal={kind:'CREATE_WORK',status:'PROPOSED',write_allowed:false,requires_separate_write_approval:true,notion_write:0,target:{project_id:base.projects[0].id},proposed:{title:'PALURU入力からWorkへ',status:'READY',action_type:'ACTION',source:'PALURU',estimate_min:null}};
+    return{getResponseCode:()=>200,getContentText:()=>JSON.stringify({candidate_ref:sent.candidate_ref,candidate_revision:sent.candidate_revision,candidate_origin:'PALURU',proposal,writes:{notion:0}})};};
+  const answered=harness.call(harness.body('admin-local',{action:'kazOs.inbox.answer',request_id:requestId(),decision_id:item.id,
+    question_revision:item.question_revision,source_revision_references:item.source_revision_references,selected_option:'WORK',
+    candidate_ref:item.candidate_ref,candidate_revision:item.candidate_revision,work_fields:{project_id:base.projects[0].id,
+      title:'PALURU入力からWorkへ',status:'READY',action_type:'ACTION',source:'PALURU',estimate_min:null},reason:null,
+    idempotency_key:'paluru-candidate-work-0001'}));
+  assert(answered.success,JSON.stringify(answered));assert.equal(proposalCalls,1);
+  assert.equal(answered.data.answer.candidate_revision,item.candidate_revision);
+  assert.equal(answered.data.proposal.change.create_work_proposal.write_allowed,false);
+  assert.equal(answered.data.proposal.change.create_work_proposal.notion_write,0);
+  assert.equal(answered.data.proposal.notion_write,0);assert.equal(answered.data.inbox.inbox_items.some(entry=>entry.id===item.id),false);
+  assert.equal(harness.rows.Kaz_OS_Decision_Ledger.length,2);
+});
+test('PALURU candidate revision is rechecked against the current owner Inbox row before answer persistence',()=>{
+  const base=snapshot(),row={id:'00000000-0000-4000-8000-000000000124',title:'Original title',memo:'Original memo',source:'PWA',status:'Inbox',ownerUserId:'father',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  const harness=createHarness({root,answerEnabled:true,decisionLedgerRows:null,inboxProvider:()=>base});
+  harness.setupDecisionLedger();harness.resetStats();harness.ctx.readOwnedInboxItems_=()=>[row];
+  const read=harness.call(harness.body('admin-local',{action:'kazOs.inbox.get',request_id:requestId()})),item=read.data.inbox_items.find(entry=>entry.kind==='generic_candidate_review');
+  row.memo='Changed before answer';let proposalCalls=0;harness.ctx.UrlFetchApp.fetch=()=>{proposalCalls++;throw Error('STALE_CANDIDATE_MUST_NOT_PROPOSE');};
+  const result=harness.call(harness.body('admin-local',{action:'kazOs.inbox.answer',request_id:requestId(),decision_id:item.id,
+    question_revision:item.question_revision,source_revision_references:item.source_revision_references,selected_option:'WORK',
+    candidate_ref:item.candidate_ref,candidate_revision:item.candidate_revision,work_fields:{project_id:base.projects[0].id,
+      title:'Original title',status:'READY',action_type:'ACTION',source:'PALURU',estimate_min:null},reason:null,
+    idempotency_key:'paluru-candidate-work-0002'}));
+  assert.equal(result.error.code,'REVALIDATION_REQUIRED');assert.equal(proposalCalls,0);
+  assert.equal(harness.rows.Kaz_OS_Decision_Ledger.length,1);
+});
 test('controlled INBOX exposes bounded persisted-answer receipt for response-loss reconciliation', () => {
   const item = value.inbox_items[0];
   const result = request(h, item, 'today', 'paluru-reconcile-receipt-0001');

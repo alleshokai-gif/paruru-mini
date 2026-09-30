@@ -72,10 +72,13 @@
       return{issues:[...new Set(issues)],packet:null,entity:w,projectId};
     }
     if(k==='generic_candidate_review'){
-      const refs=i?.source_revision_references, source=data?.sources?.github_candidates;
+      const refs=i?.source_revision_references, paluru=i?.candidate_origin==='PALURU', source=data?.sources?.[paluru?'paluru_candidates':'github_candidates'];
       if(i?.contract!=='generic-candidate-review-0.1'||!/^question-sha256:[a-f0-9]{64}$/.test(i?.question_revision||''))issues.push('Candidate question revisionを確認');
-      if(health(source,now)!=='ok'||source?.complete!==true||source.source_revision!==i?.candidate_revision?.split(':')[0])issues.push('GitHub Candidate sourceを再取得');
-      if(!/^github:\/\/.+\/inbox\/.+\.md@[a-f0-9]{40}$/.test(i?.candidate_ref||'')||!/^([a-f0-9]{40}):([a-f0-9]{40})$/.test(i?.candidate_revision||''))issues.push('Candidate revisionを確認');
+      if(health(source,now)!=='ok'||source?.complete!==true||(!paluru&&source.source_revision!==i?.candidate_revision?.split(':')[0]))issues.push(paluru?'PALURU Inbox Candidate sourceを再取得':'GitHub Candidate sourceを再取得');
+      const revisionValid=paluru
+        ? /^paluru-inbox-sha256:([a-f0-9]{64})$/.test(i?.candidate_revision||'')&&/^paluru-inbox:\/\/[0-9a-f-]{36}@sha256:[a-f0-9]{64}$/.test(i?.candidate_ref||'')&&i.candidate_ref.endsWith('@sha256:'+i.candidate_revision.slice(-64))
+        : /^github:\/\/.+\/inbox\/.+\.md@[a-f0-9]{40}$/.test(i?.candidate_ref||'')&&/^([a-f0-9]{40}):([a-f0-9]{40})$/.test(i?.candidate_revision||'');
+      if(!revisionValid)issues.push('Candidate revisionを確認');
       for(const [name,view] of [['projects','projects'],['work_items','tasks'],['calendar','calendar']])if(health(data?.sources?.[view],now)!=='ok'||refs?.[name]!==data?.sources?.[view]?.source_revision)issues.push(`${name} revisionを再取得`);
       if(!Array.isArray(i?.answer_contract?.choices)||i.answer_contract.choices.map(x=>x.value).join(',')!==CANDIDATE_CHOICES.join(','))issues.push('Candidate Reviewの回答contractを再取得');
       return{issues:[...new Set(issues)],packet:null,entity:null,projectId:null};

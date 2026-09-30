@@ -55,7 +55,7 @@ function kazOsProgress_(body, inboxTrace, transportTrace) {
     }
     if (input.action === 'kazOs.inbox.get') {
       recordKazOsInboxTrace_(inboxTrace, 'INBOX_READ_STARTED');
-      const rawInbox = readKazOsInbox_(inboxTrace, transportTrace);
+      const rawInbox = buildKazOsInboxWithPaluruCandidates_(readKazOsInbox_(inboxTrace, transportTrace), actor);
       recordKazOsTransport_(transportTrace, 'SANITIZE_START', { outcome: 'progress' });
       const sanitized = sanitizeKazOsInbox_(rawInbox);
       recordKazOsTransport_(transportTrace, 'SANITIZE_END', { outcome: 'progress' });

@@ -96,6 +96,73 @@ function readKazOsInbox_(trace, transportTrace) {
   return JSON.parse(text);
 }
 
+function buildKazOsInboxWithPaluruCandidates_(data, actor) {
+  if (!data || !Array.isArray(data.inbox_items) || !actor || typeof readOwnedInboxItems_ !== 'function') {
+    throw homeMembershipError_('KAZ_SOURCE_FAILED');
+  }
+  const choices = [
+    { value: 'CONTEXT', label: 'CONTEXT', effect: 'Context候補として記録する' },
+    { value: 'WORK', label: 'WORK', effect: 'CREATE_WORK proposalを作る' },
+    { value: 'PROJECT', label: 'PROJECT', effect: 'Project候補として保留する' },
+    { value: 'HOLD', label: 'HOLD', effect: '保留する' },
+    { value: 'REJECT', label: 'REJECT', effect: '候補から外す' },
+    { value: 'MERGE', label: 'MERGE', effect: '既存項目との統合候補にする' }
+  ];
+  const rows = readOwnedInboxItems_(actor).filter(function(item) {
+    return item && String(item.source || '').trim() === 'PWA'
+      && String(item.status || '').trim().toLowerCase() === 'inbox'
+      && String(item.ownerUserId || '') === String(actor.memberUserId || '')
+      && /^[0-9a-f-]{36}$/i.test(String(item.id || ''));
+  }).sort(function(left, right) {
+    return Date.parse(right.createdAt || '') - Date.parse(left.createdAt || '');
+  }).slice(0, 10);
+  if (!rows.length) return data;
+  const references = { projects: data.sources.projects.source_revision,
+    work_items: data.sources.tasks.source_revision, calendar: data.sources.calendar.source_revision };
+  const candidates = rows.map(function(item) {
+    const snapshot = { id: String(item.id), title: kazOsText_(item.title || item.memo || 'PALURU入力', 200),
+      memo: String(item.memo || ''), source: String(item.source || ''), status: String(item.status || ''),
+      created_at: String(item.createdAt || ''), updated_at: String(item.updatedAt || '') };
+    const digest = kazOsSha256_(stableKazOsJson_(snapshot));
+    const revision = 'paluru-inbox-sha256:' + digest;
+    const candidateRef = 'paluru-inbox://' + snapshot.id.toLowerCase() + '@sha256:' + digest;
+    const id = 'candidate-review-' + kazOsSha256_(candidateRef + '\u0000' + revision).slice(0, 24);
+    const question = 'このPALURU入力をどう扱う？';
+    const seed = { id: id, candidate_ref: candidateRef, candidate_revision: revision,
+      candidate_origin: 'PALURU', title: snapshot.title, choices: choices };
+    const questionRevision = 'question-sha256:' + kazOsSha256_(stableKazOsJson_(seed));
+    const content = (snapshot.title + (snapshot.memo ? '\n\n' + snapshot.memo : '')).slice(0, 16384);
+    return { id: id, kind: 'generic_candidate_review', contract: 'generic-candidate-review-0.1',
+      owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
+      title: snapshot.title, question: question, reason: 'PALURUで本人が入力した未処理Inbox項目',
+      impact: 'WORK選択時はCREATE_WORK proposalだけを作成する', entity_ref: candidateRef,
+      candidate_ref: candidateRef, candidate_revision: revision, candidate_origin: 'PALURU',
+      candidate_source: 'PALURU INBOX', candidate_content: content, source_label: 'PALURU INBOX',
+      question_revision: questionRevision, source_revision_references: references,
+      answer_contract: { inbox_item_id: id, question_revision: questionRevision,
+        question: question, choices: choices } };
+  });
+  const otherItems = data.inbox_items.filter(function(item) {
+    return !(item && item.contract === 'generic-candidate-review-0.1');
+  });
+  const githubItems = data.inbox_items.filter(function(item) {
+    return item && item.contract === 'generic-candidate-review-0.1' && item.candidate_origin !== 'PALURU';
+  });
+  const candidateLimit = Math.max(0, 10 - candidates.length);
+  const inboxLimit = Math.max(0, 40 - otherItems.length - candidates.length);
+  const selectedCandidates = candidates.slice(0, 10).concat(githubItems.slice(0, Math.min(candidateLimit, inboxLimit)));
+  const now = new Date().toISOString();
+  const indexRevision = 'paluru-inbox-index-sha256:' + kazOsSha256_(rows.map(function(item) {
+    return String(item.id) + '\u0000' + String(item.updatedAt || '');
+  }).join('\n'));
+  const result = Object.assign({}, data, { sources: Object.assign({}, data.sources, {
+    paluru_candidates: { status: 'ok', complete: true, fetched_at: now,
+      valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      source_revision: indexRevision, scope: 'Authenticated owner PWA Inbox' }
+  }), inbox_items: otherItems.concat(selectedCandidates) });
+  return result;
+}
+
 function buildKazOsCalendarCapture_() {
   const timezone = 'Asia/Tokyo';
   const config = getCalendarConfig_('family');
@@ -201,6 +268,17 @@ function sanitizeKazOsInbox_(data) {
       source_revision: text(value.source_revision, 120, true), scope: text(value.scope, 240) };
     sources.github_candidates = githubCandidates;
   }
+  let paluruCandidates = null;
+  if (data.sources && data.sources.paluru_candidates != null) {
+    const value = data.sources.paluru_candidates;
+    if (!value || value.status !== 'ok' || value.complete !== true) fail();
+    const fetched = Date.parse(value.fetched_at), until = Date.parse(value.valid_until);
+    if (!Number.isFinite(fetched) || !Number.isFinite(until) || fetched > Date.now() + 60000 || until <= Date.now()) fail();
+    paluruCandidates = { status: 'ok', complete: true, fetched_at: text(value.fetched_at, 80),
+      valid_until: text(value.valid_until, 80), source_revision: text(value.source_revision, 120),
+      scope: text(value.scope, 160) };
+    sources.paluru_candidates = paluruCandidates;
+  }
   if (!data.writes || data.writes.notion !== 0 || data.writes.calendar !== 0 || data.writes.context !== 0
       || !data.persistence || data.persistence.kind !== 'none' || data.persistence.status !== 'disabled') fail();
   const projects = list(data.projects, 20, function(value) {
@@ -223,25 +301,32 @@ function sanitizeKazOsInbox_(data) {
       source_revision: text(value.source_revision, 120) };
   });
   let secretaryItemCount = 0, gardenerItemCount = 0, candidateReviewCount = 0;
-  const inboxItems = list(data.inbox_items, 30, function(value) {
+  const inboxItems = list(data.inbox_items, 40, function(value) {
     if (!value || value.owner !== 'kaz' || value.decision_requested !== true || value.decision_status !== 'pending'
         || value.write_allowed !== false) fail();
     if (value.contract === 'generic-candidate-review-0.1') {
       candidateReviewCount++;
+      const isPaluruCandidate = value.candidate_origin === 'PALURU';
       const revisionMatch = typeof value.candidate_revision === 'string'
         ? /^([a-f0-9]{40}):([a-f0-9]{40})$/.exec(value.candidate_revision) : null;
+      const paluruMatch = typeof value.candidate_revision === 'string'
+        ? /^paluru-inbox-sha256:([a-f0-9]{64})$/.exec(value.candidate_revision) : null;
       if (candidateReviewCount > 10 || value.kind !== 'generic_candidate_review'
-          || !githubCandidates || githubCandidates.status !== 'ok' || githubCandidates.complete !== true
-          || !revisionMatch || value.candidate_commit !== revisionMatch[1]
-          || value.candidate_blob_sha !== revisionMatch[2]
-          || githubCandidates.source_revision !== value.candidate_commit
-          || (value.candidate_origin != null && ['CHATGPT','PALURU'].indexOf(value.candidate_origin) < 0)
+          || (isPaluruCandidate
+            ? !paluruCandidates || paluruCandidates.status !== 'ok' || !paluruMatch
+              || !/^paluru-inbox:\/\/[0-9a-f-]{36}@sha256:[a-f0-9]{64}$/.test(String(value.candidate_ref || ''))
+              || !String(value.candidate_ref).endsWith('@sha256:' + paluruMatch[1])
+            : !githubCandidates || githubCandidates.status !== 'ok' || githubCandidates.complete !== true
+              || !revisionMatch || value.candidate_commit !== revisionMatch[1]
+              || value.candidate_blob_sha !== revisionMatch[2]
+              || githubCandidates.source_revision !== value.candidate_commit
+              || (value.candidate_origin != null && ['CHATGPT','PALURU'].indexOf(value.candidate_origin) < 0))
           || !value.source_revision_references
           || value.source_revision_references.projects !== sources.projects.source_revision
           || value.source_revision_references.work_items !== sources.tasks.source_revision
           || value.source_revision_references.calendar !== sources.calendar.source_revision) fail();
       const candidateRef = text(value.candidate_ref, 200);
-      if (!candidateRef.startsWith('github://') || !candidateRef.endsWith('@' + value.candidate_commit)
+      if ((!isPaluruCandidate && (!candidateRef.startsWith('github://') || !candidateRef.endsWith('@' + value.candidate_commit)))
           || value.entity_ref !== candidateRef) fail();
       const choices = list(value.answer_contract && value.answer_contract.choices, 6, function(choice) {
         return { value: text(choice.value, 20), label: text(choice.label, 40), effect: text(choice.effect, 160) };
@@ -263,10 +348,10 @@ function sanitizeKazOsInbox_(data) {
         impact: text(value.impact, 500), estimate_min: null, affects_today: false, urgent_today: false,
         decision_date: null, due_at: null, project_id: null, entity_ref: candidateRef,
         candidate_ref: candidateRef, candidate_revision: value.candidate_revision,
-        candidate_commit: value.candidate_commit, candidate_blob_sha: value.candidate_blob_sha,
+        candidate_commit: value.candidate_commit || null, candidate_blob_sha: value.candidate_blob_sha || null,
         candidate_origin: seed.candidate_origin, candidate_source: text(value.candidate_source, 300),
         candidate_content: text(value.candidate_content, 16384),
-        source_label: 'GitHub Candidate', entity_revision: value.candidate_revision,
+        source_label: isPaluruCandidate ? 'PALURU INBOX' : 'GitHub Candidate', entity_revision: value.candidate_revision,
         question_revision: questionRevision, expires_at: null,
         source_revision_references: { projects: value.source_revision_references.projects,
           work_items: value.source_revision_references.work_items,

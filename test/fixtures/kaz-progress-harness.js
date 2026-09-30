@@ -51,6 +51,7 @@ function createHarness(options = {}) {
   ctx.readKazOsCapa_ = () => {reads++; if (!options.capaProvider) throw Error('CAPA_NOT_CONFIGURED'); return options.capaProvider();};
   ctx.readKazOsToday_ = () => {reads++; if (!options.todayProvider) throw Error('TODAY_NOT_CONFIGURED'); return options.todayProvider();};
   ctx.readKazOsInbox_ = () => {reads++; if (!options.inboxProvider) throw Error('INBOX_NOT_CONFIGURED'); return options.inboxProvider();};
+  ctx.readOwnedInboxItems_ = () => [];
   return {ctx, props, rows, credentials, stats:()=>({writes,reads}), resetStats:()=>{writes=0;reads=0;}, setupDecisionLedger:()=>ctx.setupKazOsDecisionLedger(),
     body:(device='admin-local', extra={})=>({action:'kazOs.progress.get',auth:{provider:'firebase',idToken:device},...extra}),
     call:body=>ctx.doPost({postData:{contents:JSON.stringify(body)}})};

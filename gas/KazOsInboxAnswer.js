@@ -46,7 +46,7 @@ function answerKazOsInbox_(body, transportTrace) {
     let current, observed;
     try {
       recordKazOsAnswerTransport_(transportTrace, 'SOURCE_REVALIDATION_STARTED', { outcome: 'success' });
-      observed = readKazOsInbox_(createKazOsInboxTrace_(request.request_id));
+      observed = buildKazOsInboxWithPaluruCandidates_(readKazOsInbox_(createKazOsInboxTrace_(request.request_id)), actor);
     } catch (_) {
       throw homeMembershipError_('KAZ_SOURCE_FAILED');
     }
