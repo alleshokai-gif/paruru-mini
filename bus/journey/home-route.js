@@ -26,24 +26,28 @@ const knownState = new Set(['scheduled', 'realtime', 'departure_pending', 'depar
 const uncertainty = new Set(['departure_uncertain', 'unknown']);
 const validTime = (value) => Number.isFinite(value) && value >= 0;
 
-export async function compareHomeRoutes({ journeyId, selectedTrain, transferMinutes, loadBuses, now } = {}) {
+export async function compareHomeRoutes({ journeyId, selectedTrain, transferMinutes, rushTransferMinutes = {}, loadBuses, now } = {}) {
   const places = HOME_ROUTE_TEMPLATES[journeyId];
   if (!places || !selectedTrain?.id || !validTime(now) || typeof loadBuses !== 'function'
     || !transferMinutes || typeof transferMinutes !== 'object') fail();
   for (const place of places) {
     const stationTimeAt = (selectedTrain.effectiveStationTimes ?? selectedTrain.stationTimes
-      ?? selectedTrain.arrivals)?.[place.stationId], transfer = transferMinutes[place.placeId];
-    if (!validTime(stationTimeAt) || !Number.isFinite(transfer)
-      || transfer < 0 || transfer > 60) fail();
+      ?? selectedTrain.arrivals)?.[place.stationId], transfer = transferMinutes[place.placeId],
+      rushTransfer = rushTransferMinutes[place.placeId] ?? transfer;
+    if (!validTime(stationTimeAt) || !Number.isFinite(transfer) || !Number.isFinite(rushTransfer)
+      || transfer < 0 || transfer > 60 || rushTransfer < 0 || rushTransfer > transfer) fail();
   }
   const tasks = places.map(async (place) => {
     const stationTimeAt = (selectedTrain.effectiveStationTimes ?? selectedTrain.stationTimes
-      ?? selectedTrain.arrivals)[place.stationId], transfer = transferMinutes[place.placeId];
+      ?? selectedTrain.arrivals)[place.stationId], transfer = transferMinutes[place.placeId],
+      rushTransfer = rushTransferMinutes[place.placeId] ?? transfer;
     const stationTimeSource = selectedTrain.stationTimeSources?.[place.stationId] ?? 'arrival';
-    // A selected earlier train may already have reached this station. Never
-    // suggest a past bus: reserve the full transfer time from the later of the
-    // train's station time and the current time.
-    const boardingAt = Math.max(stationTimeAt, now) + transfer * 60;
+    // Never suggest a past bus. Load from the minimum viable transfer time so a
+    // close-but-catchable bus remains visible instead of being erased by the
+    // normal walking allowance.
+    const transferBaseAt = Math.max(stationTimeAt, now);
+    const boardingAt = transferBaseAt + rushTransfer * 60;
+    const normalBoardingAt = transferBaseAt + transfer * 60;
     const loaded = await loadBuses({ placeId: place.placeId, boardingAt, sourceIds: place.sourceIds });
     const sourceStates = loaded?.sourceStates;
     if (!Array.isArray(loaded?.arrivals) || !sourceStates || typeof sourceStates !== 'object'
@@ -64,7 +68,8 @@ export async function compareHomeRoutes({ journeyId, selectedTrain, transferMinu
         ? 'delay_projection' : 'static_only',
       railDelaySeconds: selectedTrain.railRealtimeState === 'confirmed_delay'
         ? selectedTrain.delaySeconds : null,
-      transferMinutes: transfer, boardingAt,
+      transferMinutes: transfer, rushTransferMinutes: rushTransfer, boardingAt, normalBoardingAt,
+      transferMode: bus.departureAt < normalBoardingAt ? 'rush' : 'normal',
       provider: bus.provider, routeLabel: bus.routeLabel, tripId: bus.tripId,
       platform: bus.platform, departureAt: bus.departureAt, homeArrivalAt: bus.estimatedArrival,
       timingQuality: bus.timingQuality, departureState: bus.departureState,
