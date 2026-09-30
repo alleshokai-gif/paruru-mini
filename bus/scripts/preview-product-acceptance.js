@@ -14,6 +14,7 @@ import { createHomeBusLoader } from '../journey/home-bus-loader.js';
 import { compareHomeRoutes } from '../journey/home-route.js';
 import { listRailTrains } from '../rail/static-provider.js';
 import { attachJrNambuLocations, loadJrNambuLocations } from '../rail/jr-challenge-provider.js';
+import { createKazuRouteService, KAZU_TRANSFER_MINUTES } from '../rail/kazu-route-service.js';
 
 const root = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const port = Number(process.env.PALURU_BUS_PREVIEW_PORT || 8792);
@@ -44,6 +45,7 @@ const railStaticFile = process.env.PALURU_RAIL_STATIC_PATH
   || fileURLToPath(new URL('../generated/rail-odakyu-static.json', import.meta.url));
 const jrStaticFile = process.env.PALURU_JR_NAMBU_STATIC_PATH
   || fileURLToPath(new URL('../generated/rail-nambu-challenge-static.json', import.meta.url));
+const kazuStaticFile = fileURLToPath(new URL('../release-static/kazu-commute-static.json', import.meta.url));
 const transferMinutes = Object.freeze({ 'noborito-normal': 8, 'noborito-tamagawa': 11,
   mukougaoka: 5, mizonokuchi: 6 }); // Preview-only user-editable estimates, not measured walking times.
 const p0Static = JSON.parse(await readFile(new URL('../generated/p0-static.json', import.meta.url)));
@@ -90,6 +92,21 @@ function futureBusLoader(now) {
   ]));
   // Tokyu future-time data is unavailable in this local preview and remains explicitly partial.
   return createHomeBusLoader(sourceLoaders);
+}
+async function commutePreview(mode, now) {
+  const artifact = JSON.parse(await readFile(kazuStaticFile, 'utf8'));
+  const service = createKazuRouteService({ artifact, clock: () => now,
+    loadBuses: async ({ terminal, boardingAt }) => {
+      const ids = terminal === 'noborito'
+        ? ['noborito_to_home', 'noborito_tamagawa_to_kibukihoncho'] : ['mizonokuchi_to_home'];
+      return ids.flatMap((queryId) => getFutureBuses({ index: futureIndex,
+        queries: futureQueries.filter((query) => query.id === queryId),
+        providerContext: KAWASAKI_CONTEXT, now, realtime: null,
+        boardingAt: boardingAt + (queryId === 'noborito_tamagawa_to_kibukihoncho'
+          ? (KAZU_TRANSFER_MINUTES.noborito_tamagawa - KAZU_TRANSFER_MINUTES.noborito) * 60 : 0),
+        limit: 100 }).results.flatMap((group) => group.arrivals));
+    } });
+  return service.evaluate(mode);
 }
 const shadowArtifact = Object.freeze({ approvedForShadow: true, approvedForPublic: false, geometryReady: false });
 function positionFixture(scenario) {
@@ -184,7 +201,8 @@ globalThis.PALURU_BUS_HOME_ROUTE_ENABLED=true;
 globalThis.PALURU_BUS_POSITION_SHADOW_ENABLED=${scenario !== 'position-off'};
 globalThis.PALURU_BUS_HOME_ROUTE_SOURCE={
  getTrainChoices:async(journeyId,page=0)=>{const q=new URLSearchParams({journeyId,page:String(page)});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/trains?'+q);if(!r.ok)throw Error('TRAIN_UNAVAILABLE');return r.json()},
- evaluate:async({journeyId,trainId,page=0})=>{const q=new URLSearchParams({journeyId,trainId,page:String(page),case:${JSON.stringify(scenario)}});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/home-route?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()}
+ evaluate:async({journeyId,trainId,page=0})=>{const q=new URLSearchParams({journeyId,trainId,page:String(page),case:${JSON.stringify(scenario)}});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/home-route?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()},
+ evaluateCommute:async(mode)=>{const q=new URLSearchParams({mode});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/commute-route?'+q);if(!r.ok)throw Error('COMMUTE_UNAVAILABLE');return r.json()}
 };`;
 const server = createServer(async (req, res) => {
   try {
@@ -196,6 +214,12 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const scenario = scenarioIds.has(url.searchParams.get('previewCase')) ? url.searchParams.get('previewCase')
       : scenarioIds.has(url.searchParams.get('case')) ? url.searchParams.get('case') : 'live';
+    if (url.pathname === '/preview/commute-route') {
+      const mode = url.searchParams.get('mode');
+      if (!['hibiya', 'tamachi', 'pharmacy'].includes(mode))
+        return responseJson(res, { error: 'MODE_INVALID' }, 400);
+      return responseJson(res, await commutePreview(mode, previewNow(url)));
+    }
     if (url.pathname === '/preview/trains' || url.pathname === '/preview/home-route') {
       const page = Number(url.searchParams.get('page') || 0);
       if (!Number.isSafeInteger(page) || Math.abs(page) > 50)

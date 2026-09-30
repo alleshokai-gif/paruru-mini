@@ -28,6 +28,8 @@ import { createSeibuProvider } from '../providers/seibu/provider.js';
 import { JOURNEYS } from '../journey/config.js';
 import { createJourneyService } from '../journey/service.js';
 import { createRailHomeRouteService } from '../rail/home-route-service.js';
+import { createKazuRouteService, KAZU_TRANSFER_MINUTES } from '../rail/kazu-route-service.js';
+import { getFutureBuses } from '../journey/future-bus.js';
 
 export function start({ env = process.env, log = (v) => console.log(JSON.stringify(v)) } = {}) {
   const started = performance.now(), config = runtimeConfig(env);
@@ -80,9 +82,24 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   const railHomeRouteService = createRailHomeRouteService({ odakyuStatic, jrStatic,
     futureIndex: index, futureQueries: queries, providerContext, adapter,
     odptToken: config.env.ODPT_ACCESS_TOKEN, challengeEnv: env });
+  const kazuStatic = JSON.parse(readFileSync(new URL('../release-static/kazu-commute-static.json', import.meta.url), 'utf8'));
+  const commuteQueries = Object.freeze({ noborito: ['noborito_to_home',
+    'noborito_tamagawa_to_kibukihoncho'], mizonokuchi: ['mizonokuchi_to_home'] });
+  const kazuRouteService = createKazuRouteService({ artifact: kazuStatic,
+    loadBuses: async ({ terminal, boardingAt, now }) => {
+      let realtime = null;
+      try { realtime = await adapter.getRealtime(); }
+      catch { /* Future Bus keeps its scheduled candidates. */ }
+      return commuteQueries[terminal].flatMap((queryId) => getFutureBuses({ index,
+        queries: queries.filter((query) => query.id === queryId), providerContext, realtime,
+        now, boardingAt: boardingAt + (queryId === 'noborito_tamagawa_to_kibukihoncho'
+          ? (KAZU_TRANSFER_MINUTES.noborito_tamagawa - KAZU_TRANSFER_MINUTES.noborito) * 60 : 0),
+        limit: 100 }).results.flatMap((group) => group.arrivals));
+    } });
   const handler = createHttpHandler(() => service, { health: true, hubServiceFactory: () => hubService,
     journeyServiceFactory: () => journeyService,
-    railHomeRouteServiceFactory: () => railHomeRouteService });
+    railHomeRouteServiceFactory: () => railHomeRouteService,
+    kazuRouteServiceFactory: () => kazuRouteService });
   const server = createNodeServer({ handler, env: config.env, measure: log });
   server.listen(config.port, config.host, () => log({ event: 'bus_startup', build: 'bus-p2-5-noborito-mukougaoka-poc-v1',
     startupMs: performance.now() - started, staticStartupMs, positionStartupMs, positionStatus:position.status,

@@ -44,6 +44,11 @@ steps:
             assert.equal(jr.trains.filter(x=>x.calendarType==="weekend").length,81);
             assert.equal(odakyu.trains.filter(x=>x.calendarType==="weekday").length,69);
             assert.equal(odakyu.trains.filter(x=>x.calendarType==="weekend").length,71);
+            const kazu=JSON.parse(readFileSync("/app/release-static/kazu-commute-static.json"));
+            assert.equal(kazu.sample,false);
+            assert.equal(new Set(kazu.legs.map(x=>x.segment)).size,12);
+            assert.ok(kazu.legs.some(x=>x.calendarType==="weekday"&&x.departure<"12:00"));
+            assert.ok(kazu.legs.some(x=>x.calendarType==="weekend"&&x.departure<"12:00"));
             const university=await fetch("http://127.0.0.1:8080/api/bus/trains?journeyId=university");
             const school=await fetch("http://127.0.0.1:8080/api/bus/trains?journeyId=high_school");
             assert.equal(university.status,200); assert.equal(school.status,200);
@@ -51,6 +56,9 @@ steps:
             const schoolTrains=(await school.json()).trains;
             assert.ok(Array.isArray(universityTrains) && universityTrains.length<=5);
             assert.ok(Array.isArray(schoolTrains) && schoolTrains.length<=5);
+            const commute=await fetch("http://127.0.0.1:8080/api/bus/commute-route?mode=hibiya");
+            assert.equal(commute.status,200);
+            assert.equal((await commute.json()).routes.length,3);
             assert.equal(existsSync("/app/scripts"),false);
             assert.equal(existsSync("/app/node_modules/fflate"),false);
             assert.equal(process.versions.node.split(".")[0],"24");
