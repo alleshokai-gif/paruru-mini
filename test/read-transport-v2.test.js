@@ -108,7 +108,7 @@ async function main() {
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.projects, 'DIRECT_V2');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.work, 'DIRECT_V2');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.today, 'GAS');
-    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.inbox, 'GAS');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.inbox, 'DIRECT_V2');
 
     const canaryContext = { globalThis: null, Object,
       location: { search: '?paluru_read_transport_phase2_canary=1' } };
@@ -127,7 +127,7 @@ async function main() {
     const harness = load(async () => response(200, projectsDto()));
     const production = { mode: 'DIRECT_V2',
       baseUrl: 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app',
-      canaryCapability: '' };
+      canaryCapability: '', routeModes: { projects: 'DIRECT_V2', work: 'DIRECT_V2', today: 'GAS', inbox: 'DIRECT_V2' } };
     assert.equal(harness.context.PALURUReadTransportV2.selectMode(production, {
       role: 'admin', capabilities: []
     }, 'projects'), 'DIRECT_V2', 'authorized Kaz admin must use production direct transport');
@@ -136,7 +136,7 @@ async function main() {
     }, 'today'), 'GAS', 'TODAY must default to GAS without an explicit route flag');
     assert.equal(harness.context.PALURUReadTransportV2.selectMode(production, {
       role: 'admin', capabilities: []
-    }, 'inbox'), 'GAS', 'INBOX must default to GAS without an explicit route flag');
+    }, 'inbox'), 'DIRECT_V2', 'INBOX must use the production direct transport');
     assert.equal(harness.context.PALURUReadTransportV2.selectMode(production, {
       role: 'guardian', capabilities: ['home.control']
     }), 'GAS', 'production cutover must not bypass the existing Kaz admin boundary');
@@ -283,8 +283,8 @@ async function main() {
     'INBOX revision fingerprints must use the safe diagnostic helper and shared request correlation');
   assert(configSource.includes('baseUrl: phase2Canary ? phase2CanaryBaseUrl : stableBaseUrl')
     && configSource.includes("today: phase2Canary ? 'DIRECT_V2' : 'GAS'")
-    && configSource.includes("inbox: phase2Canary ? 'DIRECT_V2' : 'GAS'"),
-  'Phase 2 routes must default to GAS and require the explicit canary query flag');
+    && configSource.includes("inbox: 'DIRECT_V2'"),
+  'INBOX must use production DIRECT_V2 while TODAY retains its explicit canary gate');
   const answer = appSource.slice(appSource.indexOf('async function callAuthenticatedKazOsInboxAnswer_'), appSource.indexOf('function applyMembershipCapabilityVisibility_'));
   assert(answer.includes('callHomeControlApi') && !answer.includes('callDirectKazOsRead_'), 'write path must remain on GAS');
 

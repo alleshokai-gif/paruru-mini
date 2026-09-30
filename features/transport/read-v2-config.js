@@ -16,7 +16,7 @@
       projects: 'DIRECT_V2',
       work: 'DIRECT_V2',
       today: phase2Canary ? 'DIRECT_V2' : 'GAS',
-      inbox: phase2Canary ? 'DIRECT_V2' : 'GAS'
+      inbox: 'DIRECT_V2'
     })
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
