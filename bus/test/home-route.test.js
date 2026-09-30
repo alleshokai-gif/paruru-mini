@@ -60,6 +60,30 @@ test('a train that has already reached both stations is evaluated without sugges
   assert.ok(result.options.every((option) => option.departureAt >= epoch('18:00')));
 });
 
+test('Noborito keeps a close bus when the normal 8-minute transfer misses but a 6-minute rush can catch it', async () => {
+  const result = await compareHomeRoutes({ ...base, journeyId: 'university',
+    selectedTrain: { id: 'rush-train', arrivals: {
+      noborito: epoch('19:54'), mukougaoka: epoch('19:50') } },
+    rushTransferMinutes: { 'noborito-normal': 6 },
+    loadBuses: async ({ placeId, sourceIds, boardingAt }) => {
+      if (placeId === 'noborito-normal') {
+        assert.equal(boardingAt, epoch('20:00'));
+        return loaded(sourceIds, [
+          bus('kawasaki', 'noborito_to_home', '20:00', '20:08'),
+          bus('kawasaki', 'noborito_to_home', '20:21', '20:29')
+        ]);
+      }
+      return loaded(sourceIds, []);
+    } });
+  const rush = result.options.find((row) => row.placeId === 'noborito-normal' && row.departureAt === epoch('20:00'));
+  assert.ok(rush);
+  assert.equal(rush.transferMode, 'rush');
+  assert.equal(rush.rushTransferMinutes, 6);
+  assert.equal(rush.normalBoardingAt, epoch('20:02'));
+  assert.equal(result.fastest.departureAt, epoch('20:00'));
+  assert.equal(result.fastest.homeArrivalAt, epoch('20:08'));
+});
+
 test('Uncertain buses are retained as explanation but never selected as fastest', async () => {
   const result = await compareHomeRoutes({ ...base, journeyId: 'university',
     loadBuses: async ({ placeId, sourceIds }) => loaded(sourceIds, placeId === 'mukougaoka'
