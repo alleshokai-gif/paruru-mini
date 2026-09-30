@@ -1,6 +1,7 @@
 import { GoogleAuth } from 'google-auth-library';
 import { pathToFileURL } from 'node:url';
 import { PREORIGIN_HEADERS, PREORIGIN_RAW_SHEET } from './preorigin-schema.js';
+import { columnName } from './sheets.js';
 import { PREORIGIN_SCHEDULER_CONFIG, validatePreoriginSchedulerConfig } from './preorigin-scheduler.js';
 import { summarizePreoriginExecutions, summarizePreoriginRows } from './preorigin-report.js';
 
@@ -38,7 +39,7 @@ async function sheetValues(client, spreadsheetId) {
   const metadata = await client.request({ url: metadataUrl });
   if (!(metadata.data?.sheets || []).some((sheet) => sheet.properties?.title === PREORIGIN_RAW_SHEET))
     return [PREORIGIN_HEADERS];
-  const range = encodeURIComponent(`'${PREORIGIN_RAW_SHEET}'!A1:AJ`);
+  const range = encodeURIComponent(`'${PREORIGIN_RAW_SHEET}'!A1:${columnName(PREORIGIN_HEADERS.length)}`);
   const response = await client.request({ url: `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}?majorDimension=ROWS&valueRenderOption=UNFORMATTED_VALUE` });
   if (Buffer.byteLength(JSON.stringify(response.data || {})) > MAX_SHEET_BYTES) throw Error('PREORIGIN_REMOTE_SHEET_TOO_LARGE');
   return response.data?.values || [];

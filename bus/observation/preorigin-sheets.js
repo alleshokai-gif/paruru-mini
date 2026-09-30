@@ -6,6 +6,9 @@ const API = 'https://sheets.googleapis.com/v4/spreadsheets/';
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const range = (value) => encodeURIComponent(`'${PREORIGIN_RAW_SHEET}'!${value}`);
 const fail = (code) => { throw Error(code); };
+const LEGACY_PREORIGIN_HEADERS = Object.freeze(PREORIGIN_HEADERS.filter((name) => ![
+  'observed_trip_id', 'observed_route_id', 'observed_start_date', 'observed_schedule_relationship'
+].includes(name)));
 
 async function jsonResponse(response, code) {
   if (!response?.ok) fail(code);
@@ -67,7 +70,14 @@ export function createPreoriginSheetsStore({ spreadsheetId, fetcher = fetch,
       const header = await request(`${values}${range('1:1')}?majorDimension=ROWS`, {}, 'PREORIGIN_SHEETS_HEADER_READ_FAILED');
       const actual = header.values?.[0] || [];
       if (!actual.length) await writeHeader();
-      else if (JSON.stringify(actual) !== JSON.stringify(PREORIGIN_HEADERS)) fail('PREORIGIN_SHEETS_SCHEMA_MISMATCH');
+      else if (JSON.stringify(actual) === JSON.stringify(LEGACY_PREORIGIN_HEADERS)) {
+        const start = columnName(LEGACY_PREORIGIN_HEADERS.length + 1);
+        const last = columnName(PREORIGIN_HEADERS.length);
+        const added = PREORIGIN_HEADERS.slice(LEGACY_PREORIGIN_HEADERS.length);
+        await request(`${values}${range(`${start}1:${last}1`)}?valueInputOption=RAW`, {
+          method: 'PUT', body: JSON.stringify({ majorDimension: 'ROWS', values: [added] })
+        }, 'PREORIGIN_SHEETS_HEADER_MIGRATION_FAILED');
+      } else if (JSON.stringify(actual) !== JSON.stringify(PREORIGIN_HEADERS)) fail('PREORIGIN_SHEETS_SCHEMA_MISMATCH');
     }
     const ids = await request(`${values}${range('A2:A')}?majorDimension=COLUMNS`, {}, 'PREORIGIN_SHEETS_IDS_READ_FAILED');
     known = new Set((ids.values?.[0] || []).filter((value) => /^pre_[a-f0-9]{32}$/.test(value)));

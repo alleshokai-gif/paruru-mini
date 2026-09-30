@@ -74,7 +74,8 @@ export function createPreoriginObservationCollector({ index, positionStatic, has
       };
       rows.push(finalizePreoriginObservation({ ...base, preorigin_observation_id: null,
         record_kind: 'target_snapshot', vehicle_classification: 'none', vehicle_hash: null,
-        vehicle_timestamp: null, position_lat: null, position_lon: null, distance_to_origin_m: null,
+        vehicle_timestamp: null, observed_trip_id: null, observed_route_id: null, observed_start_date: null,
+        observed_schedule_relationship: null, position_lat: null, position_lon: null, distance_to_origin_m: null,
         gps_age_sec: null }, hashKey));
       for (const vehicle of sample.vehicles) {
         const assignedToTarget = vehicle.classification === 'assigned'
@@ -90,7 +91,9 @@ export function createPreoriginObservationCollector({ index, positionStatic, has
         rows.push(finalizePreoriginObservation({ ...base, preorigin_observation_id: null,
           record_kind: transition ? 'assignment_transition' : 'vehicle_observation',
           vehicle_classification: vehicle.classification, vehicle_hash: vehicle.vehicleHash,
-          vehicle_timestamp: vehicle.timestamp, position_lat: vehicle.position.lat, position_lon: vehicle.position.lon,
+          vehicle_timestamp: vehicle.timestamp, observed_trip_id: vehicle.tripId, observed_route_id: vehicle.routeId,
+          observed_start_date: vehicle.startDate, observed_schedule_relationship: vehicle.scheduleRelationship,
+          position_lat: vehicle.position.lat, position_lon: vehicle.position.lon,
           distance_to_origin_m: distance, gps_age_sec: Number.isSafeInteger(vehicle.timestamp)
             ? Math.max(0, now - vehicle.timestamp) : null }, hashKey));
       }

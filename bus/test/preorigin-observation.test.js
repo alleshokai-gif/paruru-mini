@@ -20,6 +20,7 @@ const baseRow = (patch = {}) => finalizePreoriginObservation({ preorigin_observa
   observed_at: '2026-09-14T06:40:00.000+09:00', service_date: '20260914', target_trip_id: 'target',
   scheduled_departure: '2026-09-14T06:50:00.000+09:00', origin_stop_id: '184_1', route_id: '10035', platform: '1',
   record_kind: 'target_snapshot', vehicle_classification: 'none', vehicle_hash: null, vehicle_timestamp: null,
+  observed_trip_id: null, observed_route_id: null, observed_start_date: null, observed_schedule_relationship: null,
   position_lat: null, position_lon: null, distance_to_origin_m: null, gps_age_sec: null, feed_timestamp: NOW,
   rt_age_sec: 0, raw_vehicle_entities: 1, assigned_count: 0, tripless_count: 1, partial_descriptor_count: 0,
   stale_count: 0, gps_missing_count: 0, runtime_dropped_count: 1, preorigin_vehicle_seen: false,
@@ -64,6 +65,10 @@ test('collector limits itself to 12 trips and stores evidence without assigning 
   assert.equal(first.rows.filter((row) => row.record_kind === 'target_snapshot').length, 1);
   assert.ok(first.rows.some((row) => row.vehicle_classification === 'unassigned_candidate'
     && row.evidence_level === 'undetermined'));
+  const partial = collector.collect({ bytes: bytes([vehicle({ trip: { tripId: 'partial-trip', routeId: '10035' } })]),
+    now: NOW, runId: 'run-partial', sampleIndex: 0 }).rows.find((row) => row.vehicle_classification === 'partial_assignment');
+  assert.ok(partial); assert.equal(partial.observed_trip_id, 'partial-trip'); assert.equal(partial.observed_route_id, '10035');
+  assert.equal(partial.observed_start_date, null); assert.equal(partial.observed_schedule_relationship, null);
   const tripId = index.directions.home_to_mizonokuchi.find((row) => row.startTime === '06:50:00'
     && row.isOrigin && row.routeId === '10035').tripId;
   const next = NOW + 32;
@@ -86,6 +91,28 @@ test('dedicated Sheets store creates only its own tab/header and suppresses retr
   assert.equal(calls.length, 5); assert.match(calls[1].options.body, /Bus_Preorigin_Raw/);
   assert.equal(JSON.stringify(calls).includes('raw-vehicle'), false);
   assert.equal((await store.append([row])).inserted, 0);
+});
+
+test('existing legacy Preorigin sheet is migrated append-only before new observations', async () => {
+  const legacy = PREORIGIN_HEADERS.filter((name) => ![
+    'observed_trip_id', 'observed_route_id', 'observed_start_date', 'observed_schedule_relationship'
+  ].includes(name));
+  const calls = [];
+  const responses = [
+    { sheets: [{ properties: { title: 'Bus_Preorigin_Raw' } }] },
+    { values: [legacy] },
+    { updatedRows: 1 },
+    { values: [] }
+  ];
+  const fetcher = async (url, options = {}) => { calls.push({ url, options }); const body = responses.shift();
+    return { ok: true, headers: { get: () => null }, text: async () => JSON.stringify(body) }; };
+  const store = createPreoriginSheetsStore({ spreadsheetId: 'A'.repeat(24), fetcher, tokenProvider: async () => 'access-token' });
+  await store.initialize();
+  assert.equal(store.knownCount(), 0);
+  const migration = calls.find((call) => call.options?.method === 'PUT' && /valueInputOption=RAW/.test(call.url));
+  assert.ok(migration);
+  assert.match(migration.options.body, /observed_trip_id/);
+  assert.match(migration.options.body, /observed_schedule_relationship/);
 });
 
 test('preorigin runner fetches one raw feed per sample and stops outside the target band', async () => {

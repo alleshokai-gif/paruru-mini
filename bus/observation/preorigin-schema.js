@@ -8,7 +8,8 @@ export const PREORIGIN_HEADERS = Object.freeze([
   'feed_timestamp', 'rt_age_sec', 'raw_vehicle_entities', 'assigned_count', 'tripless_count',
   'partial_descriptor_count', 'stale_count', 'gps_missing_count', 'runtime_dropped_count',
   'preorigin_vehicle_seen', 'preorigin_first_seen_at', 'preorigin_distance_to_origin', 'trip_assignment_transition_at',
-  'seconds_before_scheduled', 'arrival_to_origin', 'departure_positive_evidence', 'evidence_level', 'censored'
+  'seconds_before_scheduled', 'arrival_to_origin', 'departure_positive_evidence', 'evidence_level', 'censored',
+  'observed_trip_id', 'observed_route_id', 'observed_start_date', 'observed_schedule_relationship'
 ]);
 
 const KINDS = new Set(['target_snapshot', 'vehicle_observation', 'assignment_transition']);
@@ -52,7 +53,12 @@ export function validatePreoriginObservation(row) {
     || typeof row.platform !== 'string' || row.platform.length > 80 || !KINDS.has(row.record_kind)
     || !CLASSIFICATIONS.has(row.vehicle_classification)
     || !(row.vehicle_hash === null || /^veh_[a-f0-9]{32}$/.test(row.vehicle_hash))
-    || !integerOrNull(row.vehicle_timestamp) || !finiteOrNull(row.position_lat) || !finiteOrNull(row.position_lon)
+    || !integerOrNull(row.vehicle_timestamp)
+    || !(row.observed_trip_id === null || identifier(row.observed_trip_id))
+    || !(row.observed_route_id === null || identifier(row.observed_route_id))
+    || !(row.observed_start_date === null || /^\d{8}$/.test(row.observed_start_date))
+    || !integerOrNull(row.observed_schedule_relationship)
+    || !finiteOrNull(row.position_lat) || !finiteOrNull(row.position_lon)
     || (row.position_lat === null) !== (row.position_lon === null)
     || row.position_lat !== null && Math.abs(row.position_lat) > 90
     || row.position_lon !== null && Math.abs(row.position_lon) > 180
