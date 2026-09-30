@@ -43,3 +43,28 @@
 .bus-home-route-train-label { display: block; font-size: 14px; color: #425971; }
 .bus-home-route-status { min-height: 1.4em; color: #526579; }
 .bus-home-route-result { display: grid; gap: 8px; min-width: 0; }
+.bus-home-route-commutes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px; margin: 0 0 12px; }
+.bus-home-route-commute-choice { min-width: 0; min-height: 48px; padding: 8px 2px;
+  border: 1px solid #b4c9da; border-radius: 9px; background: #f2f7fb;
+  color: #204864; font-size: 15px; font-weight: 600; white-space: nowrap; }
+.bus-home-route-commute-choice[aria-pressed="true"] { background: #244c6c; color: #fff; }
+.bus-home-route-commute-head { margin: 0 0 4px; font-size: 18px; color: #173f60; }
+.bus-home-route-commute-card { min-width: 0; padding: 12px;
+  border: 1px solid #d8e3ec; border-radius: 12px; overflow-wrap: anywhere; }
+.bus-home-route-commute-card.is-primary { background: #edf5fc; border-color: #90b5d6; }
+.bus-home-route-commute-card-head { display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: 4px 10px; margin-bottom: 8px; }
+.bus-home-route-commute-card-head h3 { flex: 1 1 100%; margin: 0;
+  color: #174a73; font-size: 18px; }
+.bus-home-route-commute-card.is-primary .bus-home-route-commute-card-head h3 { font-size: 21px; }
+.bus-home-route-commute-card-head strong { font-size: 17px; }
+.bus-home-route-commute-card-head span { color: #6b8296; font-size: 14px; }
+.bus-home-route-commute-step, .bus-home-route-commute-home { margin: 4px 0;
+  font-size: 15px; line-height: 1.5; }
+.bus-home-route-commute-home { font-weight: 700; }
+.bus-home-route-commute-arrow { margin: 0 0 0 9px; color: #6b8296; line-height: 1; }
+.bus-home-route-commute-quality { margin: 6px 0 0; color: #526579; font-size: 13px; }
+@media (max-width: 360px) {
+  .bus-home-route-commute-choice { font-size: 14px; }
+}

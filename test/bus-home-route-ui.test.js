@@ -164,6 +164,32 @@ test('home route selects the related normal Bus location only from an exact stat
   assert.equal(ui.hubForJourney('high_school', { fastest: null }), null);
 });
 
+test('Kazu commute cards prioritize first action, transfer train and home arrival', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  ui.renderCommute(doc, mount, { mode: 'hibiya', firstAction: '千代田線へ', routes: [
+    { id: 'chiyoda_odakyu', rank: 1, firstAction: '千代田線へ', durationMinutes: 58,
+      homeArrivalAt: epoch('18:26'), steps: [
+        { type: 'train', from: '日比谷', to: '代々木上原', line: '千代田線',
+          trainType: '各停', destination: '代々木上原', departureAt: epoch('17:34'), stationTimeAt: epoch('17:57') },
+        { type: 'transfer', station: '代々木上原', nextLine: '小田急線',
+          nextTrainType: '快速急行', nextDestination: '藤沢' },
+        { type: 'train', from: '代々木上原', to: '登戸', line: '小田急線',
+          trainType: '快速急行', destination: '藤沢', departureAt: epoch('18:02'), stationTimeAt: epoch('18:12') },
+        { type: 'bus', provider: 'kawasaki', routeLabel: '登05', platform: '2番', departureAt: epoch('18:16') }
+      ] },
+    { id: 'jimbocho_denentoshi', rank: 2, firstAction: '三田線へ',
+      differenceMinutes: 4, durationMinutes: 62, steps: [] }
+  ] });
+  const text = renderedText(mount);
+  assert.match(text, /いま向かうなら：千代田線/);
+  assert.match(text, /17:34 日比谷発.*代々木上原で小田急線 快速急行 藤沢行へ乗換.*18:02 代々木上原発.*🚌 18:16 川崎市バス 登05・2番.*🏠 18:26 神木本町着/s);
+  assert.match(text, /\+4分/);
+  assert.doesNotMatch(text, /trainId|odpt:|GPS|confidence/);
+  const css = fs.readFileSync(require.resolve('../features/bus/home-route.css'), 'utf8');
+  assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /bus-home-route-commute-choice[^}]*min-height: 48px/s);
+});
+
 test('PALURU Bus view mounts the accepted manual train selector with a production source', () => {
   const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
   const app = fs.readFileSync(require.resolve('../app.js'), 'utf8');

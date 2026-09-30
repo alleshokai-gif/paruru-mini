@@ -19,6 +19,14 @@ globalThis.PALURU_BUS_HOME_ROUTE_SOURCE = Object.freeze({
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) throw Error('BUS_HOME_ROUTE_UNAVAILABLE');
     return response.json();
+  },
+  async evaluateCommute(mode) {
+    const url = new URL(globalThis.PALURU_BUS_API_URL);
+    url.pathname = '/api/bus/commute-route';
+    url.search = new URLSearchParams({ mode });
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) throw Error('BUS_COMMUTE_ROUTE_UNAVAILABLE');
+    return response.json();
   }
 });
 globalThis.PALURU_BUS_LEGACY_UI_ENABLED = false;
