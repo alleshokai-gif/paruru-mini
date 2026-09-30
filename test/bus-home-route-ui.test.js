@@ -122,6 +122,17 @@ test('JR train choice presents station times as arrivals while preserving depart
   assert.equal(option.stationTimeSource, 'departure');
 });
 
+test('rush-transfer option is visible instead of silently dropping a close bus', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  ui.renderDecision(doc, mount, { status: 'available', fastest: {
+    placeId: 'noborito-normal', stationId: 'noborito', stationLabel: '登戸駅（生田緑地口）',
+    stationTimeAt: epoch('19:54'), departureAt: epoch('20:00'), provider: 'kawasaki',
+    routeLabel: '登０５', homeArrivalAt: epoch('20:08'), timingQuality: 'realtime_arrival',
+    transferMode: 'rush', transferMinutes: 8, rushTransferMinutes: 6
+  }, alternate: null, differenceMinutes: null, unavailablePlaces: [] });
+  assert.match(renderedText(mount), /登戸 19:54着.*🏃 急げば間に合う.*🚌 20:00 川崎市バス 登０５.*🏠 神木本町 20:08着/s);
+});
+
 test('Musashi-Mizonokuchi decision keeps its rail station distinct from the bus stop', () => {
   const doc = fakeDocument(), mount = doc.createElement('div');
   ui.renderDecision(doc, mount, { status: 'available', fastest: {
