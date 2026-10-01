@@ -620,9 +620,10 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   const candidates = longCandidatesFixture();
   const reviewItems = longReviewItemsFixture();
   const publishRequestId = uuid(1200);
+  const payloadDigest = longDigest(f, candidates, reviewItems);
   const published = f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
     inboxId: created.inboxId, claimVersion: claim.claimVersion, publishRequestId,
-    payloadDigest: longDigest(f, candidates, reviewItems), candidates, reviewItems,
+    payloadDigest, candidates, reviewItems,
     usage: { inputTokens: 5000, outputTokens: 700 }, durationMs: 25000,
   }));
   assert.strictEqual(published.candidateIds.length, 3);
@@ -636,6 +637,12 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   assert.strictEqual(list.batches[0].reviewItemCount, 9);
   const detail = f.api.familyInboxPcReviewGet_(pcReviewBody('familyInbox.pcReview.get', { inboxId: created.inboxId }));
   assert.strictEqual(detail.items.length, 12);
+  for (const item of detail.items) {
+    assert.strictEqual(item.inboxId, created.inboxId);
+    assert.strictEqual(item.publishRequestId, publishRequestId);
+    assert.strictEqual(item.payloadDigest, payloadDigest);
+    assert.strictEqual(item.profile, 'school-v1-long');
+  }
   assert.strictEqual(detail.items[0].origin, 'review_item', 'unresolved items must be exception-first');
   assert(!JSON.stringify(detail).includes('drive-secret-'));
 

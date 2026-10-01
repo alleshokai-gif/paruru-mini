@@ -500,6 +500,8 @@ function familyInboxPcReviewCandidateDto_(record) {
   const value = familyInboxReviewCandidateDto_(record);
   const dto = {
     itemId: value.candidateId, origin: 'canonical', candidateType: value.candidateType, revision: value.revision,
+    inboxId: String(record.inboxId || ''), publishRequestId: String(record.publishRequestId || ''),
+    payloadDigest: String(record.payloadDigest || ''), profile: String(record.profile || ''),
     confidence: value.confidence, payload: value.payload, evidenceSummary: value.evidenceSummary,
     warnings: value.warnings, questions: value.questions, reviewStatus: value.reviewStatus,
     reviewedAt: value.reviewedAt, reviewAction: value.reviewAction, reviewReason: value.reviewReason,
@@ -510,6 +512,8 @@ function familyInboxPcReviewCandidateDto_(record) {
 function familyInboxPcReviewItemDto_(record) {
   const dto = {
     itemId: String(record.reviewItemId || ''), origin: 'review_item', reviewType: String(record.reviewType || ''),
+    inboxId: String(record.inboxId || ''), publishRequestId: String(record.publishRequestId || ''),
+    payloadDigest: String(record.payloadDigest || ''), profile: String(record.profile || ''),
     candidateType: String(record.candidateType || ''), revision: familyInboxWorkerInteger_(record.revision, 1),
     confidence: Number(record.confidence), payload: familyInboxPcReviewEffectiveItemPayload_(record),
     evidenceSummary: familyInboxReviewEvidenceSummary_(record.evidenceJson), warnings: familyInboxReviewJsonArray_(record.warningsJson),
