@@ -28,7 +28,9 @@ function joins(descriptor, row, date) {
 }
 
 export function getArrivals({ index, realtime = null, queries, providerContext, now, fetchError = false, staticStale = false,
-  originDepartureResolver = null }) {
+  originDepartureResolver = null, arrivalLimit = LIMITS.arrivals }) {
+  if (!Number.isSafeInteger(arrivalLimit) || arrivalLimit < LIMITS.arrivals || arrivalLimit > 20)
+    throw new Error('BUS_ARRIVAL_LIMIT_INVALID');
   const resolved = prepareStatic(index, queries, providerContext);
   if (dateKey(now) > index.feedInfo.feed_end_date || dateKey(now + DAY) < index.feedInfo.feed_start_date) throw new Error('BUS_STATIC_OUT_OF_RANGE');
   const feedFresh = realtime && fresh(realtime.timestamp, now, LIMITS.feedMaxAgeSec);
@@ -114,9 +116,9 @@ export function getArrivals({ index, realtime = null, queries, providerContext, 
     }
     arrivals.sort((a, b) => a.rank-b.rank||a.sort-b.sort||a.scheduled-b.scheduled
       ||`${a.date}:${a.row.tripId}`.localeCompare(`${b.date}:${b.row.tripId}`));
-    const primary=arrivals.filter(value=>value.rank<=0).slice(0,LIMITS.arrivals);
+    const primary=arrivals.filter(value=>value.rank<=0).slice(0,arrivalLimit);
     const advisory=[...arrivals.filter(value=>value.rank>0)].sort((a,b)=>b.scheduled-a.scheduled)[0];
-    const visible=advisory?[...primary.slice(0,Math.max(0,LIMITS.arrivals-1)),advisory]:primary;
+    const visible=advisory?[...primary.slice(0,Math.max(0,arrivalLimit-1)),advisory]:primary;
     const selected = visible.map(({ row, date, scheduled, estimated, delay, rt, state, timingSource, tu, departure }) => ({
       tripId: `${date}:${row.tripId}`, routeLabel: row.routeLabel, headsign: row.headsign, platform: providerContext.platformResolver(row.fromStopId, index),
       scheduledTime: clock(scheduled), scheduledAt: iso(scheduled),

@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20260930-paluru-inbox-candidate-direct-v2-v1";
+globalThis.BUILD_ID = "v20261002-hub-source-window-v1";

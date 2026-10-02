@@ -74,7 +74,7 @@ export function createBusService({ index, adapter, queries, providerContext, cac
       const departureMs=performance.now()-departureStarted;
       const joinStarted = performance.now();
       const data = getArrivals({ index: staticIndex, realtime: rt.data, queries: querySet, providerContext, now: now(), fetchError: rt.error,
-        originDepartureResolver });
+        originDepartureResolver, arrivalLimit: forHub ? 12 : LIMITS.arrivals });
       measure({ staticMs, realtimeMs, positionMs, departureMs, joinMs: performance.now() - joinStarted,
         totalMs: performance.now() - started, shadowPosition: shadowPositionObserver?.summary?.() });
       if (!forHub) return data;
