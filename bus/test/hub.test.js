@@ -12,6 +12,7 @@ import { indexFixture, P0_INPUT } from './fixtures.js';
 import { BUS_POSITION_UI_ENABLED } from '../config/policy.js';
 import { DEPARTURE_PREDICTION_PUBLIC_ENABLED } from '../departure/engine.js';
 import { KAWASAKI_JOURNEY_QUERIES } from '../providers/kawasaki/journey-config.js';
+import { getArrivals } from '../core/arrivals.js';
 
 const NOW = 1_789_260_000;
 const arrival = (changes = {}) => ({
@@ -47,6 +48,24 @@ test('Kibukihoncho config groups by travel decision instead of Provider or platf
     && row.decisionGroupId === westbound.id));
   assert.ok(KIBUKIHONCHO_HUB.sources.every((row) => !Object.hasOwn(row, 'purposeId')));
   assert.deepEqual(KIBUKIHONCHO_HUB.unresolved, []);
+});
+
+test('Hub source window keeps enough future rows for global cross-source chronological ranking', () => {
+  const index = indexFixture();
+  const query = P0_INPUT.queries.find((value) => value.id === 'noborito_to_home');
+  const original = index.directions[query.id][0];
+  const base = Date.parse('2026-09-10T00:00:00+09:00') / 1000;
+  index.directions = { ...index.directions, [query.id]: ['10:15','10:33','10:55','11:15','11:35'].map((time, i) => {
+    const [h,m] = time.split(':').map(Number);
+    return { ...original, tripId: `noborito-${i}`, startTime: `${time}:00`,
+      scheduledSeconds: h * 3600 + m * 60, scheduledArrivalSeconds: h * 3600 + (m + 12) * 60 };
+  }) };
+  const now = Date.parse('2026-09-10T10:04:00+09:00') / 1000;
+  const normal = getArrivals({ index, queries: [query], providerContext: P0_INPUT.providerContext, now });
+  const hubWindow = getArrivals({ index, queries: [query], providerContext: P0_INPUT.providerContext, now, arrivalLimit: 12 });
+  assert.deepEqual(normal.directions[0].arrivals.map((row) => row.scheduledTime), ['10:15','10:33','10:55']);
+  assert.deepEqual(hubWindow.directions[0].arrivals.map((row) => row.scheduledTime),
+    ['10:15','10:33','10:55','11:15','11:35']);
 });
 
 test('Kibukihoncho westbound decision group ranks mixed destinations together and keeps each headsign', () => {
