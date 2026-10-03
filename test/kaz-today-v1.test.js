@@ -188,9 +188,11 @@ test('gateway derives /v1/today and POSTs bounded transient planning input',()=>
   };
   vm.runInContext(fs.readFileSync(path.join(root,'gas/KazOsToday.js'),'utf8'),h.ctx);
   h.ctx.buildKazOsCalendarCapture_=()=>({selection:{},horizon:{},fetched_at:'x',response:{events:[]},connector_receipt:{}});
+  h.ctx.buildKazOsWorkBusyToday_=date=>({status:'empty',source:null,generated_at:null,date,intervals:[]});
   const result=h.ctx.sanitizeKazOsToday_(h.ctx.readKazOsToday_());
   assert.equal(result.schema_version,'kaz-today-plan-v1');
-  assert.deepEqual(Object.keys(observedPayload).sort(),['calendar_capture','classifications','planning']);
+  assert.deepEqual(Object.keys(observedPayload).sort(),['calendar_capture','classifications','planning','work_busy']);
+  assert.equal(observedPayload.work_busy.status,'empty');
   assert.deepEqual(observedPayload.classifications,{items:[]});
   assert.equal(observedPayload.planning.timezone,'Asia/Tokyo');
   assert(/^\d{4}-\d{2}-\d{2}$/.test(observedPayload.planning.planning_date));
@@ -201,12 +203,22 @@ test('gateway derives /v1/today and POSTs bounded transient planning input',()=>
 });
 
 test('TODAY sanitizer accepts bounded V2 sections and preserves NOW/NEXT limits',()=>{
-  const result=h.ctx.sanitizeKazOsToday_(snapshotV2());
+  const fixture=snapshotV2();
+  const slot={start:'2026-09-15T16:00:00+09:00',end:'2026-09-15T16:30:00+09:00',duration_min:30,
+    suggestions:[{...fixture.today.now.items[0],estimate_min:30}]};
+  fixture.sources.work_busy={status:'ok'};
+  fixture.today.company_free_windows=[slot];
+  fixture.today.calendar_free_windows=[slot];
+  const result=h.ctx.sanitizeKazOsToday_(fixture);
   assert.equal(result.schema_version,'kaz-today-plan-v2');
   assert.equal(result.policy.duration_inference_allowed,false);
   assert.equal(result.today.now.items.length,1);
   assert.equal(result.today.next.items.length,1);
   assert.deepEqual(result.today.not_fit_today,[]);
+  assert.equal(result.today.company_free_windows[0].suggestions[0].estimate_min,30);
+  assert.equal(result.today.calendar_free_windows[0].duration_min,30);
+  fixture.today.company_free_windows[0].suggestions[0].estimate_min=60;
+  assert.throws(()=>h.ctx.sanitizeKazOsToday_(fixture));
 });
 
 test('V2 TODAY fixture exposes all five Human-facing planning sections',()=>{
@@ -248,7 +260,7 @@ test('PWA exposes Dynamic TODAY time context without UI score',()=>{
   assert(app.includes('kazOsTodayApi: callAuthenticatedKazOsToday_'));
   assert(nav.includes("location.hash !== '#kaz-os/today'"));
   assert(personal.includes("selection.page === 'today'"));
-  assert(personal.includes('Family Calendarから、いま使える時間'));
+  assert(personal.includes('WorkBusyとFamily Calendarの空き時間を別々に表示'));
   assert(personal.includes('Dynamic Daily Planning v1の判定範囲'));
   assert(personal.includes('Dynamic Daily Planning v2の判定範囲'));
   assert(personal.includes("const t = data.today, v2 = data.schema_version === 'kaz-today-plan-v2'"));
