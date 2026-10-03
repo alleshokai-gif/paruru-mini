@@ -12,8 +12,8 @@ function importLatestWorkBusyEmailV1() {
 function importLatestWorkBusyEmail_(dependencies) {
   const deps = dependencies || {};
   const now = deps.now instanceof Date ? new Date(deps.now.getTime()) : new Date();
-  const gmail = deps.gmail || Gmail;
-  const message = readLatestWorkBusyMessage_(gmail);
+  const gmailApp = deps.gmailApp || GmailApp;
+  const message = readLatestWorkBusyMessage_(gmailApp);
   const parsed = parseWorkBusyBody_(message.body);
   if (!parsed.length) throw workBusyImportError_('INVALID_PAYLOAD');
 
@@ -57,100 +57,42 @@ function importLatestWorkBusyEmail_(dependencies) {
   }
 }
 
-function readLatestWorkBusyMessage_(gmail) {
-  let listing;
+function readLatestWorkBusyMessage_(gmailApp) {
+  const app = gmailApp || GmailApp;
+  let threads;
   try {
-    listing = gmail.Users.Messages.list('me', {
-      q: 'subject:' + PALURU_WORK_BUSY_SUBJECT,
-      maxResults: 1
+    threads = app.search('subject:' + PALURU_WORK_BUSY_SUBJECT);
+  } catch (_) {
+    throw workBusyImportError_('SOURCE_UNAVAILABLE');
+  }
+  let latestMessage = null;
+  let latestTimestamp = -Infinity;
+  try {
+    (Array.isArray(threads) ? threads : []).forEach(function(thread) {
+      const messages = thread && thread.getMessages();
+      (Array.isArray(messages) ? messages : []).forEach(function(message) {
+        if (!message || String(message.getSubject() || '') !== PALURU_WORK_BUSY_SUBJECT) return;
+        const messageDate = message.getDate();
+        const timestamp = messageDate instanceof Date
+          ? messageDate.getTime() : new Date(messageDate).getTime();
+        if (!Number.isFinite(timestamp) || timestamp <= latestTimestamp) return;
+        latestMessage = message;
+        latestTimestamp = timestamp;
+      });
     });
   } catch (_) {
     throw workBusyImportError_('SOURCE_UNAVAILABLE');
   }
-  const references = listing && Array.isArray(listing.messages) ? listing.messages : [];
-  const messageId = references.length ? String(references[0].id || '') : '';
-  if (!messageId) throw workBusyImportError_('SOURCE_NOT_FOUND');
 
-  let message;
+  if (!latestMessage) throw workBusyImportError_('SOURCE_NOT_FOUND');
+  let body;
   try {
-    message = gmail.Users.Messages.get('me', messageId, { format: 'full' });
+    body = String(latestMessage.getPlainBody() || latestMessage.getBody() || '');
   } catch (_) {
     throw workBusyImportError_('SOURCE_UNAVAILABLE');
   }
-  const headers = message && message.payload && Array.isArray(message.payload.headers)
-    ? message.payload.headers : [];
-  const subjectHeader = headers.find(function(header) {
-    return String(header && header.name || '').toLowerCase() === 'subject';
-  });
-  if (String(subjectHeader && subjectHeader.value || '').trim() !== PALURU_WORK_BUSY_SUBJECT) {
-    throw workBusyImportError_('SUBJECT_MISMATCH');
-  }
-  const body = extractWorkBusyPlainText_(messageId, message.payload, gmail);
   if (!body) throw workBusyImportError_('INVALID_PAYLOAD');
   return { body: body };
-}
-
-function extractWorkBusyPlainText_(messageId, payload, gmail) {
-  const plainTextParts = [];
-  const htmlTextParts = [];
-  const gmailApi = gmail || Gmail;
-  function decodeBodyData(data) {
-    try {
-      const bytes = Utilities.base64DecodeWebSafe(data);
-      return Utilities.newBlob(bytes).getDataAsString('UTF-8');
-    } catch (_) {
-      throw workBusyImportError_('INVALID_PAYLOAD');
-    }
-  }
-  function visit(part) {
-    if (!part || String(part.filename || '').trim()) return;
-    const mimeType = String(part.mimeType || '').toLowerCase();
-    const body = part.body;
-    if (mimeType === 'text/plain' || mimeType === 'text/html') {
-      let bodyData = body && body.data;
-      if (!(typeof bodyData === 'string' && bodyData)
-          && body && typeof body.attachmentId === 'string' && body.attachmentId) {
-        try {
-          const attachment = gmailApi.Users.Messages.Attachments.get(
-            'me', messageId, body.attachmentId
-          );
-          bodyData = attachment && attachment.data;
-        } catch (_) {
-          throw workBusyImportError_('INVALID_PAYLOAD');
-        }
-      }
-      if (typeof bodyData === 'string' && bodyData) {
-        const text = decodeBodyData(bodyData);
-        if (text.trim()) {
-          if (mimeType === 'text/plain') plainTextParts.push(text);
-          else htmlTextParts.push(text);
-        }
-      }
-    }
-    (Array.isArray(part.parts) ? part.parts : []).forEach(visit);
-  }
-  visit(payload);
-  if (plainTextParts.length) return plainTextParts[0];
-  if (!htmlTextParts.length) return '';
-
-  return htmlTextParts[0]
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ')
-    .replace(/<[^>]*>/g, '\n')
-    .replace(/&nbsp;|&#160;|&#xA0;/gi, ' ')
-    .replace(/&(amp|lt|gt|quot|apos);/gi, function(entity, name) {
-      const decoded = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
-      return decoded[String(name).toLowerCase()] || entity;
-    })
-    .replace(/&#(?:x([0-9a-f]+)|(\d+));/gi, function(entity, hex, decimal) {
-      const codePoint = hex ? parseInt(hex, 16) : Number(decimal);
-      return Number.isFinite(codePoint) && codePoint >= 0 && codePoint <= 0x10FFFF
-        ? String.fromCodePoint(codePoint) : entity;
-    })
-    .replace(/[ \t\f\v]+/g, ' ')
-    .replace(/[ \t]*\n[ \t]*/g, '\n')
-    .replace(/\n{2,}/g, '\n')
-    .trim();
 }
 
 function parseWorkBusyBody_(body) {

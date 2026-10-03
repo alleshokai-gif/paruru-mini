@@ -21,16 +21,14 @@ const context = {
       if (pattern.includes('XXX')) return fields.year + '-' + fields.month + '-' + fields.day
         + 'T' + fields.hour + ':' + fields.minute + ':' + fields.second + '+09:00';
       throw new Error('unexpected date format');
-    },
-    base64DecodeWebSafe(value) { return Buffer.from(value, 'base64url'); },
-    newBlob(value) { return { getDataAsString() { return Buffer.from(value).toString('utf8'); } }; }
+    }
   }
 };
 vm.createContext(context);
 new vm.Script(source, { filename: 'WorkBusyImportService.js' }).runInContext(context);
 const importLatest = context.importLatestWorkBusyEmail_;
 const parseBody = context.parseWorkBusyBody_;
-const extractBody = context.extractWorkBusyPlainText_;
+const readLatestMessage = context.readLatestWorkBusyMessage_;
 
 function fakeSheet() {
   return {
@@ -88,116 +86,70 @@ function fakeSpreadsheet(sheet) {
   };
 }
 
-function fakeGmail(body, subject = 'PALURU_AVAILABILITY') {
-  const encoded = Buffer.from(body, 'utf8').toString('base64url');
-  const calls = { list: [], get: [] };
-  const gmail = {
-    Users: {
-      Messages: {
-        list(userId, options) {
-          calls.list.push({ userId, options });
-          return { messages: [{ id: 'message-id-not-for-storage' }] };
-        },
-        get(userId, id, options) {
-          calls.get.push({ userId, id, options });
-          return {
-            payload: {
-              mimeType: 'multipart/alternative',
-              headers: [{ name: 'Subject', value: subject }, { name: 'From', value: 'private@example.test' }],
-              parts: [{ mimeType: 'text/plain', body: { data: encoded } }]
-            }
-          };
-        }
-      }
-    }
-  };
-  return { gmail, calls };
-}
-
-function fakeAttachmentGmail(attachments = {}) {
-  const calls = [];
+function makeMessage(subject, date, plainBody, htmlBody) {
+  const calls = { plainBody: 0, body: 0 };
   return {
     calls,
-    Users: {
-      Messages: {
-        Attachments: {
-          get(userId, messageId, attachmentId) {
-            calls.push({ userId, messageId, attachmentId });
-            return { data: attachments[attachmentId] || '' };
-          }
-        }
-      }
+    getSubject() { return subject; },
+    getDate() { return new Date(date); },
+    getPlainBody() { calls.plainBody += 1; return plainBody; },
+    getBody() { calls.body += 1; return htmlBody; }
+  };
+}
+
+function fakeGmailApp(threadMessages) {
+  const calls = { search: [], getMessages: 0 };
+  const threads = threadMessages.map((messages) => ({
+    getMessages() { calls.getMessages += 1; return messages; }
+  }));
+  return {
+    calls,
+    gmailApp: {
+      search(query) { calls.search.push(query); return threads; }
     }
   };
 }
 
-function encodeBase64Url(value) {
-  return Buffer.from(value, 'utf8').toString('base64url');
+function fakeGmail(body, subject = 'PALURU_AVAILABILITY') {
+  return fakeGmailApp([[
+    makeMessage(subject, '2026-10-01T00:00:00Z', body, '<html>fallback</html>')
+  ]]);
 }
 
-test('extracts inline top-level text/plain body.data', () => {
-  const gmail = fakeAttachmentGmail();
-  const result = extractBody('message-id', {
-    mimeType: 'text/plain',
-    body: { data: encodeBase64Url('TOP LEVEL INLINE BODY') }
-  }, gmail);
-  assert.equal(result, 'TOP LEVEL INLINE BODY');
-  assert.deepEqual(gmail.calls, []);
+test('prefers GmailApp plain body over HTML body', () => {
+  const message = makeMessage('PALURU_AVAILABILITY', '2026-10-01T00:00:00Z', 'PLAIN', 'HTML');
+  const gmail = fakeGmailApp([[message]]);
+  assert.equal(readLatestMessage(gmail.gmailApp).body, 'PLAIN');
+  assert.deepEqual(gmail.calls.search, ['subject:PALURU_AVAILABILITY']);
+  assert.equal(message.calls.plainBody, 1);
+  assert.equal(message.calls.body, 0);
 });
 
-test('extracts inline body.data from nested multipart parts', () => {
-  const gmail = fakeAttachmentGmail();
-  const result = extractBody('message-id', {
-    mimeType: 'multipart/mixed',
-    parts: [{
-      mimeType: 'multipart/alternative',
-      parts: [{
-        mimeType: 'text/plain',
-        body: { data: encodeBase64Url('NESTED INLINE BODY') }
-      }]
-    }]
-  }, gmail);
-  assert.equal(result, 'NESTED INLINE BODY');
-  assert.deepEqual(gmail.calls, []);
+test('uses GmailApp HTML body when plain body is empty', () => {
+  const message = makeMessage('PALURU_AVAILABILITY', '2026-10-01T00:00:00Z', '', '<html>HTML</html>');
+  const gmail = fakeGmailApp([[message]]);
+  assert.equal(readLatestMessage(gmail.gmailApp).body, '<html>HTML</html>');
+  assert.equal(message.calls.plainBody, 1);
+  assert.equal(message.calls.body, 1);
 });
 
-test('fetches a text/plain body.attachmentId when body.data is absent', () => {
-  const gmail = fakeAttachmentGmail({
-    'plain-attachment-id': encodeBase64Url('ATTACHED PLAIN BODY')
-  });
-  const result = extractBody('message-id', {
-    mimeType: 'multipart/alternative',
-    parts: [{
-      mimeType: 'text/plain',
-      body: { attachmentId: 'plain-attachment-id' }
-    }]
-  }, gmail);
-  assert.equal(result, 'ATTACHED PLAIN BODY');
-  assert.deepEqual(gmail.calls, [{
-    userId: 'me', messageId: 'message-id', attachmentId: 'plain-attachment-id'
-  }]);
+test('selects the newest exact-subject message across search result threads', () => {
+  const older = makeMessage('PALURU_AVAILABILITY', '2026-09-30T23:00:00Z', 'OLDER', '');
+  const newer = makeMessage('PALURU_AVAILABILITY', '2026-10-01T01:00:00Z', 'NEWER', '');
+  const gmail = fakeGmailApp([[older], [newer]]);
+  assert.equal(readLatestMessage(gmail.gmailApp).body, 'NEWER');
+  assert.equal(gmail.calls.getMessages, 2);
+  assert.equal(older.calls.plainBody, 0);
+  assert.equal(newer.calls.plainBody, 1);
 });
 
-test('fetches and converts text/html body.attachmentId as fallback', () => {
-  const gmail = fakeAttachmentGmail({
-    'html-attachment-id': encodeBase64Url(
-      '<div>WEEKLY_BUSY</div><p>DATE=2027-01-02 BUSY=09:00-10:00</p>'
-    )
-  });
-  const result = extractBody('message-id', {
-    mimeType: 'multipart/mixed',
-    parts: [{
-      mimeType: 'multipart/related',
-      parts: [{
-        mimeType: 'text/html',
-        body: { attachmentId: 'html-attachment-id' }
-      }]
-    }]
-  }, gmail);
-  assert.equal(result, 'WEEKLY_BUSY\nDATE=2027-01-02 BUSY=09:00-10:00');
-  assert.deepEqual(gmail.calls, [{
-    userId: 'me', messageId: 'message-id', attachmentId: 'html-attachment-id'
-  }]);
+test('excludes a newer message whose subject is not an exact match', () => {
+  const exact = makeMessage('PALURU_AVAILABILITY', '2026-09-30T23:00:00Z', 'EXACT', '');
+  const mismatch = makeMessage('Re: PALURU_AVAILABILITY', '2026-10-01T01:00:00Z', 'MISMATCH', '');
+  const gmail = fakeGmailApp([[exact], [mismatch]]);
+  assert.equal(readLatestMessage(gmail.gmailApp).body, 'EXACT');
+  assert.equal(exact.calls.plainBody, 1);
+  assert.equal(mismatch.calls.plainBody, 0);
 });
 
 function runImport(body, subject) {
@@ -206,7 +158,7 @@ function runImport(body, subject) {
   const now = new Date('2026-10-02T10:00:00+09:00');
   const mail = fakeGmail(body, subject);
   const lock = { acquired: 0, released: 0, tryLock() { this.acquired += 1; return true; }, releaseLock() { this.released += 1; } };
-  const result = importLatest({ now, gmail: mail.gmail, spreadsheet, lock });
+  const result = importLatest({ now, gmailApp: mail.gmailApp, spreadsheet, lock });
   return { result: JSON.parse(JSON.stringify(result)), sheet, spreadsheet, calls: mail.calls, lock };
 }
 
@@ -224,12 +176,7 @@ test('reads one exact-subject message, normalizes intervals, writes five fields,
     'Synthetic company disclaimer text is ignored.'
   ].join('\n');
   const { result, sheet, spreadsheet, calls, lock } = runImport(body);
-  assert.equal(calls.list.length, 1);
-  assert.equal(calls.list[0].userId, 'me');
-  assert.equal(calls.list[0].options.maxResults, 1);
-  assert.equal(calls.list[0].options.q, 'subject:PALURU_AVAILABILITY');
-  assert.equal(calls.get.length, 1);
-  assert.equal(calls.get[0].id, 'message-id-not-for-storage');
+  assert.deepEqual(calls.search, ['subject:PALURU_AVAILABILITY']);
   assert.deepEqual(sheet.headers, ['source', 'generated_at', 'date', 'start', 'end']);
   assert.equal(sheet.rows.length, 4);
   assert.deepEqual(sheet.rows.map((row) => row.slice(2)), [
@@ -255,11 +202,10 @@ test('rejects a non-exact latest subject without creating or changing WorkBusy',
   const mail = fakeGmail('WEEKLY_BUSY DATE=2026-10-02 BUSY=11:00-12:00', 'Re: PALURU_AVAILABILITY');
   assert.throws(() => importLatest({
     now: new Date('2026-10-02T10:00:00+09:00'),
-    gmail: mail.gmail,
+    gmailApp: mail.gmailApp,
     spreadsheet
-  }), (error) => error.code === 'SUBJECT_MISMATCH');
-  assert.equal(mail.calls.list.length, 1);
-  assert.equal(mail.calls.get.length, 1);
+  }), (error) => error.code === 'SOURCE_NOT_FOUND');
+  assert.deepEqual(mail.calls.search, ['subject:PALURU_AVAILABILITY']);
   assert.equal(sheet.headers.length, 0);
   assert.deepEqual(spreadsheet.writes, []);
 });
@@ -288,7 +234,7 @@ test('rejects an unusable message before creating or changing WorkBusy', () => {
   const mail = fakeGmail('WEEKLY_BUSY DATE=2026-10-02 BUSY=18:00-09:00');
   assert.throws(() => importLatest({
     now: new Date('2026-10-02T10:00:00+09:00'),
-    gmail: mail.gmail,
+    gmailApp: mail.gmailApp,
     spreadsheet
   }), (error) => error.code === 'INVALID_PAYLOAD');
   assert.equal(sheet.headers.length, 0);
@@ -306,21 +252,20 @@ test('public Apps Script entrypoint imports one message and returns the verified
   const tomorrow = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) + 1)).toISOString().slice(0, 10);
   const mail = fakeGmail('WEEKLY_BUSY DATE=' + tomorrow + ' BUSY=10:00-11:00');
   const lock = { acquired: 0, released: 0, tryLock() { this.acquired += 1; return true; }, releaseLock() { this.released += 1; } };
-  const previous = { Gmail: context.Gmail, SpreadsheetApp: context.SpreadsheetApp, LockService: context.LockService };
-  context.Gmail = mail.gmail;
+  const previous = { GmailApp: context.GmailApp, SpreadsheetApp: context.SpreadsheetApp, LockService: context.LockService };
+  context.GmailApp = mail.gmailApp;
   context.SpreadsheetApp = { getActiveSpreadsheet() { return spreadsheet; } };
   context.LockService = { getScriptLock() { return lock; } };
   try {
     const result = JSON.parse(JSON.stringify(context.importLatestWorkBusyEmailV1()));
-    assert.equal(mail.calls.list.length, 1);
-    assert.equal(mail.calls.get.length, 1);
+    assert.deepEqual(mail.calls.search, ['subject:PALURU_AVAILABILITY']);
     assert.deepEqual(sheet.headers, ['source', 'generated_at', 'date', 'start', 'end']);
     assert.deepEqual(result.intervals, [{ date: tomorrow, start: '10:00', end: '11:00' }]);
     assert.deepEqual(spreadsheet.writes, ['WorkBusy']);
     assert.equal(lock.acquired, 1);
     assert.equal(lock.released, 1);
   } finally {
-    if (previous.Gmail === undefined) delete context.Gmail; else context.Gmail = previous.Gmail;
+    if (previous.GmailApp === undefined) delete context.GmailApp; else context.GmailApp = previous.GmailApp;
     if (previous.SpreadsheetApp === undefined) delete context.SpreadsheetApp; else context.SpreadsheetApp = previous.SpreadsheetApp;
     if (previous.LockService === undefined) delete context.LockService; else context.LockService = previous.LockService;
   }
