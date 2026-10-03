@@ -30,6 +30,7 @@ vm.createContext(context);
 new vm.Script(source, { filename: 'WorkBusyImportService.js' }).runInContext(context);
 const importLatest = context.importLatestWorkBusyEmail_;
 const parseBody = context.parseWorkBusyBody_;
+const extractBody = context.extractWorkBusyPlainText_;
 
 function fakeSheet() {
   return {
@@ -112,6 +113,92 @@ function fakeGmail(body, subject = 'PALURU_AVAILABILITY') {
   };
   return { gmail, calls };
 }
+
+function fakeAttachmentGmail(attachments = {}) {
+  const calls = [];
+  return {
+    calls,
+    Users: {
+      Messages: {
+        Attachments: {
+          get(userId, messageId, attachmentId) {
+            calls.push({ userId, messageId, attachmentId });
+            return { data: attachments[attachmentId] || '' };
+          }
+        }
+      }
+    }
+  };
+}
+
+function encodeBase64Url(value) {
+  return Buffer.from(value, 'utf8').toString('base64url');
+}
+
+test('extracts inline top-level text/plain body.data', () => {
+  const gmail = fakeAttachmentGmail();
+  const result = extractBody('message-id', {
+    mimeType: 'text/plain',
+    body: { data: encodeBase64Url('TOP LEVEL INLINE BODY') }
+  }, gmail);
+  assert.equal(result, 'TOP LEVEL INLINE BODY');
+  assert.deepEqual(gmail.calls, []);
+});
+
+test('extracts inline body.data from nested multipart parts', () => {
+  const gmail = fakeAttachmentGmail();
+  const result = extractBody('message-id', {
+    mimeType: 'multipart/mixed',
+    parts: [{
+      mimeType: 'multipart/alternative',
+      parts: [{
+        mimeType: 'text/plain',
+        body: { data: encodeBase64Url('NESTED INLINE BODY') }
+      }]
+    }]
+  }, gmail);
+  assert.equal(result, 'NESTED INLINE BODY');
+  assert.deepEqual(gmail.calls, []);
+});
+
+test('fetches a text/plain body.attachmentId when body.data is absent', () => {
+  const gmail = fakeAttachmentGmail({
+    'plain-attachment-id': encodeBase64Url('ATTACHED PLAIN BODY')
+  });
+  const result = extractBody('message-id', {
+    mimeType: 'multipart/alternative',
+    parts: [{
+      mimeType: 'text/plain',
+      body: { attachmentId: 'plain-attachment-id' }
+    }]
+  }, gmail);
+  assert.equal(result, 'ATTACHED PLAIN BODY');
+  assert.deepEqual(gmail.calls, [{
+    userId: 'me', messageId: 'message-id', attachmentId: 'plain-attachment-id'
+  }]);
+});
+
+test('fetches and converts text/html body.attachmentId as fallback', () => {
+  const gmail = fakeAttachmentGmail({
+    'html-attachment-id': encodeBase64Url(
+      '<div>WEEKLY_BUSY</div><p>DATE=2027-01-02 BUSY=09:00-10:00</p>'
+    )
+  });
+  const result = extractBody('message-id', {
+    mimeType: 'multipart/mixed',
+    parts: [{
+      mimeType: 'multipart/related',
+      parts: [{
+        mimeType: 'text/html',
+        body: { attachmentId: 'html-attachment-id' }
+      }]
+    }]
+  }, gmail);
+  assert.equal(result, 'WEEKLY_BUSY\nDATE=2027-01-02 BUSY=09:00-10:00');
+  assert.deepEqual(gmail.calls, [{
+    userId: 'me', messageId: 'message-id', attachmentId: 'html-attachment-id'
+  }]);
+});
 
 function runImport(body, subject) {
   const sheet = fakeSheet();
