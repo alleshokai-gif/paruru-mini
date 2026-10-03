@@ -245,6 +245,20 @@ test('requires the WEEKLY_BUSY header before parsing DATE/BUSY pairs', () => {
   assert.equal(parseBody('DATE=2026-10-03 BUSY=09:00-10:00').length, 0);
   assert.equal(parseBody('WEEKLY_BUSY_BAD DATE=2026-10-03 BUSY=09:00-10:00').length, 0);
 });
+
+test('binds each same-line BUSY interval to its preceding DATE across multiple lines and drops zero duration', () => {
+  const body = [
+    'WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00 DATE=2026-10-04 BUSY=11:00-12:00 DATE=2026-10-05 BUSY=13:00-13:00',
+    'DATE=2026-10-06 BUSY=14:00-15:00'
+  ].join('\n');
+  const records = JSON.parse(JSON.stringify(parseBody(body)));
+  assert.deepEqual(records, [
+    { date: '2026-10-03', start: '09:00', end: '10:00' },
+    { date: '2026-10-04', start: '11:00', end: '12:00' },
+    { date: '2026-10-06', start: '14:00', end: '15:00' }
+  ]);
+});
+
 test('public Apps Script entrypoint imports one message and returns the verified WorkBusy rows', () => {
   const sheet = fakeSheet();
   const spreadsheet = fakeSpreadsheet(sheet);
