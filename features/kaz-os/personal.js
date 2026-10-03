@@ -115,7 +115,7 @@
     if (data?.fixture_only === true) add('p', '検証用fixture · 全件架空・実データではありません', 'kp-fixture');
     if (selection.page === 'today') {
       const head = part('TODAY');
-      add('p', '実Work ItemsとFamily Calendarから、いま使える時間に合わせて候補を整理', 'kp-subtitle', head);
+      add('p', 'WorkBusyとFamily Calendarの空き時間を別々に表示。枠に収まるWork候補を確認できます。', 'kp-subtitle', head);
       const workHealth = notice('work_items', head);
       if (data?.origin === 'notion_official_api' && data?.sources?.work_items) {
         const source = data.sources.work_items;
@@ -143,7 +143,36 @@
       };
 
       const focusCount=(t.now?.items?.length||0)+(t.next?.items?.length||0);
-      if(v2)add('p', `今日の3つ · ${focusCount}/3`, 'kp-muted', head);
+      if (v2) {
+        add('p', '今日の現在時刻から日付の終わりまで · JST', 'kp-muted', head);
+        const renderFreeWindows = (title, windows, emptyMessage) => {
+          const section = part(title);
+          section.classList.add('kp-free-section');
+          if (!windows?.length) { add('p', emptyMessage, 'kp-muted', section); return; }
+          windows.forEach(window => {
+            const slot = add('article', '', 'kp-free-window', section);
+            add('h3', `${fmt(window.start)}–${fmt(window.end)}　${window.duration_min}分`, 'kp-free-time', slot);
+            if (!window.suggestions.length) add('p', 'この枠に収まるEstimate付きWorkはありません。', 'kp-muted', slot);
+            window.suggestions.forEach(w => {
+              const candidate = add('div', '', 'kp-free-suggestion', slot);
+              candidate.dataset.workItem = w.id;
+              candidate.append(link(w.title, 'work', w.id, 'kp-free-work-title'));
+              add('span', `${w.estimate_min}分 · ${w.priority || 'Priority未設定'} · ${w.action_type}`, 'kp-free-work-meta', candidate);
+            });
+          });
+        };
+        const busyStatus=data.sources?.work_busy?.status || 'not_connected';
+        renderFreeWindows('🏢 会社の空き時間', t.company_free_windows,
+          busyStatus === 'ok' ? '今日の残りに会社の空き枠はありません。'
+          : busyStatus === 'empty' ? 'WorkBusyにデータがありません。'
+          : busyStatus === 'not_connected' ? 'WorkBusyは未接続です。'
+          : 'WorkBusyを読み取れませんでした。');
+        renderFreeWindows('🏠 予定の空き時間', t.calendar_free_windows,
+          t.calendar_state?.unknown?.some(value => value.reason === 'TIME_UNRESOLVED')
+            ? '時刻不明の予定があるため空き枠を確定できません。'
+            : '今日の残りにCalendarの空き枠はありません。');
+        add('p', `今日の3つ · ${focusCount}/3`, 'kp-muted');
+      }
 
       const nowSection = part('NOW');
       if (t.now?.kind === 'none') add('p', v2 ? 'いま着手する項目はありません。' : 'DOINGのWork Itemはありません。', 'kp-muted', nowSection);

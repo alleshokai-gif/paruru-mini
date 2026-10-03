@@ -21,6 +21,7 @@ function readKazOsToday_(transportTrace) {
   recordKazOsTransport_(transportTrace, 'DECISION_LEDGER_READ_START', { outcome: 'progress' });
   const classifications = buildKazOsTodayPlanningClassifications_();
   const planning = buildKazOsTodayPlanningEvidence_();
+  const workBusy = buildKazOsWorkBusyToday_(planning.planning_date);
   recordKazOsTransport_(transportTrace, 'DECISION_LEDGER_READ_END', { outcome: 'progress' });
   recordKazOsTransport_(transportTrace, 'CLOUD_RUN_START', { outcome: 'progress' });
   let response;
@@ -28,7 +29,8 @@ function readKazOsToday_(transportTrace) {
     response = UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
-      payload: JSON.stringify({ calendar_capture: capture, classifications: { items: classifications }, planning: planning }),
+      payload: JSON.stringify({ calendar_capture: capture, classifications: { items: classifications }, planning: planning,
+        work_busy: workBusy }),
       headers: {
         Authorization: 'Bearer ' + token,
         'X-Kaz-Request-Id-Suffix': transportTrace ? transportTrace.requestIdSuffix : ''
@@ -185,6 +187,20 @@ function sanitizeKazOsTodayV2_(data) {
       action_type:actionType,next_action:str(w.next_action),blocker:str(w.blocker),source:sourceName,source_revision:str(w.source_revision,80),
       planning_preference:preference,plan_start:planStart,plan_end:planEnd,placement:placement,waiting_reason:waitingReason};
   };
+  const freeWindow = function(v) {
+    if (!v || typeof v !== 'object' || typeof v.start !== 'string' || typeof v.end !== 'string') fail();
+    const start=Date.parse(v.start),end=Date.parse(v.end),duration=count(v.duration_min);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end<=start
+        || !/\+09:00$/.test(v.start) || !/\+09:00$/.test(v.end)
+        || Math.floor((end-start)/60000)!==duration) fail();
+    const suggestions=array(v.suggestions,3,function(raw){
+      const candidate=item(raw);
+      if (['DONE','CANCELLED','WAITING','BLOCKED'].indexOf(candidate.state)>=0
+          || candidate.estimate_min===null || candidate.estimate_min>duration) fail();
+      return candidate;
+    });
+    return {start:str(v.start,80),end:str(v.end,80),duration_min:duration,suggestions:suggestions};
+  };
   const selection = function(v) {
     if (!v || typeof v !== 'object') fail();
     const result={kind:enumeration(v.kind,['none','single','multiple']),items:array(v.items,2,item),
@@ -220,6 +236,9 @@ function sanitizeKazOsTodayV2_(data) {
 
   const workSource=health(data.sources && data.sources.work_items,'work_items');
   const calendarSource=health(data.sources && data.sources.calendar,'calendar');
+  const workBusySource=data.sources && data.sources.work_busy;
+  const workBusyStatus=workBusySource == null ? 'not_connected'
+    : enumeration(workBusySource.status,['ok','empty','not_connected','failed']);
   const now=selection(data.today && data.today.now),next=selection(data.today && data.today.next);
   if (now.items.length > 1 || next.items.length > 2) fail();
   const scheduled=array(data.today && data.today.scheduled,100,item);
@@ -231,6 +250,9 @@ function sanitizeKazOsTodayV2_(data) {
     if (!Number.isFinite(start)||!Number.isFinite(end)||end<=start) fail();
     return {start:str(v.start,80),end:str(v.end,80)};
   });
+  const companyWindows=array(data.today.company_free_windows == null ? [] : data.today.company_free_windows,200,freeWindow);
+  const calendarWindows=array(data.today.calendar_free_windows == null ? [] : data.today.calendar_free_windows,200,freeWindow);
+  if (workBusyStatus !== 'ok' && companyWindows.length) fail();
   const state=data.today && data.today.calendar_state;
   if (!state || typeof state.classification_revision_current !== 'boolean') fail();
   const unknown=array(state.unknown,200,function(v){
@@ -244,10 +266,11 @@ function sanitizeKazOsTodayV2_(data) {
     planning_date:str(data.planning_date,20),timezone:'Asia/Tokyo',
     policy:{version:'dynamic-daily-planning-v2',dynamic_daily_planning:true,calendar_used:true,availability_used:true,
       human_preference_used:true,daily_estimate_used:true,energy_used:false,ui_scoring_allowed:false,duration_inference_allowed:false},
-    sources:{work_items:workSource,calendar:calendarSource},
+    sources:{work_items:workSource,calendar:calendarSource,work_busy:{status:workBusyStatus}},
     today:{now:now,next:next,scheduled:scheduled,waiting:waiting,waiting_count:count(data.today.waiting_count),
       not_fit_today:notFit,not_fit_today_count:count(data.today.not_fit_today_count),
-      availability:availability,calendar_state:{classification_revision_current:state.classification_revision_current,
+      availability:availability,company_free_windows:companyWindows,calendar_free_windows:calendarWindows,
+      calendar_state:{classification_revision_current:state.classification_revision_current,
         unknown_count:count(state.unknown_count),known_none_count:count(state.known_none_count),unknown:unknown},
       preference_count:count(data.today.preference_count),daily_estimate_count:count(data.today.daily_estimate_count),
       missing_estimate_count:count(data.today.missing_estimate_count),
