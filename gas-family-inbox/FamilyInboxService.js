@@ -56,10 +56,17 @@ const FAMILY_INBOX_SAFE_ERRORS = Object.freeze({
 
 function familyInboxSubmit_(body) {
   const startedAt = Date.now();
-  let trace = familyInboxTraceFromBody_(body, 'familyInbox.submit');
+  const schoolKnowledgeP2 = Boolean(body && body.operation === 'familyInbox.schoolKnowledge.submit');
+  let trace = familyInboxTraceFromBody_(body, schoolKnowledgeP2 ? 'familyInbox.schoolKnowledge.submit' : 'familyInbox.submit');
   try {
     familyInboxAuthenticate_(body);
     const input = familyInboxValidateSubmit_(body);
+    if (input.schoolKnowledgeP2) {
+      const setupResult = setupFamilyInboxSchoolKnowledgeP2Headers();
+      if (setupResult !== FAMILY_INBOX_SETUP_RESULTS.CREATED && setupResult !== FAMILY_INBOX_SETUP_RESULTS.VERIFIED) {
+        throw familyInboxError_('CONFIGURATION_ERROR');
+      }
+    }
     trace = Object.assign(trace, { mediaType: input.mediaType, sizeBytes: input.bytes.length, sha256Prefix: input.sha256.slice(0, 12) });
     return familyInboxPersistInput_(input, 'paluru', trace, startedAt);
   } catch (error) {

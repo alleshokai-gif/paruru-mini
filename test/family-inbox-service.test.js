@@ -39,7 +39,7 @@ function bytesFor(mediaType, suffix = 1) {
 }
 
 function fixture(options = {}) {
-  const state = { files: [], logs: [], ledgerError: Boolean(options.ledgerError), driveError: Boolean(options.driveError), uuidCounter: 1, lockCount: 0 };
+  const state = { files: [], logs: [], ledgerError: Boolean(options.ledgerError), driveError: Boolean(options.driveError), uuidCounter: 1, lockCount: 0, p2SetupCalls: 0 };
   const sheet = new Sheet(state);
   const properties = Object.assign({
     FAMILY_INBOX_SERVICE_TOKEN: 'service-secret-value',
@@ -72,6 +72,11 @@ function fixture(options = {}) {
   };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', 'FamilyInboxService.js'), 'utf8'), context);
+  context.FAMILY_INBOX_SETUP_RESULTS = { CREATED: 'CREATED', VERIFIED: 'VERIFIED', CONFIGURATION_ERROR: 'CONFIGURATION_ERROR' };
+  context.setupFamilyInboxSchoolKnowledgeP2Headers = () => {
+    state.p2SetupCalls += 1;
+    return options.p2SetupResult || 'VERIFIED';
+  };
   return { api: context, state, sheet, properties };
 }
 
@@ -104,6 +109,7 @@ for (const [index, mediaType] of ['image/jpeg', 'image/png', 'application/pdf'].
   assert.strictEqual(row.originalName, namesFor(mediaType));
   assert.strictEqual(row.status, 'pending');
   assert.strictEqual(row.processingProfile, 'school-v1');
+  assert.strictEqual(f.state.p2SetupCalls, 0, 'ordinary Family Inbox submit does not run the P2 schema migration');
   assert.strictEqual(f.state.files[0].blob.name, `${result.inboxId}.${mediaType === 'image/jpeg' ? 'jpg' : mediaType === 'image/png' ? 'png' : 'pdf'}`);
 }
 
@@ -120,6 +126,7 @@ function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png':
   assert.strictEqual(row.knowledgePath, '');
   assert.strictEqual(row.gitCommitSha, '');
   assert.strictEqual(row.errorMessage, '');
+  assert.strictEqual(f.state.p2SetupCalls, 1, 'P2 submit verifies its narrow receipt schema first');
   const replay = f.api.familyInboxSubmit_(body);
   assert.strictEqual(replay.inboxId, queued.inboxId);
   assert.strictEqual(replay.status, 'queued');
@@ -137,6 +144,17 @@ function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png':
   assert.strictEqual(duplicateResult.duplicateOfInboxId, queued.inboxId);
   assert.strictEqual(f.sheet.values.length, 3);
   assert.strictEqual(f.sheet.values[2][headers.indexOf('processingProfile')], 'school-knowledge-p2');
+  assert.strictEqual(f.state.p2SetupCalls, 3, 'each P2 submission rechecks schema idempotently');
+}
+
+{
+  const f = fixture({ p2SetupResult: 'CONFIGURATION_ERROR' });
+  const body = submitBody('application/pdf', uuid(183));
+  body.operation = 'familyInbox.schoolKnowledge.submit';
+  expectCode(() => f.api.familyInboxSubmit_(body), 'CONFIGURATION_ERROR');
+  assert.strictEqual(f.state.p2SetupCalls, 1);
+  assert.strictEqual(f.state.files.length, 0, 'P2 must not save a PDF if its receipt schema is unavailable');
+  assert.strictEqual(f.sheet.values.length, 1);
 }
 
 {
@@ -163,6 +181,7 @@ function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png':
   assert.strictEqual(status.processedAt, '2026-10-04T10:00:00+09:00');
   assert.strictEqual(status.knowledgePath, 'school/2026/grade-3/2026-10/knowledge.md');
   assert.strictEqual(status.gitCommitSha, 'a'.repeat(40));
+  assert.strictEqual(f.state.p2SetupCalls, 1);
   assert(!Object.hasOwn(status, 'userNote'));
 }
 

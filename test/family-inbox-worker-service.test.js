@@ -124,6 +124,8 @@ function fixture(options = {}) {
   for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js', 'FamilyInboxPcReviewService.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', file), 'utf8'), context);
   }
+  context.FAMILY_INBOX_SETUP_RESULTS = { CREATED: 'CREATED', VERIFIED: 'VERIFIED', CONFIGURATION_ERROR: 'CONFIGURATION_ERROR' };
+  context.setupFamilyInboxSchoolKnowledgeP2Headers = () => 'VERIFIED';
   return { api: context, state, inbox, candidates, reviewItems };
 }
 
