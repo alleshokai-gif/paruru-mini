@@ -136,6 +136,24 @@ function valuesSnapshot(spreadsheet) {
 
 {
   const { context, spreadsheet, headers } = loadHarness();
+  const inboxLegacy = headers.inbox.slice(0, 27);
+  const inbox = spreadsheet.addSheet('Family_Inbox', [inboxLegacy, inboxLegacy.map((header) => `existing-${header}`)], inboxLegacy.length);
+  spreadsheet.addSheet('Family_Candidates', [['legacy-candidate-header'], ['candidate-row']]);
+  spreadsheet.addSheet('Family_Review_Items', [['legacy-review-header'], ['review-row']]);
+  const candidatesBefore = clone(spreadsheet.sheets.Family_Candidates.values);
+  const reviewItemsBefore = clone(spreadsheet.sheets.Family_Review_Items.values);
+  const inboxRowBefore = clone(inbox.values[1]);
+  assert.strictEqual(context.setupFamilyInboxSchoolKnowledgeP2Headers(), 'CREATED', 'FI-P2-SET01');
+  assert.deepStrictEqual(inbox.values[0].slice(0, 27), inboxLegacy, 'FI-P2-SET02 preserve existing header order');
+  assert.deepStrictEqual(inbox.values[0].slice(27), ['knowledgePath', 'gitCommitSha', 'errorMessage'], 'FI-P2-SET03 append only P2 status fields');
+  assert.deepStrictEqual(inbox.values[1], inboxRowBefore, 'FI-P2-SET04 existing receipt row unchanged');
+  assert.deepStrictEqual(spreadsheet.sheets.Family_Candidates.values, candidatesBefore, 'FI-P2-SET05 Candidate sheet untouched');
+  assert.deepStrictEqual(spreadsheet.sheets.Family_Review_Items.values, reviewItemsBefore, 'FI-P2-SET06 Review sheet untouched');
+  assert.strictEqual(context.setupFamilyInboxSchoolKnowledgeP2Headers(), 'VERIFIED', 'FI-P2-SET07 idempotent');
+}
+
+{
+  const { context, spreadsheet, headers } = loadHarness();
   spreadsheet.addSheet('Family_Inbox', [headers.inbox], headers.inbox.length);
   const candidatePrefix = headers.candidates.slice(0, 28);
   spreadsheet.addSheet('Family_Candidates', [candidatePrefix], candidatePrefix.length);
@@ -261,6 +279,7 @@ function valuesSnapshot(spreadsheet) {
   assert.strictEqual(loadHarness({ openThrows: true }).context.setupFamilyInboxSchema(), 'CONFIGURATION_ERROR', 'FI-SET26 open failure');
   const code = fs.readFileSync('gas-family-inbox/Code.js', 'utf8');
   assert(!code.includes('setupFamilyInboxSchema'), 'FI-SET27 setup must not be exposed through Web App');
+  assert(!code.includes('setupFamilyInboxSchoolKnowledgeP2Headers'), 'FI-P2-SET08 narrow setup must not be exposed through Web App');
 }
 
 console.log('PASS Family Inbox setup creates empty schemas, performs known append-only migrations, fails closed before unsafe mutation, and preserves rows/history');

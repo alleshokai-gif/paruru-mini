@@ -41,6 +41,34 @@ function setupFamilyInboxSchema() {
   }
 }
 
+// Narrow append-only migration for the P2 queue receipt columns.
+// This intentionally does not create or modify Candidate / PC Review sheets.
+function setupFamilyInboxSchoolKnowledgeP2Headers() {
+  let lock;
+  try {
+    const spreadsheetId = String(PropertiesService.getScriptProperties().getProperty(FAMILY_INBOX_PROPERTIES.spreadsheetId) || '').trim();
+    if (!spreadsheetId) return FAMILY_INBOX_SETUP_RESULTS.CONFIGURATION_ERROR;
+    lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    const definition = familyInboxSetupDefinitions_().find(function(item) { return item.name === FAMILY_INBOX_SHEET_NAME; });
+    const plan = familyInboxSetupInspect_(spreadsheet.getSheetByName(FAMILY_INBOX_SHEET_NAME), definition);
+    if (!plan.sheet || plan.invalid) return FAMILY_INBOX_SETUP_RESULTS.CONFIGURATION_ERROR;
+    let changed = familyInboxSetupEnsureColumns_(plan.sheet, definition.headers.length);
+    if (plan.missingHeaders.length) {
+      plan.sheet.getRange(1, plan.headerCount + 1, 1, plan.missingHeaders.length).setValues([plan.missingHeaders]);
+      changed = true;
+    }
+    return changed ? FAMILY_INBOX_SETUP_RESULTS.CREATED : FAMILY_INBOX_SETUP_RESULTS.VERIFIED;
+  } catch (_) {
+    return FAMILY_INBOX_SETUP_RESULTS.CONFIGURATION_ERROR;
+  } finally {
+    if (lock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+  }
+}
+
 function familyInboxSetupDefinitions_() {
   const candidateBaseHeaders = FAMILY_INBOX_CANDIDATE_HEADERS.slice();
   const candidateReviewHeaders = candidateBaseHeaders.concat(FAMILY_INBOX_REVIEW_EXTRA_HEADERS);
