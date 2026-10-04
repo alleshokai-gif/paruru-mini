@@ -8,6 +8,7 @@ const FAMILY_INBOX_GATEWAY_MEDIA = Object.freeze({
 });
 const FAMILY_INBOX_GATEWAY_CAPABILITIES = Object.freeze({
   'familyInbox.submit': 'family.inbox.submit',
+  'familyInbox.schoolKnowledge.submit': 'family.inbox.submit',
   'familyInbox.getStatus': 'family.inbox.read',
   'familyInbox.listReviews': 'family.inbox.review',
   'familyInbox.getReview': 'family.inbox.review',
@@ -50,13 +51,14 @@ function familyInboxGateway_(body) {
 }
 
 function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId) {
-  if (operation === 'familyInbox.submit') {
+  if (operation === 'familyInbox.submit' || operation === 'familyInbox.schoolKnowledge.submit') {
     const allowed = { action: true, auth: true, clientRequestId: true, subjectMemberId: true, userNote: true, file: true };
     if (!familyInboxGatewayPlainObject_(input) || Object.keys(input).some(function(key) { return !allowed[key]; })) throw familyInboxGatewayError_('INVALID_INPUT');
     const subjectMemberId = String(input.subjectMemberId || '').trim();
     const subject = getHomeMember_(actor.homeId, subjectMemberId);
     if (!subject || subject.status !== 'active' || !isHomeMemberPolicyMatch_(subject)) throw familyInboxGatewayError_('INVALID_MEMBER');
     const file = familyInboxGatewayValidateFile_(input.file);
+    if (operation === 'familyInbox.schoolKnowledge.submit' && file.mediaType !== 'application/pdf') throw familyInboxGatewayError_('UNSUPPORTED_MEDIA_TYPE');
     const clientRequestId = String(input.clientRequestId || '').trim();
     const userNote = String(input.userNote || '').trim();
     if (!familyInboxGatewayUuid_(clientRequestId) || Array.from(userNote).length > FAMILY_INBOX_GATEWAY_MAX_NOTE_CHARACTERS) throw familyInboxGatewayError_('INVALID_INPUT');
@@ -165,8 +167,11 @@ function familyInboxGatewayCallService_(trusted, operation) {
   try { envelope = JSON.parse(String(response.getContentText() || '')); } catch (_) { throw familyInboxGatewayError_('INTERNAL_ERROR'); }
   if (!envelope || envelope.success !== true) throw familyInboxGatewayError_(familyInboxGatewayBackendError_(envelope));
   if (envelope.schemaVersion !== FAMILY_INBOX_GATEWAY_SCHEMA_VERSION || !familyInboxGatewayPlainObject_(envelope.data)) throw familyInboxGatewayError_('INTERNAL_ERROR');
-  if (operation === 'familyInbox.submit') {
-    if (!/^inb_[0-9a-f]{32}$/i.test(String(envelope.data.inboxId || '')) || ['pending', 'duplicate', 'rejected'].indexOf(envelope.data.status) < 0 || !familyInboxGatewayPlainObject_(envelope.data.idempotency) || typeof envelope.data.idempotency.replayed !== 'boolean') throw familyInboxGatewayError_('INTERNAL_ERROR');
+  if (operation === 'familyInbox.submit' || operation === 'familyInbox.schoolKnowledge.submit') {
+    const statuses = operation === 'familyInbox.schoolKnowledge.submit'
+      ? ['queued', 'duplicate', 'rejected', 'processing', 'completed', 'failed']
+      : ['pending', 'duplicate', 'rejected'];
+    if (!/^inb_[0-9a-f]{32}$/i.test(String(envelope.data.inboxId || '')) || statuses.indexOf(envelope.data.status) < 0 || !familyInboxGatewayPlainObject_(envelope.data.idempotency) || typeof envelope.data.idempotency.replayed !== 'boolean') throw familyInboxGatewayError_('INTERNAL_ERROR');
     return { inboxId: envelope.data.inboxId, status: envelope.data.status, idempotency: { replayed: envelope.data.idempotency.replayed }, duplicateOfInboxId: String(envelope.data.duplicateOfInboxId || '') };
   }
   if (operation === 'familyInbox.listReviews') {
@@ -180,8 +185,21 @@ function familyInboxGatewayCallService_(trusted, operation) {
     if (['pending', 'reviewed'].indexOf(String(envelope.data.reviewStatus || '')) < 0) throw familyInboxGatewayError_('INTERNAL_ERROR');
     return { candidate: familyInboxGatewayReviewCandidate_(envelope.data.candidate), reviewStatus: envelope.data.reviewStatus, idempotency: { replayed: envelope.data.idempotency.replayed } };
   }
-  if (!/^inb_[0-9a-f]{32}$/i.test(String(envelope.data.inboxId || '')) || ['pending', 'duplicate', 'rejected', 'processing', 'candidate_ready', 'needs_review', 'completed', 'failed'].indexOf(envelope.data.status) < 0) throw familyInboxGatewayError_('INTERNAL_ERROR');
-  return { inboxId: envelope.data.inboxId, status: envelope.data.status, receivedAt: String(envelope.data.receivedAt || ''), updatedAt: String(envelope.data.updatedAt || ''), errorCode: String(envelope.data.errorCode || ''), duplicateOfInboxId: String(envelope.data.duplicateOfInboxId || '') };
+  if (!/^inb_[0-9a-f]{32}$/i.test(String(envelope.data.inboxId || '')) || ['pending', 'queued', 'duplicate', 'rejected', 'processing', 'candidate_ready', 'needs_review', 'completed', 'failed'].indexOf(envelope.data.status) < 0) throw familyInboxGatewayError_('INTERNAL_ERROR');
+  const status = { inboxId: envelope.data.inboxId, status: envelope.data.status, receivedAt: String(envelope.data.receivedAt || ''), updatedAt: String(envelope.data.updatedAt || ''), errorCode: String(envelope.data.errorCode || ''), duplicateOfInboxId: String(envelope.data.duplicateOfInboxId || '') };
+  if (envelope.data.processingProfile === 'school-knowledge-p2') {
+    if (!/^[0-9a-f]{64}$/.test(String(envelope.data.sourceSha || '')) ||
+        (envelope.data.gitCommitSha && !/^[0-9a-f]{40}$/.test(String(envelope.data.gitCommitSha))) ||
+        (envelope.data.knowledgePath && !/^school\/\d{4}\/grade-[1-6]\/\d{4}-(0[1-9]|1[0-2])\/knowledge\.md$/.test(String(envelope.data.knowledgePath))) ||
+        Array.from(String(envelope.data.errorMessage || '')).length > 200) throw familyInboxGatewayError_('INTERNAL_ERROR');
+    return Object.assign(status, {
+      processingProfile: 'school-knowledge-p2', originalName: String(envelope.data.originalName || ''),
+      processedAt: String(envelope.data.processedAt || ''), sourceSha: String(envelope.data.sourceSha),
+      knowledgePath: String(envelope.data.knowledgePath || ''), gitCommitSha: String(envelope.data.gitCommitSha || ''),
+      errorMessage: String(envelope.data.errorMessage || ''),
+    });
+  }
+  return status;
 }
 
 function familyInboxGatewayReviewListItem_(value) {

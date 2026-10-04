@@ -12,7 +12,7 @@ const headers = [
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
-  'processingProfile',
+  'processingProfile', 'knowledgePath', 'gitCommitSha', 'errorMessage',
 ];
 
 class Range {
@@ -111,10 +111,59 @@ function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png':
 
 {
   const f = fixture();
+  const body = submitBody('application/pdf', uuid(18));
+  body.operation = 'familyInbox.schoolKnowledge.submit';
+  const queued = f.api.familyInboxSubmit_(body);
+  assert.strictEqual(queued.status, 'queued');
+  const row = Object.fromEntries(headers.map((header, column) => [header, f.sheet.values[1][column]]));
+  assert.strictEqual(row.processingProfile, 'school-knowledge-p2');
+  assert.strictEqual(row.knowledgePath, '');
+  assert.strictEqual(row.gitCommitSha, '');
+  assert.strictEqual(row.errorMessage, '');
+  const replay = f.api.familyInboxSubmit_(body);
+  assert.strictEqual(replay.inboxId, queued.inboxId);
+  assert.strictEqual(replay.status, 'queued');
+  assert.strictEqual(replay.idempotency.replayed, true);
+
+  const image = submitBody('image/jpeg', uuid(181));
+  image.operation = 'familyInbox.schoolKnowledge.submit';
+  expectCode(() => f.api.familyInboxSubmit_(image), 'UNSUPPORTED_MEDIA_TYPE');
+  assert.strictEqual(f.state.files.length, 1, 'P2 rejects non-PDF before Drive writes');
+
+  const duplicate = submitBody('application/pdf', uuid(182));
+  duplicate.operation = 'familyInbox.schoolKnowledge.submit';
+  const duplicateResult = f.api.familyInboxSubmit_(duplicate);
+  assert.strictEqual(duplicateResult.status, 'duplicate');
+  assert.strictEqual(duplicateResult.duplicateOfInboxId, queued.inboxId);
+  assert.strictEqual(f.sheet.values.length, 3);
+  assert.strictEqual(f.sheet.values[2][headers.indexOf('processingProfile')], 'school-knowledge-p2');
+}
+
+{
+  const f = fixture();
   const body = submitBody('application/pdf', uuid(19));
   body.processingProfile = 'school-v1-long';
   expectCode(() => f.api.familyInboxSubmit_(body), 'INVALID_INPUT');
   assert.strictEqual(f.state.files.length, 0, 'client must not select processing profile');
+}
+
+{
+  const f = fixture();
+  const body = submitBody('application/pdf', uuid(61));
+  body.operation = 'familyInbox.schoolKnowledge.submit';
+  const created = f.api.familyInboxSubmit_(body);
+  const row = f.sheet.values[1];
+  row[headers.indexOf('status')] = 'completed';
+  row[headers.indexOf('processingCompletedAt')] = '2026-10-04T10:00:00+09:00';
+  row[headers.indexOf('knowledgePath')] = 'school/2026/grade-3/2026-10/knowledge.md';
+  row[headers.indexOf('gitCommitSha')] = 'a'.repeat(40);
+  const status = f.api.familyInboxGetStatus_({ operation: 'familyInbox.getStatus', internalToken: 'service-secret-value', homeId: 'home-a', inboxId: created.inboxId, traceId: 'fi_p2status01' });
+  assert.strictEqual(status.status, 'completed');
+  assert.strictEqual(status.sourceSha, row[headers.indexOf('sha256')]);
+  assert.strictEqual(status.processedAt, '2026-10-04T10:00:00+09:00');
+  assert.strictEqual(status.knowledgePath, 'school/2026/grade-3/2026-10/knowledge.md');
+  assert.strictEqual(status.gitCommitSha, 'a'.repeat(40));
+  assert(!Object.hasOwn(status, 'userNote'));
 }
 
 {

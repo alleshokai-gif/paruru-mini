@@ -207,18 +207,18 @@ function valuesSnapshot(spreadsheet) {
 
 {
   const { context, spreadsheet, headers } = loadHarness();
-  const legacyInboxHeaders = headers.inbox.slice(0, -1);
+  const legacyInboxHeaders = headers.inbox.slice(0, 26);
   const legacyInboxRow = legacyInboxHeaders.map((header) => `existing-${header}`);
   const inboxSheet = spreadsheet.addSheet('Family_Inbox', [legacyInboxHeaders, legacyInboxRow], legacyInboxHeaders.length);
   spreadsheet.addSheet('Family_Candidates', [headers.candidates], headers.candidates.length);
   spreadsheet.addSheet('Family_Review_Items', [headers.reviewItems], headers.reviewItems.length);
   const existingRowBefore = clone(inboxSheet.values[1]);
-  assert.strictEqual(context.setupFamilyInboxSchema(), 'CREATED', 'FI-SET18 inbox 26 to 27');
-  assert.deepStrictEqual(inboxSheet.values[0], headers.inbox, 'FI-SET19 processingProfile appended');
+  assert.strictEqual(context.setupFamilyInboxSchema(), 'CREATED', 'FI-SET18 inbox legacy schema to P2 schema');
+  assert.deepStrictEqual(inboxSheet.values[0], headers.inbox, 'FI-SET19 P2 receipt headers appended');
   assert.deepStrictEqual(inboxSheet.values[1], existingRowBefore, 'FI-SET20 existing inbox row unchanged');
   const headerWrite = inboxSheet.calls.find((call) => call.method === 'setValues');
   assert.deepStrictEqual(headerWrite, {
-    method: 'setValues', row: 1, column: 27, values: [['processingProfile']],
+    method: 'setValues', row: 1, column: 27, values: [['processingProfile', 'knowledgePath', 'gitCommitSha', 'errorMessage']],
   }, 'FI-SET21 only right edge inbox header write');
 }
 

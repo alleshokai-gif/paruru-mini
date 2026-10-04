@@ -12,7 +12,7 @@ const inboxHeaders = [
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
-  'processingProfile',
+  'processingProfile', 'knowledgePath', 'gitCommitSha', 'errorMessage',
 ];
 const candidateHeaders = [
   'schemaVersion', 'candidateId', 'inboxId', 'homeId', 'candidateType', 'revision',
@@ -136,6 +136,15 @@ function submit(f, mediaType = 'image/jpeg', requestNumber = 10) {
     homeId: 'home-01', submittedByMemberId: 'parent-01', source: 'paluru', traceId: 'trace_submit01',
   });
 }
+function submitSchoolKnowledge(f, requestNumber = 11, mediaType = 'application/pdf') {
+  const bytes = bytesFor(mediaType);
+  return f.api.familyInboxSubmit_({
+    operation: 'familyInbox.schoolKnowledge.submit', internalToken: 'mini-service-secret', clientRequestId: uuid(requestNumber),
+    subjectMemberId: 'child-01', userNote: 'private note',
+    file: { name: mediaType === 'application/pdf' ? 'school.pdf' : 'school.jpg', mediaType, base64: Buffer.from(bytes).toString('base64') },
+    homeId: 'home-01', submittedByMemberId: 'parent-01', source: 'paluru', traceId: 'trace_submit01',
+  });
+}
 function submitLong(f, requestNumber = 100) {
   const mediaType = 'application/pdf';
   const bytes = bytesFor(mediaType);
@@ -187,6 +196,7 @@ function longDigest(f, candidateList, reviewItems) {
   return crypto.createHash('sha256').update(f.api.familyInboxWorkerStableStringify_({ candidates: candidateList, reviewItems }), 'utf8').digest('hex');
 }
 function claimOne(f) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext')); }
+function claimSchoolKnowledge(f) { return f.api.familyInboxSchoolKnowledgeClaimNext_(workerBody('familyInbox.schoolKnowledge.claimNext')); }
 function claimTarget(f, inboxId) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext', { inboxId })); }
 function publishCandidates(f, created, candidates, requestNumber = 950) {
   const claim = claimOne(f);
@@ -237,6 +247,99 @@ function longReviewItemsFixture() {
     warnings: ['unresolved_required_field:date'], questions: ['confirm_belongings_date'],
     payload: { date: null, items: ['架空の持ち物'], relatedEventTitle: null },
   });
+}
+
+{
+  const f = fixture();
+  const normal = submit(f, 'image/jpeg', 1);
+  const school = submitSchoolKnowledge(f, 2);
+  assert.strictEqual(school.status, 'queued');
+  assert.strictEqual(inboxRow(f.inbox, school.inboxId).processingProfile, 'school-knowledge-p2');
+  assert.strictEqual(claimOne(f).inboxId, normal.inboxId, 'the existing worker must only claim its existing pending item');
+  assert.strictEqual(inboxRow(f.inbox, school.inboxId).status, 'queued');
+  assert.strictEqual(claimSchoolKnowledge(f).inboxId, school.inboxId);
+}
+
+{
+  const f = fixture();
+  const created = submitSchoolKnowledge(f, 3);
+  const claim = claimSchoolKnowledge(f);
+  assert.strictEqual(claim.claimed, true);
+  assert.strictEqual(claim.processingProfile, 'school-knowledge-p2');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'processing');
+  assert.strictEqual(claimSchoolKnowledge(f).claimed, false, 'an active P2 claim must not be claimed twice');
+
+  const source = f.api.familyInboxSchoolKnowledgeGetClaimedSource_(workerBody('familyInbox.schoolKnowledge.getClaimedSource', {
+    inboxId: claim.inboxId, claimVersion: claim.claimVersion,
+  }));
+  assert.strictEqual(source.inboxId, created.inboxId);
+  assert.strictEqual(source.mediaType, 'application/pdf');
+  assert.strictEqual(source.sizeBytes, Buffer.from(bytesFor('application/pdf')).length);
+  assert.strictEqual(source.sha256, inboxRow(f.inbox, created.inboxId).sha256);
+  assert.match(source.sourceFileId, /^drive-secret-/);
+  assert.strictEqual(source.originalName, 'school.pdf');
+  assert.strictEqual(source.receivedAt, inboxRow(f.inbox, created.inboxId).receivedAt);
+  assert(!Object.hasOwn(source, 'userNote'));
+  assert(!Object.hasOwn(source, 'homeId'));
+
+  const rowIndex = f.inbox.values.findIndex((row) => row[inboxHeaders.indexOf('inboxId')] === created.inboxId);
+  f.inbox.values[rowIndex][inboxHeaders.indexOf('leaseExpiresAt')] = '2000-01-01T00:00:00+09:00';
+  const reclaimed = claimSchoolKnowledge(f);
+  assert.strictEqual(reclaimed.claimVersion, claim.claimVersion + 1);
+  expectCode(() => f.api.familyInboxSchoolKnowledgeComplete_(workerBody('familyInbox.schoolKnowledge.complete', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, sourceSha: source.sha256,
+    knowledgePath: 'school/2026/grade-3/2026-10/knowledge.md', gitCommitSha: 'a'.repeat(40),
+  })), 'CLAIM_CONFLICT');
+  const complete = f.api.familyInboxSchoolKnowledgeComplete_(workerBody('familyInbox.schoolKnowledge.complete', {
+    inboxId: created.inboxId, claimVersion: reclaimed.claimVersion, sourceSha: source.sha256,
+    knowledgePath: 'school/2026/grade-3/2026-10/knowledge.md', gitCommitSha: 'a'.repeat(40),
+  }));
+  assert.strictEqual(complete.status, 'completed');
+  const row = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(row.status, 'completed');
+  assert.strictEqual(row.knowledgePath, complete.knowledgePath);
+  assert.strictEqual(row.gitCommitSha, 'a'.repeat(40));
+  assert.strictEqual(row.errorCode, '');
+}
+
+{
+  const f = fixture();
+  const created = submitSchoolKnowledge(f, 4);
+  const rowIndex = f.inbox.values.findIndex((row) => row[inboxHeaders.indexOf('inboxId')] === created.inboxId);
+  f.inbox.values[rowIndex][inboxHeaders.indexOf('status')] = 'processing';
+  f.inbox.values[rowIndex][inboxHeaders.indexOf('claimedBy')] = 'worker-home-01';
+  f.inbox.values[rowIndex][inboxHeaders.indexOf('claimVersion')] = 1;
+  f.inbox.values[rowIndex][inboxHeaders.indexOf('attemptCount')] = 1;
+  f.inbox.values[rowIndex][inboxHeaders.indexOf('leaseExpiresAt')] = '2000-01-01T00:00:00+09:00';
+  assert.strictEqual(claimOne(f).claimed, false, 'general worker must not reclaim an expired P2 lease');
+  assert.strictEqual(claimSchoolKnowledge(f).claimVersion, 2);
+}
+
+{
+  const f = fixture();
+  const created = submitSchoolKnowledge(f, 5);
+  const claim = claimSchoolKnowledge(f);
+  const failed = f.api.familyInboxSchoolKnowledgeFail_(workerBody('familyInbox.schoolKnowledge.fail', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, errorCode: 'OCR_SOURCE_MISSING',
+  }));
+  const row = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(failed.status, 'failed');
+  assert.strictEqual(row.status, 'failed');
+  assert.strictEqual(row.errorCode, 'OCR_SOURCE_MISSING');
+  assert.match(row.errorMessage, /非AI文字抽出source/);
+  assert(!JSON.stringify(f.state.logs).includes('private note'));
+}
+
+{
+  const f = fixture();
+  const created = submitSchoolKnowledge(f, 51);
+  const claim = claimSchoolKnowledge(f);
+  const failed = f.api.familyInboxSchoolKnowledgeFail_(workerBody('familyInbox.schoolKnowledge.fail', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion, errorCode: 'OCR_SOURCE_INVALID',
+  }));
+  assert.strictEqual(failed.errorCode, 'OCR_SOURCE_INVALID');
+  assert.match(failed.errorMessage, /文字抽出sourceを検証/);
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'failed');
 }
 
 {

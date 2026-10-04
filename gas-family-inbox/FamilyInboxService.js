@@ -1,4 +1,5 @@
 const FAMILY_INBOX_SCHEMA_VERSION = 'family-inbox-1.0';
+const FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE = 'school-knowledge-p2';
 const FAMILY_INBOX_SHEET_NAME = 'Family_Inbox';
 const FAMILY_INBOX_TIME_ZONE = 'Asia/Tokyo';
 const FAMILY_INBOX_MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -16,7 +17,8 @@ const FAMILY_INBOX_LEGACY_HEADERS = Object.freeze([
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
 ]);
-const FAMILY_INBOX_HEADERS = Object.freeze(FAMILY_INBOX_LEGACY_HEADERS.concat(['processingProfile']));
+const FAMILY_INBOX_PROFILE_HEADERS = Object.freeze(FAMILY_INBOX_LEGACY_HEADERS.concat(['processingProfile']));
+const FAMILY_INBOX_HEADERS = Object.freeze(FAMILY_INBOX_PROFILE_HEADERS.concat(['knowledgePath', 'gitCommitSha', 'errorMessage']));
 const FAMILY_INBOX_MEDIA = Object.freeze({
   'image/jpeg': Object.freeze({ extension: 'jpg', signature: Object.freeze([0xff, 0xd8, 0xff]) }),
   'image/png': Object.freeze({ extension: 'png', signature: Object.freeze([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) }),
@@ -69,7 +71,7 @@ function familyInboxSubmit_(body) {
 function familyInboxPersistInput_(input, source, trace, startedAt) {
   const normalizedSource = String(source || '').trim();
   if (normalizedSource !== 'paluru' && normalizedSource !== 'drive_drop') throw familyInboxError_('INVALID_INPUT');
-  const processingProfile = familyInboxResolveProcessingProfile_(normalizedSource, input);
+    const processingProfile = familyInboxResolveProcessingProfile_(normalizedSource, input);
   const config = familyInboxLoadConfig_();
   let lock;
   try {
@@ -82,7 +84,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     });
     if (existing) {
       const originalNameMatches = normalizedSource === 'drive_drop' || existing.originalName === input.originalName;
-      if (existing.sha256 !== input.sha256 || existing.source !== normalizedSource || existing.submittedByMemberId !== input.submittedByMemberId || existing.subjectMemberHint !== input.subjectMemberId || existing.userNote !== input.userNote || !originalNameMatches || existing.mediaType !== input.mediaType) {
+      if (existing.sha256 !== input.sha256 || existing.source !== normalizedSource || existing.submittedByMemberId !== input.submittedByMemberId || existing.subjectMemberHint !== input.subjectMemberId || existing.userNote !== input.userNote || !originalNameMatches || existing.mediaType !== input.mediaType || existing.processingProfile !== processingProfile) {
         throw familyInboxError_('DUPLICATE_REQUEST');
       }
       const replay = familyInboxPublicSubmitResult_(existing, true);
@@ -95,7 +97,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     });
     const inboxId = familyInboxNewInboxId_();
     const now = familyInboxNow_();
-    const status = duplicate ? 'duplicate' : 'pending';
+    const status = duplicate ? 'duplicate' : (processingProfile === FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE ? 'queued' : 'pending');
     const storedName = inboxId + '.' + FAMILY_INBOX_MEDIA[input.mediaType].extension;
     let createdFile;
     try {
@@ -133,6 +135,9 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
       errorCode: '',
       duplicateOfInboxId: duplicate ? duplicate.inboxId : '',
       processingProfile: processingProfile,
+      knowledgePath: '',
+      gitCommitSha: '',
+      errorMessage: '',
     };
 
     try {
@@ -155,6 +160,10 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
 }
 
 function familyInboxResolveProcessingProfile_(source, input) {
+  if (source === 'paluru' && input && input.schoolKnowledgeP2 === true) {
+    if (input.mediaType !== 'application/pdf') throw familyInboxError_('UNSUPPORTED_MEDIA_TYPE');
+    return FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE;
+  }
   if (source === 'drive_drop' && input && input.mediaType === 'application/pdf') return 'school-v1-long';
   if (source === 'paluru') return 'school-v1';
   throw familyInboxError_('CONFIGURATION_ERROR');
@@ -182,6 +191,15 @@ function familyInboxGetStatus_(body) {
       errorCode: record.errorCode || '',
       duplicateOfInboxId: record.duplicateOfInboxId || '',
     };
+    if (String(record.processingProfile || '') === FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE) {
+      result.processingProfile = FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE;
+      result.originalName = String(record.originalName || '');
+      result.sourceSha = String(record.sha256 || '');
+      result.processedAt = String(record.processingCompletedAt || '');
+      result.knowledgePath = String(record.knowledgePath || '');
+      result.gitCommitSha = String(record.gitCommitSha || '');
+      result.errorMessage = String(record.errorMessage || '');
+    }
     familyInboxLog_(Object.assign(trace, { inboxId: inboxId, stage: 'completed', status: result.status, durationMs: Date.now() - startedAt }));
     return result;
   } catch (error) {
@@ -204,7 +222,8 @@ function familyInboxValidateSubmit_(body) {
     userNote: true, file: true, homeId: true, submittedByMemberId: true, source: true, traceId: true,
   };
   if (!familyInboxPlainObject_(body) || Object.keys(body).some(function(key) { return !allowed[key]; })) throw familyInboxError_('INVALID_INPUT');
-  if (body.operation !== 'familyInbox.submit' || body.source !== 'paluru' || !familyInboxPlainObject_(body.file)) throw familyInboxError_('INVALID_INPUT');
+  const schoolKnowledgeP2 = body.operation === 'familyInbox.schoolKnowledge.submit';
+  if ((body.operation !== 'familyInbox.submit' && !schoolKnowledgeP2) || body.source !== 'paluru' || !familyInboxPlainObject_(body.file)) throw familyInboxError_('INVALID_INPUT');
   const clientRequestId = String(body.clientRequestId || '').trim();
   if (!familyInboxUuid_(clientRequestId)) throw familyInboxError_('INVALID_INPUT');
   const homeId = familyInboxRequiredIdentifier_(body.homeId);
@@ -215,13 +234,14 @@ function familyInboxValidateSubmit_(body) {
   const originalName = familyInboxSanitizeOriginalName_(body.file.name);
   const mediaType = String(body.file.mediaType || '').trim().toLowerCase();
   if (!FAMILY_INBOX_MEDIA[mediaType]) throw familyInboxError_('UNSUPPORTED_MEDIA_TYPE');
+  if (schoolKnowledgeP2 && mediaType !== 'application/pdf') throw familyInboxError_('UNSUPPORTED_MEDIA_TYPE');
   const base64 = String(body.file.base64 || '');
   const bytes = familyInboxDecodeBase64_(base64);
   if (!bytes.length) throw familyInboxError_('INVALID_INPUT');
   if (bytes.length > FAMILY_INBOX_MAX_FILE_BYTES) throw familyInboxError_('FILE_TOO_LARGE');
   familyInboxValidateSignature_(mediaType, bytes);
   const sha256 = familyInboxSha256_(bytes);
-  return { clientRequestId: clientRequestId, homeId: homeId, submittedByMemberId: submittedByMemberId, subjectMemberId: subjectMemberId, userNote: userNote, originalName: originalName, mediaType: mediaType, bytes: bytes, sha256: sha256 };
+  return { clientRequestId: clientRequestId, homeId: homeId, submittedByMemberId: submittedByMemberId, subjectMemberId: subjectMemberId, userNote: userNote, originalName: originalName, mediaType: mediaType, bytes: bytes, sha256: sha256, schoolKnowledgeP2: schoolKnowledgeP2 };
 }
 
 function familyInboxDecodeBase64_(value) {

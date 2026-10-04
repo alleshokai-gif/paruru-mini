@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20261004-today-free-windows-v1";
+globalThis.BUILD_ID = "v20261004-school-knowledge-p2-v1";

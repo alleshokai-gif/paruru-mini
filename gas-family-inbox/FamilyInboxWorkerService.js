@@ -44,6 +44,19 @@ const FAMILY_INBOX_FAIL_CODES = Object.freeze({
   CONFIGURATION_ERROR: true,
   INTERNAL_ERROR: true,
 });
+const FAMILY_INBOX_SCHOOL_KNOWLEDGE_ERRORS = Object.freeze({
+  CONFIGURATION_ERROR: true, OCR_SOURCE_MISSING: true, OCR_SOURCE_AMBIGUOUS: true, OCR_SOURCE_INVALID: true,
+  SOURCE_READ_ERROR: true, INVALID_INPUT: true, NEEDS_ASSIGNMENT: true,
+  AI_PROVIDER_ERROR: true, AI_TIMEOUT: true, INVALID_AI_OUTPUT: true,
+  MODEL_CALL_LIMIT: true, PROCESS_START_FAILED: true, PROCESS_FAILED: true,
+  PROCESS_LIMIT_EXCEEDED: true, GIT_WRONG_BRANCH: true, GIT_WRONG_REMOTE: true,
+  GIT_DIRTY_WORKTREE: true, GIT_REMOTE_DIVERGED: true, GIT_COMMAND_FAILED: true,
+  GIT_PROCESS_ERROR: true, GIT_PROCESS_LIMIT: true, PRIVACY_CHECK_FAILED: true,
+  UNSAFE_PATH: true, HUMAN_VERIFIED_OVERWRITE: true, CRITICAL_FACT_MISSING: true,
+  UNVERIFIED_DISMISSAL_MISSING: true, KNOWLEDGE_HEADINGS_MISSING: true, SOURCE_LINK_MISSING: true,
+  GRADE_SCOPE_CONFLICT: true, INVALID_EXISTING_SOURCE: true, DUPLICATE_SOURCE_SHA: true,
+  GIT_STATE_CHANGED: true, GIT_UNEXPECTED_STAGING: true, INTERNAL_ERROR: true,
+});
 
 function familyInboxClaimNext_(body) {
   return familyInboxWorkerRun_('familyInbox.claimNext', body, function(context) {
@@ -60,9 +73,13 @@ function familyInboxClaimNext_(body) {
       const now = new Date();
       const entry = targeted
         ? entries.find(function(candidate) { return String(candidate.record.inboxId || '') === targetInboxId; })
-        : entries.find(function(candidate) { return familyInboxWorkerClaimEligible_(candidate.record, now); });
+        : entries.find(function(candidate) {
+          return String(candidate.record.processingProfile || '') !== FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE &&
+            familyInboxWorkerClaimEligible_(candidate.record, now);
+        });
       if (targeted && !entry) throw familyInboxError_('CLAIM_NOT_FOUND');
       if (targeted) {
+        if (String(entry.record.processingProfile || '') === FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE) throw familyInboxError_('INVALID_STATE');
         const targetStatus = String(entry.record.status || '');
         const targetStatusAllowed = targetStatus === 'pending' || targetStatus === 'processing';
         if (!targetStatusAllowed || !familyInboxWorkerClaimEligible_(entry.record, now)) {
@@ -297,6 +314,187 @@ function familyInboxFailClaim_(body) {
       }
     }
   });
+}
+
+function familyInboxSchoolKnowledgeClaimNext_(body) {
+  return familyInboxWorkerRun_('familyInbox.schoolKnowledge.claimNext', body, function(context) {
+    familyInboxWorkerValidateKeys_(body, { operation: true, workerToken: true, traceId: true });
+    let lock;
+    try {
+      lock = LockService.getScriptLock();
+      lock.waitLock(30000);
+      const ledger = familyInboxOpenLedger_(context.config.spreadsheetId);
+      const entries = familyInboxWorkerInboxEntries_(ledger);
+      const now = new Date();
+      entries.forEach(function(entry) {
+        const record = entry.record;
+        if (String(record.processingProfile || '') !== FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE ||
+            String(record.status || '') !== 'processing' || familyInboxWorkerTime_(record.leaseExpiresAt) > now.getTime() ||
+            familyInboxWorkerInteger_(record.attemptCount, 0) < FAMILY_INBOX_WORKER_MAX_ATTEMPTS) return;
+        const timestamp = familyInboxWorkerIso_(now);
+        familyInboxWorkerUpdateInbox_(ledger, entry, {
+          status: 'failed', updatedAt: timestamp, processingCompletedAt: timestamp,
+          claimedBy: '', leaseExpiresAt: '', retryable: false, nextAttemptAt: '',
+          errorCode: 'WORKER_LEASE_EXHAUSTED', errorMessage: familyInboxSchoolKnowledgeErrorMessage_('WORKER_LEASE_EXHAUSTED'),
+        });
+      });
+      const entry = entries.find(function(candidate) {
+        const record = candidate.record;
+        return String(record.processingProfile || '') === FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE &&
+          (String(record.status || '') === 'queued' ||
+            (String(record.status || '') === 'processing' && familyInboxWorkerTime_(record.leaseExpiresAt) <= now.getTime())) &&
+          familyInboxWorkerInteger_(record.attemptCount, 0) < FAMILY_INBOX_WORKER_MAX_ATTEMPTS;
+      });
+      if (!entry) return { claimed: false };
+      const claimVersion = familyInboxWorkerInteger_(entry.record.claimVersion, 0) + 1;
+      const attemptCount = familyInboxWorkerInteger_(entry.record.attemptCount, 0) + 1;
+      const nowIso = familyInboxWorkerIso_(now);
+      const leaseExpiresAt = familyInboxWorkerIso_(new Date(now.getTime() + FAMILY_INBOX_WORKER_LEASE_MILLIS));
+      familyInboxWorkerUpdateInbox_(ledger, entry, {
+        status: 'processing', updatedAt: nowIso, attemptCount, processingStartedAt: nowIso,
+        processingCompletedAt: '', claimedBy: context.workerId, claimVersion,
+        leaseExpiresAt, retryable: false, nextAttemptAt: '', errorCode: '', errorMessage: '',
+      });
+      context.trace.inboxId = String(entry.record.inboxId || '');
+      context.trace.claimVersion = claimVersion;
+      context.trace.profile = FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE;
+      context.trace.status = 'processing';
+      return {
+        claimed: true, inboxId: String(entry.record.inboxId || ''), claimVersion,
+        mediaType: String(entry.record.mediaType || ''), sizeBytes: familyInboxWorkerInteger_(entry.record.sizeBytes, 0),
+        leaseExpiresAt, processingProfile: FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE,
+      };
+    } finally {
+      if (lock) { try { lock.releaseLock(); } catch (_) {} }
+    }
+  });
+}
+
+function familyInboxSchoolKnowledgeGetClaimedSource_(body) {
+  return familyInboxWorkerRun_('familyInbox.schoolKnowledge.getClaimedSource', body, function(context) {
+    familyInboxWorkerValidateKeys_(body, { operation: true, workerToken: true, inboxId: true, claimVersion: true, traceId: true });
+    const claim = familyInboxWorkerClaimInput_(body);
+    const ledger = familyInboxOpenLedger_(context.config.spreadsheetId);
+    const entry = familyInboxWorkerRequireClaim_(ledger, claim, context.workerId, new Date(), false);
+    if (String(entry.record.processingProfile || '') !== FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE) throw familyInboxError_('INVALID_STATE');
+    let file;
+    let bytes;
+    try {
+      file = DriveApp.getFileById(String(entry.record.originalRef || ''));
+      bytes = file.getBlob().getBytes();
+    } catch (_) { throw familyInboxError_('SOURCE_READ_ERROR'); }
+    if (!bytes || !bytes.length || bytes.length > FAMILY_INBOX_MAX_FILE_BYTES ||
+        String(entry.record.mediaType || '') !== 'application/pdf') throw familyInboxError_('SOURCE_READ_ERROR');
+    const sha256 = familyInboxSha256_(bytes);
+    if (sha256 !== String(entry.record.sha256 || '')) throw familyInboxError_('SOURCE_READ_ERROR');
+    context.trace.inboxId = claim.inboxId;
+    context.trace.claimVersion = claim.claimVersion;
+    context.trace.mediaType = 'application/pdf';
+    context.trace.sizeBytes = bytes.length;
+    context.trace.sha256Prefix = sha256.slice(0, 12);
+    return {
+      inboxId: claim.inboxId, claimVersion: claim.claimVersion,
+      mediaType: 'application/pdf', sizeBytes: bytes.length, sha256,
+      sourceFileId: String(entry.record.originalRef || ''),
+      originalName: String(entry.record.originalName || ''),
+      receivedAt: String(entry.record.receivedAt || ''),
+      base64: Utilities.base64Encode(bytes),
+    };
+  });
+}
+
+function familyInboxSchoolKnowledgeComplete_(body) {
+  return familyInboxWorkerRun_('familyInbox.schoolKnowledge.complete', body, function(context) {
+    familyInboxWorkerValidateKeys_(body, {
+      operation: true, workerToken: true, inboxId: true, claimVersion: true,
+      sourceSha: true, knowledgePath: true, gitCommitSha: true, traceId: true,
+    });
+    const claim = familyInboxWorkerClaimInput_(body);
+    const sourceSha = String(body.sourceSha || '').toLowerCase();
+    const knowledgePath = String(body.knowledgePath || '');
+    const gitCommitSha = String(body.gitCommitSha || '').toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(sourceSha) ||
+        !/^school\/\d{4}\/grade-[1-6]\/\d{4}-(0[1-9]|1[0-2])\/knowledge\.md$/.test(knowledgePath) ||
+        !/^[0-9a-f]{40}$/.test(gitCommitSha)) throw familyInboxError_('INVALID_INPUT');
+    let lock;
+    try {
+      lock = LockService.getScriptLock();
+      lock.waitLock(30000);
+      const ledger = familyInboxOpenLedger_(context.config.spreadsheetId);
+      const entry = familyInboxWorkerRequireClaim_(ledger, claim, context.workerId, new Date(), true);
+      if (String(entry.record.processingProfile || '') !== FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE ||
+          String(entry.record.sha256 || '') !== sourceSha) throw familyInboxError_('CLAIM_CONFLICT');
+      const now = familyInboxNow_();
+      familyInboxWorkerUpdateInbox_(ledger, entry, {
+        status: 'completed', updatedAt: now, processingCompletedAt: now, claimedBy: '',
+        leaseExpiresAt: '', retryable: false, nextAttemptAt: '', errorCode: '', errorMessage: '',
+        knowledgePath, gitCommitSha,
+      });
+      context.trace.inboxId = claim.inboxId;
+      context.trace.claimVersion = claim.claimVersion;
+      context.trace.profile = FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE;
+      context.trace.status = 'completed';
+      return { inboxId: claim.inboxId, status: 'completed', processedAt: now, sourceSha, knowledgePath, gitCommitSha };
+    } finally {
+      if (lock) { try { lock.releaseLock(); } catch (_) {} }
+    }
+  });
+}
+
+function familyInboxSchoolKnowledgeFail_(body) {
+  return familyInboxWorkerRun_('familyInbox.schoolKnowledge.fail', body, function(context) {
+    familyInboxWorkerValidateKeys_(body, {
+      operation: true, workerToken: true, inboxId: true, claimVersion: true, errorCode: true, traceId: true,
+    });
+    const claim = familyInboxWorkerClaimInput_(body);
+    const errorCode = String(body.errorCode || '').trim();
+    if (!FAMILY_INBOX_SCHOOL_KNOWLEDGE_ERRORS[errorCode]) throw familyInboxError_('INVALID_INPUT');
+    let lock;
+    try {
+      lock = LockService.getScriptLock();
+      lock.waitLock(30000);
+      const ledger = familyInboxOpenLedger_(context.config.spreadsheetId);
+      const entry = familyInboxWorkerRequireClaim_(ledger, claim, context.workerId, new Date(), true);
+      if (String(entry.record.processingProfile || '') !== FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE) throw familyInboxError_('CLAIM_CONFLICT');
+      const now = familyInboxNow_();
+      const errorMessage = familyInboxSchoolKnowledgeErrorMessage_(errorCode);
+      familyInboxWorkerUpdateInbox_(ledger, entry, {
+        status: 'failed', updatedAt: now, processingCompletedAt: now, claimedBy: '',
+        leaseExpiresAt: '', retryable: false, nextAttemptAt: '', errorCode, errorMessage,
+      });
+      context.trace.inboxId = claim.inboxId;
+      context.trace.claimVersion = claim.claimVersion;
+      context.trace.profile = FAMILY_INBOX_SCHOOL_KNOWLEDGE_PROFILE;
+      context.trace.status = 'failed';
+      context.trace.errorCode = errorCode;
+      return { inboxId: claim.inboxId, status: 'failed', errorCode, errorMessage };
+    } finally {
+      if (lock) { try { lock.releaseLock(); } catch (_) {} }
+    }
+  });
+}
+
+function familyInboxSchoolKnowledgeErrorMessage_(code) {
+  const messages = {
+    OCR_SOURCE_MISSING: 'このPDFと一致する非AI文字抽出sourceが見つかりません。',
+    OCR_SOURCE_AMBIGUOUS: '一致する文字抽出sourceが複数あります。',
+    OCR_SOURCE_INVALID: '一致した文字抽出sourceを検証できませんでした。',
+    INVALID_EXISTING_SOURCE: '既存sourceのページ構成を確認できませんでした。',
+    KNOWLEDGE_HEADINGS_MISSING: 'Knowledgeに必須の見出しがありません。',
+    SOURCE_LINK_MISSING: 'Knowledgeの出典リンクを確認できませんでした。',
+    GRADE_SCOPE_CONFLICT: '対象学年を確認できない情報が含まれたため保存を止めました。',
+    DUPLICATE_SOURCE_SHA: '同じPDFのsourceが複数見つかったため保存を止めました。',
+    AI_PROVIDER_ERROR: '学校ナレッジの生成に失敗しました。',
+    AI_TIMEOUT: '学校ナレッジ生成が時間内に完了しませんでした。',
+    GIT_DIRTY_WORKTREE: 'Knowledge保存先に未整理の変更があります。',
+    GIT_REMOTE_DIVERGED: 'Knowledge保存branchがGitHubと一致しません。',
+    GIT_WRONG_BRANCH: 'Knowledge保存先のbranch設定を確認してください。',
+    GIT_WRONG_REMOTE: 'Knowledge保存先のremote設定を確認してください。',
+    GIT_STATE_CHANGED: '保存中にKnowledge branchの状態が変わりました。',
+    GIT_UNEXPECTED_STAGING: 'Knowledge保存対象外の変更を検出したため停止しました。',
+    WORKER_LEASE_EXHAUSTED: 'workerが複数回停止したため処理を止めました。',
+  };
+  return messages[code] || '学校ナレッジの処理に失敗しました。';
 }
 
 function familyInboxWorkerRun_(operation, body, action) {

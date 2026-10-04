@@ -12,7 +12,7 @@ const headers = [
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
-  'processingProfile',
+  'processingProfile', 'knowledgePath', 'gitCommitSha', 'errorMessage',
 ];
 
 class Range {

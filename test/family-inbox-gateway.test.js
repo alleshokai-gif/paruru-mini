@@ -42,9 +42,16 @@ function fixture(options = {}) {
       const request = JSON.parse(fetchOptions.payload);
       let data;
       if (request.operation === 'familyInbox.submit') data = { inboxId, status: 'pending', idempotency: { replayed: false }, duplicateOfInboxId: '' };
+      else if (request.operation === 'familyInbox.schoolKnowledge.submit') data = { inboxId, status: options.schoolKnowledgeSubmitStatus || 'queued', idempotency: { replayed: options.schoolKnowledgeSubmitReplayed === true }, duplicateOfInboxId: '' };
       else if (request.operation === 'familyInbox.listReviews') data = { items: [{ inboxId, receivedAt: '2026-08-31T00:00:00+09:00', subjectMemberId: 'youngest_daughter', originalName: 'school.pdf', candidateCount: 5, candidateTypes: ['school.document', 'schedule.event', 'school.belongings'], reviewStatus: 'pending' }] };
       else if (request.operation === 'familyInbox.getReview') data = { inboxId, subjectMemberId: 'youngest_daughter', reviewStatus: 'pending', document: { originalName: 'school.pdf', receivedAt: '2026-08-31T00:00:00+09:00' }, candidates: [reviewCandidate()] };
       else if (['familyInbox.updateCandidate', 'familyInbox.approveCandidate', 'familyInbox.rejectCandidate'].includes(request.operation)) data = { candidate: reviewCandidate({ revision: 2, reviewStatus: request.operation === 'familyInbox.approveCandidate' ? 'approved' : request.operation === 'familyInbox.rejectCandidate' ? 'rejected' : 'pending' }), reviewStatus: 'pending', idempotency: { replayed: false } };
+      else if (options.schoolKnowledgeStatus && request.operation === 'familyInbox.getStatus') data = {
+        inboxId: request.inboxId, status: 'completed', receivedAt: '2026-10-04T09:00:00+09:00', updatedAt: '2026-10-04T09:01:00+09:00',
+        errorCode: '', duplicateOfInboxId: '', processingProfile: 'school-knowledge-p2', originalName: 'school.pdf',
+        processedAt: '2026-10-04T09:01:00+09:00', sourceSha: 'b'.repeat(64),
+        knowledgePath: 'school/2026/grade-3/2026-10/knowledge.md', gitCommitSha: 'c'.repeat(40), errorMessage: '',
+      };
       else data = { inboxId: request.inboxId, status: 'pending', receivedAt: '2026-08-28T00:00:00+09:00', updatedAt: '2026-08-28T00:00:00+09:00', errorCode: '', duplicateOfInboxId: '' };
       const envelope = options.backendError
         ? { success: false, error: { code: options.backendError } }
@@ -82,6 +89,37 @@ function submit(overrides = {}) {
   assert.strictEqual(forwarded.source, 'paluru');
   assert.strictEqual(forwarded.internalToken, 'internal-service-secret');
   assert(!Object.hasOwn(forwarded.file, 'sizeBytes'));
+}
+
+{
+  const f = fixture();
+  const request = submit({ action: 'familyInbox.schoolKnowledge.submit' });
+  const result = f.api.familyInboxGateway_(request);
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.status, 'queued');
+  assert.deepStrictEqual(f.state.authorized, ['family.inbox.submit']);
+  const forwarded = JSON.parse(f.state.calls[0].fetchOptions.payload);
+  assert.strictEqual(forwarded.operation, 'familyInbox.schoolKnowledge.submit');
+  assert.strictEqual(forwarded.source, 'paluru');
+  assert.strictEqual(forwarded.file.mediaType, 'application/pdf');
+  assert(!Object.hasOwn(forwarded, 'processingProfile'), 'client cannot choose profile');
+
+  const injected = fixture().api.familyInboxGateway_(submit({
+    action: 'familyInbox.schoolKnowledge.submit', processingProfile: 'school-v1-long',
+  }));
+  assert.strictEqual(injected.error.code, 'INVALID_INPUT');
+
+  const replayFixture = fixture({ schoolKnowledgeSubmitStatus: 'completed', schoolKnowledgeSubmitReplayed: true });
+  const replay = replayFixture.api.familyInboxGateway_(submit({ action: 'familyInbox.schoolKnowledge.submit' }));
+  assert.strictEqual(replay.success, true, 'an idempotent replay may report the row current status');
+  assert.strictEqual(replay.data.status, 'completed');
+  assert.strictEqual(replay.data.idempotency.replayed, true);
+
+  const image = fixture().api.familyInboxGateway_(submit({
+    action: 'familyInbox.schoolKnowledge.submit',
+    file: { name: 'school.jpg', mediaType: 'image/jpeg', base64: Buffer.from([0xff, 0xd8, 0xff, 1]).toString('base64') },
+  }));
+  assert.strictEqual(image.error.code, 'UNSUPPORTED_MEDIA_TYPE');
 }
 
 {
@@ -145,6 +183,17 @@ function submit(overrides = {}) {
   assert.strictEqual(result.success, true);
   assert.strictEqual(result.data.inboxId, inboxId);
   assert.deepStrictEqual(f.state.authorized, ['family.inbox.read']);
+}
+
+{
+  const f = fixture({ schoolKnowledgeStatus: true });
+  const result = f.api.familyInboxGateway_({ action: 'familyInbox.getStatus', auth: { provider: 'firebase', idToken: 'firebase-token' }, inboxId });
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.processingProfile, 'school-knowledge-p2');
+  assert.strictEqual(result.data.sourceSha, 'b'.repeat(64));
+  assert.strictEqual(result.data.knowledgePath, 'school/2026/grade-3/2026-10/knowledge.md');
+  assert.strictEqual(result.data.gitCommitSha, 'c'.repeat(40));
+  assert.strictEqual(result.data.processedAt, '2026-10-04T09:01:00+09:00');
 }
 
 {
