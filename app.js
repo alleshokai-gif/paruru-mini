@@ -1745,7 +1745,7 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
-  if (resolvedView !== "kaz-os" && /^#kaz-os(?:\\/|$)/.test(String(globalThis.location?.hash || ""))) {
+  if (resolvedView !== "kaz-os" && /^#kaz-os(?:\/|$)/.test(String(globalThis.location?.hash || ""))) {
     const cleanUrl = `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}` || "./";
     globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", cleanUrl);
   }

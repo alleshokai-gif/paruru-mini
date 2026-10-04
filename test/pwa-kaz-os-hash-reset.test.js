@@ -16,7 +16,7 @@ assert(switchStart >= 0 && switchEnd > switchStart, 'switchView source not found
 const switchSource = appSource.slice(switchStart, switchEnd);
 
 assert(switchSource.includes('resolvedView !== "kaz-os"'), 'Kaz OS exit guard missing');
-assert(switchSource.includes('/^#kaz-os(?:\\\\/|$)/'), 'Kaz OS hash matcher missing');
+assert(switchSource.includes('/^#kaz-os(?:\\/|$)/'), 'Kaz OS hash matcher missing');
 assert(switchSource.includes('history?.replaceState?.'), 'Kaz OS hash is not cleared with replaceState');
 assert(switchSource.includes('location?.pathname') && switchSource.includes('location?.search'), 'path/query preservation missing');
 assert(!switchSource.includes('location.hash = ""'), 'hash clearing must not trigger hashchange');
