@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261004-today-free-windows-v1");
-// Release: v20260930-inbox-direct-v2-cutover-v1
+importScripts("./build.js?v=v20261004-kaz-hash-reset-v1");
+// Release: v20261004-kaz-hash-reset-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

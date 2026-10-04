@@ -1,1 +1,1 @@
-globalThis.BUILD_ID = "v20261004-today-free-windows-v1";
+globalThis.BUILD_ID = "v20261004-kaz-hash-reset-v1";

@@ -1745,6 +1745,10 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
+  if (resolvedView !== "kaz-os" && /^#kaz-os(?:\\/|$)/.test(String(globalThis.location?.hash || ""))) {
+    const cleanUrl = `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}` || "./";
+    globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", cleanUrl);
+  }
   try { globalThis.PALURUBus?.setActive(resolvedView === "bus"); } catch { /* Keep Bus failures inside its view. */ }
   try { globalThis.PALURUBusHub?.setActive(resolvedView === "bus"); } catch { /* Keep Hub failures inside its view. */ }
   try { globalThis.PALURUBusHomeRoute?.setActive(resolvedView === "bus"); } catch { /* Keep Route decision failures inside Bus. */ }
