@@ -30,6 +30,7 @@ assert(app.includes('buildMemoCredentialPayload("familyInbox.approveCandidate")'
 assert(app.includes('buildMemoCredentialPayload("familyInbox.rejectCandidate")'));
 assert(app.includes('clientRequestId: familyInboxPendingClientRequestId'));
 assert(app.includes('familyInboxPendingClientRequestId = ""'));
+assert(app.includes('[familyInboxFile, familyInboxSubjectMember, familyInboxNote, familyInboxSchoolKnowledge].filter(Boolean).forEach'), 'optional school-knowledge control must not crash older cached HTML');
 assert(app.includes('if (useSchoolKnowledgeP2 && familyInboxSchoolKnowledge) familyInboxSchoolKnowledge.checked = false'));
 assert(app.includes('const FAMILY_INBOX_MAX_FILE_BYTES = 5 * 1024 * 1024'));
 assert(app.includes('reader.readAsDataURL(file)'));
