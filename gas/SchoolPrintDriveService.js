@@ -1,0 +1,105 @@
+const SCHOOL_PRINT_QUEUE_ROOT_NAME = 'PALURU School Print Inbox';
+const SCHOOL_PRINT_FOLDER_PROPERTIES = Object.freeze({
+  root: 'SCHOOL_PRINT_ROOT_FOLDER_ID',
+  inbox: 'SCHOOL_PRINT_INBOX_FOLDER_ID',
+  processed: 'SCHOOL_PRINT_PROCESSED_FOLDER_ID',
+  error: 'SCHOOL_PRINT_ERROR_FOLDER_ID',
+});
+
+function schoolPrintDriveSubmit_(trusted) {
+  if (!trusted || trusted.documentType !== 'school_print' ||
+      trusted.file?.mediaType !== 'application/pdf' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(trusted.clientRequestId || ''))) {
+    throw familyInboxGatewayError_('INVALID_INPUT');
+  }
+
+  const lock = LockService.getScriptLock();
+  let locked = false;
+  let createdFile = null;
+  let folders = null;
+  try {
+    lock.waitLock(10000);
+    locked = true;
+    folders = schoolPrintDriveFolders_();
+    const bytes = Utilities.base64Decode(trusted.file.base64);
+    const sha256 = schoolPrintSha256_(bytes);
+    const replay = schoolPrintFindRequest_(folders, trusted.clientRequestId);
+    if (replay) {
+      if (replay.metadata.sha256 !== sha256) throw familyInboxGatewayError_('DUPLICATE_REQUEST');
+      return { status: 'queued', fileId: replay.file.getId(), idempotency: { replayed: true } };
+    }
+
+    const originalName = schoolPrintSafeFileName_(trusted.file.name);
+    const initialName = `skv3-${trusted.clientRequestId}__${originalName}`;
+    const blob = Utilities.newBlob(bytes, 'application/pdf', initialName);
+    createdFile = folders.inbox.createFile(blob);
+    createdFile.setName(`skv3-${trusted.clientRequestId}__${createdFile.getId()}__${originalName}`);
+    createdFile.setDescription(JSON.stringify({
+      type: 'school_print_v3',
+      clientRequestId: trusted.clientRequestId,
+      sha256: sha256,
+      originalName: originalName,
+      userNote: String(trusted.userNote || ''),
+      receivedAt: new Date().toISOString(),
+    }));
+    return { status: 'queued', fileId: createdFile.getId(), idempotency: { replayed: false } };
+  } catch (error) {
+    if (createdFile && folders) {
+      try { createdFile.moveTo(folders.error); } catch (_) {}
+    }
+    if (error && ['INVALID_INPUT', 'UNSUPPORTED_MEDIA_TYPE', 'DUPLICATE_REQUEST', 'STORAGE_ERROR', 'CONFIGURATION_ERROR'].indexOf(error.code) >= 0) throw error;
+    throw familyInboxGatewayError_('STORAGE_ERROR');
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
+function schoolPrintDriveFolders_() {
+  const properties = PropertiesService.getScriptProperties();
+  const root = schoolPrintFolder_(properties, SCHOOL_PRINT_FOLDER_PROPERTIES.root,
+    SCHOOL_PRINT_QUEUE_ROOT_NAME, DriveApp.getRootFolder());
+  return {
+    root: root,
+    inbox: schoolPrintFolder_(properties, SCHOOL_PRINT_FOLDER_PROPERTIES.inbox, 'inbox', root),
+    processed: schoolPrintFolder_(properties, SCHOOL_PRINT_FOLDER_PROPERTIES.processed, 'processed', root),
+    error: schoolPrintFolder_(properties, SCHOOL_PRINT_FOLDER_PROPERTIES.error, 'error', root),
+  };
+}
+
+function schoolPrintFolder_(properties, propertyName, folderName, parent) {
+  const storedId = String(properties.getProperty(propertyName) || '').trim();
+  if (storedId) {
+    let existing;
+    try { existing = DriveApp.getFolderById(storedId); } catch (_) { throw familyInboxGatewayError_('CONFIGURATION_ERROR'); }
+    if (!existing || existing.getName() !== folderName) throw familyInboxGatewayError_('CONFIGURATION_ERROR');
+    return existing;
+  }
+  const created = parent.createFolder(folderName);
+  properties.setProperty(propertyName, created.getId());
+  return created;
+}
+
+function schoolPrintFindRequest_(folders, clientRequestId) {
+  const query = `title contains "skv3-${clientRequestId}__"`;
+  for (const folder of [folders.inbox, folders.processed, folders.error]) {
+    const files = folder.searchFiles(query);
+    while (files.hasNext()) {
+      const file = files.next();
+      let metadata;
+      try { metadata = JSON.parse(String(file.getDescription() || '')); } catch (_) { continue; }
+      if (metadata.type === 'school_print_v3' && metadata.clientRequestId === clientRequestId) return { file: file, metadata: metadata };
+    }
+  }
+  return null;
+}
+
+function schoolPrintSha256_(bytes) {
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
+  return digest.map((value) => ('0' + (Number(value) & 0xff).toString(16)).slice(-2)).join('');
+}
+
+function schoolPrintSafeFileName_(value) {
+  const name = String(value || '').normalize('NFKC')
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '').trim().slice(0, 180);
+  return name || 'school-print.pdf';
+}

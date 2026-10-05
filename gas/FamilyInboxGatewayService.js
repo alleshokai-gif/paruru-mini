@@ -38,7 +38,9 @@ function familyInboxGateway_(body) {
     const actor = resolveFirebaseAuthenticatedActor_(input);
     authorizeCapability_(actor, capability);
     const trusted = familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId);
-    const result = familyInboxGatewayCallService_(trusted, operation);
+    const result = trusted.documentType === 'school_print'
+      ? schoolPrintDriveSubmit_(trusted)
+      : familyInboxGatewayCallService_(trusted, operation);
     familyInboxGatewayLog_({ traceId: traceId, operation: operation, stage: 'completed', status: result.status, mediaType: trusted.file && trusted.file.mediaType, sizeBytes: trusted.file && trusted.file.sizeBytes, durationMs: Date.now() - startedAt });
     return json_({ success: true, schemaVersion: FAMILY_INBOX_GATEWAY_SCHEMA_VERSION, data: result, error: null, message: 'ok' });
   } catch (error) {
@@ -51,16 +53,20 @@ function familyInboxGateway_(body) {
 
 function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId) {
   if (operation === 'familyInbox.submit') {
-    const allowed = { action: true, auth: true, clientRequestId: true, subjectMemberId: true, userNote: true, file: true };
+    const allowed = { action: true, auth: true, clientRequestId: true, subjectMemberId: true, userNote: true, file: true, documentType: true };
     if (!familyInboxGatewayPlainObject_(input) || Object.keys(input).some(function(key) { return !allowed[key]; })) throw familyInboxGatewayError_('INVALID_INPUT');
     const subjectMemberId = String(input.subjectMemberId || '').trim();
     const subject = getHomeMember_(actor.homeId, subjectMemberId);
     if (!subject || subject.status !== 'active' || !isHomeMemberPolicyMatch_(subject)) throw familyInboxGatewayError_('INVALID_MEMBER');
     const file = familyInboxGatewayValidateFile_(input.file);
+    const hasDocumentType = Object.prototype.hasOwnProperty.call(input, 'documentType');
+    const documentType = hasDocumentType ? String(input.documentType || '').trim() : '';
+    if (hasDocumentType && documentType !== 'school_print') throw familyInboxGatewayError_('INVALID_INPUT');
+    if (documentType === 'school_print' && file.mediaType !== 'application/pdf') throw familyInboxGatewayError_('UNSUPPORTED_MEDIA_TYPE');
     const clientRequestId = String(input.clientRequestId || '').trim();
     const userNote = String(input.userNote || '').trim();
     if (!familyInboxGatewayUuid_(clientRequestId) || Array.from(userNote).length > FAMILY_INBOX_GATEWAY_MAX_NOTE_CHARACTERS) throw familyInboxGatewayError_('INVALID_INPUT');
-    return {
+    const trusted = {
       operation: operation,
       clientRequestId: clientRequestId,
       subjectMemberId: subject.memberUserId,
@@ -71,6 +77,8 @@ function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId
       source: 'paluru',
       traceId: traceId,
     };
+    if (documentType) trusted.documentType = documentType;
+    return trusted;
   }
 
   if (operation === 'familyInbox.listReviews') {

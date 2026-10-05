@@ -15,9 +15,6 @@ const FAMILY_INBOX_ALLOWED_MEDIA_TYPES = new Set(["image/jpeg", "image/png", "ap
 let familyInboxPendingClientRequestId = "";
 let familyInboxReviews = [];
 let activeFamilyInboxReview = null;
-let familyInboxSchoolKnowledgePollTimer = null;
-let familyInboxSchoolKnowledgeReceiptsLoading = false;
-const FAMILY_INBOX_SCHOOL_KNOWLEDGE_RECEIPTS_KEY = "paruru-school-knowledge-receipts-v1";
 const PET_HEALTH_DASHBOARD_SAFE_ERROR_CODES = new Set([
   "PET_HEALTH_TIMEOUT",
   "PET_HEALTH_UNAVAILABLE",
@@ -348,12 +345,9 @@ const familyInboxForm = document.querySelector("#familyInboxForm");
 const familyInboxFile = document.querySelector("#familyInboxFile");
 const familyInboxSubjectMember = document.querySelector("#familyInboxSubjectMember");
 const familyInboxNote = document.querySelector("#familyInboxNote");
-const familyInboxSchoolKnowledge = document.querySelector("#familyInboxSchoolKnowledge");
+const familyInboxSchoolPrint = document.querySelector("#familyInboxSchoolPrint");
 const familyInboxSubmit = document.querySelector("#familyInboxSubmit");
 const familyInboxStatus = document.querySelector("#familyInboxStatus");
-const familyInboxSchoolKnowledgeSection = document.querySelector("#familyInboxSchoolKnowledgeSection");
-const familyInboxSchoolKnowledgeReceipts = document.querySelector("#familyInboxSchoolKnowledgeReceipts");
-const refreshFamilyInboxSchoolKnowledge = document.querySelector("#refreshFamilyInboxSchoolKnowledge");
 const familyInboxReviewSection = document.querySelector("#familyInboxReviewSection");
 const familyInboxReviewCount = document.querySelector("#familyInboxReviewCount");
 const familyInboxReviewList = document.querySelector("#familyInboxReviewList");
@@ -1408,9 +1402,7 @@ if (typeof document.addEventListener === "function") {
 }
 
 refreshInboxButton.addEventListener("click", loadInboxView_);
-if (refreshFamilyInboxSchoolKnowledge) refreshFamilyInboxSchoolKnowledge.addEventListener("click", () => loadFamilyInboxSchoolKnowledgeReceipts_());
-
-[familyInboxFile, familyInboxSubjectMember, familyInboxNote, familyInboxSchoolKnowledge].forEach((input) => {
+[familyInboxFile, familyInboxSubjectMember, familyInboxNote, familyInboxSchoolPrint].forEach((input) => {
   input.addEventListener(input === familyInboxNote ? "input" : "change", () => {
     familyInboxPendingClientRequestId = "";
   });
@@ -1428,8 +1420,8 @@ familyInboxForm.addEventListener("submit", async (event) => {
     setFamilyInboxStatus_("JPEG・PNG・PDFだけ預かれるで。", "error");
     return;
   }
-  const useSchoolKnowledgeP2 = familyInboxSchoolKnowledge?.checked === true;
-  if (useSchoolKnowledgeP2 && file.type !== "application/pdf") {
+  const isSchoolPrint = familyInboxSchoolPrint?.checked === true;
+  if (isSchoolPrint && file.type !== "application/pdf") {
     setFamilyInboxStatus_("学校プリント整理はPDFだけ選べるで。", "error");
     return;
   }
@@ -1448,18 +1440,15 @@ familyInboxForm.addEventListener("submit", async (event) => {
     const base64 = await readFamilyInboxFileAsBase64_(file);
     if (!familyInboxPendingClientRequestId) familyInboxPendingClientRequestId = createUuid();
     const data = await callHomeControlApi({
-      ...buildMemoCredentialPayload(useSchoolKnowledgeP2 ? "familyInbox.schoolKnowledge.submit" : "familyInbox.submit"),
+      ...buildMemoCredentialPayload("familyInbox.submit"),
+      ...(isSchoolPrint ? { documentType: "school_print" } : {}),
       clientRequestId: familyInboxPendingClientRequestId,
       subjectMemberId: familyInboxSubjectMember.value,
       userNote: familyInboxNote.value.trim(),
       file: { name: file.name, mediaType: file.type, base64 },
     });
-    if (useSchoolKnowledgeP2) {
-      rememberFamilyInboxSchoolKnowledgeReceipt_(data.inboxId);
-      setFamilyInboxStatus_(data.status === "duplicate"
-        ? `同じPDFの重複を検知したで。${data.inboxId}`
-        : `学校プリント整理を受け付けたで。${data.inboxId} / 整理待ち`, "success");
-      await loadFamilyInboxSchoolKnowledgeReceipts_();
+    if (isSchoolPrint) {
+      setFamilyInboxStatus_("学校プリントをDrive inboxに受け付けたで。ローカルworkerが整理するで。", "success");
     } else {
       const duplicateText = data.status === "duplicate" ? "（同じ内容を検知）" : "";
       setFamilyInboxStatus_(`預かったで。${data.inboxId} / ${data.status}${duplicateText}`, "success");
@@ -1467,7 +1456,7 @@ familyInboxForm.addEventListener("submit", async (event) => {
     familyInboxPendingClientRequestId = "";
     familyInboxFile.value = "";
     familyInboxNote.value = "";
-    if (useSchoolKnowledgeP2 && familyInboxSchoolKnowledge) familyInboxSchoolKnowledge.checked = false;
+    if (isSchoolPrint && familyInboxSchoolPrint) familyInboxSchoolPrint.checked = false;
   } catch (error) {
     setFamilyInboxStatus_(familyInboxErrorMessage_(error?.code), "error");
   } finally {
@@ -1524,76 +1513,6 @@ function familyInboxErrorMessage_(code) {
   if (normalized === "FORBIDDEN") return "この端末では送信できません。端末登録を確認してな。";
   if (normalized === "CONFIGURATION_ERROR") return "保存先の準備がまだできていません。管理者に確認してな。";
   return "いま保存できませんでした。時間をおいて、同じファイルをもう一度送ってな。";
-}
-
-async function getFamilyInboxStatus_(inboxId) {
-  return callHomeControlApi({ ...buildMemoCredentialPayload("familyInbox.getStatus"), inboxId: String(inboxId || "") });
-}
-
-function familyInboxSchoolKnowledgeReceiptIds_() {
-  try {
-    const value = JSON.parse(localStorage.getItem(FAMILY_INBOX_SCHOOL_KNOWLEDGE_RECEIPTS_KEY) || "[]");
-    return Array.isArray(value) ? value.filter((id) => /^inb_[0-9a-f]{32}$/i.test(String(id || ""))).slice(0, 10) : [];
-  } catch { return []; }
-}
-
-function rememberFamilyInboxSchoolKnowledgeReceipt_(inboxId) {
-  const id = String(inboxId || "");
-  if (!/^inb_[0-9a-f]{32}$/i.test(id)) return;
-  const ids = [id, ...familyInboxSchoolKnowledgeReceiptIds_().filter((value) => value !== id)].slice(0, 10);
-  try { localStorage.setItem(FAMILY_INBOX_SCHOOL_KNOWLEDGE_RECEIPTS_KEY, JSON.stringify(ids)); } catch {}
-}
-
-function familyInboxSchoolKnowledgeStatusLabel_(status) {
-  return ({ queued: "整理待ち", processing: "整理中", completed: "整理完了", failed: "エラー", duplicate: "重複" })[String(status || "")] || "状態確認中";
-}
-
-function renderFamilyInboxSchoolKnowledgeReceipts_(items) {
-  if (!familyInboxSchoolKnowledgeReceipts) return;
-  if (!items.length) {
-    familyInboxSchoolKnowledgeReceipts.innerHTML = `<div class="empty-state">学校プリント整理の履歴はまだないで。</div>`;
-    return;
-  }
-  familyInboxSchoolKnowledgeReceipts.innerHTML = items.map((item) => {
-    const label = familyInboxSchoolKnowledgeStatusLabel_(item.status);
-    const title = String(item.originalName || item.inboxId || "学校プリント");
-    const detail = item.status === "completed"
-      ? `<p>保存先: ${escapeHtml(item.knowledgePath || "")}</p><p>commit: ${escapeHtml(String(item.gitCommitSha || "").slice(0, 12))}</p>`
-      : item.status === "failed"
-        ? `<p>${escapeHtml(item.errorCode || "処理エラー")}: ${escapeHtml(item.errorMessage || "学校ナレッジの処理に失敗しました。")}</p>`
-        : item.status === "duplicate" && item.duplicateOfInboxId
-          ? `<p>元の受領: ${escapeHtml(item.duplicateOfInboxId)}</p>`
-          : "";
-    return `<article class="family-inbox-school-knowledge-item"><div><strong>${escapeHtml(title)}</strong><span class="family-inbox-school-knowledge-status">${escapeHtml(label)}</span></div><small>${escapeHtml(item.inboxId || "")}</small>${detail}</article>`;
-  }).join("");
-}
-
-async function loadFamilyInboxSchoolKnowledgeReceipts_() {
-  if (!familyInboxSchoolKnowledgeSection || !familyInboxSchoolKnowledgeReceipts) return false;
-  const canRead = Array.isArray(activeMembershipContext?.capabilities) && activeMembershipContext.capabilities.includes("family.inbox.read");
-  familyInboxSchoolKnowledgeSection.hidden = !canRead;
-  if (!canRead || familyInboxSchoolKnowledgeReceiptsLoading) return false;
-  familyInboxSchoolKnowledgeReceiptsLoading = true;
-  try {
-    const ids = familyInboxSchoolKnowledgeReceiptIds_();
-    const items = await Promise.all(ids.map(async (inboxId) => {
-      try { return await getFamilyInboxStatus_(inboxId); }
-      catch { return { inboxId, status: "unavailable" }; }
-    }));
-    renderFamilyInboxSchoolKnowledgeReceipts_(items);
-    const active = items.some((item) => item.status === "queued" || item.status === "processing");
-    if (active && !familyInboxSchoolKnowledgePollTimer) {
-      familyInboxSchoolKnowledgePollTimer = setInterval(() => {
-        if (!document.hidden) loadFamilyInboxSchoolKnowledgeReceipts_();
-      }, 30000);
-    } else if (!active && familyInboxSchoolKnowledgePollTimer) {
-      clearInterval(familyInboxSchoolKnowledgePollTimer);
-      familyInboxSchoolKnowledgePollTimer = null;
-    }
-    return true;
-  } finally {
-    familyInboxSchoolKnowledgeReceiptsLoading = false;
-  }
 }
 
 async function listFamilyInboxReviews_() {
@@ -1914,7 +1833,6 @@ async function loadInbox(options = {}) {
 async function loadInboxView_(options = {}) {
   const inboxLoaded = await loadInbox(options);
   await loadFamilyInboxReviews_();
-  await loadFamilyInboxSchoolKnowledgeReceipts_();
   return inboxLoaded;
 }
 
@@ -5555,9 +5473,6 @@ function applyMembershipCapabilityVisibility_() {
     : null;
   if (consultOption) consultOption.hidden = !canReadHome;
   if (familyInboxForm) familyInboxForm.hidden = !canSubmitFamilyInbox;
-  if (typeof familyInboxSchoolKnowledgeSection !== "undefined" && familyInboxSchoolKnowledgeSection) {
-    familyInboxSchoolKnowledgeSection.hidden = !canSubmitFamilyInbox;
-  }
   if (familyInboxReviewSection) familyInboxReviewSection.hidden = !hasMembershipCapability_("family.inbox.review");
   if (!hasMembershipCapability_("calendar.family.create")) hideCalendarSyncPanel("home");
   if (!hasMembershipCapability_("calendar.family.edit_own")) hideCalendarSyncPanel("detail");

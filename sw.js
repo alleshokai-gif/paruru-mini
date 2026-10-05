@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261005-school-knowledge-p2-v1");
-// Release: v20261005-school-knowledge-p2-v1
+importScripts("./build.js?v=v20261005-school-knowledge-v3-drive-inbox");
+// Release: v20261005-school-knowledge-v3-drive-inbox
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
