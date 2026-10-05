@@ -1214,6 +1214,18 @@ button:disabled {
   font-size: 16px;
 }
 
+.family-inbox-diagnostic {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.family-inbox-diagnostic[hidden] {
+  display: none;
+}
+
 .family-inbox-school-knowledge-option input[type="checkbox"] {
   width: 22px;
   height: 22px;

@@ -67,6 +67,10 @@ function fixture(options = {}) {
       getUuid: () => uuid(state.uuidCounter++),
       formatDate: () => '2026-08-28T12:34:56+09:00',
     },
+    ContentService: {
+      MimeType: { JSON: 'application/json' },
+      createTextOutput: (content) => ({ content: String(content), setMimeType() { return this; }, getContent() { return this.content; } }),
+    },
     Logger: { log: (line) => state.logs.push(String(line)) },
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math,
   };
@@ -77,6 +81,7 @@ function fixture(options = {}) {
     state.p2SetupCalls += 1;
     return options.p2SetupResult || 'VERIFIED';
   };
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', 'Code.js'), 'utf8'), context);
   return { api: context, state, sheet, properties };
 }
 
@@ -155,6 +160,39 @@ function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png':
   assert.strictEqual(f.state.p2SetupCalls, 1);
   assert.strictEqual(f.state.files.length, 0, 'P2 must not save a PDF if its receipt schema is unavailable');
   assert.strictEqual(f.sheet.values.length, 1);
+}
+
+{
+  const f = fixture({ p2SetupResult: 'CONFIGURATION_ERROR' });
+  const body = submitBody('application/pdf', uuid(184));
+  body.operation = 'familyInbox.schoolKnowledge.submit';
+  const response = JSON.parse(f.api.doPost({ postData: { contents: JSON.stringify(body) } }).getContent());
+  assert.strictEqual(response.ok, false);
+  assert.strictEqual(response.errorCode, 'CONFIGURATION_ERROR');
+  assert.strictEqual(response.stage, 'schema_setup');
+  assert.strictEqual(response.clientRequestId, body.clientRequestId);
+  assert.strictEqual(response.requestId, body.traceId);
+  assert.strictEqual(response.correlationId, body.traceId);
+  assert.strictEqual(response.error.stage, 'schema_setup');
+  assert(response.message && !response.message.includes('service-secret-value'));
+  assert(!JSON.stringify(response).includes('private family note'));
+  assert(!JSON.stringify(response).includes('raw-folder-secret-id'));
+  assert.strictEqual(f.state.files.length, 0);
+  assert.strictEqual(f.sheet.values.length, 1);
+}
+
+{
+  const f = fixture({ ledgerError: true });
+  const body = submitBody('application/pdf', uuid(185));
+  body.operation = 'familyInbox.schoolKnowledge.submit';
+  const response = JSON.parse(f.api.doPost({ postData: { contents: JSON.stringify(body) } }).getContent());
+  assert.strictEqual(response.ok, false);
+  assert.strictEqual(response.errorCode, 'LEDGER_ERROR');
+  assert.strictEqual(response.stage, 'receipt_write');
+  assert.strictEqual(response.clientRequestId, body.clientRequestId);
+  assert.strictEqual(response.correlationId, body.traceId);
+  assert.strictEqual(f.sheet.values.length, 1, 'failed receipt creation must not add a row');
+  assert.strictEqual(f.state.files[0].trashed, true, 'failed receipt creation cleans up the just-created file');
 }
 
 {

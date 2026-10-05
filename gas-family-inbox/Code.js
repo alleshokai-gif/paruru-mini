@@ -1,7 +1,9 @@
 function doPost(e) {
+  let body = null;
+  let operation = '';
   try {
-    const body = familyInboxParseBody_(e);
-    const operation = String(body.operation || '').trim();
+    body = familyInboxParseBody_(e);
+    operation = String(body.operation || '').trim();
     if (operation.indexOf('familyInbox.acceptance.') === 0) {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxAcceptance_(body) });
     }
@@ -76,7 +78,10 @@ function doPost(e) {
     }
     throw familyInboxError_('INVALID_INPUT');
   } catch (error) {
-    return familyInboxJson_(familyInboxErrorEnvelope_(error));
+    const envelope = operation === 'familyInbox.schoolKnowledge.submit'
+      ? familyInboxSchoolKnowledgeErrorEnvelope_(error, body)
+      : familyInboxErrorEnvelope_(error);
+    return familyInboxJson_(envelope);
   }
 }
 

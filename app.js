@@ -351,6 +351,7 @@ const familyInboxNote = document.querySelector("#familyInboxNote");
 const familyInboxSchoolKnowledge = document.querySelector("#familyInboxSchoolKnowledge");
 const familyInboxSubmit = document.querySelector("#familyInboxSubmit");
 const familyInboxStatus = document.querySelector("#familyInboxStatus");
+const familyInboxDiagnostic = document.querySelector("#familyInboxDiagnostic");
 const familyInboxSchoolKnowledgeSection = document.querySelector("#familyInboxSchoolKnowledgeSection");
 const familyInboxSchoolKnowledgeReceipts = document.querySelector("#familyInboxSchoolKnowledgeReceipts");
 const refreshFamilyInboxSchoolKnowledge = document.querySelector("#refreshFamilyInboxSchoolKnowledge");
@@ -1419,6 +1420,7 @@ if (refreshFamilyInboxSchoolKnowledge) refreshFamilyInboxSchoolKnowledge.addEven
 familyInboxForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   setFamilyInboxStatus_("", "");
+  setFamilyInboxDiagnostic_("");
   const file = familyInboxFile.files?.[0];
   if (!file) {
     setFamilyInboxStatus_("写真またはPDFを1件選んでな。", "error");
@@ -1470,6 +1472,7 @@ familyInboxForm.addEventListener("submit", async (event) => {
     if (useSchoolKnowledgeP2 && familyInboxSchoolKnowledge) familyInboxSchoolKnowledge.checked = false;
   } catch (error) {
     setFamilyInboxStatus_(familyInboxErrorMessage_(error?.code), "error");
+    if (useSchoolKnowledgeP2) setFamilyInboxDiagnostic_(familyInboxSubmitDiagnosticMessage_(error));
   } finally {
     familyInboxSubmit.disabled = false;
     familyInboxSubmit.textContent = "預ける";
@@ -1516,6 +1519,26 @@ function setFamilyInboxStatus_(text, state) {
   familyInboxStatus.textContent = String(text || "");
   familyInboxStatus.classList.toggle("is-error", state === "error");
   familyInboxStatus.classList.toggle("is-success", state === "success");
+}
+
+function setFamilyInboxDiagnostic_(text) {
+  if (!familyInboxDiagnostic) return;
+  familyInboxDiagnostic.textContent = String(text || "");
+  familyInboxDiagnostic.hidden = !text;
+}
+
+function familyInboxSubmitDiagnosticMessage_(error) {
+  const response = error && error.response && typeof error.response === "object" ? error.response : {};
+  const nested = response.error && typeof response.error === "object" ? response.error : {};
+  const errorCode = familyInboxSafeDiagnosticValue_(response.errorCode || nested.errorCode || nested.code || error?.code, "UNKNOWN");
+  const stage = familyInboxSafeDiagnosticValue_(response.stage || nested.stage || error?.stage, "client_submit");
+  const correlationId = familyInboxSafeDiagnosticValue_(response.correlationId || response.requestId || nested.correlationId || nested.requestId, "unavailable");
+  return `診断: errorCode=${errorCode} / stage=${stage} / correlationId=${correlationId}`;
+}
+
+function familyInboxSafeDiagnosticValue_(value, fallback) {
+  const safe = String(value || "").trim().replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 80);
+  return safe || fallback;
 }
 
 function familyInboxErrorMessage_(code) {
@@ -1833,6 +1856,10 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
+  if (resolvedView !== "kaz-os" && /^#kaz-os(?:\/|$)/.test(String(globalThis.location?.hash || ""))) {
+    const cleanUrl = `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}` || "./";
+    globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", cleanUrl);
+  }
   try { globalThis.PALURUBus?.setActive(resolvedView === "bus"); } catch { /* Keep Bus failures inside its view. */ }
   try { globalThis.PALURUBusHub?.setActive(resolvedView === "bus"); } catch { /* Keep Hub failures inside its view. */ }
   try { globalThis.PALURUBusHomeRoute?.setActive(resolvedView === "bus"); } catch { /* Keep Route decision failures inside Bus. */ }
@@ -5551,7 +5578,9 @@ function applyMembershipCapabilityVisibility_() {
     : null;
   if (consultOption) consultOption.hidden = !canReadHome;
   if (familyInboxForm) familyInboxForm.hidden = !canSubmitFamilyInbox;
-  if (familyInboxSchoolKnowledgeSection) familyInboxSchoolKnowledgeSection.hidden = !canSubmitFamilyInbox;
+  if (typeof familyInboxSchoolKnowledgeSection !== "undefined" && familyInboxSchoolKnowledgeSection) {
+    familyInboxSchoolKnowledgeSection.hidden = !canSubmitFamilyInbox;
+  }
   if (familyInboxReviewSection) familyInboxReviewSection.hidden = !hasMembershipCapability_("family.inbox.review");
   if (!hasMembershipCapability_("calendar.family.create")) hideCalendarSyncPanel("home");
   if (!hasMembershipCapability_("calendar.family.edit_own")) hideCalendarSyncPanel("detail");

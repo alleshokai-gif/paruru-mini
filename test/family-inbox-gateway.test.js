@@ -35,7 +35,7 @@ function fixture(options = {}) {
     getHomeMember_: (homeId, memberId) => homeId === 'home-a' && members[memberId] ? members[memberId] : null,
     isHomeMemberPolicyMatch_: (member) => Boolean(member && members[member.memberUserId]),
     PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || '' }) },
-    Utilities: { base64Decode: (value) => Array.from(Buffer.from(value, 'base64')) },
+    Utilities: { base64Decode: (value) => Array.from(Buffer.from(value, 'base64')), getUuid: () => uuid },
     UrlFetchApp: { fetch: (url, fetchOptions) => {
       state.calls.push({ url, fetchOptions });
       if (options.fetchError) throw new Error('raw URL failure');
@@ -54,7 +54,19 @@ function fixture(options = {}) {
       };
       else data = { inboxId: request.inboxId, status: 'pending', receivedAt: '2026-08-28T00:00:00+09:00', updatedAt: '2026-08-28T00:00:00+09:00', errorCode: '', duplicateOfInboxId: '' };
       const envelope = options.backendError
-        ? { success: false, error: { code: options.backendError } }
+        ? {
+          success: false,
+          ok: false,
+          error: { code: options.backendError },
+          ...(request.operation === 'familyInbox.schoolKnowledge.submit' ? {
+            errorCode: options.backendError,
+            stage: options.backendStage || 'receipt_write',
+            clientRequestId: request.clientRequestId,
+            requestId: request.traceId,
+            correlationId: request.traceId,
+            message: 'safe backend diagnostic',
+          } : {}),
+        }
         : { success: true, schemaVersion: 'family-inbox-1.0', data };
       return { getResponseCode: () => 200, getContentText: () => JSON.stringify(envelope) };
     } },
@@ -120,6 +132,42 @@ function submit(overrides = {}) {
     file: { name: 'school.jpg', mediaType: 'image/jpeg', base64: Buffer.from([0xff, 0xd8, 0xff, 1]).toString('base64') },
   }));
   assert.strictEqual(image.error.code, 'UNSUPPORTED_MEDIA_TYPE');
+}
+
+{
+  const f = fixture({ backendError: 'LEDGER_ERROR', backendStage: 'receipt_write' });
+  const request = submit({ action: 'familyInbox.schoolKnowledge.submit' });
+  const result = f.api.familyInboxGateway_(request);
+  assert.strictEqual(result.success, false);
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.error.code, 'LEDGER_ERROR');
+  assert.strictEqual(result.errorCode, 'LEDGER_ERROR');
+  assert.strictEqual(result.stage, 'receipt_write');
+  assert.strictEqual(result.clientRequestId, uuid);
+  assert.strictEqual(result.requestId, result.correlationId);
+  assert.match(result.correlationId, /^fi_[A-Za-z0-9_-]{8,}$/);
+  assert.strictEqual(result.error.stage, 'receipt_write');
+  assert(!JSON.stringify(result).includes('internal-service-secret'));
+  assert(!JSON.stringify(f.state.logs).includes('family private note'));
+}
+
+{
+  const f = fixture();
+  const request = submit({ action: 'familyInbox.schoolKnowledge.submit', subjectMemberId: 'outsider' });
+  const result = f.api.familyInboxGateway_(request);
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.errorCode, 'INVALID_MEMBER');
+  assert.strictEqual(result.stage, 'gateway_validation');
+  assert.strictEqual(result.clientRequestId, uuid);
+  assert.match(result.correlationId, /^fi_[A-Za-z0-9_-]{8,}$/);
+  assert.strictEqual(f.state.calls.length, 0);
+}
+
+{
+  const f = fixture({ backendError: 'FORBIDDEN', backendStage: 'authentication' });
+  const result = f.api.familyInboxGateway_(submit({ action: 'familyInbox.schoolKnowledge.submit' }));
+  assert.strictEqual(result.errorCode, 'FORBIDDEN', 'P2 diagnostic preserves the safe backend code');
+  assert.strictEqual(result.stage, 'authentication');
 }
 
 {

@@ -24,6 +24,28 @@ const FAMILY_INBOX_GATEWAY_SAFE_ERRORS = Object.freeze({
   INVALID_STATE: true, DATA_INTEGRITY_ERROR: true, IDEMPOTENCY_CONFLICT: true,
   SERVICE_UNAVAILABLE: true, INTERNAL_ERROR: true,
 });
+const FAMILY_INBOX_GATEWAY_SUBMIT_STAGES = Object.freeze({
+  gateway_request: true,
+  gateway_authentication: true,
+  gateway_authorization: true,
+  gateway_validation: true,
+  gateway_configuration: true,
+  family_inbox_transport: true,
+  family_inbox_http: true,
+  family_inbox_response_parse: true,
+  family_inbox_submit: true,
+  family_inbox_response: true,
+  authentication: true,
+  input_validation: true,
+  schema_setup: true,
+  receipt_prepare: true,
+  ledger_open: true,
+  idempotency_check: true,
+  duplicate_check: true,
+  drive_write: true,
+  receipt_write: true,
+  submit_handler: true,
+});
 const FAMILY_INBOX_GATEWAY_REVIEW_REASONS = Object.freeze({
   incorrect: true, duplicate: true, not_relevant: true, unreadable: true, other: true,
 });
@@ -32,21 +54,53 @@ function familyInboxGateway_(body) {
   const input = body || {};
   const startedAt = Date.now();
   const operation = String(input.action || '').trim();
-  const traceId = familyInboxGatewayTraceId_(input.clientRequestId || input.inboxId);
+  const schoolKnowledgeSubmit = operation === 'familyInbox.schoolKnowledge.submit';
+  const traceId = familyInboxGatewayTraceId_(input.clientRequestId || input.inboxId, schoolKnowledgeSubmit);
+  const clientRequestId = familyInboxGatewaySafeClientRequestId_(input.clientRequestId);
+  let stage = 'gateway_request';
   try {
     const capability = FAMILY_INBOX_GATEWAY_CAPABILITIES[operation];
     if (!capability) throw familyInboxGatewayError_('FORBIDDEN');
+    stage = 'gateway_authentication';
     const actor = resolveFirebaseAuthenticatedActor_(input);
+    stage = 'gateway_authorization';
     authorizeCapability_(actor, capability);
+    stage = 'gateway_validation';
     const trusted = familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId);
+    stage = schoolKnowledgeSubmit ? 'family_inbox_submit' : stage;
     const result = familyInboxGatewayCallService_(trusted, operation);
     familyInboxGatewayLog_({ traceId: traceId, operation: operation, stage: 'completed', status: result.status, mediaType: trusted.file && trusted.file.mediaType, sizeBytes: trusted.file && trusted.file.sizeBytes, durationMs: Date.now() - startedAt });
     return json_({ success: true, schemaVersion: FAMILY_INBOX_GATEWAY_SCHEMA_VERSION, data: result, error: null, message: 'ok' });
   } catch (error) {
     const code = familyInboxGatewaySafeErrorCode_(error);
-    familyInboxGatewayLog_({ traceId: traceId, operation: operation, stage: 'failed', status: 'failed', durationMs: Date.now() - startedAt, errorCode: code });
+    const diagnostic = schoolKnowledgeSubmit ? familyInboxGatewaySubmitDiagnostic_(error, {
+      stage: stage,
+      clientRequestId: clientRequestId,
+      correlationId: traceId,
+    }) : null;
+    familyInboxGatewayLog_({ traceId: traceId, operation: operation, stage: diagnostic ? diagnostic.stage : 'failed', status: 'failed', durationMs: Date.now() - startedAt, errorCode: code });
     const rejected = ['INVALID_INPUT', 'UNSUPPORTED_MEDIA_TYPE', 'FILE_TOO_LARGE', 'INVALID_FILE_SIGNATURE', 'INVALID_MEMBER', 'DUPLICATE_REQUEST'].indexOf(code) >= 0;
-    return json_({ success: false, schemaVersion: FAMILY_INBOX_GATEWAY_SCHEMA_VERSION, data: rejected ? { status: 'rejected' } : {}, error: { code: code }, message: 'family inbox request failed' });
+    const errorEnvelope = { code: code };
+    const envelope = { success: false, schemaVersion: FAMILY_INBOX_GATEWAY_SCHEMA_VERSION, data: rejected ? { status: 'rejected' } : {}, error: errorEnvelope, message: 'family inbox request failed' };
+    if (diagnostic) {
+      Object.assign(errorEnvelope, {
+        errorCode: code,
+        stage: diagnostic.stage,
+        clientRequestId: diagnostic.clientRequestId,
+        requestId: diagnostic.requestId,
+        correlationId: diagnostic.correlationId,
+      });
+      Object.assign(envelope, {
+        ok: false,
+        errorCode: code,
+        stage: diagnostic.stage,
+        clientRequestId: diagnostic.clientRequestId,
+        requestId: diagnostic.requestId,
+        correlationId: diagnostic.correlationId,
+        message: '学校プリントの受付に失敗しました。下の診断情報を管理者へ伝えてください。',
+      });
+    }
+    return json_(envelope);
   }
 }
 
@@ -150,23 +204,36 @@ function familyInboxGatewayValidateFile_(file) {
 }
 
 function familyInboxGatewayCallService_(trusted, operation) {
+  const schoolKnowledgeSubmit = operation === 'familyInbox.schoolKnowledge.submit';
   const properties = PropertiesService.getScriptProperties();
   const url = String(properties.getProperty('FAMILY_INBOX_WEBAPP_URL') || '').trim();
   const serviceToken = String(properties.getProperty('FAMILY_INBOX_SERVICE_TOKEN') || '');
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url) || !serviceToken) throw familyInboxGatewayError_('CONFIGURATION_ERROR');
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url) || !serviceToken) {
+    throw familyInboxGatewaySubmitError_('CONFIGURATION_ERROR', 'gateway_configuration', trusted, schoolKnowledgeSubmit);
+  }
   const forwarded = Object.assign({}, trusted, { internalToken: serviceToken });
   if (trusted.file) forwarded.file = { name: trusted.file.name, mediaType: trusted.file.mediaType, base64: trusted.file.base64 };
   let response;
   try {
     response = UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', payload: JSON.stringify(forwarded), muteHttpExceptions: true });
   } catch (_) {
-    throw familyInboxGatewayError_(familyInboxGatewayIsReviewOperation_(operation) ? 'SERVICE_UNAVAILABLE' : 'INTERNAL_ERROR');
+    throw familyInboxGatewaySubmitError_(familyInboxGatewayIsReviewOperation_(operation) ? 'SERVICE_UNAVAILABLE' : 'INTERNAL_ERROR', 'family_inbox_transport', trusted, schoolKnowledgeSubmit);
   }
-  if (!response || response.getResponseCode() < 200 || response.getResponseCode() > 299) throw familyInboxGatewayError_(familyInboxGatewayIsReviewOperation_(operation) ? 'SERVICE_UNAVAILABLE' : 'INTERNAL_ERROR');
+  if (!response || response.getResponseCode() < 200 || response.getResponseCode() > 299) throw familyInboxGatewaySubmitError_(familyInboxGatewayIsReviewOperation_(operation) ? 'SERVICE_UNAVAILABLE' : 'INTERNAL_ERROR', 'family_inbox_http', trusted, schoolKnowledgeSubmit);
   let envelope;
-  try { envelope = JSON.parse(String(response.getContentText() || '')); } catch (_) { throw familyInboxGatewayError_('INTERNAL_ERROR'); }
-  if (!envelope || envelope.success !== true) throw familyInboxGatewayError_(familyInboxGatewayBackendError_(envelope));
-  if (envelope.schemaVersion !== FAMILY_INBOX_GATEWAY_SCHEMA_VERSION || !familyInboxGatewayPlainObject_(envelope.data)) throw familyInboxGatewayError_('INTERNAL_ERROR');
+  try { envelope = JSON.parse(String(response.getContentText() || '')); } catch (_) { throw familyInboxGatewaySubmitError_('INTERNAL_ERROR', 'family_inbox_response_parse', trusted, schoolKnowledgeSubmit); }
+  if (!envelope || envelope.success !== true) {
+    const error = familyInboxGatewayError_(familyInboxGatewayBackendError_(envelope, schoolKnowledgeSubmit));
+    if (schoolKnowledgeSubmit) {
+      error.familyInboxDiagnostic = familyInboxGatewaySubmitDiagnostic_(null, {
+        stage: envelope && envelope.stage || 'family_inbox_submit',
+        clientRequestId: envelope && envelope.clientRequestId || trusted.clientRequestId,
+        correlationId: envelope && (envelope.correlationId || envelope.requestId) || trusted.traceId,
+      });
+    }
+    throw error;
+  }
+  if (envelope.schemaVersion !== FAMILY_INBOX_GATEWAY_SCHEMA_VERSION || !familyInboxGatewayPlainObject_(envelope.data)) throw familyInboxGatewaySubmitError_('INTERNAL_ERROR', 'family_inbox_response', trusted, schoolKnowledgeSubmit);
   if (operation === 'familyInbox.submit' || operation === 'familyInbox.schoolKnowledge.submit') {
     const statuses = operation === 'familyInbox.schoolKnowledge.submit'
       ? ['queued', 'duplicate', 'rejected', 'processing', 'completed', 'failed']
@@ -259,9 +326,9 @@ function familyInboxGatewayIsReviewOperation_(operation) {
   return ['familyInbox.listReviews', 'familyInbox.getReview', 'familyInbox.updateCandidate', 'familyInbox.approveCandidate', 'familyInbox.rejectCandidate'].indexOf(operation) >= 0;
 }
 
-function familyInboxGatewayBackendError_(envelope) {
+function familyInboxGatewayBackendError_(envelope, preserveSubmitCode) {
   const code = String(envelope && envelope.error && envelope.error.code || '');
-  if (code === 'FORBIDDEN') return 'CONFIGURATION_ERROR';
+  if (code === 'FORBIDDEN' && !preserveSubmitCode) return 'CONFIGURATION_ERROR';
   return FAMILY_INBOX_GATEWAY_SAFE_ERRORS[code] ? code : 'INTERNAL_ERROR';
 }
 
@@ -273,9 +340,47 @@ function familyInboxGatewayPlainObject_(value) {
   return Boolean(value) && Object.prototype.toString.call(value) === '[object Object]';
 }
 
-function familyInboxGatewayTraceId_(value) {
+function familyInboxGatewayTraceId_(value, requireCorrelationId) {
   const suffix = String(value || '').replace(/[^A-Za-z0-9]/g, '').slice(-16);
-  return suffix.length >= 8 ? 'fi_' + suffix : 'trace_unavailable';
+  if (suffix.length >= 8) return 'fi_' + suffix;
+  if (!requireCorrelationId) return 'trace_unavailable';
+  return familyInboxGatewayNewCorrelationId_();
+}
+
+function familyInboxGatewayNewCorrelationId_() {
+  const uuid = typeof Utilities !== 'undefined' && typeof Utilities.getUuid === 'function' ? Utilities.getUuid() : '';
+  const generated = String(uuid || (Date.now().toString(36) + Math.random().toString(36))).replace(/[^A-Za-z0-9]/g, '').slice(0, 16);
+  return 'fi_' + (generated || String(Date.now()).slice(-12));
+}
+
+function familyInboxGatewaySubmitError_(code, stage, trusted, enabled) {
+  const error = familyInboxGatewayError_(code);
+  if (enabled) error.familyInboxDiagnostic = familyInboxGatewaySubmitDiagnostic_(null, {
+    stage: stage,
+    clientRequestId: trusted && trusted.clientRequestId,
+    correlationId: trusted && trusted.traceId,
+  });
+  return error;
+}
+
+function familyInboxGatewaySubmitDiagnostic_(error, fallback) {
+  const source = error && error.familyInboxDiagnostic || {};
+  const stageCandidate = String(source.stage || fallback && fallback.stage || 'family_inbox_submit');
+  const stage = FAMILY_INBOX_GATEWAY_SUBMIT_STAGES[stageCandidate] ? stageCandidate : 'family_inbox_submit';
+  const clientRequestId = familyInboxGatewaySafeClientRequestId_(source.clientRequestId || fallback && fallback.clientRequestId);
+  const correlationId = familyInboxGatewaySafeCorrelationId_(source.correlationId || source.requestId || fallback && (fallback.correlationId || fallback.requestId));
+  return { stage: stage, clientRequestId: clientRequestId, requestId: correlationId, correlationId: correlationId };
+}
+
+function familyInboxGatewaySafeClientRequestId_(value) {
+  const requestId = String(value || '').trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId) ? requestId : '';
+}
+
+function familyInboxGatewaySafeCorrelationId_(value) {
+  const correlationId = String(value || '').trim();
+  if (/^[A-Za-z0-9_-]{8,64}$/.test(correlationId)) return correlationId;
+  return familyInboxGatewayNewCorrelationId_();
 }
 
 function familyInboxGatewayError_(code) {

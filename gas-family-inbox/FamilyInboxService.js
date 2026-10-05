@@ -53,32 +53,57 @@ const FAMILY_INBOX_SAFE_ERRORS = Object.freeze({
   PROMPT_INJECTION_REJECTED: true,
   INTERNAL_ERROR: true,
 });
+const FAMILY_INBOX_SUBMIT_DIAGNOSTIC_STAGES = Object.freeze({
+  authentication: true,
+  input_validation: true,
+  schema_setup: true,
+  receipt_prepare: true,
+  ledger_open: true,
+  idempotency_check: true,
+  duplicate_check: true,
+  drive_write: true,
+  receipt_write: true,
+  submit_handler: true,
+});
 
 function familyInboxSubmit_(body) {
   const startedAt = Date.now();
   const schoolKnowledgeP2 = Boolean(body && body.operation === 'familyInbox.schoolKnowledge.submit');
   let trace = familyInboxTraceFromBody_(body, schoolKnowledgeP2 ? 'familyInbox.schoolKnowledge.submit' : 'familyInbox.submit');
+  const diagnostic = schoolKnowledgeP2 ? {
+    stage: 'authentication',
+    clientRequestId: familyInboxSafeClientRequestId_(body && body.clientRequestId),
+    correlationId: familyInboxSafeCorrelationId_(body && body.traceId),
+  } : null;
   try {
     familyInboxAuthenticate_(body);
+    if (diagnostic) diagnostic.stage = 'input_validation';
     const input = familyInboxValidateSubmit_(body);
     if (input.schoolKnowledgeP2) {
+      if (diagnostic) diagnostic.stage = 'schema_setup';
       const setupResult = setupFamilyInboxSchoolKnowledgeP2Headers();
       if (setupResult !== FAMILY_INBOX_SETUP_RESULTS.CREATED && setupResult !== FAMILY_INBOX_SETUP_RESULTS.VERIFIED) {
         throw familyInboxError_('CONFIGURATION_ERROR');
       }
     }
     trace = Object.assign(trace, { mediaType: input.mediaType, sizeBytes: input.bytes.length, sha256Prefix: input.sha256.slice(0, 12) });
-    return familyInboxPersistInput_(input, 'paluru', trace, startedAt);
+    if (diagnostic) diagnostic.stage = 'receipt_prepare';
+    return familyInboxPersistInput_(input, 'paluru', trace, startedAt, diagnostic);
   } catch (error) {
-    familyInboxLog_(Object.assign(trace, { stage: 'failed', status: 'failed', errorCode: familyInboxSafeErrorCode_(error), durationMs: Date.now() - startedAt }));
+    if (diagnostic) {
+      diagnostic.stage = familyInboxSafeSubmitStage_(diagnostic.stage);
+      error.familyInboxDiagnostic = diagnostic;
+    }
+    familyInboxLog_(Object.assign(trace, { stage: diagnostic ? diagnostic.stage : 'failed', status: 'failed', errorCode: familyInboxSafeErrorCode_(error), durationMs: Date.now() - startedAt }));
     throw error;
   }
 }
 
-function familyInboxPersistInput_(input, source, trace, startedAt) {
+function familyInboxPersistInput_(input, source, trace, startedAt, diagnostic) {
   const normalizedSource = String(source || '').trim();
   if (normalizedSource !== 'paluru' && normalizedSource !== 'drive_drop') throw familyInboxError_('INVALID_INPUT');
-    const processingProfile = familyInboxResolveProcessingProfile_(normalizedSource, input);
+  const processingProfile = familyInboxResolveProcessingProfile_(normalizedSource, input);
+  if (diagnostic) diagnostic.stage = 'ledger_open';
   const config = familyInboxLoadConfig_();
   let lock;
   try {
@@ -86,6 +111,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     lock.waitLock(30000);
     const sheetState = familyInboxOpenLedger_(config.spreadsheetId);
 
+    if (diagnostic) diagnostic.stage = 'idempotency_check';
     const existing = familyInboxFindRow_(sheetState, function(row) {
       return row.homeId === input.homeId && row.clientRequestId === input.clientRequestId;
     });
@@ -99,6 +125,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
       return replay;
     }
 
+    if (diagnostic) diagnostic.stage = 'duplicate_check';
     const duplicate = familyInboxFindRow_(sheetState, function(row) {
       return row.homeId === input.homeId && row.sha256 === input.sha256;
     });
@@ -108,6 +135,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     const storedName = inboxId + '.' + FAMILY_INBOX_MEDIA[input.mediaType].extension;
     let createdFile;
     try {
+      if (diagnostic) diagnostic.stage = 'drive_write';
       const folder = DriveApp.getFolderById(config.rawFolderId);
       createdFile = folder.createFile(Utilities.newBlob(input.bytes, input.mediaType, storedName));
     } catch (_) {
@@ -148,6 +176,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     };
 
     try {
+      if (diagnostic) diagnostic.stage = 'receipt_write';
       familyInboxAppendRecord_(sheetState, record);
     } catch (_) {
       try { createdFile.setTrashed(true); } catch (cleanupError) {
@@ -368,6 +397,43 @@ function familyInboxErrorEnvelope_(error) {
   const code = familyInboxSafeErrorCode_(error);
   const rejected = ['INVALID_INPUT', 'UNSUPPORTED_MEDIA_TYPE', 'FILE_TOO_LARGE', 'INVALID_FILE_SIGNATURE', 'INVALID_MEMBER', 'DUPLICATE_REQUEST'].indexOf(code) >= 0;
   return { success: false, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: rejected ? { status: 'rejected' } : {}, error: { code: code }, message: 'family inbox request failed' };
+}
+
+function familyInboxSchoolKnowledgeErrorEnvelope_(error, body) {
+  const envelope = familyInboxErrorEnvelope_(error);
+  const code = familyInboxSafeErrorCode_(error);
+  const diagnostic = error && error.familyInboxDiagnostic || {};
+  const clientRequestId = familyInboxSafeClientRequestId_(body && body.clientRequestId);
+  const correlationId = familyInboxSafeCorrelationId_(diagnostic.correlationId || (body && body.traceId));
+  const stage = familyInboxSafeSubmitStage_(diagnostic.stage);
+  const message = '学校プリントの受付に失敗しました。下の診断情報を管理者へ伝えてください。';
+  envelope.ok = false;
+  envelope.errorCode = code;
+  envelope.stage = stage;
+  envelope.clientRequestId = clientRequestId;
+  envelope.requestId = correlationId;
+  envelope.correlationId = correlationId;
+  envelope.message = message;
+  envelope.error = { code: code, errorCode: code, stage: stage, requestId: correlationId, correlationId: correlationId, clientRequestId: clientRequestId };
+  return envelope;
+}
+
+function familyInboxSafeSubmitStage_(stage) {
+  const value = String(stage || 'submit_handler');
+  return FAMILY_INBOX_SUBMIT_DIAGNOSTIC_STAGES[value] ? value : 'submit_handler';
+}
+
+function familyInboxSafeClientRequestId_(value) {
+  const requestId = String(value || '').trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId) ? requestId : '';
+}
+
+function familyInboxSafeCorrelationId_(value) {
+  const correlationId = String(value || '').trim();
+  if (/^[A-Za-z0-9_-]{8,64}$/.test(correlationId)) return correlationId;
+  const uuid = typeof Utilities !== 'undefined' && typeof Utilities.getUuid === 'function' ? Utilities.getUuid() : '';
+  const suffix = String(uuid || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 16);
+  return 'fi_' + (suffix || String(Date.now()).slice(-12));
 }
 
 function familyInboxTraceFromBody_(body, operation) {
