@@ -151,7 +151,7 @@
         || item.answer_contract.choices.map(choice => choice?.value).join(',')
           !== 'CONTEXT,WORK,PROJECT,HOLD,REJECT,MERGE'
         || item.entity_ref !== item.candidate_ref) return false;
-    const paluru = item.candidate_origin === 'PALURU';
+    const paluru = /^paluru-inbox:\/\//i.test(String(item.candidate_ref || ''));
     const source = sources[paluru ? 'paluru_candidates' : 'github_candidates'];
     if (!source || source.status !== 'ok' || source.complete !== true
         || typeof source.source_revision !== 'string' || !source.source_revision) return false;
