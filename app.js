@@ -1410,7 +1410,7 @@ if (typeof document.addEventListener === "function") {
 refreshInboxButton.addEventListener("click", loadInboxView_);
 if (refreshFamilyInboxSchoolKnowledge) refreshFamilyInboxSchoolKnowledge.addEventListener("click", () => loadFamilyInboxSchoolKnowledgeReceipts_());
 
-[familyInboxFile, familyInboxSubjectMember, familyInboxNote, familyInboxSchoolKnowledge].forEach((input) => {
+[familyInboxFile, familyInboxSubjectMember, familyInboxNote, familyInboxSchoolKnowledge].filter(Boolean).forEach((input) => {
   input.addEventListener(input === familyInboxNote ? "input" : "change", () => {
     familyInboxPendingClientRequestId = "";
   });
