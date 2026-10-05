@@ -202,6 +202,16 @@ test('gateway derives /v1/today and POSTs bounded transient planning input',()=>
   assert.equal(h.stats().writes,0);
 });
 
+test('TODAY planning evidence outage degrades to empty evidence instead of failing the read',()=>{
+  h.ctx.Utilities.formatDate=()=> '2026-10-05';
+  h.ctx.isKazOsInboxAnswerEnabled_=()=>true;
+  h.ctx.readKazOsDecisionLedger_=()=>{throw Error('LEDGER_DOWN');};
+  const result=h.ctx.buildKazOsTodayPlanningEvidence_();
+  assert.deepEqual(JSON.parse(JSON.stringify(result)),{
+    timezone:'Asia/Tokyo',planning_date:'2026-10-05',preferences:[],daily_estimates:[]
+  });
+});
+
 test('TODAY sanitizer accepts bounded V2 sections and preserves NOW/NEXT limits',()=>{
   const fixture=snapshotV2();
   const slot={start:'2026-09-15T16:00:00+09:00',end:'2026-09-15T16:30:00+09:00',duration_min:30,
