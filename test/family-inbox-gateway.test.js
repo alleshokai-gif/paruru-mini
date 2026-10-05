@@ -20,8 +20,37 @@ function reviewCandidate(overrides = {}) {
 }
 
 function fixture(options = {}) {
-  const state = { calls: [], logs: [], authorized: [] };
+  const state = { calls: [], logs: [], authorized: [], driveFiles: [], folders: {}, lockCalls: 0 };
   const properties = Object.assign({ FAMILY_INBOX_WEBAPP_URL: 'https://script.google.com/macros/s/test-deployment/exec', FAMILY_INBOX_SERVICE_TOKEN: 'internal-service-secret' }, options.properties || {});
+  let nextDriveId = 0;
+  function makeFolder(name, parent = null) {
+    const folder = {
+      id: `folder-${++nextDriveId}`, name, parent, folders: [], files: [],
+      getId() { return this.id; }, getName() { return this.name; },
+      createFolder(childName) { const child = makeFolder(childName, this); this.folders.push(child); return child; },
+      createFile(blob) {
+        const file = {
+          id: `drive-file-${++nextDriveId}`, name: blob.name, description: '', parent: this,
+          bytes: Buffer.from(blob.bytes), mediaType: blob.mediaType,
+          getId() { return this.id; }, getDescription() { return this.description; },
+          setDescription(value) { this.description = value; return this; },
+          setName(value) { this.name = value; return this; },
+          moveTo(destination) { this.parent.files = this.parent.files.filter((item) => item !== this); this.parent = destination; destination.files.push(this); return this; },
+        };
+        this.files.push(file); state.driveFiles.push(file); return file;
+      },
+      searchFiles(query) {
+        const match = /title contains \"([^\"]+)\"/.exec(query);
+        const prefix = match?.[1] || '';
+        const matches = this.files.filter((file) => file.name.includes(prefix));
+        let index = 0;
+        return { hasNext: () => index < matches.length, next: () => matches[index++] };
+      },
+    };
+    state.folders[folder.id] = folder;
+    return folder;
+  }
+  const driveRoot = makeFolder('My Drive');
   const members = {
     father: { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', status: 'active' },
     youngest_daughter: { homeId: 'home-a', memberUserId: 'youngest_daughter', displayName: '次女', role: 'self_record', status: 'active' },
@@ -34,8 +63,21 @@ function fixture(options = {}) {
     authorizeCapability_: (_, capability) => state.authorized.push(capability),
     getHomeMember_: (homeId, memberId) => homeId === 'home-a' && members[memberId] ? members[memberId] : null,
     isHomeMemberPolicyMatch_: (member) => Boolean(member && members[member.memberUserId]),
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || '' }) },
-    Utilities: { base64Decode: (value) => Array.from(Buffer.from(value, 'base64')) },
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (key) => properties[key] || '',
+      setProperty: (key, value) => { properties[key] = String(value); return this; },
+    }) },
+    LockService: { getScriptLock: () => ({ waitLock: () => { state.lockCalls++; }, releaseLock: () => {} }) },
+    DriveApp: {
+      getRootFolder: () => driveRoot,
+      getFolderById: (id) => { if (!state.folders[id]) throw new Error('folder missing'); return state.folders[id]; },
+    },
+    Utilities: {
+      DigestAlgorithm: { SHA_256: 'SHA_256' },
+      base64Decode: (value) => Array.from(Buffer.from(value, 'base64')),
+      computeDigest: (algorithm, bytes) => { assert.strictEqual(algorithm, 'SHA_256'); return Array.from(require('crypto').createHash('sha256').update(Buffer.from(bytes)).digest()).map((value) => value > 127 ? value - 256 : value); },
+      newBlob: (bytes, mediaType, name) => ({ bytes, mediaType, name }),
+    },
     UrlFetchApp: { fetch: (url, fetchOptions) => {
       state.calls.push({ url, fetchOptions });
       if (options.fetchError) throw new Error('raw URL failure');
@@ -56,6 +98,7 @@ function fixture(options = {}) {
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math,
   };
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'SchoolPrintDriveService.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'FamilyInboxGatewayService.js'), 'utf8'), context);
   return { api: context, state };
 }
@@ -82,6 +125,49 @@ function submit(overrides = {}) {
   assert.strictEqual(forwarded.source, 'paluru');
   assert.strictEqual(forwarded.internalToken, 'internal-service-secret');
   assert(!Object.hasOwn(forwarded.file, 'sizeBytes'));
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_SERVICE_TOKEN: '' } });
+  const result = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.status, 'queued');
+  assert.strictEqual(result.data.idempotency.replayed, false);
+  assert.match(result.data.fileId, /^drive-file-/);
+  assert.deepStrictEqual(f.state.authorized, ['family.inbox.submit']);
+  assert.strictEqual(f.state.calls.length, 0, 'school print must not forward to Family Inbox Web App');
+  assert.strictEqual(f.state.driveFiles.length, 1);
+  assert.match(f.state.driveFiles[0].name, new RegExp(`^skv3-${uuid}__${result.data.fileId}__school.pdf$`));
+  const metadata = JSON.parse(f.state.driveFiles[0].description);
+  assert.strictEqual(metadata.type, 'school_print_v3');
+  assert.strictEqual(metadata.clientRequestId, uuid);
+  assert.strictEqual(metadata.userNote, 'family private note');
+  const root = Object.values(f.state.folders).find((folder) => folder.name === 'PALURU School Print Inbox');
+  assert.deepStrictEqual(root.folders.map((folder) => folder.name).sort(), ['error', 'inbox', 'processed']);
+  const replay = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
+  assert.strictEqual(replay.success, true);
+  assert.strictEqual(replay.data.fileId, result.data.fileId);
+  assert.strictEqual(replay.data.idempotency.replayed, true);
+  assert.strictEqual(f.state.driveFiles.length, 1);
+  assert.strictEqual(f.state.calls.length, 0);
+}
+
+{
+  const f = fixture();
+  const invalid = f.api.familyInboxGateway_(submit({ documentType: 'school-v1-long' }));
+  assert.strictEqual(invalid.success, false);
+  assert.strictEqual(invalid.error.code, 'INVALID_INPUT');
+  assert.strictEqual(f.state.driveFiles.length, 0);
+  assert.strictEqual(f.state.calls.length, 0);
+}
+
+{
+  const f = fixture();
+  f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
+  const conflict = f.api.familyInboxGateway_(submit({ documentType: 'school_print', file: { name: 'different.pdf', mediaType: 'application/pdf', base64: Buffer.from('%PDF-different').toString('base64') } }));
+  assert.strictEqual(conflict.success, false);
+  assert.strictEqual(conflict.error.code, 'DUPLICATE_REQUEST');
+  assert.strictEqual(f.state.driveFiles.length, 1);
 }
 
 {

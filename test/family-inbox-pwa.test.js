@@ -16,13 +16,13 @@ assert(!/<input[^>]+id="familyInboxFile"[^>]+multiple/i.test(html), 'Family Inbo
 assert(html.includes('id="familyInboxSubjectMember"'));
 assert(html.includes('value="youngest_daughter"'));
 assert(html.includes('id="familyInboxNote" maxlength="500"'));
-assert(app.includes('buildMemoCredentialPayload(useSchoolKnowledgeP2 ? "familyInbox.schoolKnowledge.submit" : "familyInbox.submit")'));
-assert(html.includes('id="familyInboxSchoolKnowledge"'));
-assert(html.includes('id="familyInboxSchoolKnowledgeSection"'));
+assert(app.includes('buildMemoCredentialPayload("familyInbox.submit")'));
+assert(app.includes('documentType: "school_print"'));
+assert(html.includes('id="familyInboxSchoolPrint"'));
+assert(!app.includes('familyInbox.schoolKnowledge.submit'));
+assert(!html.includes('familyInboxSchoolKnowledgeSection'));
 assert(app.includes('学校プリント整理はPDFだけ選べるで。'));
 assert(!app.includes('processingProfile:'), 'browser must not submit a free profile value');
-assert(app.includes('buildMemoCredentialPayload("familyInbox.getStatus")'));
-assert(app.includes('queued: "整理待ち", processing: "整理中", completed: "整理完了", failed: "エラー", duplicate: "重複"'));
 assert(app.includes('buildMemoCredentialPayload("familyInbox.listReviews")'));
 assert(app.includes('buildMemoCredentialPayload("familyInbox.getReview")'));
 assert(app.includes('buildMemoCredentialPayload("familyInbox.updateCandidate")'));
@@ -30,8 +30,10 @@ assert(app.includes('buildMemoCredentialPayload("familyInbox.approveCandidate")'
 assert(app.includes('buildMemoCredentialPayload("familyInbox.rejectCandidate")'));
 assert(app.includes('clientRequestId: familyInboxPendingClientRequestId'));
 assert(app.includes('familyInboxPendingClientRequestId = ""'));
-assert(app.includes('[familyInboxFile, familyInboxSubjectMember, familyInboxNote, familyInboxSchoolKnowledge].filter(Boolean).forEach'), 'optional school-knowledge control must not crash older cached HTML');
-assert(app.includes('if (useSchoolKnowledgeP2 && familyInboxSchoolKnowledge) familyInboxSchoolKnowledge.checked = false'));
+assert(app.includes('[familyInboxFile, familyInboxSubjectMember, familyInboxNote, familyInboxSchoolPrint].filter(Boolean).forEach'), 'optional school-print control must not crash older cached HTML');
+assert(app.includes('if (isSchoolPrint && familyInboxSchoolPrint) familyInboxSchoolPrint.checked = false'));
+assert(!app.includes('loadFamilyInboxSchoolKnowledgeReceipts_'));
+assert(!html.includes('school-knowledge-p2'));
 assert(app.includes('const FAMILY_INBOX_MAX_FILE_BYTES = 5 * 1024 * 1024'));
 assert(app.includes('reader.readAsDataURL(file)'));
 assert(!app.includes('FAMILY_INBOX_SERVICE_TOKEN'));
@@ -48,4 +50,4 @@ assert(css.includes('.family-inbox-form input') && css.includes('min-height: 48p
 assert(css.includes('.family-inbox-review-card button') && css.includes('.family-inbox-review-dialog button') && css.includes('min-height: 48px'));
 assert(css.includes('.family-inbox-review-dialog input') && css.includes('font-size: 16px'));
 assert.match(build, /globalThis\.BUILD_ID\s*=\s*"v\d{8}-[a-z0-9-]+"/);
-console.log('PASS Family Inbox upload and Review PWA, Mini-only requests, human-readable candidates, mobile sizing, and build marker');
+console.log('PASS Family Inbox upload and Review PWA, school_print on the existing submit operation, human-readable candidates, mobile sizing, and build marker');

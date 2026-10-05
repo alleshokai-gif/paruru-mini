@@ -1206,7 +1206,7 @@ button:disabled {
   background: var(--surface);
 }
 
-.family-inbox-school-knowledge-option {
+.family-inbox-school-print-option {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1214,56 +1214,11 @@ button:disabled {
   font-size: 16px;
 }
 
-.family-inbox-school-knowledge-option input[type="checkbox"] {
+.family-inbox-school-print-option input[type="checkbox"] {
   width: 22px;
   height: 22px;
   min-height: 22px;
   flex: 0 0 22px;
-}
-
-.family-inbox-school-knowledge {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 18px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--surface);
-}
-
-.family-inbox-school-knowledge[hidden] {
-  display: none;
-}
-
-.family-inbox-school-knowledge-list {
-  display: grid;
-  gap: 10px;
-}
-
-.family-inbox-school-knowledge-item {
-  display: grid;
-  gap: 4px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  overflow-wrap: anywhere;
-}
-
-.family-inbox-school-knowledge-item > div {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.family-inbox-school-knowledge-item p,
-.family-inbox-school-knowledge-item small {
-  margin: 0;
-  color: var(--muted);
-}
-
-.family-inbox-school-knowledge-status {
-  font-weight: 700;
 }
 
 .family-inbox-heading h2,
