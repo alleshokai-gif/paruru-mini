@@ -321,7 +321,14 @@ async function main() {
   const answer = appSource.slice(appSource.indexOf('async function callAuthenticatedKazOsInboxAnswer_'), appSource.indexOf('function applyMembershipCapabilityVisibility_'));
   assert(answer.includes('callHomeControlApi') && !answer.includes('callDirectKazOsRead_'), 'write path must remain on GAS');
 
-  console.log('PASS Projects/Work direct-read adapter, bounded retry, no fallback, and GAS write boundary');
+  
+(function testGithubCandidateWithPaluruMetadataStillUsesGithubContract() {
+  const source = fs.readFileSync(path.join(root, 'features', 'transport', 'read-v2.js'), 'utf8');
+  assert(source.includes("const paluru = /^paluru-inbox:\\\/\\\\//i.test(String(item.candidate_ref || ''));"),
+    'candidate transport source must be derived from candidate_ref namespace, not candidate_origin metadata');
+})();
+
+console.log('PASS Projects/Work direct-read adapter, bounded retry, no fallback, and GAS write boundary');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });
