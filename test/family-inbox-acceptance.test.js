@@ -96,6 +96,15 @@ test('schema check is read-only and incomplete schemas fail closed', () => {
   assert.equal(f.post(f.request('check')).error.code, 'CONFIGURATION_ERROR'); assert.equal(f.state.writes, 0);
 });
 
+test('P2 submit operation reaches the guarded receipt service before any write', () => {
+  const f = fixture();
+  const response = f.post({ operation: 'familyInbox.schoolKnowledge.submit' });
+  assert.equal(response.success, false);
+  assert.equal(response.error.code, 'FORBIDDEN');
+  assert.equal(f.state.writes, 0);
+  assert.equal(f.state.sheets.Family_Inbox.values.length, 1);
+});
+
 test('Drop placement/import creates exactly one new pending long Inbox and leaves other pending rows unchanged', () => {
   const f = fixture();
   f.row(f.state.sheets.Family_Inbox, { inboxId: 'inb_' + 'f'.repeat(32), status: 'pending', homeId: 'home-test', sha256: 'a'.repeat(64) });

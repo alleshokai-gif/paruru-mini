@@ -8,6 +8,9 @@ function doPost(e) {
     if (operation === 'familyInbox.submit') {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxSubmit_(body) });
     }
+    if (operation === 'familyInbox.schoolKnowledge.submit') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxSubmit_(body) });
+    }
     if (operation === 'familyInbox.getStatus') {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxGetStatus_(body) });
     }
