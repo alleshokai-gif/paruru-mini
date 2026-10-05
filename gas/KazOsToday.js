@@ -107,9 +107,16 @@ function buildKazOsTodayPlanningEvidence_() {
   const planningDate = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
   const empty = { timezone: timezone, planning_date: planningDate, preferences: [], daily_estimates: [] };
   if (typeof isKazOsInboxAnswerEnabled_ === 'function' && !isKazOsInboxAnswerEnabled_()) return empty;
-  if (typeof readKazOsDecisionLedger_ !== 'function') throw homeMembershipError_('KAZ_PERSISTENCE_NOT_CONFIGURED');
-  const rows = readKazOsDecisionLedger_();
-  if (!Array.isArray(rows)) throw homeMembershipError_('KAZ_PERSISTENCE_FAILED');
+  if (typeof readKazOsDecisionLedger_ !== 'function') return empty;
+  let rows;
+  try {
+    rows = readKazOsDecisionLedger_();
+  } catch (_) {
+    // Human planning evidence enriches TODAY but is not an availability prerequisite.
+    // Calendar remains fail-safe; missing ledger evidence must not take TODAY offline.
+    return empty;
+  }
+  if (!Array.isArray(rows)) return empty;
   const bounded = rows.slice(Math.max(0, rows.length - 200)).filter(function(row) {
     return row && row.answer && row.proposal && row.proposal.change;
   }).sort(function(a, b) {
