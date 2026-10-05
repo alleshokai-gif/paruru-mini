@@ -16,8 +16,13 @@ assert(!/<input[^>]+id="familyInboxFile"[^>]+multiple/i.test(html), 'Family Inbo
 assert(html.includes('id="familyInboxSubjectMember"'));
 assert(html.includes('value="youngest_daughter"'));
 assert(html.includes('id="familyInboxNote" maxlength="500"'));
-assert(app.includes('buildMemoCredentialPayload("familyInbox.submit")'));
+assert(app.includes('buildMemoCredentialPayload(useSchoolKnowledgeP2 ? "familyInbox.schoolKnowledge.submit" : "familyInbox.submit")'));
+assert(html.includes('id="familyInboxSchoolKnowledge"'));
+assert(html.includes('id="familyInboxSchoolKnowledgeSection"'));
+assert(app.includes('学校プリント整理はPDFだけ選べるで。'));
+assert(!app.includes('processingProfile:'), 'browser must not submit a free profile value');
 assert(app.includes('buildMemoCredentialPayload("familyInbox.getStatus")'));
+assert(app.includes('queued: "整理待ち", processing: "整理中", completed: "整理完了", failed: "エラー", duplicate: "重複"'));
 assert(app.includes('buildMemoCredentialPayload("familyInbox.listReviews")'));
 assert(app.includes('buildMemoCredentialPayload("familyInbox.getReview")'));
 assert(app.includes('buildMemoCredentialPayload("familyInbox.updateCandidate")'));
@@ -25,6 +30,7 @@ assert(app.includes('buildMemoCredentialPayload("familyInbox.approveCandidate")'
 assert(app.includes('buildMemoCredentialPayload("familyInbox.rejectCandidate")'));
 assert(app.includes('clientRequestId: familyInboxPendingClientRequestId'));
 assert(app.includes('familyInboxPendingClientRequestId = ""'));
+assert(app.includes('if (useSchoolKnowledgeP2 && familyInboxSchoolKnowledge) familyInboxSchoolKnowledge.checked = false'));
 assert(app.includes('const FAMILY_INBOX_MAX_FILE_BYTES = 5 * 1024 * 1024'));
 assert(app.includes('reader.readAsDataURL(file)'));
 assert(!app.includes('FAMILY_INBOX_SERVICE_TOKEN'));
