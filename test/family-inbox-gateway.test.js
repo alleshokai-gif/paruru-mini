@@ -139,24 +139,19 @@ function submit(overrides = {}) {
   const result = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
   assert.strictEqual(result.success, true);
   assert.strictEqual(result.data.status, 'queued');
-  assert.strictEqual(result.data.idempotency.replayed, false);
   assert.match(result.data.fileId, /^drive-file-/);
   assert.deepStrictEqual(f.state.authorized, ['family.inbox.submit']);
   assert.strictEqual(f.state.calls.length, 0, 'school print must not forward to Family Inbox Web App');
   assert.strictEqual(f.state.driveFiles.length, 1);
-  assert.match(f.state.driveFiles[0].name, new RegExp(`^skv3-${uuid}__${result.data.fileId}__school.pdf$`));
-  const metadata = JSON.parse(f.state.driveFiles[0].description);
-  assert.strictEqual(metadata.type, 'school_print_v3');
-  assert.strictEqual(metadata.clientRequestId, uuid);
-  assert.strictEqual(metadata.userNote, 'family private note');
+  assert.strictEqual(f.state.driveFiles[0].name, 'school.pdf');
+  assert.strictEqual(f.state.driveFiles[0].description, '');
   const schoolPrint = f.state.driveRoot.folders.find((folder) => folder.name === 'SchoolPrint');
   assert(schoolPrint, 'SchoolPrint folder should be created directly under My Drive');
   assert.deepStrictEqual(schoolPrint.folders.map((folder) => folder.name), ['inbox']);
-  const replay = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
-  assert.strictEqual(replay.success, true);
-  assert.strictEqual(replay.data.fileId, result.data.fileId);
-  assert.strictEqual(replay.data.idempotency.replayed, true);
-  assert.strictEqual(f.state.driveFiles.length, 1);
+  const second = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
+  assert.strictEqual(second.success, true);
+  assert.notStrictEqual(second.data.fileId, result.data.fileId);
+  assert.strictEqual(f.state.driveFiles.length, 2, 'duplicate decisions are deferred to worker/GitHub');
   assert.strictEqual(f.state.calls.length, 0);
 }
 
@@ -172,10 +167,10 @@ function submit(overrides = {}) {
 {
   const f = fixture();
   f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
-  const conflict = f.api.familyInboxGateway_(submit({ documentType: 'school_print', file: { name: 'different.pdf', mediaType: 'application/pdf', base64: Buffer.from('%PDF-different').toString('base64') } }));
-  assert.strictEqual(conflict.success, false);
-  assert.strictEqual(conflict.error.code, 'DUPLICATE_REQUEST');
-  assert.strictEqual(f.state.driveFiles.length, 1);
+  const second = f.api.familyInboxGateway_(submit({ documentType: 'school_print', file: { name: 'different.pdf', mediaType: 'application/pdf', base64: Buffer.from('%PDF-different').toString('base64') } }));
+  assert.strictEqual(second.success, true);
+  assert.strictEqual(second.data.status, 'queued');
+  assert.strictEqual(f.state.driveFiles.length, 2, 'same request ID does not trigger a Drive replay check');
 }
 
 {

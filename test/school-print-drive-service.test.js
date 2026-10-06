@@ -8,13 +8,14 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'gas', 'SchoolPrintDriveService.js'), 'utf8');
 
-function makeFolder(name) {
+function makeFolder(name, calls, options = {}) {
   const children = [];
   const folder = {
     name,
     children,
     getName() { return name; },
     getFoldersByName(childName) {
+      calls.push(`getFoldersByName:${childName}`);
       const matches = children.filter(child => child.name === childName);
       let index = 0;
       return {
@@ -23,66 +24,98 @@ function makeFolder(name) {
       };
     },
     createFolder(childName) {
-      const child = makeFolder(childName);
+      calls.push(`createFolder:${childName}`);
+      const child = makeFolder(childName, calls, options);
       children.push(child);
       return child;
+    },
+    createFile(blob) {
+      calls.push('createFile');
+      if (options.createFileError) throw options.createFileError;
+      return { getId() { return 'file-123'; }, blob };
     },
   };
   return folder;
 }
 
-function loadWithRoot(rootFolder) {
-  let rootReads = 0;
+function loadWithRoot(rootFolder, calls, options = {}) {
   const context = {
-    DriveApp: { getRootFolder() { rootReads++; return rootFolder; } },
-    PropertiesService: { getScriptProperties() { throw new Error('must not read Script Properties'); } },
+    DriveApp: { getRootFolder() { calls.push('getRootFolder'); return rootFolder; } },
+    Utilities: {
+      base64Decode(value) {
+        calls.push('base64Decode');
+        if (options.decodeError) throw options.decodeError;
+        assert.equal(value, 'AQID');
+        return [1, 2, 3];
+      },
+      newBlob(bytes, mediaType, name) {
+        calls.push('newBlob');
+        assert.deepEqual(bytes, [1, 2, 3]);
+        assert.equal(mediaType, 'application/pdf');
+        assert.equal(name, 'school.pdf');
+        return { bytes, mediaType, name };
+      },
+    },
+    familyInboxGatewayError_(code) { const error = new Error(code); error.code = code; return error; },
     Object,
     String,
     JSON,
   };
   vm.createContext(context);
   vm.runInContext(source, context, { filename: 'gas/SchoolPrintDriveService.js' });
-  return { context, rootReads: () => rootReads };
+  return { context };
 }
 
 {
-  const rootFolder = makeFolder('My Drive');
-  const loaded = loadWithRoot(rootFolder);
-  const first = loaded.context.schoolPrintDriveFolders_();
-  assert.equal(first.root, rootFolder);
-  assert.equal(first.schoolPrint.name, 'SchoolPrint');
-  assert.equal(first.inbox.name, 'inbox');
-  assert.deepEqual(Object.keys(first).sort(), ['inbox', 'root', 'schoolPrint']);
+  const calls = [];
+  const rootFolder = makeFolder('My Drive', calls);
+  const loaded = loadWithRoot(rootFolder, calls);
+  const first = loaded.context.schoolPrintDriveInboxFolder_();
+  assert.equal(first.name, 'inbox');
   assert.equal(rootFolder.children.length, 1, 'SchoolPrint should be created once');
-  assert.equal(first.schoolPrint.children.length, 1, 'inbox should be created once');
+  assert.equal(rootFolder.children[0].children.length, 1, 'inbox should be created once');
 
-  const second = loaded.context.schoolPrintDriveFolders_();
-  assert.equal(second.schoolPrint, first.schoolPrint, 'existing SchoolPrint folder should be reused');
-  assert.equal(second.inbox, first.inbox, 'existing inbox folder should be reused');
+  const second = loaded.context.schoolPrintDriveInboxFolder_();
+  assert.equal(second, first, 'existing inbox folder should be reused');
   assert.equal(rootFolder.children.length, 1, 'repeat lookup must not create another SchoolPrint folder');
-  assert.equal(first.schoolPrint.children.length, 1, 'repeat lookup must not create another inbox folder');
-  assert.equal(loaded.rootReads(), 2);
+  assert.equal(rootFolder.children[0].children.length, 1, 'repeat lookup must not create another inbox folder');
 }
 
 {
-  const rootFolder = makeFolder('My Drive');
-  const schoolPrint = rootFolder.createFolder('SchoolPrint');
-  const existingInbox = schoolPrint.createFolder('inbox');
-  const loaded = loadWithRoot(rootFolder);
-  const folders = loaded.context.schoolPrintDriveFolders_();
-  assert.equal(folders.schoolPrint, schoolPrint);
-  assert.equal(folders.inbox, existingInbox);
-  assert.equal(rootFolder.children.length, 1);
-  assert.equal(schoolPrint.children.length, 1);
+  const calls = [];
+  const rootFolder = makeFolder('My Drive', calls);
+  const loaded = loadWithRoot(rootFolder, calls);
+  const result = loaded.context.schoolPrintDriveSubmit_({
+    documentType: 'school_print', clientRequestId: '00000000-0000-4000-8000-000000000101',
+    file: { base64: 'AQID', mediaType: 'application/pdf', name: 'school.pdf' },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), { status: 'queued', fileId: 'file-123' });
+  assert.deepEqual(calls, [
+    'getRootFolder', 'getFoldersByName:SchoolPrint', 'createFolder:SchoolPrint',
+    'getFoldersByName:inbox', 'createFolder:inbox', 'base64Decode', 'newBlob', 'createFile',
+  ]);
 }
 
 {
-  const inbox = { searchFiles(query) {
-    assert.match(query, /skv3-client-request__/);
-    return { hasNext() { return false; }, next() { throw new Error('unexpected file'); } };
-  } };
-  const loaded = loadWithRoot(makeFolder('My Drive'));
-  assert.equal(loaded.context.schoolPrintFindRequest_(inbox, 'client-request'), null);
+  const calls = [];
+  const failure = new Error('Drive createFile failed');
+  const rootFolder = makeFolder('My Drive', calls, { createFileError: failure });
+  const loaded = loadWithRoot(rootFolder, calls);
+  assert.throws(() => loaded.context.schoolPrintDriveSubmit_({
+    documentType: 'school_print', clientRequestId: '00000000-0000-4000-8000-000000000101',
+    file: { base64: 'AQID', mediaType: 'application/pdf', name: 'school.pdf' },
+  }), error => error === failure, 'the Apps Script exception should propagate unchanged');
 }
 
-console.log('PASS SchoolPrint/inbox get-or-create and inbox-only lookup');
+{
+  const calls = [];
+  const failure = new Error('base64 decode failed');
+  const rootFolder = makeFolder('My Drive', calls);
+  const loaded = loadWithRoot(rootFolder, calls, { decodeError: failure });
+  assert.throws(() => loaded.context.schoolPrintDriveSubmit_({
+    documentType: 'school_print', clientRequestId: '00000000-0000-4000-8000-000000000101',
+    file: { base64: 'AQID', mediaType: 'application/pdf', name: 'school.pdf' },
+  }), error => error === failure, 'decode exception should propagate unchanged');
+}
+
+console.log('PASS minimal SchoolPrint/inbox save sequence and raw error propagation');
