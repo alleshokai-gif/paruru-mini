@@ -177,9 +177,23 @@
 
   function retryable_(error) {
     if (!error) return false;
+    if (error.code === 'AUTH_ENVELOPE_TIMEOUT') return true;
     if (Number.isFinite(error.httpStatus)) return error.httpStatus >= 500;
     const name = String(error.name || error.cause && error.cause.name || '');
     return name === 'AbortError' || error instanceof TypeError || error.cause instanceof TypeError;
+  }
+
+  function getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs) {
+    let timer = null;
+    const authPromise = Promise.resolve().then(function() { return getAuthEnvelope(false); });
+    const timeoutPromise = new Promise(function(resolve, reject) {
+      timer = setTimeout(function() {
+        reject(codedError_('AUTH_ENVELOPE_TIMEOUT', { transportClassification: 'timeout' }));
+      }, timeoutMs);
+    });
+    return Promise.race([authPromise, timeoutPromise]).finally(function() {
+      if (timer !== null) clearTimeout(timer);
+    });
   }
 
   function create(options) {
@@ -208,12 +222,14 @@
       let lastError = null;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const startedAt = Date.now();
-        const controller = new AbortController();
-        const timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+        let controller = null;
+        let timer = null;
         try {
-          const auth = await getAuthEnvelope(false);
+          const auth = await getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs);
           const token = String(auth && auth.provider === 'firebase' && auth.idToken || '');
           if (!token) throw codedError_('AUTHENTICATION_REQUIRED', { transportClassification: 'business' });
+          controller = new AbortController();
+          timer = setTimeout(function() { controller.abort(); }, timeoutMs);
           const response = await fetchImpl(config.baseUrl + route.path, {
             method: 'GET',
             cache: 'no-store',
@@ -269,7 +285,7 @@
           if (!shouldRetry) throw lastError;
           await new Promise(function(resolve) { setTimeout(resolve, retryDelayMs); });
         } finally {
-          clearTimeout(timer);
+          if (timer !== null) clearTimeout(timer);
         }
       }
       throw lastError || codedError_('DIRECT_READ_FAILED', { transportClassification: 'unknown' });
