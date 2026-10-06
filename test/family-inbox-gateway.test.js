@@ -3,6 +3,9 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+
+const gatewayManifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'gas', 'appsscript.json'), 'utf8'));
+assert(!gatewayManifest.oauthScopes.some((scope) => /\/auth\/drive(?:\.file)?$/.test(scope)), 'Mini Gateway must not request Drive scopes');
 const vm = require('vm');
 
 const uuid = '00000000-0000-4000-8000-000000000101';
@@ -105,7 +108,6 @@ function fixture(options = {}) {
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math,
   };
   vm.createContext(context);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'SchoolPrintDriveService.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'FamilyInboxGatewayService.js'), 'utf8'), context);
   return { api: context, state };
 }
@@ -137,22 +139,26 @@ function submit(overrides = {}) {
 {
   const f = fixture({ properties: { FAMILY_INBOX_SERVICE_TOKEN: '' } });
   const result = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
-  assert.strictEqual(result.success, true);
-  assert.strictEqual(result.data.status, 'queued');
-  assert.match(result.data.fileId, /^drive-file-/);
-  assert.deepStrictEqual(f.state.authorized, ['family.inbox.submit']);
-  assert.strictEqual(f.state.calls.length, 0, 'school print must not forward to Family Inbox Web App');
-  assert.strictEqual(f.state.driveFiles.length, 1);
-  assert.strictEqual(f.state.driveFiles[0].name, 'school.pdf');
-  assert.strictEqual(f.state.driveFiles[0].description, '');
-  const schoolPrint = f.state.driveRoot.folders.find((folder) => folder.name === 'SchoolPrint');
-  assert(schoolPrint, 'SchoolPrint folder should be created directly under My Drive');
-  assert.deepStrictEqual(schoolPrint.folders.map((folder) => folder.name), ['inbox']);
-  const second = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
-  assert.strictEqual(second.success, true);
-  assert.notStrictEqual(second.data.fileId, result.data.fileId);
-  assert.strictEqual(f.state.driveFiles.length, 2, 'duplicate decisions are deferred to worker/GitHub');
+  assert.strictEqual(result.success, false, 'school_print uses the existing Family Inbox submit service credentials');
+  assert.strictEqual(result.error.code, 'CONFIGURATION_ERROR');
   assert.strictEqual(f.state.calls.length, 0);
+  assert.strictEqual(f.state.driveFiles.length, 0);
+}
+
+{
+  const f = fixture();
+  const result = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.status, 'pending');
+  assert.deepStrictEqual(f.state.authorized, ['family.inbox.submit']);
+  assert.strictEqual(f.state.calls.length, 1, 'school print uses existing Family Inbox Web App submit');
+  assert.strictEqual(f.state.driveFiles.length, 0, 'Gateway does not write to Drive');
+  assert(!fs.readFileSync(path.join(__dirname, '..', 'gas', 'FamilyInboxGatewayService.js'), 'utf8').includes('schoolPrintDriveSubmit_'));
+  const forwarded = JSON.parse(f.state.calls[0].fetchOptions.payload);
+  assert.strictEqual(forwarded.operation, 'familyInbox.submit');
+  assert.strictEqual(forwarded.documentType, 'school_print');
+  assert.strictEqual(forwarded.internalToken, 'internal-service-secret');
+  assert.strictEqual(forwarded.file.name, 'school.pdf');
 }
 
 {
@@ -167,10 +173,10 @@ function submit(overrides = {}) {
 {
   const f = fixture();
   f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
-  const second = f.api.familyInboxGateway_(submit({ documentType: 'school_print', file: { name: 'different.pdf', mediaType: 'application/pdf', base64: Buffer.from('%PDF-different').toString('base64') } }));
-  assert.strictEqual(second.success, true);
-  assert.strictEqual(second.data.status, 'queued');
-  assert.strictEqual(f.state.driveFiles.length, 2, 'same request ID does not trigger a Drive replay check');
+  const forwarded = JSON.parse(f.state.calls[0].fetchOptions.payload);
+  assert.strictEqual(forwarded.documentType, 'school_print');
+  assert.strictEqual(f.state.calls.length, 1);
+  assert.strictEqual(f.state.driveFiles.length, 0);
 }
 
 {

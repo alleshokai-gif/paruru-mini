@@ -38,9 +38,7 @@ function familyInboxGateway_(body) {
     const actor = resolveFirebaseAuthenticatedActor_(input);
     authorizeCapability_(actor, capability);
     const trusted = familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId);
-    const result = trusted.documentType === 'school_print'
-      ? schoolPrintDriveSubmit_(trusted)
-      : familyInboxGatewayCallService_(trusted, operation);
+    const result = familyInboxGatewayCallService_(trusted, operation);
     familyInboxGatewayLog_({ traceId: traceId, operation: operation, stage: 'completed', status: result.status, mediaType: trusted.file && trusted.file.mediaType, sizeBytes: trusted.file && trusted.file.sizeBytes, durationMs: Date.now() - startedAt });
     return json_({ success: true, schemaVersion: FAMILY_INBOX_GATEWAY_SCHEMA_VERSION, data: result, error: null, message: 'ok' });
   } catch (error) {

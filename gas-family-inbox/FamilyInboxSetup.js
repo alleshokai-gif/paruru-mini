@@ -50,7 +50,7 @@ function familyInboxSetupDefinitions_() {
     {
       name: FAMILY_INBOX_SHEET_NAME,
       headers: FAMILY_INBOX_HEADERS.slice(),
-      migrationStages: [FAMILY_INBOX_LEGACY_HEADERS.slice(), FAMILY_INBOX_HEADERS.slice()],
+      migrationStages: [FAMILY_INBOX_LEGACY_HEADERS.slice(), FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS.slice(), FAMILY_INBOX_HEADERS.slice()],
     },
     {
       name: FAMILY_INBOX_CANDIDATE_SHEET_NAME,
