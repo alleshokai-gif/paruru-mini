@@ -308,6 +308,17 @@ function callPaluruAgent_(config, input, trace) {
     setMiniAgentTraceStage_(gatewayError, trace, 'AGENT_RESPONSE');
     throw gatewayError;
   }
+  if (parsed.data && Object.prototype.hasOwnProperty.call(parsed.data, 'patternEvidence')) {
+    try {
+      persistPatternEvidenceFromProducerDtos_(parsed.data.patternEvidence);
+    } catch (error) {
+      const gatewayError = createAgentGatewayError_(
+        'AGENT_ERROR', 'AGENT_RESPONSE', 'PATTERN_EVIDENCE_PERSIST_FAILED'
+      );
+      setMiniAgentTraceStage_(gatewayError, trace, 'PATTERN_EVIDENCE');
+      throw gatewayError;
+    }
+  }
   return parsed;
 }
 

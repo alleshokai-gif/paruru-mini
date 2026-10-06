@@ -2,14 +2,16 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const gasDir = path.join(root, 'gas');
-const files = ['Code.js', 'AgentTraceLogService.js', 'AgentGateway.js'];
+const files = ['Code.js', 'AgentTraceLogService.js', 'PatternEvidenceLogService.js', 'AgentGateway.js'];
 const properties = {};
 const logs = [];
 let traceSheet = null;
+let patternEvidenceSheet = null;
 let fetchImpl = () => { throw new Error('live network forbidden'); };
 let readActor = null;
 let readActorError = null;
@@ -42,15 +44,19 @@ function createTraceSheet() {
       return {
         getValues: () => {
           if (row === 1) return [Array.from({ length: numColumns }, (_, index) => sheet.headers[column - 1 + index] || '')];
-          return [];
+          return Array.from({ length: numRows }, (_, rowIndex) => {
+            const saved = sheet.rows[row - 2 + rowIndex] || [];
+            return Array.from({ length: numColumns }, (_, columnIndex) => saved[column - 1 + columnIndex] || '');
+          });
         },
         setValues: (values) => {
           if (row === 1) {
             values[0].forEach((value, index) => { sheet.headers[column - 1 + index] = value; });
           } else {
-            values.forEach((value) => sheet.rows.push(value.slice()));
+            values.forEach((value, index) => { sheet.rows[row - 2 + index] = value.slice(); });
           }
-        }
+        },
+        setNumberFormat() {}
       };
     },
     setFrozenRows() {}
@@ -69,9 +75,19 @@ const context = {
   AgentCostGuardService: createCostGuardStub(),
   SpreadsheetApp: {
     getActiveSpreadsheet: () => ({
-      getSheetByName: () => traceSheet,
-      insertSheet: () => { traceSheet = createTraceSheet(); return traceSheet; }
+      getSheetByName: (name) => name === 'Pattern_Evidence_Log' ? patternEvidenceSheet : traceSheet,
+      insertSheet: (name) => {
+        if (name === 'Pattern_Evidence_Log') patternEvidenceSheet = createTraceSheet();
+        else traceSheet = createTraceSheet();
+        return name === 'Pattern_Evidence_Log' ? patternEvidenceSheet : traceSheet;
+      }
     })
+  },
+  LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+  Utilities: {
+    DigestAlgorithm: { SHA_256: 'SHA-256' }, Charset: { UTF_8: 'UTF-8' },
+    computeDigest: (_algorithm, value) => Array.from(crypto.createHash('sha256').update(value, 'utf8').digest()),
+    formatDate: () => '2026-10-06T12:00:00+09:00'
   },
   ContentService: {
     MimeType: { JSON: 'application/json' },
@@ -115,8 +131,8 @@ function post(body) {
 function valid(overrides) {
   return Object.assign({ action: 'agentChat', message: secretMessage, sessionId, clientRequestId }, overrides || {});
 }
-function agentResponse(reply, serviceExecutions) {
-  return {
+function agentResponse(reply, serviceExecutions, patternEvidence) {
+  const result = {
     success: true,
     schemaVersion: 'agent-chat-1.0',
     requestId: 'internal-agent-request-id',
@@ -127,6 +143,8 @@ function agentResponse(reply, serviceExecutions) {
       rawToolData: { temperature: 28.3 },
     },
   };
+  if (patternEvidence !== undefined) result.data.patternEvidence = patternEvidence;
+  return result;
 }
 function mockFetch(status, body, onCall) {
   fetchImpl = (url, options) => {
@@ -135,7 +153,7 @@ function mockFetch(status, body, onCall) {
   };
 }
 function configure() { properties.PALURU_AGENT_URL = secretUrl; properties.PALURU_AGENT_TOKEN = secretToken; }
-function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; traceSheet = null; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; controlActor = null; controlActorError = null; controlActorCalls = 0; context.AgentCostGuardService = createCostGuardStub(); }
+function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; traceSheet = null; patternEvidenceSheet = null; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; controlActor = null; controlActorError = null; controlActorCalls = 0; context.AgentCostGuardService = createCostGuardStub(); }
 function assert(value, message) { if (!value) throw new Error(message); }
 
 const tests = [];
@@ -184,6 +202,62 @@ test('tool-free response', () => {
   });
   const result = post(valid({ userId: 'father', userDisplayName: '父', deviceId: 'device' }));
   assert(result.success && result.reply && result.serviceExecutions.length === 0, 'service-free response failed');
+  assert(patternEvidenceSheet === null, 'an ordinary Agent response must not be inferred as Pattern Evidence');
+});
+
+test('diagnostic failure status alone never creates Pattern Evidence', () => {
+  configure();
+  const response = agentResponse('失敗したで。');
+  response.data.diagnostics = { resultStatus: 'UPSTREAM_ERROR' };
+  mockFetch(200, response);
+  const result = post(valid());
+  assert(result.success && patternEvidenceSheet === null, 'Agent diagnostics were inferred as learning Evidence');
+});
+
+test('explicit Pattern Evidence DTO appends idempotently outside Agent Trace', () => {
+  configure();
+  const evidence = {
+    record_id: 'ev-investigation-001', record_type: 'EVIDENCE', source_kind: 'EXECUTION',
+    session_id: 'session-001', timestamp: '2026-10-06T10:00:00+09:00',
+    outcome: 'FAILURE', pattern_key: 'investigation_loop_without_implementation',
+    title: '調査ループが継続し実装へ進まない', summary: '調査が続いて実装へ進まない',
+    excerpt: 'Exit Criteriaがなく調査ループが継続', target: 'SKILL', temporary: false
+  };
+  mockFetch(200, agentResponse('了解。', [], [evidence]));
+  const first = post(valid());
+  assert(first.success, 'explicit producer DTO was not accepted');
+  assert(patternEvidenceSheet && patternEvidenceSheet.rows.length === 1, 'Pattern_Evidence_Log did not append one row');
+  assert(patternEvidenceSheet.headers[0] === 'record_id' && patternEvidenceSheet.headers[1] === 'record_type', 'Pattern log schema missing');
+  assert(!first.patternEvidence && !first.excerpt, 'evidence was returned to the chat client');
+  const traceHeaders = traceSheet.headers.slice();
+  assert(!traceHeaders.includes('pattern_key') && !traceHeaders.includes('patternEvidence'), 'Agent_Trace_Log was repurposed for evidence');
+
+  mockFetch(200, agentResponse('了解。', [], [evidence]));
+  const second = post(valid());
+  assert(second.success && patternEvidenceSheet.rows.length === 1, 'same ID and payload was not a no-op');
+
+  const conflict = Object.assign({}, evidence, { excerpt: '別のpayload' });
+  mockFetch(200, agentResponse('了解。', [], [conflict]));
+  const rejected = post(valid());
+  assert(!rejected.success && rejected.error.code === 'AGENT_ERROR', 'same ID with a different payload was not rejected');
+  assert(patternEvidenceSheet.rows.length === 1, 'conflicting payload changed the append-only log');
+
+  const annotation = {
+    record_id: 'feedback-001', record_type: 'FEEDBACK',
+    timestamp: '2026-10-06T10:10:00+09:00', evidence_record_id: evidence.record_id,
+    feedback_action: 'CONFIRM'
+  };
+  mockFetch(200, agentResponse('了解。', [], [annotation]));
+  assert(post(valid()).success && patternEvidenceSheet.rows.length === 2, 'feedback annotation did not append');
+  mockFetch(200, agentResponse('了解。', [], [annotation]));
+  assert(post(valid()).success && patternEvidenceSheet.rows.length === 2, 'duplicate feedback was not a no-op');
+  const feedbackConflict = Object.assign({}, annotation, { feedback_action: 'REJECT' });
+  mockFetch(200, agentResponse('了解。', [], [feedbackConflict]));
+  assert(!post(valid()).success && patternEvidenceSheet.rows.length === 2, 'conflicting feedback was appended');
+
+  const freeReason = Object.assign({}, evidence, { record_id: 'ev-bad-001', reason: 'must not be stored' });
+  mockFetch(200, agentResponse('了解。', [], [freeReason]));
+  assert(!post(valid()).success && patternEvidenceSheet.rows.length === 2, 'free-form reason was accepted');
 });
 
 test('Cost Guard receives only the server-resolved actor and settles complete usage', () => {
