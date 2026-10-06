@@ -43,7 +43,12 @@ function bytesFor(mediaType, suffix = 1) {
 
 function fixture(options = {}) {
   const state = { files: [], logs: [], ledgerError: Boolean(options.ledgerError), driveError: Boolean(options.driveError), uuidCounter: 1, lockCount: 0 };
-  const sheet = new Sheet(state, options.legacySchema ? headers.slice(0, -1) : headers);
+  const initialHeaders = options.legacySchema
+    ? headers.slice(0, -1)
+    : options.historicalP2Schema
+      ? headers.slice(0, -1).concat(['knowledgePath', 'gitCommitSha', 'errorMessage'])
+      : headers;
+  const sheet = new Sheet(state, initialHeaders);
   const properties = Object.assign({
     FAMILY_INBOX_SERVICE_TOKEN: 'service-secret-value',
     FAMILY_INBOX_RAW_FOLDER_ID: 'raw-folder-secret-id',
@@ -125,6 +130,21 @@ for (const [index, mediaType] of ['image/jpeg', 'image/png', 'application/pdf'].
   assert.strictEqual(f.state.files[0].blob.mediaType, 'application/pdf');
 }
 
+{
+  const f = fixture({ historicalP2Schema: true });
+  const body = submitBody('application/pdf', uuid(181));
+  body.documentType = 'school_print';
+  const result = f.api.familyInboxSubmit_(body);
+  const expectedHeaders = headers.slice(0, -1).concat(['knowledgePath', 'gitCommitSha', 'errorMessage', 'documentType']);
+  assert.strictEqual(result.status, 'pending');
+  assert.deepStrictEqual(f.sheet.values[0], expectedHeaders, 'existing historical columns remain in place and documentType appends at the end');
+  const row = Object.fromEntries(expectedHeaders.map((header, column) => [header, f.sheet.values[1][column]]));
+  assert.strictEqual(row.documentType, 'school_print');
+  assert.strictEqual(row.knowledgePath, '');
+  assert.strictEqual(row.gitCommitSha, '');
+  assert.strictEqual(row.errorMessage, '');
+}
+
 function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png': 'notice.png', 'application/pdf': 'notice.pdf' }[mediaType]; }
 
 {
@@ -154,6 +174,16 @@ function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png':
   assert.strictEqual(replay.idempotency.replayed, true);
   assert.strictEqual(f.state.files.length, 1);
   assert.strictEqual(f.sheet.values.length, 2);
+}
+
+{
+  const f = fixture();
+  const body = submitBody('application/pdf', uuid(201));
+  const first = f.api.familyInboxSubmit_(body);
+  f.sheet.values[1][headers.indexOf('processingProfile')] = 'school-v1-long';
+  expectCode(() => f.api.familyInboxSubmit_(body), 'DUPLICATE_REQUEST');
+  assert.strictEqual(first.status, 'pending');
+  assert.strictEqual(f.state.files.length, 1, 'profile mismatch must not create another stored file');
 }
 
 {

@@ -17,7 +17,10 @@ const FAMILY_INBOX_LEGACY_HEADERS = Object.freeze([
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
 ]);
 const FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS = Object.freeze(FAMILY_INBOX_LEGACY_HEADERS.concat(['processingProfile']));
+const FAMILY_INBOX_HISTORICAL_EXTRA_HEADERS = Object.freeze(['knowledgePath', 'gitCommitSha', 'errorMessage']);
+const FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS = Object.freeze(FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS.concat(FAMILY_INBOX_HISTORICAL_EXTRA_HEADERS));
 const FAMILY_INBOX_HEADERS = Object.freeze(FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS.concat(['documentType']));
+const FAMILY_INBOX_HISTORICAL_HEADERS = Object.freeze(FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS.concat(['documentType']));
 const FAMILY_INBOX_MEDIA = Object.freeze({
   'image/jpeg': Object.freeze({ extension: 'jpg', signature: Object.freeze([0xff, 0xd8, 0xff]) }),
   'image/png': Object.freeze({ extension: 'png', signature: Object.freeze([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) }),
@@ -86,7 +89,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     });
     if (existing) {
       const originalNameMatches = normalizedSource === 'drive_drop' || existing.originalName === input.originalName;
-      if (existing.sha256 !== input.sha256 || existing.source !== normalizedSource || existing.submittedByMemberId !== input.submittedByMemberId || existing.subjectMemberHint !== input.subjectMemberId || existing.userNote !== input.userNote || !originalNameMatches || existing.mediaType !== input.mediaType || String(existing.documentType || '') !== documentType) {
+      if (existing.sha256 !== input.sha256 || existing.source !== normalizedSource || existing.submittedByMemberId !== input.submittedByMemberId || existing.subjectMemberHint !== input.subjectMemberId || existing.userNote !== input.userNote || !originalNameMatches || existing.mediaType !== input.mediaType || existing.processingProfile !== processingProfile || String(existing.documentType || '') !== documentType) {
         throw familyInboxError_('DUPLICATE_REQUEST');
       }
       const replay = familyInboxPublicSubmitResult_(existing, true);
@@ -277,15 +280,25 @@ function familyInboxOpenLedger_(spreadsheetId) {
   try { sheet = SpreadsheetApp.openById(spreadsheetId).getSheetByName(FAMILY_INBOX_SHEET_NAME); } catch (_) { throw familyInboxError_('CONFIGURATION_ERROR'); }
   if (!sheet || sheet.getLastRow() < 1 || sheet.getLastColumn() < 1) throw familyInboxError_('CONFIGURATION_ERROR');
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function(value) { return String(value || '').trim(); });
-  const requiredHeaders = headers.indexOf('documentType') >= 0 ? FAMILY_INBOX_HEADERS : FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS;
-  if (requiredHeaders.some(function(header) { return headers.indexOf(header) < 0; }) || headers.length !== requiredHeaders.length || headers.some(function(header, index) { return !header || headers.indexOf(header) !== index; })) throw familyInboxError_('CONFIGURATION_ERROR');
+  if (!familyInboxHeadersMatchAnyKnownShape_(headers, [
+    FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS, FAMILY_INBOX_HEADERS,
+    FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS, FAMILY_INBOX_HISTORICAL_HEADERS,
+  ])) throw familyInboxError_('CONFIGURATION_ERROR');
   return { sheet: sheet, headers: headers };
+}
+
+function familyInboxHeadersMatchAnyKnownShape_(headers, shapes) {
+  if (headers.some(function(header, index) { return !header || headers.indexOf(header) !== index; })) return false;
+  return shapes.some(function(shape) {
+    return headers.length === shape.length && shape.every(function(header) { return headers.indexOf(header) >= 0; });
+  });
 }
 
 function familyInboxEnsureDocumentTypeColumn_(sheetState) {
   if (sheetState.headers.indexOf('documentType') >= 0) return;
-  if (sheetState.headers.length !== FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS.length ||
-      FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS.some(function(header) { return sheetState.headers.indexOf(header) < 0; })) {
+  if (!familyInboxHeadersMatchAnyKnownShape_(sheetState.headers, [
+    FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS, FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS,
+  ])) {
     throw familyInboxError_('CONFIGURATION_ERROR');
   }
   const lastColumn = sheetState.headers.length;

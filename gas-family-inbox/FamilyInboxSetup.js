@@ -50,7 +50,11 @@ function familyInboxSetupDefinitions_() {
     {
       name: FAMILY_INBOX_SHEET_NAME,
       headers: FAMILY_INBOX_HEADERS.slice(),
-      migrationStages: [FAMILY_INBOX_LEGACY_HEADERS.slice(), FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS.slice(), FAMILY_INBOX_HEADERS.slice()],
+      acceptedHistoricalHeaders: FAMILY_INBOX_HISTORICAL_EXTRA_HEADERS.slice(),
+      migrationStages: [
+        FAMILY_INBOX_LEGACY_HEADERS.slice(), FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS.slice(), FAMILY_INBOX_HEADERS.slice(),
+        FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS.slice(), FAMILY_INBOX_HISTORICAL_HEADERS.slice(),
+      ],
     },
     {
       name: FAMILY_INBOX_CANDIDATE_SHEET_NAME,
@@ -83,7 +87,8 @@ function familyInboxSetupInspect_(sheet, definition) {
     };
   }
   const invalidHeader = headers.some(function(header, index) {
-    return !header || headers.indexOf(header) !== index || definition.headers.indexOf(header) < 0;
+    return !header || headers.indexOf(header) !== index ||
+      (definition.headers.indexOf(header) < 0 && (definition.acceptedHistoricalHeaders || []).indexOf(header) < 0);
   });
   const knownStage = !invalidHeader && definition.migrationStages.some(function(stage) {
     return stage.length === headers.length && stage.every(function(header) { return headers.indexOf(header) >= 0; });

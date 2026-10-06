@@ -224,6 +224,21 @@ function valuesSnapshot(spreadsheet) {
 
 {
   const { context, spreadsheet, headers } = loadHarness();
+  const historicalHeaders = headers.inbox.slice(0, -1).concat(['knowledgePath', 'gitCommitSha', 'errorMessage']);
+  const historicalRow = historicalHeaders.map((header) => `existing-${header}`);
+  const inboxSheet = spreadsheet.addSheet('Family_Inbox', [historicalHeaders, historicalRow], historicalHeaders.length);
+  spreadsheet.addSheet('Family_Candidates', [headers.candidates], headers.candidates.length);
+  spreadsheet.addSheet('Family_Review_Items', [headers.reviewItems], headers.reviewItems.length);
+  const existingRowBefore = clone(inboxSheet.values[1]);
+  assert.strictEqual(context.setupFamilyInboxSchema(), 'CREATED', 'FI-SET22 known historical receipt schema');
+  assert.deepStrictEqual(inboxSheet.values[0], historicalHeaders.concat(['documentType']), 'FI-SET23 documentType appends after preserved historical columns');
+  assert.deepStrictEqual(inboxSheet.values[1], existingRowBefore, 'FI-SET24 historical row unchanged');
+  const headerWrite = inboxSheet.calls.find((call) => call.method === 'setValues');
+  assert.deepStrictEqual(headerWrite, { method: 'setValues', row: 1, column: 31, values: [['documentType']] });
+}
+
+{
+  const { context, spreadsheet, headers } = loadHarness();
   spreadsheet.addSheet('Family_Inbox', [headers.inbox]);
   spreadsheet.addSheet('Family_Candidates', [['wrongHeader']]);
   const before = valuesSnapshot(spreadsheet);
