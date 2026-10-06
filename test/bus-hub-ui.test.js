@@ -98,6 +98,9 @@ test('official Tokyu approach adds one line only to the first Tokyu card without
 });
 
 test('Tokyu official approach derives approximate delay and keeps ETA in the shared timing row', () => {
+  const originalNow = Date.now;
+  Date.now = () => NOW * 1000;
+  try {
   const retrievedAt = NOW;
   const row = arrival({ scheduledDeparture: NOW + 6 * 60, sourceId: 'kibukihoncho_to_mukougaoka',
     destination: '向ヶ丘遊園駅南口',
@@ -111,6 +114,9 @@ test('Tokyu official approach derives approximate delay and keeps ETA in the sha
   assert.match(source, /grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\)/);
   assert.match(source, /bus-hub-quality \{ justify-self: center; \}/);
   assert.match(source, /bus-hub-delay \{ justify-self: end;/);
+  } finally {
+    Date.now = originalNow;
+  }
 });
 
 test('official ETA degrades to coarse approach while invalid source or stale data falls back', () => {

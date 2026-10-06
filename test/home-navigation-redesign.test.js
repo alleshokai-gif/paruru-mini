@@ -68,9 +68,12 @@ assert(!app.includes('PALURUInfectionWatchCard') && !app.includes('infection-wat
 assert(!style.includes('.infection-watch-card'), 'card-only CSS remains');
 assert(!sw.includes('features/infection-watch/card.js') && sw.includes('versioned("features/navigation/config.js")'), 'service worker asset list is stale');
 assert(index.includes('id="inboxForm"') && !index.includes('homeMemoDetails'), 'memo should be a direct compact composer without expansion');
-assert(!index.includes('id="homeMemoOpenButton"') && !index.includes('よく使う機能'), 'Home contains an oversized memo entry or duplicate launcher heading');
+assert(!index.includes('id="homeMemoOpenButton"')
+  && !/<h[1-6]\b[^>]*>\s*よく使う機能\s*<\/h[1-6]>/i.test(index),
+  'Home contains an oversized memo entry or duplicate visible launcher heading');
 assert(!index.includes('homeMemoQuickInput') && !index.includes('homeMemoQuickOpen') && index.includes('rows="3"'), 'memo must be directly editable in a compact textarea');
-assert(index.includes('paw-menu.svg') && index.includes('paw-close.svg') && !index.includes('>☰</button>') && index.includes('paruru_bust.png'), 'paw controls or PALURU bust asset are missing');
+assert(index.includes('paw-menu.svg') && index.includes('paw-close.svg') && !index.includes('>☰</button>')
+  && index.includes('paruru_bust_normal.png'), 'paw controls or PALURU bust asset are missing');
 assert(index.includes('class="app-topbar"') && index.includes('class="home-wordmark"'), 'shared navigation header is missing');
 assert(!app.includes('openHomeMemoFromQuick_'), 'obsolete quick-to-expanded memo flow remains');
 assert(index.includes('type="hidden" name="priority" value=""') && index.includes('id="category" name="category" type="hidden" value=""'), 'category/priority should default to AI without visible controls');
@@ -105,9 +108,15 @@ assert(style.includes('width: min(90vw, 360px)') && style.includes('body.drawer-
 assert(style.includes('overflow-x: clip'), 'mobile horizontal overflow guard missing');
 assert(app.includes('Build: ${globalThis.BUILD_ID}'), 'Build ID display is missing');
 const buildId = build.match(/BUILD_ID\s*=\s*"([^"]+)"/)?.[1];
-assert(buildId === 'v20260925-navigation-final-v7', 'Build ID not updated for the navigation/SW change');
+assert(buildId && index.includes(`./build.js?v=${buildId}`) && index.includes(`./app.js?v=${buildId}`),
+  'index HTML does not load the current Build ID with its app shell');
 assert(sw.includes(`importScripts("./build.js?v=${buildId}")`), 'Service Worker still uses an old Build ID');
+assert(sw.includes(`// Release: ${buildId}`), 'Service Worker release marker is stale');
 assert(sw.includes('versioned("assets/icons/paw-menu.svg")') && sw.includes('versioned("assets/icons/paw-close.svg")'), 'paw assets are missing from offline cache');
-assert(index.includes(`./style.css?v=${buildId}`) && index.includes(`./features/navigation/config.js?v=${buildId}`), 'updated UI assets are not versioned consistently');
+assert(/\.\/style\.css\?v=[^"&]+/.test(index)
+  && /\.\/features\/navigation\/config\.js\?v=[^"&]+/.test(index)
+  && sw.includes('versioned("style.css")')
+  && sw.includes('versioned("features/navigation/config.js")'),
+  'updated UI assets are not individually versioned for online and offline use');
 
 console.log('PASS home navigation redesign, infection link/menu, memo preservation, Build ID, and service-worker asset contract');

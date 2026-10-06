@@ -21,8 +21,8 @@ function sha(value) {
 
 function inboxDto() {
   const refs = vector.ledger.current_refs;
-  const fetchedAt = new Date(Date.now() - 1000).toISOString();
-  const validUntil = new Date(Date.now() + 3600000).toISOString();
+  const fetchedAt = '2026-09-24T09:15:00+09:00';
+  const validUntil = '2026-09-24T10:15:00+09:00';
   const source = (revision, scope) => ({ status: 'ok', complete: true,
     fetched_at: fetchedAt, valid_until: validUntil,
     source_revision: revision, scope });
@@ -66,6 +66,10 @@ const h = createHarness({ root, answerEnabled: true,
   provider: () => { throw Error('OUT_OF_SCOPE'); },
   projectsProvider: () => { throw Error('OUT_OF_SCOPE'); },
   inboxProvider: () => current });
+h.ctx.Date = class Phase2FixtureDate extends Date {
+  static now() { return Date.parse('2026-09-24T00:30:00Z'); }
+};
+assert.doesNotThrow(() => h.ctx.sanitizeKazOsInbox_(current), 'fixed acceptance fixture must satisfy the current source schema');
 const projected = h.ctx.applyKazOsDecisionLedger_(structuredClone(current));
 const followup = projected.inbox_items.find(item => item.id === vector.ledger.expected_followup_id);
 assert(followup, 'GAS did not reconstruct the Direct-compatible follow-up');

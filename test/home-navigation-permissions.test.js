@@ -60,7 +60,7 @@ context.hasMembershipCapability_ = capability => context.activeMembershipContext
 vm.runInContext(appSource.slice(start, end), context);
 
 const navigation = id => document.querySelectorAll('[data-target-view], [data-visibility-view]').filter(item => item.dataset.navigationId === id);
-const kazSection = menu.children.find(child => child.className === 'drawer-menu-section' && child.children.some(item => item.dataset.navigationId === 'kaz-today'));
+const kazSection = menu.children.find(child => child.className === 'drawer-menu-section' && child.children.some(item => item.dataset.navigationId === 'kaz-os'));
 assert(kazSection && kazSection.previousElementSibling?.textContent === 'やること・確認', 'Kaz category fixture missing');
 
 function apply(role, allowedViews, capabilities = ['home.read', 'memo.self.create']) {
@@ -69,13 +69,13 @@ function apply(role, allowedViews, capabilities = ['home.read', 'memo.self.creat
 }
 
 apply('self_record', ['home', 'inbox', 'bus', 'nurse-okan', 'popio-health', 'kaz-os']);
-assert(['kaz-today', 'kaz-work', 'kaz-projects', 'kaz-questions'].every(id => navigation(id).every(item => item.hidden)), 'non-admin saw Kaz OS items');
+assert(navigation('kaz-os').every(item => item.hidden), 'non-admin saw Kaz OS');
 assert(kazSection.hidden && kazSection.previousElementSibling.hidden, 'empty Kaz category remained visible');
 assert(navigation('infection').length === 2 && navigation('infection').every(item => !item.hidden), 'available external link was hidden');
 assert(launcher.children.length === 4 && launcher.children.every(item => !item.hidden), 'available launcher items were hidden');
 
 apply('admin', ['home', 'inbox', 'bus', 'nurse-okan', 'popio-health', 'settings', 'kaz-os']);
-assert(['kaz-today', 'kaz-work', 'kaz-projects', 'kaz-questions'].every(id => navigation(id).every(item => !item.hidden)), 'authorized admin cannot see Kaz OS');
+assert(navigation('kaz-os').length === 1 && navigation('kaz-os').every(item => !item.hidden), 'authorized admin cannot see Kaz OS');
 assert(!kazSection.hidden && !kazSection.previousElementSibling.hidden, 'authorized Kaz category remained hidden');
 
 apply('admin', ['home', 'inbox', 'bus', 'nurse-okan', 'popio-health', 'settings']);

@@ -324,7 +324,7 @@ async function main() {
   
 (function testGithubCandidateWithPaluruMetadataStillUsesGithubContract() {
   const source = fs.readFileSync(path.join(root, 'features', 'transport', 'read-v2.js'), 'utf8');
-  assert(source.includes("const paluru = /^paluru-inbox:\\\/\\\\//i.test(String(item.candidate_ref || ''));"),
+  assert(source.includes(String.raw`const paluru = /^paluru-inbox:\/\//i.test(String(item.candidate_ref || ''));`),
     'candidate transport source must be derived from candidate_ref namespace, not candidate_origin metadata');
 })();
 
