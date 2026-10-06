@@ -297,6 +297,9 @@ function callPaluruAgent_(config, input, trace) {
   appendAgentTraceEntries_(trace, parsed && parsed.traceEvents);
 
   if (!parsed || parsed.success !== true) {
+    if (parsed && Object.prototype.hasOwnProperty.call(parsed, 'patternEvidence')) {
+      persistPatternEvidenceBestEffort_(parsed.patternEvidence);
+    }
     const error = createAgentGatewayError_(safeUpstreamAgentErrorCode_(parsed), 'UPSTREAM_AGENT_FAILED', String(parsed && parsed.error && parsed.error.code || parsed && parsed.code || 'UPSTREAM_SUCCESS_FALSE'));
     if (parsed && parsed.diagnostics) error.agentPerformance = sanitizeAgentPerformanceDiagnostics_(parsed.diagnostics);
     const upstreamTrace = parsed && parsed.trace;
@@ -309,17 +312,21 @@ function callPaluruAgent_(config, input, trace) {
     throw gatewayError;
   }
   if (parsed.data && Object.prototype.hasOwnProperty.call(parsed.data, 'patternEvidence')) {
-    try {
-      persistPatternEvidenceFromProducerDtos_(parsed.data.patternEvidence);
-    } catch (error) {
-      const gatewayError = createAgentGatewayError_(
-        'AGENT_ERROR', 'AGENT_RESPONSE', 'PATTERN_EVIDENCE_PERSIST_FAILED'
-      );
-      setMiniAgentTraceStage_(gatewayError, trace, 'PATTERN_EVIDENCE');
-      throw gatewayError;
-    }
+    persistPatternEvidenceBestEffort_(parsed.data.patternEvidence);
   }
   return parsed;
+}
+
+function persistPatternEvidenceBestEffort_(value) {
+  try {
+    return persistPatternEvidenceFromProducerDtos_(value);
+  } catch (error) {
+    const rawCode = String(error && error.message || '');
+    const safeCode = /^PATTERN_EVIDENCE_[A-Z_]+$/.test(rawCode)
+      ? rawCode : 'PATTERN_EVIDENCE_WRITE_FAILED';
+    try { Logger.log('[PATTERN_EVIDENCE] APPEND_FAILED ' + safeCode); } catch (_) {}
+    return { appended: 0, noOp: 0, failed: true };
+  }
 }
 
 function safeUpstreamAgentErrorCode_(payload) {

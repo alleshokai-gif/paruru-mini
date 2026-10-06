@@ -12,6 +12,7 @@ const properties = {};
 const logs = [];
 let traceSheet = null;
 let patternEvidenceSheet = null;
+let failPatternEvidenceWrites = false;
 let fetchImpl = () => { throw new Error('live network forbidden'); };
 let readActor = null;
 let readActorError = null;
@@ -75,8 +76,12 @@ const context = {
   AgentCostGuardService: createCostGuardStub(),
   SpreadsheetApp: {
     getActiveSpreadsheet: () => ({
-      getSheetByName: (name) => name === 'Pattern_Evidence_Log' ? patternEvidenceSheet : traceSheet,
+      getSheetByName: (name) => {
+        if (name === 'Pattern_Evidence_Log' && failPatternEvidenceWrites) throw new Error('simulated spreadsheet outage');
+        return name === 'Pattern_Evidence_Log' ? patternEvidenceSheet : traceSheet;
+      },
       insertSheet: (name) => {
+        if (name === 'Pattern_Evidence_Log' && failPatternEvidenceWrites) throw new Error('simulated spreadsheet outage');
         if (name === 'Pattern_Evidence_Log') patternEvidenceSheet = createTraceSheet();
         else traceSheet = createTraceSheet();
         return name === 'Pattern_Evidence_Log' ? patternEvidenceSheet : traceSheet;
@@ -146,6 +151,15 @@ function agentResponse(reply, serviceExecutions, patternEvidence) {
   if (patternEvidence !== undefined) result.data.patternEvidence = patternEvidence;
   return result;
 }
+function agentErrorResponse(code, patternEvidence) {
+  const result = {
+    success: false,
+    schemaVersion: 'agent-chat-1.0',
+    error: { code, message: 'safe fixture error' },
+  };
+  if (patternEvidence !== undefined) result.patternEvidence = patternEvidence;
+  return result;
+}
 function mockFetch(status, body, onCall) {
   fetchImpl = (url, options) => {
     if (onCall) onCall(url, options);
@@ -153,7 +167,7 @@ function mockFetch(status, body, onCall) {
   };
 }
 function configure() { properties.PALURU_AGENT_URL = secretUrl; properties.PALURU_AGENT_TOKEN = secretToken; }
-function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; traceSheet = null; patternEvidenceSheet = null; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; controlActor = null; controlActorError = null; controlActorCalls = 0; context.AgentCostGuardService = createCostGuardStub(); }
+function reset() { Object.keys(properties).forEach((key) => delete properties[key]); logs.length = 0; traceSheet = null; patternEvidenceSheet = null; failPatternEvidenceWrites = false; fetchImpl = () => { throw new Error('live network forbidden'); }; readActor = null; readActorError = null; readActorCalls = 0; controlActor = null; controlActorError = null; controlActorCalls = 0; context.AgentCostGuardService = createCostGuardStub(); }
 function assert(value, message) { if (!value) throw new Error(message); }
 
 const tests = [];
@@ -239,7 +253,7 @@ test('explicit Pattern Evidence DTO appends idempotently outside Agent Trace', (
   const conflict = Object.assign({}, evidence, { excerpt: '別のpayload' });
   mockFetch(200, agentResponse('了解。', [], [conflict]));
   const rejected = post(valid());
-  assert(!rejected.success && rejected.error.code === 'AGENT_ERROR', 'same ID with a different payload was not rejected');
+  assert(rejected.success && rejected.reply === '了解。', 'evidence conflict changed the business response');
   assert(patternEvidenceSheet.rows.length === 1, 'conflicting payload changed the append-only log');
 
   const annotation = {
@@ -253,11 +267,64 @@ test('explicit Pattern Evidence DTO appends idempotently outside Agent Trace', (
   assert(post(valid()).success && patternEvidenceSheet.rows.length === 2, 'duplicate feedback was not a no-op');
   const feedbackConflict = Object.assign({}, annotation, { feedback_action: 'REJECT' });
   mockFetch(200, agentResponse('了解。', [], [feedbackConflict]));
-  assert(!post(valid()).success && patternEvidenceSheet.rows.length === 2, 'conflicting feedback was appended');
+  assert(post(valid()).success && patternEvidenceSheet.rows.length === 2, 'feedback conflict changed business response or appended');
 
   const freeReason = Object.assign({}, evidence, { record_id: 'ev-bad-001', reason: 'must not be stored' });
   mockFetch(200, agentResponse('了解。', [], [freeReason]));
-  assert(!post(valid()).success && patternEvidenceSheet.rows.length === 2, 'free-form reason was accepted');
+  assert(post(valid()).success && patternEvidenceSheet.rows.length === 2, 'invalid DTO changed business response or was stored');
+});
+
+test('explicit Pattern Evidence on an Agent error is appended without hiding the business error', () => {
+  configure();
+  const repeatIds = [
+    ['550e8400-e29b-41d4-a716-446655440000', '6ba7b810-9dad-41d1-80b4-00c04fd430c8'],
+    ['550e8400-e29b-41d4-a716-446655440001', '6ba7b810-9dad-41d1-80b4-00c04fd430c9'],
+    ['550e8400-e29b-41d4-a716-446655440002', '6ba7b810-9dad-41d1-80b4-00c04fd430ca'],
+  ];
+  const evidence = repeatIds.map(([session, requestId]) => ({
+    record_id: 'agent-followup-contract:' + requestId,
+    record_type: 'EVIDENCE', source_kind: 'EXECUTION',
+    session_id: session, timestamp: '2026-10-06T10:00:00.000Z',
+    outcome: 'FAILURE', pattern_key: 'agent_followup_contract_invalid',
+    title: 'Follow-up契約のValidator失敗',
+    summary: 'needsFollowupとfollowupQuestionが一致せず、Intent Validatorが出力を拒否した。',
+    excerpt: 'Agent Intent Validator rejected inconsistent follow-up state and question fields.',
+    target: 'SKILL', temporary: false,
+  }));
+  mockFetch(200, agentErrorResponse('INVALID_INPUT', evidence));
+  const first = post(valid());
+  assert(!first.success && first.error.code === 'INVALID_INPUT', 'original Agent validation error was not preserved');
+  assert(patternEvidenceSheet && patternEvidenceSheet.rows.length === 3, 'three-session error DTO batch was not appended');
+  assert(new Set(patternEvidenceSheet.rows.map((row) => row[4])).size === 3, 'evidence did not preserve distinct sessions');
+  assert(!first.patternEvidence && !first.excerpt, 'evidence was returned to the chat client');
+  assert(!traceSheet || !traceSheet.headers.includes('pattern_key'), 'evidence was written into Agent_Trace_Log');
+
+  mockFetch(200, agentErrorResponse('INVALID_INPUT', evidence));
+  const replay = post(valid());
+  assert(!replay.success && replay.error.code === 'INVALID_INPUT', 'replayed evidence changed business error');
+  assert(patternEvidenceSheet.rows.length === 3, 'replayed DTO batch was not idempotent');
+});
+
+test('Pattern Evidence write failure never changes the Agent business result', () => {
+  configure();
+  const evidence = {
+    record_id: 'agent-followup-contract:write-fail', record_type: 'EVIDENCE', source_kind: 'EXECUTION',
+    session_id: sessionId, timestamp: '2026-10-06T10:00:00.000Z', outcome: 'FAILURE',
+    pattern_key: 'agent_followup_contract_invalid', title: 'Follow-up契約のValidator失敗',
+    summary: 'needsFollowupとfollowupQuestionが一致せず、Intent Validatorが出力を拒否した。',
+    excerpt: 'Agent Intent Validator rejected inconsistent follow-up state and question fields.',
+    target: 'SKILL', temporary: false,
+  };
+  failPatternEvidenceWrites = true;
+  mockFetch(200, agentResponse('本来の成功応答。', [], [evidence]));
+  const success = post(valid());
+  assert(success.success && success.reply === '本来の成功応答。', 'Evidence outage changed successful business response');
+
+  mockFetch(200, agentErrorResponse('INVALID_INPUT', [evidence]));
+  const failure = post(valid());
+  assert(!failure.success && failure.error.code === 'INVALID_INPUT', 'Evidence outage replaced original business error');
+  assert(logs.some((line) => line.includes('PATTERN_EVIDENCE_WRITE_FAILED')), 'safe append failure was not observable');
+  assert(!traceSheet || !traceSheet.headers.includes('pattern_key'), 'Evidence failure changed Agent_Trace_Log schema');
 });
 
 test('Cost Guard receives only the server-resolved actor and settles complete usage', () => {
