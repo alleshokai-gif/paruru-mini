@@ -51,11 +51,11 @@ function patternEvidenceAcceptance_(body) {
     const status = response.getResponseCode();
     if (status < 200 || status >= 300) throw createAgentGatewayError_('FOLLOWUP_VALIDATOR_ACCEPTANCE_FAILED');
     const parsed = JSON.parse(response.getContentText());
-    const data = parsed && parsed.data;
-    const evidence = data && data.patternEvidence;
-    if (!parsed || parsed.success !== true
+    const evidence = parsed && parsed.patternEvidence;
+    if (!parsed || parsed.success !== false
         || parsed.action !== 'agent.patternEvidence.acceptance'
-        || !data || data.validationReason !== 'FOLLOWUP_CONTRACT_INVALID'
+        || parsed.validationReason !== 'FOLLOWUP_CONTRACT_INVALID'
+        || !parsed.error || parsed.error.code !== 'INVALID_INPUT'
         || !Array.isArray(evidence) || evidence.length !== 1
         || evidence[0].record_id !== 'agent-followup-contract:' + PALURU_PATTERN_EVIDENCE_ACCEPTANCE_REQUEST_ID
         || evidence[0].session_id !== PALURU_PATTERN_EVIDENCE_ACCEPTANCE_SESSION_ID
@@ -73,7 +73,7 @@ function patternEvidenceAcceptance_(body) {
     return json_({
       success: true,
       data: {
-        validationReason: 'FOLLOWUP_CONTRACT_INVALID',
+        validationReason: parsed.validationReason,
         evidenceAppend: append.appended,
         evidenceNoOp: append.noOp,
         write_allowed: false,

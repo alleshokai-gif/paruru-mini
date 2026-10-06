@@ -344,9 +344,10 @@ test('admin-only Pattern Evidence acceptance hook is off by default and appends 
     target: 'SKILL', temporary: false
   };
   mockFetch(200, {
-    success: true, schemaVersion: 'agent-chat-1.0',
+    success: false, result: 'error', schemaVersion: 'agent-chat-1.0',
     action: 'agent.patternEvidence.acceptance',
-    data: { validationReason: 'FOLLOWUP_CONTRACT_INVALID', patternEvidence: [evidence] }
+    error: { code: 'INVALID_INPUT', message: 'intent is invalid' },
+    validationReason: 'FOLLOWUP_CONTRACT_INVALID', patternEvidence: [evidence]
   }, (url, options) => {
     agentCalls += 1;
     const sent = JSON.parse(options.payload);
@@ -409,9 +410,10 @@ test('Pattern Evidence acceptance rejects non-admin, missing marker, and failed 
     target: 'SKILL', temporary: false
   };
   mockFetch(200, {
-    success: true, schemaVersion: 'agent-chat-1.0',
+    success: false, result: 'error', schemaVersion: 'agent-chat-1.0',
     action: 'agent.patternEvidence.acceptance',
-    data: { validationReason: 'FOLLOWUP_CONTRACT_INVALID', patternEvidence: [evidence] }
+    error: { code: 'INVALID_INPUT', message: 'intent is invalid' },
+    validationReason: 'FOLLOWUP_CONTRACT_INVALID', patternEvidence: [evidence]
   }, () => { calls += 1; });
   const failedAppend = post(request);
   assert(!failedAppend.success && failedAppend.error.code === 'PATTERN_EVIDENCE_APPEND_FAILED',
