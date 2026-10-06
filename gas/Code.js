@@ -161,6 +161,10 @@ function doPost(e) {
       return todayParuruContextInternal_(body, 'POST');
     }
 
+    if (action === 'patternEvidenceAcceptance') {
+      return patternEvidenceAcceptance_(body);
+    }
+
     if (action === 'agentChat') {
       return agentChat_(body);
     }
