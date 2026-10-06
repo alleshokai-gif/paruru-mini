@@ -1,10 +1,5 @@
-const SCHOOL_PRINT_QUEUE_ROOT_NAME = 'PALURU School Print Inbox';
-const SCHOOL_PRINT_FOLDER_PROPERTIES = Object.freeze({
-  root: 'SCHOOL_PRINT_ROOT_FOLDER_ID',
-  inbox: 'SCHOOL_PRINT_INBOX_FOLDER_ID',
-  processed: 'SCHOOL_PRINT_PROCESSED_FOLDER_ID',
-  error: 'SCHOOL_PRINT_ERROR_FOLDER_ID',
-});
+const SCHOOL_PRINT_FOLDER_NAME = 'SchoolPrint';
+const SCHOOL_PRINT_INBOX_FOLDER_NAME = 'inbox';
 
 function schoolPrintDriveSubmit_(trusted) {
   if (!trusted || trusted.documentType !== 'school_print' ||
@@ -23,7 +18,7 @@ function schoolPrintDriveSubmit_(trusted) {
     folders = schoolPrintDriveFolders_();
     const bytes = Utilities.base64Decode(trusted.file.base64);
     const sha256 = schoolPrintSha256_(bytes);
-    const replay = schoolPrintFindRequest_(folders, trusted.clientRequestId);
+    const replay = schoolPrintFindRequest_(folders.inbox, trusted.clientRequestId);
     if (replay) {
       if (replay.metadata.sha256 !== sha256) throw familyInboxGatewayError_('DUPLICATE_REQUEST');
       return { status: 'queued', fileId: replay.file.getId(), idempotency: { replayed: true } };
@@ -44,9 +39,7 @@ function schoolPrintDriveSubmit_(trusted) {
     }));
     return { status: 'queued', fileId: createdFile.getId(), idempotency: { replayed: false } };
   } catch (error) {
-    if (createdFile && folders) {
-      try { createdFile.moveTo(folders.error); } catch (_) {}
-    }
+    if (createdFile) try { createdFile.setTrashed(true); } catch (_) {}
     if (error && ['INVALID_INPUT', 'UNSUPPORTED_MEDIA_TYPE', 'DUPLICATE_REQUEST', 'STORAGE_ERROR', 'CONFIGURATION_ERROR'].indexOf(error.code) >= 0) throw error;
     throw familyInboxGatewayError_('STORAGE_ERROR');
   } finally {
@@ -55,40 +48,28 @@ function schoolPrintDriveSubmit_(trusted) {
 }
 
 function schoolPrintDriveFolders_() {
-  const properties = PropertiesService.getScriptProperties();
-  const root = schoolPrintFolder_(properties, SCHOOL_PRINT_FOLDER_PROPERTIES.root,
-    SCHOOL_PRINT_QUEUE_ROOT_NAME, DriveApp.getRootFolder());
+  const root = DriveApp.getRootFolder();
+  const schoolPrint = schoolPrintGetOrCreateFolder_(root, SCHOOL_PRINT_FOLDER_NAME);
   return {
     root: root,
-    inbox: schoolPrintFolder_(properties, SCHOOL_PRINT_FOLDER_PROPERTIES.inbox, 'inbox', root),
-    processed: schoolPrintFolder_(properties, SCHOOL_PRINT_FOLDER_PROPERTIES.processed, 'processed', root),
-    error: schoolPrintFolder_(properties, SCHOOL_PRINT_FOLDER_PROPERTIES.error, 'error', root),
+    schoolPrint: schoolPrint,
+    inbox: schoolPrintGetOrCreateFolder_(schoolPrint, SCHOOL_PRINT_INBOX_FOLDER_NAME),
   };
 }
 
-function schoolPrintFolder_(properties, propertyName, folderName, parent) {
-  const storedId = String(properties.getProperty(propertyName) || '').trim();
-  if (storedId) {
-    let existing;
-    try { existing = DriveApp.getFolderById(storedId); } catch (_) { throw familyInboxGatewayError_('CONFIGURATION_ERROR'); }
-    if (!existing || existing.getName() !== folderName) throw familyInboxGatewayError_('CONFIGURATION_ERROR');
-    return existing;
-  }
-  const created = parent.createFolder(folderName);
-  properties.setProperty(propertyName, created.getId());
-  return created;
+function schoolPrintGetOrCreateFolder_(parent, folderName) {
+  const folders = parent.getFoldersByName(folderName);
+  return folders.hasNext() ? folders.next() : parent.createFolder(folderName);
 }
 
-function schoolPrintFindRequest_(folders, clientRequestId) {
+function schoolPrintFindRequest_(inbox, clientRequestId) {
   const query = `title contains "skv3-${clientRequestId}__"`;
-  for (const folder of [folders.inbox, folders.processed, folders.error]) {
-    const files = folder.searchFiles(query);
-    while (files.hasNext()) {
-      const file = files.next();
-      let metadata;
-      try { metadata = JSON.parse(String(file.getDescription() || '')); } catch (_) { continue; }
-      if (metadata.type === 'school_print_v3' && metadata.clientRequestId === clientRequestId) return { file: file, metadata: metadata };
-    }
+  const files = inbox.searchFiles(query);
+  while (files.hasNext()) {
+    const file = files.next();
+    let metadata;
+    try { metadata = JSON.parse(String(file.getDescription() || '')); } catch (_) { continue; }
+    if (metadata.type === 'school_print_v3' && metadata.clientRequestId === clientRequestId) return { file: file, metadata: metadata };
   }
   return null;
 }

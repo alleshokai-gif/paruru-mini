@@ -28,6 +28,11 @@ function fixture(options = {}) {
       id: `folder-${++nextDriveId}`, name, parent, folders: [], files: [],
       getId() { return this.id; }, getName() { return this.name; },
       createFolder(childName) { const child = makeFolder(childName, this); this.folders.push(child); return child; },
+      getFoldersByName(childName) {
+        const matches = this.folders.filter((folder) => folder.name === childName);
+        let index = 0;
+        return { hasNext: () => index < matches.length, next: () => matches[index++] };
+      },
       createFile(blob) {
         const file = {
           id: `drive-file-${++nextDriveId}`, name: blob.name, description: '', parent: this,
@@ -36,6 +41,7 @@ function fixture(options = {}) {
           setDescription(value) { this.description = value; return this; },
           setName(value) { this.name = value; return this; },
           moveTo(destination) { this.parent.files = this.parent.files.filter((item) => item !== this); this.parent = destination; destination.files.push(this); return this; },
+          setTrashed(value) { this.trashed = Boolean(value); return this; },
         };
         this.files.push(file); state.driveFiles.push(file); return file;
       },
@@ -51,6 +57,7 @@ function fixture(options = {}) {
     return folder;
   }
   const driveRoot = makeFolder('My Drive');
+  state.driveRoot = driveRoot;
   const members = {
     father: { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', status: 'active' },
     youngest_daughter: { homeId: 'home-a', memberUserId: 'youngest_daughter', displayName: '次女', role: 'self_record', status: 'active' },
@@ -142,8 +149,9 @@ function submit(overrides = {}) {
   assert.strictEqual(metadata.type, 'school_print_v3');
   assert.strictEqual(metadata.clientRequestId, uuid);
   assert.strictEqual(metadata.userNote, 'family private note');
-  const root = Object.values(f.state.folders).find((folder) => folder.name === 'PALURU School Print Inbox');
-  assert.deepStrictEqual(root.folders.map((folder) => folder.name).sort(), ['error', 'inbox', 'processed']);
+  const schoolPrint = f.state.driveRoot.folders.find((folder) => folder.name === 'SchoolPrint');
+  assert(schoolPrint, 'SchoolPrint folder should be created directly under My Drive');
+  assert.deepStrictEqual(schoolPrint.folders.map((folder) => folder.name), ['inbox']);
   const replay = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
   assert.strictEqual(replay.success, true);
   assert.strictEqual(replay.data.fileId, result.data.fileId);
