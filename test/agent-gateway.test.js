@@ -76,6 +76,7 @@ const context = {
   AgentCostGuardService: createCostGuardStub(),
   SpreadsheetApp: {
     getActiveSpreadsheet: () => ({
+      getId: () => 'bound-pattern-evidence-fixture-id-00000001',
       getSheetByName: (name) => {
         if (name === 'Pattern_Evidence_Log' && failPatternEvidenceWrites) throw new Error('simulated spreadsheet outage');
         return name === 'Pattern_Evidence_Log' ? patternEvidenceSheet : traceSheet;
@@ -172,6 +173,13 @@ function assert(value, message) { if (!value) throw new Error(message); }
 
 const tests = [];
 function test(name, fn) { tests.push({ name, fn }); }
+
+test('Pattern Evidence preflight reads only the bound spreadsheet identity', () => {
+  const id = context.getPatternEvidenceBoundSpreadsheetIdForPreflight();
+  assert(id === 'bound-pattern-evidence-fixture-id-00000001', 'bound spreadsheet identity changed');
+  assert(patternEvidenceSheet === null && traceSheet === null, 'preflight touched an evidence or diagnostic sheet');
+  assert(logs.length === 0, 'preflight emitted a runtime log');
+});
 
 const PALURU_AGENT_TRACE_HEADERS_V84 = [
   'recordedAt', 'source', 'event', 'clientRequestIdSuffix', 'deploymentId', 'version', 'action', 'httpStatus',

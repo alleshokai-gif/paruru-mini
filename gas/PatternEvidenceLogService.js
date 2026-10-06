@@ -13,6 +13,24 @@ const PALURU_PATTERN_EVIDENCE_PAYLOAD_FIELDS = [
 ];
 const PALURU_PATTERN_EVIDENCE_MAX_BATCH = 10;
 
+// Read-only deployment preflight. The shared Context validator compares this
+// bound-container locator to config/runtime-resources.json; it is not called
+// by normal requests and does not read Script Properties.
+function getPatternEvidenceBoundSpreadsheetIdForPreflight() {
+  if (typeof SpreadsheetApp === 'undefined' || !SpreadsheetApp.getActiveSpreadsheet) {
+    throw new Error('PATTERN_EVIDENCE_SPREADSHEET_UNAVAILABLE');
+  }
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet || typeof spreadsheet.getId !== 'function') {
+    throw new Error('PATTERN_EVIDENCE_SPREADSHEET_UNAVAILABLE');
+  }
+  const id = String(spreadsheet.getId() || '');
+  if (!/^[A-Za-z0-9_-]{20,200}$/.test(id)) {
+    throw new Error('PATTERN_EVIDENCE_SPREADSHEET_ID_INVALID');
+  }
+  return id;
+}
+
 function persistPatternEvidenceFromProducerDtos_(value) {
   if (value === undefined) return { appended: 0, noOp: 0 };
   if (!Array.isArray(value) || value.length > PALURU_PATTERN_EVIDENCE_MAX_BATCH) {
