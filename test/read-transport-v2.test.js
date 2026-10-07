@@ -357,6 +357,23 @@ async function main() {
     const invalid = load(async () => response(200, { ...dashboard, today: null }));
     await assert.rejects(invalid.create({ config }).dashboardV3(),
       error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+    const validWindow = { start: '2026-10-07T12:30:00+09:00',
+      end: '2026-10-07T13:00:00+09:00', duration_min: 30,
+      suggestions: [{ title: '資料確認', estimate_min: 30 }] };
+    const withWindow = { ...dashboard, today: { ...dashboard.today,
+      company_free_windows: [validWindow], personal_free_windows: [validWindow] } };
+    assert.deepEqual(await load(async () => response(200, withWindow))
+      .create({ config }).dashboardV3(), withWindow);
+    for (const broken of [
+      { ...validWindow, suggestions: undefined },
+      { ...validWindow, suggestions: [{ title: '資料確認', estimate_min: 45 }] },
+    ]) {
+      const payload = { ...dashboard, today: { ...dashboard.today,
+        company_free_windows: [broken] } };
+      await assert.rejects(load(async () => response(200, payload))
+        .create({ config }).dashboardV3(),
+      error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+    }
   }
 
   assert(appSource.includes('selectedKazOsReadTransport_("projects") === "DIRECT_V2"'), 'Projects selector missing');

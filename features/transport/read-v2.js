@@ -172,7 +172,17 @@
       const today = value.today;
       if (!today || ['now', 'next', 'scheduled', 'company_free_windows',
         'personal_free_windows', 'waiting'].some(key => !Array.isArray(today[key])
-          || today[key].length > 200)) {
+          || today[key].length > 200)
+          || ['company_free_windows', 'personal_free_windows'].some(key =>
+            today[key].some(window => !window
+              || typeof window.start !== 'string' || !Number.isFinite(Date.parse(window.start))
+              || typeof window.end !== 'string' || !Number.isFinite(Date.parse(window.end))
+              || Date.parse(window.start) >= Date.parse(window.end)
+              || !Number.isInteger(window.duration_min) || window.duration_min <= 0
+              || !Array.isArray(window.suggestions) || window.suggestions.length > 3
+              || window.suggestions.some(item => !item || typeof item.title !== 'string'
+                || !Number.isInteger(item.estimate_min) || item.estimate_min <= 0
+                || item.estimate_min > window.duration_min)))) {
         throw codedError_('V3_SNAPSHOT_CONTRACT_INVALID', { transportClassification: 'parse' });
       }
     } else if (value.inbox_items.length > 30 || value.inbox_items.some(item =>

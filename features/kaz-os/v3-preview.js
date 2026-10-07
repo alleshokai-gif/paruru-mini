@@ -101,7 +101,7 @@
         renderItems(body, 'NEXT', snapshot.today.next, '次の候補なし');
         renderItems(body, '今日の予定', snapshot.today.scheduled, '予定なし');
         renderWindows(body, '会社の空き時間', snapshot.today.company_free_windows);
-        renderWindows(body, '個人予定の空き時間', snapshot.today.personal_free_windows);
+        renderWindows(body, '予定の空き時間', snapshot.today.personal_free_windows);
         renderItems(body, 'WAITING', snapshot.today.waiting, '待機中のWorkなし');
       }
     } catch (error) {
