@@ -191,6 +191,29 @@ async function main() {
   }
 
   {
+    let authCalls = 0;
+    let fetchCalls = 0;
+    const harness = load(async () => { fetchCalls += 1; return response(200, projectsDto()); });
+    const client = harness.create({
+      timeoutMs: 10,
+      getAuthEnvelope: () => { authCalls += 1; return new Promise(() => {}); }
+    });
+    const startedAt = Date.now();
+    await assert.rejects(client.projects(), error => error.code === 'AUTH_ENVELOPE_TIMEOUT');
+    assert(Date.now() - startedAt < 1000, 'auth timeout must settle instead of remaining pending');
+    assert.equal(authCalls, 2, 'auth timeout may use only the existing two-attempt budget');
+    assert.equal(fetchCalls, 0, 'fetch must not start without a resolved auth envelope');
+  }
+
+  {
+    let fetchCalls = 0;
+    const harness = load(async () => { fetchCalls += 1; return response(200, projectsDto()); });
+    assert.deepEqual(await harness.create({ timeoutMs: 10 }).projects(), projectsDto(),
+      'normal auth resolution must continue to allow a Direct V2 read');
+    assert.equal(fetchCalls, 1);
+  }
+
+  {
     const calls = [];
     const harness = load(async (url, options) => {
       calls.push({ url, options });
