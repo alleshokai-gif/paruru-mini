@@ -702,7 +702,25 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   assert.strictEqual(detail.items[0].origin, 'review_item', 'unresolved items must be exception-first');
   assert(!JSON.stringify(detail).includes('drive-secret-'));
 
+  const expectedProvenance = {
+    inboxId: created.inboxId,
+    publishRequestId,
+    payloadDigest: longDigest(f, candidates, reviewItems),
+    profile: 'school-v1-long',
+  };
+  const canonicalEvent = detail.items.find((item) => item.origin === 'canonical' && item.candidateType === 'schedule.event');
+  assert.deepStrictEqual(
+    Object.fromEntries(Object.keys(expectedProvenance).map((key) => [key, canonicalEvent[key]])),
+    expectedProvenance,
+    'PC Review canonical DTO must preserve current HEAD provenance fields unchanged',
+  );
+
   const fragment = detail.items.find((item) => item.origin === 'review_item' && item.candidateType === 'schedule.event');
+  assert.deepStrictEqual(
+    Object.fromEntries(Object.keys(expectedProvenance).map((key) => [key, fragment[key]])),
+    expectedProvenance,
+    'PC Review review-item DTO must preserve current HEAD provenance fields unchanged',
+  );
   assert.deepStrictEqual(JSON.parse(JSON.stringify(fragment.schoolMetadata)), { targetGrade: 3, dismissalTime: '14:25' });
   const correctedPayload = { ...fragment.payload, date: '2026-09-10' };
   const correctedSchoolMetadata = { targetGrade: 3, dismissalTime: '14:30' };
