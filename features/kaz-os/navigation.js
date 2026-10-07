@@ -3,6 +3,7 @@
   'use strict';
   const byId = id => document.getElementById(id);
   let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, inboxAnswerApi = null;
+  let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0;
   let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
@@ -26,6 +27,7 @@
     capaEpoch++;
     todayEpoch++;
     inboxEpoch++;
+    previewEpoch++;
     clearTimeout(projectExpiry);
     clearTimeout(workExpiry);
     clearTimeout(capaExpiry);
@@ -292,6 +294,18 @@
       return;
     }
     clear();
+    if (globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED
+        && /^#kaz-os\/v3(?:\/(?:work|inbox))?$/.test(location.hash)) {
+      const page = location.hash.endsWith('/work') ? 'work'
+        : location.hash.endsWith('/inbox') ? 'inbox' : 'today';
+      const requestEpoch = previewEpoch;
+      const current = () => requestEpoch === previewEpoch && allowed() && active() && !document.hidden;
+      byId('kazOsView')?.setAttribute('aria-label', 'Kaz OS v3 Snapshot Preview');
+      document.querySelectorAll('#kazOsNav a').forEach(a => a.removeAttribute('aria-current'));
+      const host = byId('kazPersonalContent');
+      await globalThis.KazV3Preview?.render(host, page, v3DashboardApi, v3InboxApi, current);
+      return;
+    }
     const selection = globalThis.KazPersonalView.route(location.hash);
     const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', inbox: '確認待ち' }[selection.page] || 'やること・確認';
     byId('kazOsView')?.setAttribute('aria-label', pageLabel);
@@ -323,6 +337,10 @@
     todayApi = event.detail?.kazOsTodayApi || null;
     inboxApi = event.detail?.kazOsInboxApi || null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
+    v3DashboardApi = event.detail?.kazOsV3DashboardApi || null;
+    v3InboxApi = event.detail?.kazOsV3InboxApi || null;
+    const previewLink = byId('kazOsV3PreviewLink');
+    if (previewLink) previewLink.hidden = !allowed() || !globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED;
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = !allowed();
     const status = byId('kazOsEntryStatus');
@@ -338,6 +356,10 @@
     todayApi = null;
     inboxApi = null;
     inboxAnswerApi = null;
+    v3DashboardApi = null;
+    v3InboxApi = null;
+    const previewLink = byId('kazOsV3PreviewLink');
+    if (previewLink) previewLink.hidden = true;
     clear();
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = true;

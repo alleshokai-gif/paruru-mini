@@ -6,7 +6,9 @@
     projects: Object.freeze({ key: 'projects', path: '/v2/read/projects', action: 'kazOs.projects.get' }),
     work: Object.freeze({ key: 'work', path: '/v2/read/work', action: 'kazOs.work.get' }),
     today: Object.freeze({ key: 'today', path: '/poc/read-v2/today', action: 'kazOs.today.get' }),
-    inbox: Object.freeze({ key: 'inbox', path: '/poc/read-v2/inbox', action: 'kazOs.inbox.get' })
+    inbox: Object.freeze({ key: 'inbox', path: '/poc/read-v2/inbox', action: 'kazOs.inbox.get' }),
+    dashboardV3: Object.freeze({ key: 'dashboardV3', path: '/v3/dashboard', action: 'kazOs.v3.dashboard.get' }),
+    inboxV3: Object.freeze({ key: 'inboxV3', path: '/v3/inbox', action: 'kazOs.v3.inbox.get' })
   });
 
   function codedError_(code, details) {
@@ -37,7 +39,9 @@
       projects: requestedRoutes.projects === MODES.GAS ? MODES.GAS : mode,
       work: requestedRoutes.work === MODES.GAS ? MODES.GAS : mode,
       today: requestedRoutes.today === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
-      inbox: requestedRoutes.inbox === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
+      inbox: requestedRoutes.inbox === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      dashboardV3: requestedRoutes.dashboardV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      inboxV3: requestedRoutes.inboxV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
     });
     return Object.freeze({ mode, baseUrl, canaryCapability, routeModes });
   }
@@ -140,6 +144,40 @@
           || (item.kind === 'generic_candidate_review'
             && !validCandidateReview_(item, value.sources)))) {
       throw codedError_('INBOX_CONTRACT_INVALID', { transportClassification: 'parse' });
+    }
+    return value;
+  }
+
+  function validateSnapshotV3_(value, schema, sections) {
+    const sourceKeys = ['projects', 'work', 'capa', 'calendar', 'work_busy',
+      'decision_ledger', 'gardener', 'today', 'inbox'];
+    const humanKinds = new Set(['human_review', 'acceptance', 'blocker_decision',
+      'idea_triage', 'context_candidate', 'classification_required',
+      'conflict_resolution', 'stale_state_confirmation', 'calendar_event_impact',
+      'calendar_partial_window', 'today_focus', 'daily_estimate', 'generic_candidate_review']);
+    if (!value || value.schema_version !== schema
+        || !['CURRENT', 'STALE', 'DEGRADED'].includes(value.status)
+        || !Number.isFinite(Date.parse(value.generated_at))
+        || !value.sources || sourceKeys.some(key => {
+          const item = value.sources[key];
+          return !item || !['current', 'stale', 'failed', 'not_connected'].includes(item.status)
+            || (item.status === 'current' && (!Number.isFinite(Date.parse(item.updated_at))
+              || !Number.isFinite(Date.parse(item.valid_until)) || typeof item.revision !== 'string'
+              || !item.revision));
+        })
+        || sections.some(key => !Array.isArray(value[key]))) {
+      throw codedError_('V3_SNAPSHOT_CONTRACT_INVALID', { transportClassification: 'parse' });
+    }
+    if (schema === 'kaz-os-dashboard-v3') {
+      const today = value.today;
+      if (!today || ['now', 'next', 'scheduled', 'company_free_windows',
+        'personal_free_windows', 'waiting'].some(key => !Array.isArray(today[key])
+          || today[key].length > 200)) {
+        throw codedError_('V3_SNAPSHOT_CONTRACT_INVALID', { transportClassification: 'parse' });
+      }
+    } else if (value.inbox_items.length > 30 || value.inbox_items.some(item =>
+      !item || !humanKinds.has(item.kind) || item.decision_status !== 'pending')) {
+      throw codedError_('V3_SNAPSHOT_CONTRACT_INVALID', { transportClassification: 'parse' });
     }
     return value;
   }
@@ -296,7 +334,11 @@
       projects: function() { return read_(ROUTES.projects, validateProjects_); },
       work: function() { return read_(ROUTES.work, validateWork_); },
       today: function() { return read_(ROUTES.today, validateToday_); },
-      inbox: function(options) { return read_(ROUTES.inbox, validateInbox_, options && options.requestId); }
+      inbox: function(options) { return read_(ROUTES.inbox, validateInbox_, options && options.requestId); },
+      dashboardV3: function() { return read_(ROUTES.dashboardV3,
+        value => validateSnapshotV3_(value, 'kaz-os-dashboard-v3', ['work', 'projects', 'capa'])); },
+      inboxV3: function() { return read_(ROUTES.inboxV3,
+        value => validateSnapshotV3_(value, 'kaz-os-inbox-v3', ['inbox_items'])); }
     });
   }
 

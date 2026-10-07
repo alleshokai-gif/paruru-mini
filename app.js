@@ -1067,6 +1067,8 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsCapaApi: callAuthenticatedKazOsCapa_,
       kazOsTodayApi: callAuthenticatedKazOsToday_,
       kazOsInboxApi: callAuthenticatedKazOsInbox_,
+      kazOsV3DashboardApi: callAuthenticatedKazOsV3Dashboard_,
+      kazOsV3InboxApi: callAuthenticatedKazOsV3Inbox_,
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
       nurseOkanCommentApi: callNurseOkanComment_,
@@ -5379,7 +5381,27 @@ async function callDirectKazOsRead_(kind, requestId) {
   if (kind === "work") return client.work();
   if (kind === "today") return client.today();
   if (kind === "inbox") return client.inbox(requestId ? { requestId } : undefined);
+  if (kind === "dashboardV3") return client.dashboardV3();
+  if (kind === "inboxV3") return client.inboxV3();
   throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
+}
+
+async function callAuthenticatedKazOsV3Dashboard_() {
+  if (!globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED || !isViewAllowed_("kaz-os")
+      || activeMembershipContext?.role !== "admin"
+      || selectedKazOsReadTransport_("dashboardV3") !== "DIRECT_V2") {
+    throw createHomeControlError("FORBIDDEN");
+  }
+  return callDirectKazOsRead_("dashboardV3");
+}
+
+async function callAuthenticatedKazOsV3Inbox_() {
+  if (!globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED || !isViewAllowed_("kaz-os")
+      || activeMembershipContext?.role !== "admin"
+      || selectedKazOsReadTransport_("inboxV3") !== "DIRECT_V2") {
+    throw createHomeControlError("FORBIDDEN");
+  }
+  return callDirectKazOsRead_("inboxV3");
 }
 
 async function callAuthenticatedKazOsToday_() {

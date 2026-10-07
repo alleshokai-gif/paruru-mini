@@ -330,6 +330,35 @@ async function main() {
     await assert.rejects(harness.create().work(), error => error.code === 'WORK_CONTRACT_INVALID');
   }
 
+  {
+    const sourceNames = ['projects', 'work', 'capa', 'calendar', 'work_busy',
+      'decision_ledger', 'gardener', 'today', 'inbox'];
+    const sources = Object.fromEntries(sourceNames.map(key => [key, {
+      status: 'current', updated_at: '2026-10-07T12:00:00+00:00',
+      valid_until: '2026-10-07T12:15:00+00:00', revision: key + '-revision' }]));
+    const dashboard = { schema_version: 'kaz-os-dashboard-v3',
+      generated_at: '2026-10-07T12:00:00+00:00', status: 'CURRENT', sources,
+      today: { now: [], next: [], scheduled: [], company_free_windows: [],
+        personal_free_windows: [], waiting: [] }, work: [], projects: [], capa: [] };
+    const inbox = { schema_version: 'kaz-os-inbox-v3',
+      generated_at: dashboard.generated_at, status: 'CURRENT', sources,
+      inbox_items: [{ kind: 'human_review', decision_status: 'pending' }] };
+    const calls = [];
+    const harness = load(async url => { calls.push(url); return response(200,
+      url.endsWith('/dashboard') ? dashboard : inbox); });
+    const config = { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+      routeModes: { dashboardV3: 'DIRECT_V2', inboxV3: 'DIRECT_V2' } };
+    assert.deepEqual(await harness.create({ config }).dashboardV3(), dashboard);
+    assert.deepEqual(await harness.create({ config }).inboxV3(), inbox);
+    assert.deepEqual(calls, ['https://reader.example.test/v3/dashboard',
+      'https://reader.example.test/v3/inbox']);
+    await assert.rejects(harness.create().dashboardV3(),
+      error => error.code === 'DIRECT_READ_NOT_SELECTED');
+    const invalid = load(async () => response(200, { ...dashboard, today: null }));
+    await assert.rejects(invalid.create({ config }).dashboardV3(),
+      error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+  }
+
   assert(appSource.includes('selectedKazOsReadTransport_("projects") === "DIRECT_V2"'), 'Projects selector missing');
   assert(appSource.includes('selectedKazOsReadTransport_("work") === "DIRECT_V2"'), 'Work selector missing');
   assert(appSource.includes('capabilities: Array.isArray(activeMembershipContext?.capabilities)'), 'optional cohort selector must use membership capability');
