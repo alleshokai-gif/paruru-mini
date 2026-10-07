@@ -12,7 +12,7 @@ const inboxHeaders = [
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
-  'processingProfile',
+  'processingProfile', 'documentType',
 ];
 const candidateHeaders = [
   'schemaVersion', 'candidateId', 'inboxId', 'homeId', 'candidateType', 'revision',
@@ -81,6 +81,10 @@ function fixture(options = {}) {
     FAMILY_INBOX_LEDGER_SPREADSHEET_ID: 'ledger-id',
   }, options.properties || {});
   const context = {
+    ContentService: {
+      MimeType: { JSON: 'application/json' },
+      createTextOutput: (text) => ({ setMimeType: () => JSON.parse(text) }),
+    },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || '' }) },
     LockService: { getScriptLock: () => ({ waitLock: () => { state.lockCount += 1; }, releaseLock: () => {} }) },
     SpreadsheetApp: { openById: (id) => {
@@ -121,19 +125,20 @@ function fixture(options = {}) {
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math, isFinite,
   };
   vm.createContext(context);
-  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js', 'FamilyInboxPcReviewService.js']) {
+  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js', 'FamilyInboxPcReviewService.js', 'Code.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', file), 'utf8'), context);
   }
   return { api: context, state, inbox, candidates, reviewItems };
 }
 
-function submit(f, mediaType = 'image/jpeg', requestNumber = 10) {
+function submit(f, mediaType = 'image/jpeg', requestNumber = 10, documentType = '') {
   const bytes = bytesFor(mediaType);
   return f.api.familyInboxSubmit_({
     operation: 'familyInbox.submit', internalToken: 'mini-service-secret', clientRequestId: uuid(requestNumber),
     subjectMemberId: 'child-01', userNote: 'private note',
     file: { name: mediaType === 'application/pdf' ? 'school.pdf' : 'school.jpg', mediaType, base64: Buffer.from(bytes).toString('base64') },
     homeId: 'home-01', submittedByMemberId: 'parent-01', source: 'paluru', traceId: 'trace_submit01',
+    ...(documentType ? { documentType } : {}),
   });
 }
 function submitLong(f, requestNumber = 100) {
@@ -188,6 +193,9 @@ function longDigest(f, candidateList, reviewItems) {
 }
 function claimOne(f) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext')); }
 function claimTarget(f, inboxId) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext', { inboxId })); }
+function claimSchoolKnowledge(f, inboxId) {
+  return f.api.familyInboxSchoolKnowledgeClaimNext_(workerBody('familyInbox.schoolKnowledge.claimNext', { inboxId }));
+}
 function publishCandidates(f, created, candidates, requestNumber = 950) {
   const claim = claimOne(f);
   return f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
@@ -286,6 +294,61 @@ function longReviewItemsFixture() {
   assert.strictEqual(claim.processingProfile, 'school-v1-long');
   assert.strictEqual(inboxRow(f.inbox, first.inboxId).status, 'pending');
   assert.strictEqual(inboxRow(f.inbox, target.inboxId).status, 'processing');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'application/pdf', 111, 'school_print');
+  const initial = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(initial.processingProfile, 'school-v1', 'legacy Family Inbox profile remains unchanged');
+  assert.strictEqual(initial.documentType, 'school_print');
+
+  assert.strictEqual(claimOne(f).claimed, false, 'legacy school-v1 worker must not claim School Print');
+  expectCode(() => claimTarget(f, created.inboxId), 'INVALID_STATE');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'pending');
+
+  const claim = claimSchoolKnowledge(f, created.inboxId);
+  assert.strictEqual(claim.claimed, true);
+  assert.strictEqual(claim.inboxId, created.inboxId);
+  assert.strictEqual(claim.documentType, 'school_print');
+  assert.strictEqual(Object.hasOwn(claim, 'processingProfile'), false, 'V3 claim contract is keyed by documentType only');
+
+  const source = f.api.familyInboxSchoolKnowledgeGetClaimedSource_(workerBody('familyInbox.schoolKnowledge.getClaimedSource', {
+    inboxId: claim.inboxId, claimVersion: claim.claimVersion,
+  }));
+  assert.strictEqual(source.documentType, 'school_print');
+  assert.strictEqual(source.sourceFileId, initial.originalRef);
+  assert.strictEqual(source.sha256, initial.sha256);
+  assert.strictEqual(source.base64, Buffer.from(bytesFor('application/pdf')).toString('base64'));
+
+  const completed = f.api.familyInboxSchoolKnowledgeComplete_(workerBody('familyInbox.schoolKnowledge.complete', {
+    inboxId: claim.inboxId, claimVersion: claim.claimVersion, sourceSha: source.sha256,
+    knowledgePath: 'school/2026/grade-3/2026-10/knowledge.md', gitCommitSha: 'c'.repeat(40),
+  }));
+  assert.strictEqual(completed.status, 'completed');
+  assert.strictEqual(completed.knowledgePath, 'school/2026/grade-3/2026-10/knowledge.md');
+  assert.strictEqual(completed.gitCommitSha, 'c'.repeat(40));
+  const final = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(final.status, 'completed');
+  assert.strictEqual(Object.hasOwn(final, 'knowledgePath'), false, 'V3 must not add metadata columns beyond documentType');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'application/pdf', 113, 'school_print');
+  const routed = f.api.doPost({ postData: { contents: JSON.stringify(workerBody(
+    'familyInbox.schoolKnowledge.claimNext', { inboxId: created.inboxId },
+  )) } });
+  assert.strictEqual(routed.success, true, `doPost must dispatch the V3 claim operation: ${JSON.stringify(routed)}`);
+  assert.strictEqual(routed.data.inboxId, created.inboxId);
+  assert.strictEqual(routed.data.documentType, 'school_print');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'application/pdf', 112);
+  expectCode(() => claimSchoolKnowledge(f, created.inboxId), 'INVALID_STATE');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'pending');
 }
 
 {
