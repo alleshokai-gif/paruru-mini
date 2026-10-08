@@ -286,6 +286,23 @@ test('public Apps Script entrypoint imports one message and returns the verified
   }
 });
 
+test('reimporting the same latest message does not multiply canonical intervals', () => {
+  const sheet = fakeSheet();
+  const spreadsheet = fakeSpreadsheet(sheet);
+  const gmailApp = fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00 DATE=2026-10-03 BUSY=09:00-10:00').gmailApp;
+  const dependencies = {
+    now: new Date('2026-10-02T10:00:00+09:00'), gmailApp, spreadsheet,
+    lock: { tryLock() { return true; }, releaseLock() {} }
+  };
+  const first = JSON.parse(JSON.stringify(importLatest(dependencies)));
+  const second = JSON.parse(JSON.stringify(importLatest(dependencies)));
+  assert.deepEqual(second.intervals, first.intervals);
+  assert.equal(sheet.rows.length, 1);
+  assert.equal(sheet.rows[0][2], '2026-10-03');
+  assert.equal(sheet.rows[0][3], '09:00');
+  assert.equal(sheet.rows[0][4], '10:00');
+});
+
 test('verified WorkBusy import requests one rebuild; failed import requests none', () => {
   const calls = [];
   const previousHash = context.kazOsSha256_;
