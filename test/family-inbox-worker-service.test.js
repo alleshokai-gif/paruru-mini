@@ -346,6 +346,26 @@ function longReviewItemsFixture() {
 
 {
   const f = fixture();
+  const created = submit(f, 'application/pdf', 114, 'school_print');
+  const claim = claimSchoolKnowledge(f, created.inboxId);
+  const failed = f.api.familyInboxSchoolKnowledgeFail_(workerBody('familyInbox.schoolKnowledge.fail', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion,
+    errorCode: 'EVENTS_FACT_UPDATE_FAILED',
+    knowledgePath: 'school/2026/grade-3/2026-10/knowledge.md', gitCommitSha: 'd'.repeat(40),
+  }));
+  assert.strictEqual(failed.status, 'failed');
+  assert.strictEqual(failed.retryable, undefined);
+  assert.strictEqual(failed.errorCode, 'EVENTS_FACT_UPDATE_FAILED');
+  assert.match(failed.errorMessage, /Knowledgeは保存済み/);
+  const record = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(record.status, 'failed');
+  assert.strictEqual(record.retryable, false);
+  assert.strictEqual(record.errorCode, 'EVENTS_FACT_UPDATE_FAILED');
+  assert.strictEqual(Object.hasOwn(record, 'knowledgePath'), false, 'no Inbox columns are added for P4');
+}
+
+{
+  const f = fixture();
   const created = submit(f, 'application/pdf', 112);
   expectCode(() => claimSchoolKnowledge(f, created.inboxId), 'INVALID_STATE');
   assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'pending');

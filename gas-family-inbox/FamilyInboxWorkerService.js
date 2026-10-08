@@ -55,6 +55,7 @@ const FAMILY_INBOX_SCHOOL_KNOWLEDGE_ERRORS = Object.freeze({
   UNVERIFIED_DISMISSAL_MISSING: true, KNOWLEDGE_HEADINGS_MISSING: true, SOURCE_LINK_MISSING: true,
   GRADE_SCOPE_CONFLICT: true, INVALID_EXISTING_SOURCE: true, DUPLICATE_SOURCE_SHA: true,
   GIT_STATE_CHANGED: true, GIT_UNEXPECTED_STAGING: true, WORKER_LEASE_EXHAUSTED: true, INTERNAL_ERROR: true,
+  EVENTS_FACT_UPDATE_FAILED: true,
 });
 
 function familyInboxClaimNext_(body) {
@@ -449,10 +450,16 @@ function familyInboxSchoolKnowledgeFail_(body) {
   return familyInboxWorkerRun_('familyInbox.schoolKnowledge.fail', body, function(context) {
     familyInboxWorkerValidateKeys_(body, {
       operation: true, workerToken: true, inboxId: true, claimVersion: true, errorCode: true, traceId: true,
+      knowledgePath: true, gitCommitSha: true,
     });
     const claim = familyInboxWorkerClaimInput_(body);
     const errorCode = String(body.errorCode || '').trim();
     if (!FAMILY_INBOX_SCHOOL_KNOWLEDGE_ERRORS[errorCode]) throw familyInboxError_('INVALID_INPUT');
+    const knowledgePath = String(body.knowledgePath || '');
+    const gitCommitSha = String(body.gitCommitSha || '').toLowerCase();
+    if ((knowledgePath || gitCommitSha) &&
+        (!/^school\/\d{4}\/grade-[1-6]\/\d{4}-(0[1-9]|1[0-2])\/knowledge\.md$/.test(knowledgePath) ||
+         !/^[0-9a-f]{40}$/.test(gitCommitSha))) throw familyInboxError_('INVALID_INPUT');
     let lock;
     try {
       lock = LockService.getScriptLock();
@@ -465,12 +472,14 @@ function familyInboxSchoolKnowledgeFail_(body) {
       familyInboxSchoolKnowledgeUpdateInbox_(ledger, entry, {
         status: 'failed', updatedAt: now, processingCompletedAt: now, claimedBy: '',
         leaseExpiresAt: '', retryable: false, nextAttemptAt: '', errorCode, errorMessage,
+        ...(knowledgePath ? { knowledgePath, gitCommitSha } : {}),
       });
       context.trace.inboxId = claim.inboxId;
       context.trace.claimVersion = claim.claimVersion;
       context.trace.status = 'failed';
       context.trace.errorCode = errorCode;
-      return { inboxId: claim.inboxId, status: 'failed', errorCode, errorMessage };
+      return { inboxId: claim.inboxId, status: 'failed', errorCode, errorMessage,
+        ...(knowledgePath ? { knowledgePath, gitCommitSha } : {}) };
     } finally {
       if (lock) { try { lock.releaseLock(); } catch (_) {} }
     }
@@ -504,6 +513,7 @@ function familyInboxSchoolKnowledgeErrorMessage_(code) {
     GIT_STATE_CHANGED: '保存中にKnowledge branchの状態が変わりました。',
     GIT_UNEXPECTED_STAGING: '保存対象外の変更を検出したため停止しました。',
     WORKER_LEASE_EXHAUSTED: 'workerが複数回停止したため処理を止めました。',
+    EVENTS_FACT_UPDATE_FAILED: 'Knowledgeは保存済みですが、Events_Factの更新または確認に失敗しました。自動再試行はしていません。',
   };
   return messages[code] || '学校ナレッジの処理に失敗しました。';
 }
