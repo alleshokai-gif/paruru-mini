@@ -5,8 +5,19 @@ const PALURU_WORK_BUSY_HEADERS = ['source', 'generated_at', 'date', 'start', 'en
 const PALURU_WORK_BUSY_MAX_DAYS_AHEAD = 30;
 const PALURU_WORK_BUSY_TIME_ZONE = 'Asia/Tokyo';
 
-function importLatestWorkBusyEmailV1() {
-  return importLatestWorkBusyEmail_();
+function importLatestWorkBusyEmailV1(dependencies) {
+  const result = importLatestWorkBusyEmail_(dependencies);
+  let rebuild;
+  try {
+    const correlation = 'workbusy-sha256:' + kazOsSha256_(
+      result.generated_at + '\u0000' + JSON.stringify(result.intervals));
+    const request = dependencies && dependencies.rebuildRequest || requestKazOsV3Rebuild_;
+    rebuild = request('WORK_BUSY_IMPORT', 'work_busy', correlation);
+  } catch (_) {
+    // The verified import stays durable; reconciliation can recover a missed request.
+    rebuild = { status: 'request_failed' };
+  }
+  return Object.assign({}, result, { v3_rebuild: rebuild });
 }
 
 function importLatestWorkBusyEmail_(dependencies) {

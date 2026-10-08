@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const test = require('node:test');
 const vm = require('node:vm');
 
@@ -282,5 +283,33 @@ test('public Apps Script entrypoint imports one message and returns the verified
     if (previous.GmailApp === undefined) delete context.GmailApp; else context.GmailApp = previous.GmailApp;
     if (previous.SpreadsheetApp === undefined) delete context.SpreadsheetApp; else context.SpreadsheetApp = previous.SpreadsheetApp;
     if (previous.LockService === undefined) delete context.LockService; else context.LockService = previous.LockService;
+  }
+});
+
+test('verified WorkBusy import requests one rebuild; failed import requests none', () => {
+  const calls = [];
+  const previousHash = context.kazOsSha256_;
+  context.kazOsSha256_ = value => crypto.createHash('sha256').update(value).digest('hex');
+  const sheet = fakeSheet();
+  const now = new Date('2026-10-02T10:00:00+09:00');
+  const dependencies = {
+    now, gmailApp: fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00').gmailApp,
+    spreadsheet: fakeSpreadsheet(sheet),
+    rebuildRequest(...args) { calls.push(args); return { status: 'requested' }; }
+  };
+  try {
+    const result = context.importLatestWorkBusyEmailV1(dependencies);
+    assert.equal(result.v3_rebuild.status, 'requested');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], 'WORK_BUSY_IMPORT');
+    assert.equal(calls[0][1], 'work_busy');
+    assert.match(calls[0][2], /^workbusy-sha256:[a-f0-9]{64}$/);
+    dependencies.gmailApp = fakeGmail('unusable body').gmailApp;
+    assert.throws(() => context.importLatestWorkBusyEmailV1(dependencies),
+      error => error.code === 'INVALID_PAYLOAD');
+    assert.equal(calls.length, 1);
+  } finally {
+    if (previousHash === undefined) delete context.kazOsSha256_;
+    else context.kazOsSha256_ = previousHash;
   }
 });

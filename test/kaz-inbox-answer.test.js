@@ -163,6 +163,36 @@ test('answer persists one first-class Answer and one controlled proposal', () =>
   assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
   assert.equal(result.data.inbox.inbox_items.length, 1); assert.equal(h.rows.Kaz_OS_Decision_Ledger.length, 2);
 });
+test('read-back-verified Answer requests v3 rebuild; request failure preserves Answer', () => {
+  const target = snapshot();
+  const accepted = createHarness({ root, answerEnabled: true, decisionLedgerRows: null,
+    inboxProvider: () => target });
+  accepted.setupDecisionLedger(); accepted.resetStats();
+  const calls = [];
+  accepted.ctx.requestKazOsV3Rebuild_ = (...args) => {
+    calls.push(args); return { status: 'requested', event_id: 'a'.repeat(64) };
+  };
+  const item = target.inbox_items[0];
+  const first = request(accepted, item, 'today', 'v3-answer-accepted-0001');
+  assert(first.success, JSON.stringify(first));
+  assert.equal(first.data.v3_rebuild.status, 'requested');
+  assert.deepEqual(calls[0].slice(0, 2), ['INBOX_ANSWER', 'inbox']);
+  assert.equal(calls[0][2], first.data.answer.answer_id);
+  assert.equal(accepted.rows.Kaz_OS_Decision_Ledger.length, 2);
+  const replay = request(accepted, item, 'today', 'v3-answer-accepted-0001');
+  assert(replay.success); assert.equal(replay.data.replayed, true);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1][2], calls[0][2]);
+
+  const failed = createHarness({ root, answerEnabled: true, decisionLedgerRows: null,
+    inboxProvider: () => target });
+  failed.setupDecisionLedger(); failed.resetStats();
+  failed.ctx.requestKazOsV3Rebuild_ = () => { throw Error('SIMULATED_REQUEST_FAILURE'); };
+  const afterFailure = request(failed, item, 'today', 'v3-answer-failure-0001');
+  assert(afterFailure.success);
+  assert.equal(afterFailure.data.v3_rebuild.status, 'request_failed');
+  assert.equal(failed.rows.Kaz_OS_Decision_Ledger.length, 2);
+});
 test('Generic Candidate WORK stores one answer and a read-only CREATE_WORK proposal after exact revision checks',()=>{
   const candidate=candidateSnapshot(),harness=createHarness({root,answerEnabled:true,decisionLedgerRows:null,inboxProvider:()=>candidate});
   harness.setupDecisionLedger();harness.resetStats();harness.props.KAZ_OS_INBOX_READ_URL='https://gateway.example/v1/inbox';harness.props.KAZ_OS_PROGRESS_READ_TOKEN='x'.repeat(40);
