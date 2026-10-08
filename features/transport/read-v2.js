@@ -168,7 +168,8 @@
           const item = value.sources[key];
           return !item || !['current', 'stale', 'failed', 'not_connected'].includes(item.status)
             || (item.status === 'current' && (!Number.isFinite(Date.parse(item.updated_at))
-              || !Number.isFinite(Date.parse(item.valid_until)) || typeof item.revision !== 'string'
+              || (item.valid_until !== null && !Number.isFinite(Date.parse(item.valid_until)))
+              || typeof item.revision !== 'string'
               || !item.revision));
         })
         || sections.some(key => !Array.isArray(value[key]))) {

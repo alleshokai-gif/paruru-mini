@@ -353,6 +353,17 @@ async function main() {
       routeModes: { dashboardV3: 'DIRECT_V2', inboxV3: 'DIRECT_V2' } };
     assert.deepEqual(await harness.create({ config }).dashboardV3(), dashboard);
     assert.deepEqual(await harness.create({ config }).inboxV3(), inbox);
+    const eventDriven = { ...dashboard, sources: { ...sources,
+      decision_ledger: { ...sources.decision_ledger, valid_until: null },
+      today: { ...sources.today, valid_until: null },
+      inbox: { ...sources.inbox, valid_until: null } } };
+    assert.deepEqual(await load(async () => response(200, eventDriven))
+      .create({ config }).dashboardV3(), eventDriven);
+    const invalidDeadline = { ...eventDriven, sources: { ...eventDriven.sources,
+      calendar: { ...sources.calendar, valid_until: 'invalid' } } };
+    await assert.rejects(load(async () => response(200, invalidDeadline))
+      .create({ config }).dashboardV3(),
+    error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
     assert.deepEqual(calls, ['https://reader.example.test/v3/dashboard',
       'https://reader.example.test/v3/inbox']);
     const separateCalls = [];
