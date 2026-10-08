@@ -25,8 +25,12 @@
     const source = input && typeof input === 'object' ? input : {};
     const mode = source.mode === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS;
     const baseUrl = String(source.baseUrl || '').replace(/\/+$/, '');
+    const v3BaseUrl = String(source.v3BaseUrl || baseUrl).replace(/\/+$/, '');
     const canaryCapability = String(source.canaryCapability || '');
     if (mode === MODES.DIRECT_V2 && !/^https:\/\/[^/]+(?:\/[^?#]*)?$/.test(baseUrl)) {
+      throw codedError_('DIRECT_READ_CONFIG_INVALID', { transportClassification: 'business' });
+    }
+    if (mode === MODES.DIRECT_V2 && !/^https:\/\/[^/]+(?:\/[^?#]*)?$/.test(v3BaseUrl)) {
       throw codedError_('DIRECT_READ_CONFIG_INVALID', { transportClassification: 'business' });
     }
     if (mode === MODES.DIRECT_V2 && canaryCapability
@@ -43,7 +47,7 @@
       dashboardV3: requestedRoutes.dashboardV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       inboxV3: requestedRoutes.inboxV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
     });
-    return Object.freeze({ mode, baseUrl, canaryCapability, routeModes });
+    return Object.freeze({ mode, baseUrl, v3BaseUrl, canaryCapability, routeModes });
   }
 
   function selectMode(input, membership, routeKey) {
@@ -154,7 +158,9 @@
     const humanKinds = new Set(['human_review', 'acceptance', 'blocker_decision',
       'idea_triage', 'context_candidate', 'classification_required',
       'conflict_resolution', 'stale_state_confirmation', 'calendar_event_impact',
-      'calendar_partial_window', 'today_focus', 'daily_estimate', 'generic_candidate_review']);
+      'calendar_partial_window', 'calendar_impact_triage', 'calendar_event_selection',
+      'CONTEXT_CANDIDATE', 'CONFLICT_RESOLUTION',
+      'today_focus', 'daily_estimate', 'generic_candidate_review']);
     if (!value || value.schema_version !== schema
         || !['CURRENT', 'STALE', 'DEGRADED'].includes(value.status)
         || !Number.isFinite(Date.parse(value.generated_at))
@@ -278,7 +284,9 @@
           if (!token) throw codedError_('AUTHENTICATION_REQUIRED', { transportClassification: 'business' });
           controller = new AbortController();
           timer = setTimeout(function() { controller.abort(); }, timeoutMs);
-          const response = await fetchImpl(config.baseUrl + route.path, {
+          const baseUrl = route.key === 'dashboardV3' || route.key === 'inboxV3'
+            ? config.v3BaseUrl : config.baseUrl;
+          const response = await fetchImpl(baseUrl + route.path, {
             method: 'GET',
             cache: 'no-store',
             redirect: 'error',

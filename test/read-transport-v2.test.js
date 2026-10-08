@@ -105,6 +105,8 @@ async function main() {
     vm.runInContext(configSource, context, { filename: 'features/transport/read-v2-config.js' });
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.mode, 'DIRECT_V2', 'production cutover must explicitly select direct transport');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.baseUrl, 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.v3BaseUrl,
+      'https://kaz-os-v3-shadow-preview-898497371682.asia-northeast1.run.app');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.canaryCapability, '');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.projects, 'DIRECT_V2');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.work, 'DIRECT_V2');
@@ -342,7 +344,8 @@ async function main() {
         personal_free_windows: [], waiting: [] }, work: [], projects: [], capa: [] };
     const inbox = { schema_version: 'kaz-os-inbox-v3',
       generated_at: dashboard.generated_at, status: 'CURRENT', sources,
-      inbox_items: [{ kind: 'human_review', decision_status: 'pending' }] };
+      inbox_items: [{ kind: 'calendar_impact_triage', decision_status: 'pending' },
+        { kind: 'CONTEXT_CANDIDATE', decision_status: 'pending' }] };
     const calls = [];
     const harness = load(async url => { calls.push(url); return response(200,
       url.endsWith('/dashboard') ? dashboard : inbox); });
@@ -352,6 +355,14 @@ async function main() {
     assert.deepEqual(await harness.create({ config }).inboxV3(), inbox);
     assert.deepEqual(calls, ['https://reader.example.test/v3/dashboard',
       'https://reader.example.test/v3/inbox']);
+    const separateCalls = [];
+    const separate = load(async url => { separateCalls.push(url); return response(200,
+      url.endsWith('/dashboard') ? dashboard : inbox); });
+    const separateConfig = { ...config, v3BaseUrl: 'https://shadow.example.test' };
+    await separate.create({ config: separateConfig }).dashboardV3();
+    await separate.create({ config: separateConfig }).inboxV3();
+    assert.deepEqual(separateCalls, ['https://shadow.example.test/v3/dashboard',
+      'https://shadow.example.test/v3/inbox']);
     await assert.rejects(harness.create().dashboardV3(),
       error => error.code === 'DIRECT_READ_NOT_SELECTED');
     const invalid = load(async () => response(200, { ...dashboard, today: null }));

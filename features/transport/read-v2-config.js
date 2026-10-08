@@ -11,9 +11,11 @@
   root.PALURU_KAZ_OS_V3_PREVIEW_ENABLED = v3Preview;
   const stableBaseUrl = 'https://paluru-read-transport-v2-jwnmkrlyha-an.a.run.app';
   const phase2CanaryBaseUrl = 'https://phase2-canary-20260925---paluru-read-transport-v2-jwnmkrlyha-an.a.run.app';
+  const v3PreviewBaseUrl = 'https://kaz-os-v3-shadow-preview-898497371682.asia-northeast1.run.app';
   root.PALURU_READ_TRANSPORT_V2_CONFIG = Object.freeze({
     mode: 'DIRECT_V2',
     baseUrl: phase2Canary ? phase2CanaryBaseUrl : stableBaseUrl,
+    v3BaseUrl: v3PreviewBaseUrl,
     canaryCapability: '',
     routeModes: Object.freeze({
       projects: 'DIRECT_V2',
