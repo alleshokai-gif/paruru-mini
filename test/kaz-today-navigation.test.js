@@ -20,6 +20,7 @@ function createHarness(options = {}) {
   const rendered = [];
   const diagnosticRecords = [];
   let active = false;
+  let dashboardCalls = 0;
   let todayCalls = 0;
 
   const add = (map, name, handler) => {
@@ -105,6 +106,10 @@ function createHarness(options = {}) {
       };
     },
     KazInboxView: { dispose() {} },
+    KazV3ComponentData: { dashboard(snapshot, page) {
+      assert.equal(page, 'today');
+      return snapshot.component_data.today;
+    } },
     KazPersonalView: {
       route(hash) {
         if (hash === '#kaz-os/work') return { page: 'work', id: null };
@@ -137,6 +142,10 @@ function createHarness(options = {}) {
         if (typeof options.todayApi === 'function') return options.todayApi();
         return { sources: {}, today: {}, writes: { notion: 0, calendar: 0, context: 0 } };
       },
+      kazOsV3DashboardApi: async () => {
+        dashboardCalls++;
+        return { component_data: { today: { sources: {}, today: {} } } };
+      },
     },
   }));
 
@@ -156,7 +165,7 @@ function createHarness(options = {}) {
       context.document.dispatchEvent(new context.CustomEvent('paruru:view-request', { detail: { viewName: 'kaz-os' } }));
     },
     setActive(value) { active = Boolean(value); },
-    calls: () => todayCalls,
+    calls: () => ({ dashboard: dashboardCalls, today: todayCalls }),
     settle: async () => {
       await Promise.allSettled(pendingReads.splice(0));
       await new Promise(resolve => setImmediate(resolve));
@@ -171,14 +180,16 @@ function createHarness(options = {}) {
   drawer.emitHashChange();
   await drawer.settle();
   assert.equal(drawer.context.location.hash, '#kaz-os/today');
-  assert.equal(drawer.calls(), 1, 'one drawer navigation must make exactly one TODAY network read');
+  assert.deepEqual(drawer.calls(), { dashboard: 1, today: 0 },
+    'one drawer navigation must make one Snapshot read and no v2 read');
 
   const homeEntry = createHarness();
   homeEntry.authenticate();
   homeEntry.clickTargetCapture();
   homeEntry.emitHashChange();
   await homeEntry.settle();
-  assert.equal(homeEntry.calls(), 1, 'Kaz home entry must still open TODAY through hashchange');
+  assert.deepEqual(homeEntry.calls(), { dashboard: 1, today: 0 },
+    'Kaz home entry must open TODAY through one Snapshot read');
 
   const internalRoute = createHarness();
   internalRoute.authenticate();
@@ -186,7 +197,8 @@ function createHarness(options = {}) {
   internalRoute.context.location.hash = '#kaz-os/today';
   internalRoute.emitHashChange();
   await internalRoute.settle();
-  assert.equal(internalRoute.calls(), 1, 'internal Kaz hash navigation must still make one TODAY read');
+  assert.deepEqual(internalRoute.calls(), { dashboard: 1, today: 0 },
+    'internal Kaz hash navigation must make one Snapshot read');
 
   const recoveredPayload = {
     schema_version: 'kaz-today-plan-v1',
@@ -215,17 +227,13 @@ function createHarness(options = {}) {
     return Promise.resolve(recoveredPayload);
   };
   vm.runInContext(readTransportSource, recovered.context, { filename: 'app.js#kaz-read-transport' });
-  recovered.authenticate();
-  recovered.openFromDrawer();
-  await recovered.settle();
+  const retried = await recovered.context.callHomeControlReadOnlyApi_({ action: 'kazOs.today.get' });
   assert.equal(transportCalls, 2, 'timeout must be followed by exactly one existing retry');
   assert.deepEqual(recovered.diagnosticRecords.map(item => item.outcome), ['retry', 'success'],
     'the timeout remains a retry diagnostic and the second attempt is successful');
-  assert.equal(recovered.rendered.length, 1, 'renderToday must render one final result');
-  assert.equal(recovered.rendered[0].data, recoveredPayload,
-    'renderToday must render the second-attempt success payload');
+  assert.equal(retried, recoveredPayload, 'the retained v2/GAS route must return its retry result');
 
-  console.log('PASS Kaz TODAY navigation performs one logical read');
+  console.log('PASS Kaz TODAY uses Snapshot read and retained v2/GAS retry remains bounded');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

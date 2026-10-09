@@ -22,7 +22,7 @@
       work: 'DIRECT_V2',
       today: phase2Canary ? 'DIRECT_V2' : 'GAS',
       inbox: 'DIRECT_V2',
-      dashboardV3: v3Preview ? 'DIRECT_V2' : 'GAS',
+      dashboardV3: 'DIRECT_V2',
       inboxV3: v3Preview ? 'DIRECT_V2' : 'GAS'
     })
   });

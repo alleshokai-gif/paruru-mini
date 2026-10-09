@@ -46,7 +46,7 @@ for (const [name, source] of [['app.js', app], ['gas/Code.js', gasCode], ['gas/K
   assert(!source.includes('KAZ_OS_INBOX_LIVE_ENABLED'), `${name} must not revive the deprecated INBOX read flag`);
 }
 
-assert(html.includes('href="#kaz-os/inbox"'), 'INBOX navigation missing');
+assert(!html.includes('data-kaz-page="inbox"'), 'INBOX must not appear in normal navigation');
 assert(html.includes('features/kaz-os/inbox.js'), 'INBOX renderer not loaded');
 assert(html.includes('href="#kaz-os/today"'), 'TODAY navigation missing');
 assert(!html.includes('data-kaz-page="diagnostics"'), 'Diagnostics must remain outside this release');

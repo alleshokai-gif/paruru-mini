@@ -5387,7 +5387,7 @@ async function callDirectKazOsRead_(kind, requestId) {
 }
 
 async function callAuthenticatedKazOsV3Dashboard_() {
-  if (!globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED || !isViewAllowed_("kaz-os")
+  if (!isViewAllowed_("kaz-os")
       || activeMembershipContext?.role !== "admin"
       || selectedKazOsReadTransport_("dashboardV3") !== "DIRECT_V2") {
     throw createHomeControlError("FORBIDDEN");

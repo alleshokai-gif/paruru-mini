@@ -263,9 +263,10 @@ test('PWA exposes Dynamic TODAY time context without UI score',()=>{
   const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
   const nav=fs.readFileSync(path.join(root,'features/kaz-os/navigation.js'),'utf8');
   const personal=fs.readFileSync(path.join(root,'features/kaz-os/personal.js'),'utf8');
-  const order=['data-kaz-page="today"','data-kaz-page="work"','data-kaz-page="projects"','data-kaz-page="inbox"'].map(x=>html.indexOf(x));
+  const order=['data-kaz-page="today"','data-kaz-page="work"','data-kaz-page="projects"','data-kaz-page="capa"'].map(x=>html.indexOf(x));
   assert(order.every(i=>i>=0));
   assert(order.every((v,i)=>i===0||order[i-1]<v));
+  assert(!html.includes('data-kaz-page="inbox"'));
   assert(app.includes('buildMemoCredentialPayload("kazOs.today.get")'));
   assert(app.includes('kazOsTodayApi: callAuthenticatedKazOsToday_'));
   assert(nav.includes("location.hash !== '#kaz-os/today'"));

@@ -21,6 +21,22 @@
     && data?.writes?.calendar === 0
     && data?.writes?.context === 0;
 
+
+  function configureKazNav(previewMode, page) {
+    document.querySelectorAll('#kazOsNav a').forEach(a => {
+      const key = a.dataset.kazPage;
+      if (key === 'inbox') {
+        a.hidden = true;
+        a.removeAttribute('aria-current');
+        return;
+      }
+      a.hidden = false;
+      a.href = previewMode ? (key === 'today' ? '#kaz-os/v3' : `#kaz-os/v3/${key}`) : `#kaz-os/${key}`;
+      if (key === page) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
+  }
+
   function clear() {
     projectEpoch++;
     workEpoch++;
@@ -295,20 +311,18 @@
     }
     clear();
     const preview = globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED
-      && /^#kaz-os\/v3(?:\/(today|work|projects|capa|inbox)(?:\/([^/]+))?)?$/.exec(location.hash);
-    if (preview) {
+      && /^#kaz-os\/v3(?:\/(today|work|projects|capa)(?:\/([^/]+))?)?$/.exec(location.hash);
+    const cutover = /^#kaz-os\/(today|work|projects|capa)(?:\/([^/]+))?$/.exec(location.hash);
+    if (preview || cutover) {
       const legacyNav = byId('kazOsNav');
       if (legacyNav) legacyNav.hidden = false;
-      const selection = { page: preview[1] || 'today', id: null };
-      try { if (preview[2]) selection.id = decodeURIComponent(preview[2]); } catch { /* Invalid ID is not selected. */ }
+      const selection = { page: preview ? (preview[1] || 'today') : cutover[1], id: null };
+      configureKazNav(Boolean(preview), selection.page);
+      try { if ((preview || cutover)[2]) selection.id = decodeURIComponent((preview || cutover)[2]); } catch { /* Invalid ID is not selected. */ }
       const requestEpoch = previewEpoch;
       const current = () => requestEpoch === previewEpoch && allowed() && active() && !document.hidden;
       const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', inbox: '確認待ち' }[selection.page];
       byId('kazOsView')?.setAttribute('aria-label', pageLabel);
-      document.querySelectorAll('#kazOsNav a').forEach(a => {
-        if (a.dataset.kazPage === selection.page) a.setAttribute('aria-current', 'page');
-        else a.removeAttribute('aria-current');
-      });
       const host = byId('kazPersonalContent');
       if (!host) return;
       host.textContent = `${pageLabel}を確認中…`;
@@ -333,12 +347,9 @@
     const legacyNav = byId('kazOsNav');
     if (legacyNav) legacyNav.hidden = false;
     const selection = globalThis.KazPersonalView.route(location.hash);
+    configureKazNav(false, selection.page);
     const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', inbox: '確認待ち' }[selection.page] || 'やること・確認';
     byId('kazOsView')?.setAttribute('aria-label', pageLabel);
-    document.querySelectorAll('#kazOsNav a').forEach(a => {
-      if (a.dataset.kazPage === selection.page) a.setAttribute('aria-current', 'page');
-      else a.removeAttribute('aria-current');
-    });
     document.querySelectorAll('[data-kaz-page-launch]').forEach(item => {
       if (item.dataset.kazPage === selection.page) item.setAttribute('aria-current', 'page');
       else item.removeAttribute('aria-current');

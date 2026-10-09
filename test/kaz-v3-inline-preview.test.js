@@ -33,7 +33,10 @@ assert.deepEqual(inbox.inbox_items, inbox.component_data.inbox_items);
 assert.deepEqual(dashboard.today.confirmations, inbox.inbox_items);
 
 const projected = componentData.dashboard(dashboard, 'today');
-assert.deepEqual(projected.today, views.today.today);
+assert.deepEqual(projected.today, {
+  ...views.today.today,
+  confirmations: dashboard.today.confirmations,
+});
 assert.equal(personal.health(projected.sources.work_items, now), 'ok');
 assert.equal(personal.health(projected.sources.work_items, now + 2 * 60 * 60 * 1000), 'ok',
   'event-driven Snapshot status must not inherit the old 15-minute TTL');
@@ -45,12 +48,28 @@ assert.throws(() => componentData.dashboard({ ...dashboard, component_data: null
   /KAZ_V3_COMPONENT_DATA_UNAVAILABLE/);
 
 const navigation = fs.readFileSync(path.join(__dirname, '..', 'features/kaz-os/navigation.js'), 'utf8');
+const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+const config = fs.readFileSync(path.join(__dirname, '..', 'features/transport/read-v2-config.js'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 assert.match(navigation, /KazV3ComponentData\.dashboard/);
 assert.match(navigation, /KazV3ComponentData\.inbox/);
 assert.match(navigation, /KazPersonalView\.render\(host, selection, data, Date\.now\(\), options\)/);
 assert.doesNotMatch(navigation, /KazV3Preview\?\.render/);
 assert.match(navigation, /if \(selection\.page === 'today'\) await renderToday\(selection\)/,
-  'normal v2 navigation must keep its existing reader');
+  'rollback v2 reader must remain available');
+assert(navigation.includes('const cutover = /^#kaz-os'),
+  'normal Kaz OS routes must select the Snapshot branch');
+assert.match(config, /dashboardV3: 'DIRECT_V2'/,
+  'normal Kaz OS must use the authenticated v3 HTTP route');
+const dashboardGate = app.slice(app.indexOf('async function callAuthenticatedKazOsV3Dashboard_()'),
+  app.indexOf('async function callAuthenticatedKazOsV3Inbox_()'));
+assert(dashboardGate.includes('isViewAllowed_("kaz-os")')
+  && dashboardGate.includes('activeMembershipContext?.role !== "admin"')
+  && dashboardGate.includes('selectedKazOsReadTransport_("dashboardV3")'),
+  'v3 Dashboard read must retain Kaz authorization');
+assert(!dashboardGate.includes('PALURU_KAZ_OS_V3_PREVIEW_ENABLED'),
+  'normal Kaz OS read must not require the hidden-preview query flag');
+assert(!html.includes('data-kaz-page="inbox"'), 'normal navigation must omit INBOX');
 assert.deepEqual(dashboard.today.company_free_windows, []);
 
 console.log('PASS same-condition v2 component DTO and v3 Snapshot data consistency');
