@@ -34,7 +34,7 @@ async function main() {
     PALURU_KAZ_OS_V3_PREVIEW_ENABLED: true,
     KazInboxView: { dispose() {} },
     KazPersonalView: { route() {
-      throw Error('normal four-tab navigation must not use v2 routing');
+      throw Error('normal five-tab navigation must not use v2 routing');
     },
       render(_host, selection, data, _now, options) { rendered.push({ selection, data, options }); } },
   });
@@ -77,7 +77,7 @@ async function main() {
     await Promise.all(normalReads);
     assert.equal(rendered.at(-1).selection.page, page);
   }
-  assert.deepEqual(rendered.at(-4).data.today.confirmations, pair.dashboard.today.confirmations);
+  assert.deepEqual(rendered.at(-5).data.today.confirmations, pair.dashboard.today.confirmations);
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.dataset.kazPage),
     ['today', 'work', 'projects', 'capa', 'context']);
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.href),
