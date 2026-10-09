@@ -33,7 +33,10 @@ assert.deepEqual(inbox.inbox_items, inbox.component_data.inbox_items);
 assert.deepEqual(dashboard.today.confirmations, inbox.inbox_items);
 
 const projected = componentData.dashboard(dashboard, 'today');
-assert.deepEqual(projected.today, views.today.today);
+assert.deepEqual(projected.today, {
+  ...views.today.today,
+  confirmations: dashboard.today.confirmations,
+});
 assert.equal(personal.health(projected.sources.work_items, now), 'ok');
 assert.equal(personal.health(projected.sources.work_items, now + 2 * 60 * 60 * 1000), 'ok',
   'event-driven Snapshot status must not inherit the old 15-minute TTL');

@@ -33,13 +33,16 @@ async function main() {
     KazV3ComponentData: componentData,
     PALURU_KAZ_OS_V3_PREVIEW_ENABLED: true,
     KazInboxView: { dispose() {} },
-    KazPersonalView: { route() { throw Error('v2 route must not parse hidden preview'); },
+    KazPersonalView: { route(hash) {
+      assert.equal(hash, '#kaz-os/today', 'v2 route must not parse hidden preview');
+      return { page: 'today', id: null };
+    },
       render(_host, selection, data) { rendered.push({ selection, data }); } },
   });
   vm.runInContext(fs.readFileSync('features/kaz-os/navigation.js', 'utf8'), context);
   emit('paruru:authenticated', {
     context: { role: 'admin', allowedViews: ['kaz-os'] },
-    kazOsTodayApi: async () => { calls.v2++; throw Error('v2 read on preview'); },
+    kazOsTodayApi: async () => { calls.v2++; return pair.dashboard.component_data.today; },
     kazOsV3DashboardApi: async () => { calls.dashboard++; return pair.dashboard; },
     kazOsV3InboxApi: async () => { calls.inbox++; return pair.inbox; },
   });
@@ -51,15 +54,30 @@ async function main() {
   assert.equal(calls.inbox, 0);
   assert.equal(calls.dashboard, 2); // Authentication render plus opened render.
   assert.equal(rendered.at(-1).selection.page, 'today');
-  assert.equal(rendered.at(-1).data.today, pair.dashboard.component_data.today.today);
-  for (const page of ['work', 'projects', 'capa', 'inbox']) {
+  assert.deepEqual(rendered.at(-1).data.today, {
+    ...pair.dashboard.component_data.today.today,
+    confirmations: pair.dashboard.today.confirmations,
+  });
+  assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.dataset.kazPage),
+    ['today', 'work', 'projects', 'capa']);
+  for (const page of ['work', 'projects', 'capa']) {
     context.location.hash = `#kaz-os/v3/${page}`;
     const reads = [];
     emit('kaz-os:opened', { waitUntil: promise => reads.push(promise) });
     await Promise.all(reads);
     assert.equal(rendered.at(-1).selection.page, page);
   }
-  assert.deepEqual(calls, { dashboard: 5, inbox: 1, v2: 0 });
+  assert.deepEqual(calls, { dashboard: 5, inbox: 0, v2: 0 });
+  context.location.hash = '#kaz-os/today';
+  const normalReads = [];
+  emit('kaz-os:opened', { waitUntil: promise => normalReads.push(promise) });
+  await Promise.all(normalReads);
+  assert.equal(rendered.at(-1).data, pair.dashboard.component_data.today);
+  assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.dataset.kazPage),
+    ['today', 'work', 'projects', 'capa', 'inbox']);
+  assert.deepEqual(anchors.map(anchor => anchor.href),
+    ['today', 'work', 'projects', 'capa', 'inbox'].map(page => `#kaz-os/${page}`));
+  assert.deepEqual(calls, { dashboard: 5, inbox: 0, v2: 1 });
   console.log('PASS hidden route reuses current Kaz OS component and Snapshot GET only');
 }
 
