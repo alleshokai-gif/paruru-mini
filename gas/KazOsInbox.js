@@ -258,6 +258,7 @@ function sanitizeKazOsInbox_(data) {
   const states = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
   const kinds = ['stale_state_confirmation','calendar_event_impact','today_focus','calendar_partial_window','daily_estimate'];
   const gardenerKinds = ['CONTEXT_CANDIDATE','CONFLICT_RESOLUTION'];
+  const gardenerReviewKinds = ['GARDENER_IMPROVEMENT','GARDENER_CONTROLLED_APPLY','GARDENER_APPLIED_CHANGE','GARDENER_PULL_REQUEST'];
   const candidateChoices = ['CONTEXT','WORK','PROJECT','HOLD','REJECT','MERGE'];
   const source = function(value) {
     if (!value || value.status !== 'ok' || value.complete !== true) fail();
@@ -388,6 +389,39 @@ function sanitizeKazOsInbox_(data) {
         source_revision_references: { projects: value.source_revision_references.projects,
           work_items: value.source_revision_references.work_items,
           calendar: value.source_revision_references.calendar },
+        answer_contract: { inbox_item_id: id, question_revision: questionRevision,
+          question: text(value.answer_contract.question, 500), choices: choices },
+        calendar_event: null, input_contract: null, selection_mode: null, selection_options: null,
+        recommended_option: null, recommendation_basis: null };
+    }
+    const isGardenerReview = value.contract === 'gardener-phase-review-1';
+    if (isGardenerReview) {
+      gardenerItemCount++;
+      if (gardenerItemCount > 10 || gardenerReviewKinds.indexOf(value.kind) < 0) fail();
+      const refs = value.source_revision_references;
+      if (!refs || refs.projects !== sources.projects.source_revision
+          || refs.work_items !== sources.tasks.source_revision
+          || refs.calendar !== sources.calendar.source_revision) fail();
+      const choices = list(value.answer_contract && value.answer_contract.choices, 4, function(choice) {
+        return { value: text(choice.value, 80), label: text(choice.label, 80), effect: text(choice.effect, 300) };
+      });
+      if (choices.length < 2 || choices.length > 4) fail();
+      const id = text(value.id, 100), questionRevision = text(value.question_revision, 100);
+      if (!/^question-sha256:[a-f0-9]{64}$/.test(questionRevision)
+          || value.answer_contract.inbox_item_id !== id
+          || value.answer_contract.question_revision !== questionRevision) fail();
+      return { id: id, kind: value.kind, contract: value.contract,
+        owner: 'kaz', decision_requested: true, decision_status: 'pending', write_allowed: false,
+        title: text(value.title, 200), short_title: text(value.short_title || value.title, 200),
+        question: text(value.answer_contract.question, 500),
+        reason: '', impact: '', estimate_min: number(value.estimate_min, true),
+        affects_today: boolean(value.affects_today), urgent_today: boolean(value.urgent_today),
+        decision_date: text(value.decision_date, 20, true), due_at: text(value.due_at, 80, true),
+        project_id: null, entity_ref: text(value.entity_ref, 300, true),
+        candidate_ref: text(value.candidate_ref, 300), candidate_source: text(value.candidate_source, 80),
+        source_label: text(value.source_label, 100), entity_revision: text(value.entity_revision, 120),
+        question_revision: questionRevision, expires_at: null,
+        source_revision_references: { projects: refs.projects, work_items: refs.work_items, calendar: refs.calendar },
         answer_contract: { inbox_item_id: id, question_revision: questionRevision,
           question: text(value.answer_contract.question, 500), choices: choices },
         calendar_event: null, input_contract: null, selection_mode: null, selection_options: null,
