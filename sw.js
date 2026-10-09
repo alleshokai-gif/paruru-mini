@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261009-kaz-os-v3-inline-review-v1");
-// Release: v20261009-kaz-os-v3-inline-review-v1
+importScripts("./build.js?v=v20261009-kaz-os-v3-component-parity-v1");
+// Release: v20261009-kaz-os-v3-component-parity-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -32,8 +32,7 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/kaz-os/personal.js"),
   versioned("features/kaz-os/personal.css"),
   versioned("features/kaz-os/navigation.js"),
-  versioned("features/kaz-os/v3-preview.js"),
-  versioned("features/kaz-os/v3-preview.css"),
+  versioned("features/kaz-os/v3-component-data.js"),
   "manifest.json",
 ];
 

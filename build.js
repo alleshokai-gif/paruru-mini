@@ -1,2 +1,2 @@
-// Human Review preview release: inline confirmations and four v3 tabs without the legacy tab row.
-globalThis.BUILD_ID = "v20261009-kaz-os-v3-inline-review-v1";
+// Human Review preview release: existing Kaz OS components read v3 snapshots.
+globalThis.BUILD_ID = "v20261009-kaz-os-v3-component-parity-v1";

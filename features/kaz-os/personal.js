@@ -14,6 +14,11 @@
   const list = value => Array.isArray(value) && value.every(v => v && typeof v.id === 'string' && v.id) && new Set(value.map(v => v.id)).size === value.length ? value : null;
   function health(source, now = Date.now()) {
     if (!source) return 'not_connected';
+    if (source.snapshot_status) {
+      if (source.snapshot_status !== 'current')
+        return ['stale', 'failed', 'not_connected'].includes(source.snapshot_status) ? source.snapshot_status : 'failed';
+      return source.complete === true && source.source_revision && source.scope ? 'ok' : 'partial';
+    }
     if (['failed', 'not_connected', 'stale'].includes(source.status)) return source.status;
     if (!['ok', 'partial'].includes(source.status)) return 'failed';
     if (!Number.isFinite(stamp(source.fetched_at)) || !Number.isFinite(stamp(source.valid_until)) || stamp(source.fetched_at) > now + MAX_SOURCE_CLOCK_SKEW_MS || stamp(source.valid_until) <= now) return 'stale';

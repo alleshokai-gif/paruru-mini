@@ -1,59 +1,56 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const vm = require('node:vm');
+const path = require('node:path');
+const componentData = require('../features/kaz-os/v3-component-data');
+const personal = require('../features/kaz-os/personal');
+const { create } = require('./fixtures/kaz-v3-component-parity');
 
-class Element {
-  constructor(tagName) {
-    this.tagName = tagName;
-    this.children = [];
-    this.dataset = {};
-    this.attributes = {};
-    this.ownText = '';
-  }
+const { dashboard, inbox } = create();
+const views = dashboard.component_data;
+const now = Date.parse('2026-10-09T14:30:00+09:00');
 
-  set textContent(value) {
-    this.ownText = String(value);
-    this.children = [];
-  }
-
-  get textContent() {
-    return this.ownText + this.children.map(child => child.textContent).join('');
-  }
-
-  append(child) { this.children.push(child); }
-  replaceChildren(...children) { this.ownText = ''; this.children = children; }
-  setAttribute(name, value) { this.attributes[name] = value; }
+for (const [page, itemKey, legacyKey] of [
+  ['projects', 'projects', 'projects'], ['work', 'work', 'work_items'],
+  ['capa', 'capa', 'capa_items'],
+]) {
+  assert.deepEqual(dashboard[itemKey], views[page][legacyKey]);
+  assert.deepEqual(componentData.dashboard(dashboard, page)[legacyKey], dashboard[itemKey]);
 }
+for (const [page, oldSource, snapshotSource] of [
+  ['projects', 'projects', 'projects'], ['work', 'work_items', 'work'],
+  ['capa', 'capa', 'capa'], ['today', 'work_items', 'today'],
+]) assert.equal(views[page].sources[oldSource].source_revision,
+  dashboard.sources[snapshotSource].revision);
+assert.equal(views.projects.sources.tasks.source_revision, dashboard.sources.work.revision);
+for (const [key, legacy] of [
+  ['now', views.today.today.now.items], ['next', views.today.today.next.items],
+  ['scheduled', views.today.today.scheduled], ['waiting', views.today.today.waiting],
+  ['kaz_free_windows', views.today.today.kaz_free_windows],
+  ['company_free_windows', views.today.today.company_free_windows],
+  ['personal_free_windows', views.today.today.calendar_free_windows],
+]) assert.deepEqual(dashboard.today[key], legacy, key);
+assert.deepEqual(inbox.inbox_items, inbox.component_data.inbox_items);
+assert.deepEqual(dashboard.today.confirmations, inbox.inbox_items);
 
-async function main() {
-  const context = {
-    document: { createElement: tag => new Element(tag) },
-    performance: { now: () => 0 },
-    PALURU_KAZ_OS_V3_PREVIEW_ENABLED: true,
-    BUILD_ID: 'focused-test',
-  };
-  vm.runInNewContext(fs.readFileSync('features/kaz-os/v3-preview.js', 'utf8'), context);
-  const host = new Element('div');
-  const snapshot = {
-    schema_version: 'kaz-os-dashboard-v3', generated_at: '2026-10-09T12:00:00+09:00',
-    status: 'CURRENT', sources: {},
-    today: { kaz_free_windows: [], company_free_windows: [], personal_free_windows: [],
-      confirmations: [{ kind: 'human_review', decision_status: 'pending', question: '確認対象' }],
-      now: [], next: [], scheduled: [], waiting: [] },
-    work: [], projects: [], capa: [],
-  };
-  await context.KazV3Preview.render(host, 'today', async () => snapshot,
-    async () => { throw Error('standalone INBOX read must not run'); }, () => true);
+const projected = componentData.dashboard(dashboard, 'today');
+assert.deepEqual(projected.today, views.today.today);
+assert.equal(personal.health(projected.sources.work_items, now), 'ok');
+assert.equal(personal.health(projected.sources.work_items, now + 2 * 60 * 60 * 1000), 'ok',
+  'event-driven Snapshot status must not inherit the old 15-minute TTL');
+assert.equal(personal.health({ ...projected.sources.work_items, snapshot_status: 'stale' }, now), 'stale');
+assert.equal(componentData.dashboard(dashboard, 'projects').work_items.length,
+  dashboard.work.length);
+assert.equal(personal.health(componentData.inbox(inbox).sources.inbox, now), 'ok');
+assert.throws(() => componentData.dashboard({ ...dashboard, component_data: null }, 'today'),
+  /KAZ_V3_COMPONENT_DATA_UNAVAILABLE/);
 
-  const nav = host.children.find(child => child.tagName === 'nav');
-  assert.deepEqual(nav.children.map(child => child.textContent),
-    ['TODAY', 'WORK', 'PROJECTS', 'CAPA']);
-  assert.deepEqual(nav.children.map(child => child.href),
-    ['#kaz-os/v3', '#kaz-os/v3/work', '#kaz-os/v3/projects', '#kaz-os/v3/capa']);
-  const body = host.children.find(child => child.tagName === 'main');
-  assert.match(body.textContent, /確認確認対象/);
-  assert.match(body.textContent, /NOW/);
-  console.log('PASS v3 TODAY inline confirmations and four-tab navigation');
-}
+const navigation = fs.readFileSync(path.join(__dirname, '..', 'features/kaz-os/navigation.js'), 'utf8');
+assert.match(navigation, /KazV3ComponentData\.dashboard/);
+assert.match(navigation, /KazV3ComponentData\.inbox/);
+assert.match(navigation, /KazPersonalView\.render\(host, selection, data, Date\.now\(\), options\)/);
+assert.doesNotMatch(navigation, /KazV3Preview\?\.render/);
+assert.match(navigation, /if \(selection\.page === 'today'\) await renderToday\(selection\)/,
+  'normal v2 navigation must keep its existing reader');
+assert.deepEqual(dashboard.today.company_free_windows, []);
 
-main().catch(error => { console.error(error); process.exitCode = 1; });
+console.log('PASS same-condition v2 component DTO and v3 Snapshot data consistency');
