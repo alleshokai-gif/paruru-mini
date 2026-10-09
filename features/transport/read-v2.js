@@ -168,7 +168,8 @@
           const item = value.sources[key];
           return !item || !['current', 'stale', 'failed', 'not_connected'].includes(item.status)
             || (item.status === 'current' && (!Number.isFinite(Date.parse(item.updated_at))
-              || !Number.isFinite(Date.parse(item.valid_until)) || typeof item.revision !== 'string'
+              || (item.valid_until !== null && !Number.isFinite(Date.parse(item.valid_until)))
+              || typeof item.revision !== 'string'
               || !item.revision));
         })
         || sections.some(key => !Array.isArray(value[key]))) {
@@ -176,16 +177,26 @@
     }
     if (schema === 'kaz-os-dashboard-v3') {
       const today = value.today;
-      if (!today || ['now', 'next', 'scheduled', 'company_free_windows',
-        'personal_free_windows', 'waiting'].some(key => !Array.isArray(today[key])
+      if (!today || ['now', 'next', 'scheduled', 'kaz_free_windows', 'company_free_windows',
+        'personal_free_windows', 'waiting', 'confirmations'].some(key => !Array.isArray(today[key])
           || today[key].length > 200)
-          || ['company_free_windows', 'personal_free_windows'].some(key =>
+          || today.confirmations.length > 30
+          || today.confirmations.some(item => !item || !humanKinds.has(item.kind)
+            || item.decision_status !== 'pending')
+          || today.company_free_windows.length !== 0
+          || ['kaz_free_windows', 'company_free_windows', 'personal_free_windows'].some(key =>
             today[key].some(window => !window
               || typeof window.start !== 'string' || !Number.isFinite(Date.parse(window.start))
               || typeof window.end !== 'string' || !Number.isFinite(Date.parse(window.end))
               || Date.parse(window.start) >= Date.parse(window.end)
               || !Number.isInteger(window.duration_min) || window.duration_min <= 0
               || !Array.isArray(window.suggestions) || window.suggestions.length > 3
+              || (key === 'kaz_free_windows' && (!window.constraints
+                || typeof window.constraints !== 'object' || Array.isArray(window.constraints)
+                || Object.keys(window.constraints).sort().join(',') !== 'company_busy,personal_busy'
+                || ['company_busy', 'personal_busy'].some(source =>
+                  typeof window.constraints[source] !== 'string'
+                  || !window.constraints[source])))
               || window.suggestions.some(item => !item || typeof item.title !== 'string'
                 || !Number.isInteger(item.estimate_min) || item.estimate_min <= 0
                 || item.estimate_min > window.duration_min)))) {

@@ -91,6 +91,14 @@ function answerKazOsInbox_(body, transportTrace) {
       ? buildKazOsCandidateReviewProposal_(question, request) : null;
     const persisted = persistKazOsAnswer_(question, request, actor, candidateProposal);
     recordKazOsAnswerTransport_(transportTrace, 'DURABLE_PERSISTED', { outcome: 'success' });
+    let v3Rebuild;
+    try {
+      v3Rebuild = requestKazOsV3Rebuild_(
+        'INBOX_ANSWER', 'inbox', persisted.answer.answer_id);
+    } catch (_) {
+      // A refresh failure must not undo an already read-back-verified Answer.
+      v3Rebuild = { status: 'request_failed' };
+    }
     const refreshed = applyKazOsDecisionLedger_(current);
     refreshed.feedback = { message: '✓ 回答したで。Operational Sourceはまだ変更してへん',
       answer_id: persisted.answer.answer_id, decision_id: persisted.answer.decision_id,
@@ -98,7 +106,8 @@ function answerKazOsInbox_(body, transportTrace) {
       persistence_status: persisted.answer.persistence_status,
       answered_at: persisted.answer.answered_at };
     return json_({ success: true, data: { answer: persisted.answer, proposal: persisted.proposal,
-      replayed: persisted.replayed, inbox: refreshed }, message: persisted.replayed ? 'already persisted' : 'persisted' });
+      replayed: persisted.replayed, inbox: refreshed, v3_rebuild: v3Rebuild },
+      message: persisted.replayed ? 'already persisted' : 'persisted' });
   } catch (error) {
     const allowed = ['FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'KAZ_NOT_CONNECTED',
       'KAZ_READ_ONLY', 'KAZ_ANSWER_DISABLED', 'KAZ_ANSWER_INVALID', 'REVALIDATION_REQUIRED',

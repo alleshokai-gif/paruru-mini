@@ -340,8 +340,10 @@ async function main() {
       valid_until: '2026-10-07T12:15:00+00:00', revision: key + '-revision' }]));
     const dashboard = { schema_version: 'kaz-os-dashboard-v3',
       generated_at: '2026-10-07T12:00:00+00:00', status: 'CURRENT', sources,
-      today: { now: [], next: [], scheduled: [], company_free_windows: [],
-        personal_free_windows: [], waiting: [] }, work: [], projects: [], capa: [] };
+      today: { now: [], next: [], scheduled: [], kaz_free_windows: [], company_free_windows: [],
+        personal_free_windows: [], waiting: [],
+        confirmations: [{ kind: 'human_review', decision_status: 'pending' }] },
+      work: [], projects: [], capa: [] };
     const inbox = { schema_version: 'kaz-os-inbox-v3',
       generated_at: dashboard.generated_at, status: 'CURRENT', sources,
       inbox_items: [{ kind: 'calendar_impact_triage', decision_status: 'pending' },
@@ -353,6 +355,17 @@ async function main() {
       routeModes: { dashboardV3: 'DIRECT_V2', inboxV3: 'DIRECT_V2' } };
     assert.deepEqual(await harness.create({ config }).dashboardV3(), dashboard);
     assert.deepEqual(await harness.create({ config }).inboxV3(), inbox);
+    const eventDriven = { ...dashboard, sources: { ...sources,
+      decision_ledger: { ...sources.decision_ledger, valid_until: null },
+      today: { ...sources.today, valid_until: null },
+      inbox: { ...sources.inbox, valid_until: null } } };
+    assert.deepEqual(await load(async () => response(200, eventDriven))
+      .create({ config }).dashboardV3(), eventDriven);
+    const invalidDeadline = { ...eventDriven, sources: { ...eventDriven.sources,
+      calendar: { ...sources.calendar, valid_until: 'invalid' } } };
+    await assert.rejects(load(async () => response(200, invalidDeadline))
+      .create({ config }).dashboardV3(),
+    error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
     assert.deepEqual(calls, ['https://reader.example.test/v3/dashboard',
       'https://reader.example.test/v3/inbox']);
     const separateCalls = [];
@@ -368,13 +381,25 @@ async function main() {
     const invalid = load(async () => response(200, { ...dashboard, today: null }));
     await assert.rejects(invalid.create({ config }).dashboardV3(),
       error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+    const missingConfirmations = { ...dashboard, today: { ...dashboard.today } };
+    delete missingConfirmations.today.confirmations;
+    await assert.rejects(load(async () => response(200, missingConfirmations))
+      .create({ config }).dashboardV3(),
+    error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
     const validWindow = { start: '2026-10-07T12:30:00+09:00',
       end: '2026-10-07T13:00:00+09:00', duration_min: 30,
       suggestions: [{ title: '資料確認', estimate_min: 30 }] };
     const withWindow = { ...dashboard, today: { ...dashboard.today,
-      company_free_windows: [validWindow], personal_free_windows: [validWindow] } };
+      kaz_free_windows: [{ ...validWindow, constraints: {
+        company_busy: 'WorkBusy', personal_busy: 'Family Calendar father timed' } }],
+      company_free_windows: [], personal_free_windows: [validWindow] } };
     assert.deepEqual(await load(async () => response(200, withWindow))
       .create({ config }).dashboardV3(), withWindow);
+    const pseudoCompanyFree = { ...withWindow, today: { ...withWindow.today,
+      company_free_windows: [validWindow] } };
+    await assert.rejects(load(async () => response(200, pseudoCompanyFree))
+      .create({ config }).dashboardV3(),
+    error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
     for (const broken of [
       { ...validWindow, suggestions: undefined },
       { ...validWindow, suggestions: [{ title: '資料確認', estimate_min: 45 }] },
@@ -385,6 +410,11 @@ async function main() {
         .create({ config }).dashboardV3(),
       error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
     }
+    const missingExplanation = { ...dashboard, today: { ...dashboard.today,
+      kaz_free_windows: [validWindow] } };
+    await assert.rejects(load(async () => response(200, missingExplanation))
+      .create({ config }).dashboardV3(),
+    error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
   }
 
   assert(appSource.includes('selectedKazOsReadTransport_("projects") === "DIRECT_V2"'), 'Projects selector missing');

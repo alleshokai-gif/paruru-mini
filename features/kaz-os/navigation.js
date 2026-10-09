@@ -21,6 +21,27 @@
     && data?.writes?.calendar === 0
     && data?.writes?.context === 0;
 
+
+  function configureKazNav(previewMode, page) {
+    document.querySelectorAll('#kazOsNav a').forEach(a => {
+      const key = a.dataset.kazPage;
+      if (previewMode) {
+        if (key === 'inbox') {
+          a.hidden = true;
+          a.removeAttribute('aria-current');
+          return;
+        }
+        a.hidden = false;
+        a.href = key === 'today' ? '#kaz-os/v3' : `#kaz-os/v3/${key}`;
+      } else {
+        a.hidden = false;
+        a.href = `#kaz-os/${key}`;
+      }
+      if (key === page) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
+  }
+
   function clear() {
     projectEpoch++;
     workEpoch++;
@@ -294,25 +315,45 @@
       return;
     }
     clear();
-    if (globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED
-        && /^#kaz-os\/v3(?:\/(?:work|inbox))?$/.test(location.hash)) {
-      const page = location.hash.endsWith('/work') ? 'work'
-        : location.hash.endsWith('/inbox') ? 'inbox' : 'today';
+    const preview = globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED
+      && /^#kaz-os\/v3(?:\/(today|work|projects|capa)(?:\/([^/]+))?)?$/.exec(location.hash);
+    if (preview) {
+      const legacyNav = byId('kazOsNav');
+      if (legacyNav) legacyNav.hidden = false;
+      const selection = { page: preview[1] || 'today', id: null };
+      configureKazNav(true, selection.page);
+      try { if (preview[2]) selection.id = decodeURIComponent(preview[2]); } catch { /* Invalid ID is not selected. */ }
       const requestEpoch = previewEpoch;
       const current = () => requestEpoch === previewEpoch && allowed() && active() && !document.hidden;
-      byId('kazOsView')?.setAttribute('aria-label', 'Kaz OS v3 Snapshot Preview');
-      document.querySelectorAll('#kazOsNav a').forEach(a => a.removeAttribute('aria-current'));
+      const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', inbox: '確認待ち' }[selection.page];
+      byId('kazOsView')?.setAttribute('aria-label', pageLabel);
       const host = byId('kazPersonalContent');
-      await globalThis.KazV3Preview?.render(host, page, v3DashboardApi, v3InboxApi, current);
+      if (!host) return;
+      host.textContent = `${pageLabel}を確認中…`;
+      try {
+        const snapshot = await (selection.page === 'inbox' ? v3InboxApi() : v3DashboardApi());
+        if (!current()) return;
+        const data = selection.page === 'inbox'
+          ? globalThis.KazV3ComponentData.inbox(snapshot)
+          : globalThis.KazV3ComponentData.dashboard(snapshot, selection.page);
+        const options = selection.page === 'inbox' ? {
+          answerApi: controlledInbox(data) ? inboxAnswerApi : null,
+          projectsApi: async () => globalThis.KazV3ComponentData.dashboard(await v3DashboardApi(), 'projects'),
+        } : {};
+        globalThis.KazPersonalView.render(host, selection, data, Date.now(), options);
+      } catch (_) {
+        if (!current()) return;
+        const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];
+        globalThis.KazPersonalView.render(host, selection, { sources: { [sourceName]: { status: 'failed' } } });
+      }
       return;
     }
+    const legacyNav = byId('kazOsNav');
+    if (legacyNav) legacyNav.hidden = false;
     const selection = globalThis.KazPersonalView.route(location.hash);
+    configureKazNav(false, selection.page);
     const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', inbox: '確認待ち' }[selection.page] || 'やること・確認';
     byId('kazOsView')?.setAttribute('aria-label', pageLabel);
-    document.querySelectorAll('#kazOsNav a').forEach(a => {
-      if (a.dataset.kazPage === selection.page) a.setAttribute('aria-current', 'page');
-      else a.removeAttribute('aria-current');
-    });
     document.querySelectorAll('[data-kaz-page-launch]').forEach(item => {
       if (item.dataset.kazPage === selection.page) item.setAttribute('aria-current', 'page');
       else item.removeAttribute('aria-current');
@@ -376,6 +417,15 @@
       location.hash = '#kaz-os/today';
     }
   }, true));
+  byId('kazOsView')?.addEventListener?.('click', event => {
+    if (!globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED || !/^#kaz-os\/v3(?:\/|$)/.test(location.hash)) return;
+    const anchor = event.target.closest?.('a[href^="#kaz-os/"]');
+    if (!anchor || !byId('kazOsView').contains(anchor)) return;
+    const path = anchor.getAttribute('href').slice('#kaz-os/'.length);
+    if (!/^(today|work|projects|capa|inbox)(?:\/[^/]+)?$/.test(path)) return;
+    event.preventDefault();
+    location.hash = `#kaz-os/v3/${path}`;
+  });
   window.addEventListener('hashchange', () => {
     if (isKazHash()) {
       const openedByTargetViewRequest = targetViewHashChangePending && active();

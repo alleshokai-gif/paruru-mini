@@ -1,1 +1,2 @@
-globalThis.BUILD_ID = "v20261008-kaz-os-v3-shadow-v1";
+// Human Review preview release: existing Kaz OS components read v3 snapshots.
+globalThis.BUILD_ID = "v20261009-kaz-os-v3-component-parity-v1";

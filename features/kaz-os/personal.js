@@ -14,6 +14,11 @@
   const list = value => Array.isArray(value) && value.every(v => v && typeof v.id === 'string' && v.id) && new Set(value.map(v => v.id)).size === value.length ? value : null;
   function health(source, now = Date.now()) {
     if (!source) return 'not_connected';
+    if (source.snapshot_status) {
+      if (source.snapshot_status !== 'current')
+        return ['stale', 'failed', 'not_connected'].includes(source.snapshot_status) ? source.snapshot_status : 'failed';
+      return source.complete === true && source.source_revision && source.scope ? 'ok' : 'partial';
+    }
     if (['failed', 'not_connected', 'stale'].includes(source.status)) return source.status;
     if (!['ok', 'partial'].includes(source.status)) return 'failed';
     if (!Number.isFinite(stamp(source.fetched_at)) || !Number.isFinite(stamp(source.valid_until)) || stamp(source.fetched_at) > now + MAX_SOURCE_CLOCK_SKEW_MS || stamp(source.valid_until) <= now) return 'stale';
@@ -115,7 +120,10 @@
     if (data?.fixture_only === true) add('p', '検証用fixture · 全件架空・実データではありません', 'kp-fixture');
     if (selection.page === 'today') {
       const head = part('TODAY');
-      add('p', 'WorkBusyとFamily Calendarの空き時間を別々に表示。枠に収まるWork候補を確認できます。', 'kp-subtitle', head);
+      const v3 = data?.schema_version === 'kaz-os-dashboard-v3-component';
+      add('p', v3
+        ? 'WorkBusyとFamily Calendarの（父）予定を統合し、ワイの空き時間を表示します。'
+        : 'WorkBusyとFamily Calendarの空き時間を別々に表示。枠に収まるWork候補を確認できます。', 'kp-subtitle', head);
       const workHealth = notice('work_items', head);
       if (data?.origin === 'notion_official_api' && data?.sources?.work_items) {
         const source = data.sources.work_items;
@@ -143,24 +151,36 @@
       };
 
       const focusCount=(t.now?.items?.length||0)+(t.next?.items?.length||0);
-      if (v2) {
-        add('p', '今日の現在時刻から日付の終わりまで · JST', 'kp-muted', head);
-        const renderFreeWindows = (title, windows, emptyMessage) => {
-          const section = part(title);
-          section.classList.add('kp-free-section');
-          if (!windows?.length) { add('p', emptyMessage, 'kp-muted', section); return; }
-          windows.forEach(window => {
-            const slot = add('article', '', 'kp-free-window', section);
-            add('h3', `${fmt(window.start)}–${fmt(window.end)}　${window.duration_min}分`, 'kp-free-time', slot);
-            if (!window.suggestions.length) add('p', 'この枠に収まるEstimate付きWorkはありません。', 'kp-muted', slot);
-            window.suggestions.forEach(w => {
-              const candidate = add('div', '', 'kp-free-suggestion', slot);
-              candidate.dataset.workItem = w.id;
-              candidate.append(link(w.title, 'work', w.id, 'kp-free-work-title'));
-              add('span', `${w.estimate_min}分 · ${w.priority || 'Priority未設定'} · ${w.action_type}`, 'kp-free-work-meta', candidate);
-            });
+      const renderFreeWindows = (title, windows, emptyMessage) => {
+        const section = part(title);
+        section.classList.add('kp-free-section');
+        if (!windows?.length) { add('p', emptyMessage, 'kp-muted', section); return; }
+        windows.forEach(window => {
+          const slot = add('article', '', 'kp-free-window', section);
+          add('h3', `${fmt(window.start)}–${fmt(window.end)}　${window.duration_min}分`, 'kp-free-time', slot);
+          if (!window.suggestions?.length) add('p', 'この枠に収まるEstimate付きWorkはありません。', 'kp-muted', slot);
+          (window.suggestions || []).forEach(w => {
+            const candidate = add('div', '', 'kp-free-suggestion', slot);
+            candidate.dataset.workItem = w.id || w.work_id || '';
+            candidate.append(link(w.title, 'work', w.id || w.work_id, 'kp-free-work-title'));
+            add('span', `${w.estimate_min}分 · ${w.priority || 'Priority未設定'} · ${w.action_type || 'ACTION'}`, 'kp-free-work-meta', candidate);
           });
-        };
+        });
+      };
+      if (v3) {
+        add('p', '今日の現在時刻から日付の終わりまで · JST', 'kp-muted', head);
+        renderFreeWindows('🟢 ワイの空き時間', t.kaz_free_windows,
+          '今日の残りに確定できる空き時間はありません。');
+        const confirmations = part('確認');
+        if (!(t.confirmations || []).length) add('p', '確認待ちはありません。', 'kp-muted', confirmations);
+        else (t.confirmations || []).forEach(item => {
+          const row = add('article', '', 'kp-work-row', confirmations);
+          add('strong', item.short_title || item.title || item.question || item.id || '確認事項', '', row);
+          if (item.kind) add('p', item.kind, 'kp-muted', row);
+        });
+        add('p', `今日の3つ · ${focusCount}/3`, 'kp-muted');
+      } else if (v2) {
+        add('p', '今日の現在時刻から日付の終わりまで · JST', 'kp-muted', head);
         const busyStatus=data.sources?.work_busy?.status || 'not_connected';
         renderFreeWindows('🏢 会社の空き時間', t.company_free_windows,
           busyStatus === 'ok' ? '今日の残りに会社の空き枠はありません。'
@@ -175,14 +195,14 @@
       }
 
       const nowSection = part('NOW');
-      if (t.now?.kind === 'none') add('p', v2 ? 'いま着手する項目はありません。' : 'DOINGのWork Itemはありません。', 'kp-muted', nowSection);
+      if (t.now?.kind === 'none') add('p', (v2 || v3) ? 'いま着手する項目はありません。' : 'DOINGのWork Itemはありません。', 'kp-muted', nowSection);
       else (t.now?.items || []).forEach(w => renderCandidate(w, nowSection, 'NOW'));
 
       const nextSection = part('NEXT');
       if (t.next?.kind === 'none') add('p', '次候補はありません。', 'kp-muted', nextSection);
       else (t.next?.items || []).forEach(w => renderCandidate(w, nextSection, 'NEXT'));
 
-      if (v2) {
+      if (v2 || v3) {
         const scheduled = part('SCHEDULED');
         if (!(t.scheduled || []).length) add('p', '今日の時間付き配置はありません。', 'kp-muted', scheduled);
         else (t.scheduled || []).forEach(w => renderCandidate(w, scheduled, 'SCHEDULED'));
@@ -192,20 +212,25 @@
         if (!(t.waiting || []).length) add('p', '待ち項目はありません。', 'kp-muted', waiting);
         else (t.waiting || []).forEach(w => renderCandidate(w, waiting, 'WAITING'));
 
-        const notFit = part('NOT FIT TODAY');
-        add('p', `${t.not_fit_today_count}件 · 所要時間は分かっているが今日の確定枠には入らない候補`, 'kp-muted', notFit);
-        if (!(t.not_fit_today || []).length) add('p', '入らなかった候補はありません。', 'kp-muted', notFit);
-        else (t.not_fit_today || []).forEach(w => renderCandidate(w, notFit, 'LATER'));
+        if (v2) {
+          const notFit = part('NOT FIT TODAY');
+          add('p', `${t.not_fit_today_count}件 · 所要時間は分かっているが今日の確定枠には入らない候補`, 'kp-muted', notFit);
+          if (!(t.not_fit_today || []).length) add('p', '入らなかった候補はありません。', 'kp-muted', notFit);
+          else (t.not_fit_today || []).forEach(w => renderCandidate(w, notFit, 'LATER'));
 
-        const availability = fold('AVAILABLE / Calendar');
-        if (t.calendar_state?.unknown_count) add('p', `未分類/不明のCalendar予定 ${t.calendar_state.unknown_count}件は空き時間扱いしていません。`, 'kp-notice', availability);
-        if (!t.availability?.length) add('p', '現在、安全に確定できる空き時間はありません。', 'kp-muted', availability);
-        else t.availability.forEach(slot => add('p', `${fmt(slot.start)}–${fmt(slot.end)}`, 'kp-muted', availability));
+          const availability = fold('AVAILABLE / Calendar');
+          if (t.calendar_state?.unknown_count) add('p', `未分類/不明のCalendar予定 ${t.calendar_state.unknown_count}件は空き時間扱いしていません。`, 'kp-notice', availability);
+          if (!t.availability?.length) add('p', '現在、安全に確定できる空き時間はありません。', 'kp-muted', availability);
+          else t.availability.forEach(slot => add('p', `${fmt(slot.start)}–${fmt(slot.end)}`, 'kp-muted', availability));
 
-        const meta = fold('Dynamic Daily Planning v2の判定範囲');
-        add('p', 'Notion Work ItemのOperational state / Priority / Deadline / Scheduledと、Humanの当日意向・Human Estimate・確認済みCalendar拘束を使用。AI duration推定・Energy・UI scoreは使っていません。', 'kp-muted', meta);
-        add('p', `Human preference ${t.preference_count}件 · Daily Estimate ${t.daily_estimate_count}件 · Estimate確認待ち ${t.missing_estimate_count}件`, 'kp-muted', meta);
-        add('p', `Active ${t.active_count} · Done ${t.done_count} · Cancelled ${t.cancelled_count}`, 'kp-muted', meta);
+          const meta = fold('Dynamic Daily Planning v2の判定範囲');
+          add('p', 'Notion Work ItemのOperational state / Priority / Deadline / Scheduledと、Humanの当日意向・Human Estimate・確認済みCalendar拘束を使用。AI duration推定・Energy・UI scoreは使っていません。', 'kp-muted', meta);
+          add('p', `Human preference ${t.preference_count}件 · Daily Estimate ${t.daily_estimate_count}件 · Estimate確認待ち ${t.missing_estimate_count}件`, 'kp-muted', meta);
+          add('p', `Active ${t.active_count} · Done ${t.done_count} · Cancelled ${t.cancelled_count}`, 'kp-muted', meta);
+        } else {
+          const meta = fold('Kaz OS v3の判定範囲');
+          add('p', 'WorkBusyのBUSYとFamily Calendarの（父）timed予定だけを拘束として統合。all-day、他家族タグ、無タグ予定はワイの空き時間を潰しません。', 'kp-muted', meta);
+        }
       } else {
         const availability = part('AVAILABLE');
         if (t.calendar_state?.unknown_count) add('p', `未分類/不明のCalendar予定 ${t.calendar_state.unknown_count}件は空き時間扱いしていません。`, 'kp-notice', availability);
