@@ -178,8 +178,11 @@
     if (schema === 'kaz-os-dashboard-v3') {
       const today = value.today;
       if (!today || ['now', 'next', 'scheduled', 'kaz_free_windows', 'company_free_windows',
-        'personal_free_windows', 'waiting'].some(key => !Array.isArray(today[key])
+        'personal_free_windows', 'waiting', 'confirmations'].some(key => !Array.isArray(today[key])
           || today[key].length > 200)
+          || today.confirmations.length > 30
+          || today.confirmations.some(item => !item || !humanKinds.has(item.kind)
+            || item.decision_status !== 'pending')
           || today.company_free_windows.length !== 0
           || ['kaz_free_windows', 'company_free_windows', 'personal_free_windows'].some(key =>
             today[key].some(window => !window

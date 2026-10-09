@@ -341,7 +341,9 @@ async function main() {
     const dashboard = { schema_version: 'kaz-os-dashboard-v3',
       generated_at: '2026-10-07T12:00:00+00:00', status: 'CURRENT', sources,
       today: { now: [], next: [], scheduled: [], kaz_free_windows: [], company_free_windows: [],
-        personal_free_windows: [], waiting: [] }, work: [], projects: [], capa: [] };
+        personal_free_windows: [], waiting: [],
+        confirmations: [{ kind: 'human_review', decision_status: 'pending' }] },
+      work: [], projects: [], capa: [] };
     const inbox = { schema_version: 'kaz-os-inbox-v3',
       generated_at: dashboard.generated_at, status: 'CURRENT', sources,
       inbox_items: [{ kind: 'calendar_impact_triage', decision_status: 'pending' },
@@ -379,6 +381,11 @@ async function main() {
     const invalid = load(async () => response(200, { ...dashboard, today: null }));
     await assert.rejects(invalid.create({ config }).dashboardV3(),
       error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+    const missingConfirmations = { ...dashboard, today: { ...dashboard.today } };
+    delete missingConfirmations.today.confirmations;
+    await assert.rejects(load(async () => response(200, missingConfirmations))
+      .create({ config }).dashboardV3(),
+    error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
     const validWindow = { start: '2026-10-07T12:30:00+09:00',
       end: '2026-10-07T13:00:00+09:00', duration_min: 30,
       suggestions: [{ title: '資料確認', estimate_min: 30 }] };
