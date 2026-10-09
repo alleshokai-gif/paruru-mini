@@ -9,7 +9,7 @@
     return node;
   };
   const rows = value => Array.isArray(value) ? value : [];
-  const label = item => item?.title || item?.next_action || item?.work_id || item?.id || '内容未取得';
+  const label = item => item?.title || item?.short_title || item?.question || item?.next_action || item?.work_id || item?.id || '内容未取得';
   const time = value => {
     const parsed = Date.parse(value);
     return Number.isFinite(parsed) ? new Intl.DateTimeFormat('ja-JP', {
@@ -73,7 +73,7 @@
     text(header, 'h2', 'Kaz OS v3 Snapshot Preview');
     text(header, 'p', `Build ${globalThis.BUILD_ID || 'unknown'} · Human Review前の検証画面`, 'kv3-muted');
     const nav = text(host, 'nav', '', 'kv3-nav');
-    for (const [key, name] of [['today', '今日'], ['work', 'やること'], ['inbox', '確認']]) {
+    for (const [key, name] of [['today', 'TODAY'], ['work', 'WORK'], ['projects', 'PROJECTS'], ['capa', 'CAPA']]) {
       const anchor = text(nav, 'a', name);
       anchor.href = key === 'today' ? '#kaz-os/v3' : `#kaz-os/v3/${key}`;
       if (page === key) anchor.setAttribute('aria-current', 'page');
@@ -87,20 +87,22 @@
     text(body, 'p', 'Snapshotを読込中…', 'kv3-loading');
     const started = performance.now();
     try {
-      const snapshot = page === 'inbox' ? await inboxApi() : await dashboardApi();
+      const snapshot = await dashboardApi();
       if (!current()) return;
       body.replaceChildren();
       const elapsed = Math.round(performance.now() - started);
       const state = text(body, 'p', `${snapshot.status} · 生成 ${time(snapshot.generated_at)} · GET ${elapsed}ms`, 'kv3-state');
       state.dataset.snapshotStatus = snapshot.status;
       renderSources(body, snapshot.sources);
-      if (page === 'inbox') {
-        renderItems(body, 'Human Review', snapshot.inbox_items, '判断待ちはありません');
-        text(body, 'p', '回答の保存は現行INBOXで行います。', 'kv3-muted');
-      } else if (page === 'work') {
+      if (page === 'work') {
         renderItems(body, 'Work', snapshot.work, 'Workはありません');
+      } else if (page === 'projects') {
+        renderItems(body, 'Projects', snapshot.projects, 'Projectはありません');
+      } else if (page === 'capa') {
+        renderItems(body, 'CAPA', snapshot.capa, 'CAPAはありません');
       } else {
         renderWindows(body, '🟢 ワイの空き時間', snapshot.today.kaz_free_windows);
+        renderItems(body, '確認', snapshot.today.confirmations, '判断待ちはありません');
         renderItems(body, 'NOW', snapshot.today.now, '今すぐの候補なし');
         renderItems(body, 'NEXT', snapshot.today.next, '次の候補なし');
         renderItems(body, '今日の予定', snapshot.today.scheduled, '予定なし');
