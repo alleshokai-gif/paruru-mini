@@ -45,6 +45,19 @@ function inboxDto() {
     writes: { notion: 0, calendar: 0, context: 0 } };
 }
 
+function contextDto() {
+  return { schema_version: 'kaz-context-observatory-v1', mode: 'read_only',
+    generated_at: '2026-10-10T08:00:00+09:00',
+    totals: { raw: 5, raw_hold: 1, decision_candidate: 2, pain_point: 1, lesson: 0, experience: 1, core_candidate: 0 },
+    by_route: [{ route: 'DECISION_CANDIDATE', count: 2 }],
+    by_topic: [{ topic: 'ai_development', count: 5 }],
+    recent: [{ intake_id: 'raw-a', captured_at: '2026-10-10T08:00:00+09:00',
+      route: 'DECISION_CANDIDATE', topics: ['ai_development'], importance: 'high', text: '決定' }],
+    attention: { raw_hold_count: 1, high_importance_recent_count: 1 },
+    source: { status: 'ok', complete: true, source_revision: 'a'.repeat(40) },
+    writes: { raw: 0, intermediate: 0, canonical: 0, notion: 0, calendar: 0 } };
+}
+
 function response(status, body, timing = 'firebase;dur=10, actor;dur=20, upstream;dur=30, serialize;dur=1, total;dur=61') {
   return {
     ok: status >= 200 && status < 300,
@@ -112,6 +125,7 @@ async function main() {
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.work, 'DIRECT_V2');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.today, 'GAS');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.inbox, 'DIRECT_V2');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.context, 'DIRECT_V2');
 
     const canaryContext = { globalThis: null, Object,
       location: { search: '?paluru_read_transport_phase2_canary=1' } };
@@ -415,6 +429,21 @@ async function main() {
     await assert.rejects(load(async () => response(200, missingExplanation))
       .create({ config }).dashboardV3(),
     error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+  }
+
+  {
+    const calls = [];
+    const harness = load(async (url, options) => {
+      calls.push({ url, options });
+      return response(200, contextDto());
+    });
+    const config = { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+      routeModes: { context: 'DIRECT_V2' } };
+    assert.deepEqual(await harness.create({ config }).context(), contextDto());
+    assert.equal(calls.at(-1).url, 'https://reader.example.test/v2/read/context');
+    const invalid = { ...contextDto(), writes: { raw: 1, intermediate: 0, canonical: 0, notion: 0, calendar: 0 } };
+    await assert.rejects(load(async () => response(200, invalid)).create({ config }).context(),
+      error => error.code === 'CONTEXT_OBSERVATORY_CONTRACT_INVALID');
   }
 
   assert(appSource.includes('selectedKazOsReadTransport_("projects") === "DIRECT_V2"'), 'Projects selector missing');
