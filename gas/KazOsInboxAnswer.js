@@ -391,7 +391,17 @@ function buildKazOsCandidateReviewProposal_(question, request) {
 function buildKazOsControlledProposal_(question, answer, proposalId) {
   const selected = answer.selected_option;
   let change;
-  if (question.kind === 'calendar_event_impact') {
+  if (question.contract === 'gardener-phase-review-1') {
+    change = { kind: 'GARDENER_HUMAN_REVIEW', review_kind: question.kind,
+      candidate_ref: question.candidate_ref, candidate_source: question.candidate_source,
+      candidate_revision: question.entity_revision, decision: selected,
+      apply_status: selected === 'ACCEPT' ? 'APPROVED_PROPOSAL'
+        : selected === 'APPROVE_APPLY' ? 'READY_FOR_CONTROLLED_APPLY'
+        : selected === 'APPROVE_MERGE' ? 'MERGE_APPROVED_PHASE6'
+        : selected === 'READY_FOR_REVIEW' ? 'READY_FOR_REVIEW_REQUESTED'
+        : selected === 'ROLLBACK' ? 'ROLLBACK_REQUESTED'
+        : selected === 'HOLD' ? 'HOLD' : 'NO_APPLY' };
+  } else if (question.kind === 'calendar_event_impact') {
     const eventRef = question.calendar_event && question.calendar_event.ref;
     if (!eventRef) throw homeMembershipError_('KAZ_ANSWER_INVALID');
     if (selected === 'partial') change = { kind: 'FOLLOWUP_REQUIRED', follow_up: 'calendar_partial_window',

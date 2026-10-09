@@ -8,7 +8,7 @@ async function main() {
   const pair = create();
   const listeners = new Map();
   const rendered = [];
-  const calls = { dashboard: 0, inbox: 0, v2: 0 };
+  const calls = { dashboard: 0, inbox: 0, v2: 0, answer: 0 };
   const on = (name, fn) => listeners.set(name, [...(listeners.get(name) || []), fn]);
   const emit = (name, detail) => (listeners.get(name) || []).forEach(fn => fn({ detail }));
   const nav = { hidden: true };
@@ -36,7 +36,7 @@ async function main() {
     KazPersonalView: { route() {
       throw Error('normal four-tab navigation must not use v2 routing');
     },
-      render(_host, selection, data) { rendered.push({ selection, data }); } },
+      render(_host, selection, data, _now, options) { rendered.push({ selection, data, options }); } },
   });
   vm.runInContext(fs.readFileSync('features/kaz-os/navigation.js', 'utf8'), context);
   emit('paruru:authenticated', {
@@ -44,6 +44,7 @@ async function main() {
     kazOsTodayApi: async () => { calls.v2++; return pair.dashboard.component_data.today; },
     kazOsV3DashboardApi: async () => { calls.dashboard++; return pair.dashboard; },
     kazOsV3InboxApi: async () => { calls.inbox++; return pair.inbox; },
+    kazOsInboxAnswerApi: async answer => { calls.answer++; return { answer, inbox: pair.inbox }; },
   });
   const pending = [];
   emit('kaz-os:opened', { waitUntil: promise => pending.push(promise) });
@@ -53,6 +54,7 @@ async function main() {
   assert.equal(calls.inbox, 0);
   assert.equal(calls.dashboard, 2); // Authentication render plus opened render.
   assert.equal(rendered.at(-1).selection.page, 'today');
+  assert.equal(typeof rendered.at(-1).options.answerApi, 'function');
   assert.deepEqual(rendered.at(-1).data.today, {
     ...pair.dashboard.component_data.today.today,
     confirmations: pair.dashboard.today.confirmations,
@@ -66,7 +68,7 @@ async function main() {
     await Promise.all(reads);
     assert.equal(rendered.at(-1).selection.page, page);
   }
-  assert.deepEqual(calls, { dashboard: 5, inbox: 0, v2: 0 });
+  assert.deepEqual(calls, { dashboard: 5, inbox: 0, v2: 0, answer: 0 });
   for (const page of ['today', 'work', 'projects', 'capa']) {
     context.location.hash = `#kaz-os/${page}`;
     const normalReads = [];
@@ -79,7 +81,7 @@ async function main() {
     ['today', 'work', 'projects', 'capa']);
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.href),
     ['today', 'work', 'projects', 'capa'].map(page => `#kaz-os/${page}`));
-  assert.deepEqual(calls, { dashboard: 9, inbox: 0, v2: 0 });
+  assert.deepEqual(calls, { dashboard: 9, inbox: 0, v2: 0, answer: 0 });
   console.log('PASS hidden and normal four-tab routes use Snapshot GET only');
 }
 

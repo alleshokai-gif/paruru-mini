@@ -335,6 +335,8 @@
         const options = selection.page === 'inbox' ? {
           answerApi: controlledInbox(data) ? inboxAnswerApi : null,
           projectsApi: async () => globalThis.KazV3ComponentData.dashboard(await v3DashboardApi(), 'projects'),
+        } : selection.page === 'today' ? {
+          answerApi: typeof inboxAnswerApi === 'function' ? inboxAnswerApi : null,
         } : {};
         globalThis.KazPersonalView.render(host, selection, data, Date.now(), options);
       } catch (_) {

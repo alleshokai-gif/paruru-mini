@@ -54,6 +54,11 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 assert.match(navigation, /KazV3ComponentData\.dashboard/);
 assert.match(navigation, /KazV3ComponentData\.inbox/);
 assert.match(navigation, /KazPersonalView\.render\(host, selection, data, Date\.now\(\), options\)/);
+assert.match(navigation, /selection\.page === 'today' \? \{[\s\S]*answerApi:/,
+  'V3 TODAY must receive the shared Human Answer API');
+const personalSource = fs.readFileSync(path.join(__dirname, '..', 'features/kaz-os/personal.js'), 'utf8');
+assert.match(personalSource, /gardener-phase-review-1/);
+assert.match(personalSource, /DURABLE_PERSISTED/);
 assert.doesNotMatch(navigation, /KazV3Preview\?\.render/);
 assert.match(navigation, /if \(selection\.page === 'today'\) await renderToday\(selection\)/,
   'rollback v2 reader must remain available');
