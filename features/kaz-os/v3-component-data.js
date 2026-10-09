@@ -12,20 +12,9 @@
     if (snapshot?.schema_version !== 'kaz-os-dashboard-v3'
         || !snapshot.component_data || !['today', 'work', 'projects', 'capa'].includes(page)
         || !snapshot.component_data[page]) throw Error('KAZ_V3_COMPONENT_DATA_UNAVAILABLE');
-    let view = snapshot.component_data[page];
+    const view = snapshot.component_data[page];
     const sources = { ...view.sources };
     if (page === 'today') {
-      view = {
-        ...view,
-        schema_version: 'kaz-os-dashboard-v3-component',
-        today: {
-          ...view.today,
-          kaz_free_windows: snapshot.today.kaz_free_windows,
-          confirmations: snapshot.today.confirmations || [],
-          company_free_windows: [],
-          calendar_free_windows: snapshot.today.personal_free_windows,
-        },
-      };
       sources.work_items = source(sources.work_items, snapshot.sources?.today);
       sources.calendar = source(sources.calendar, snapshot.sources?.calendar);
       sources.work_busy = source(sources.work_busy, snapshot.sources?.work_busy);
