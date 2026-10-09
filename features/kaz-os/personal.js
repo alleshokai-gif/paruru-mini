@@ -177,6 +177,36 @@
           const row = add('article', '', 'kp-work-row', confirmations);
           add('strong', item.short_title || item.title || item.question || item.id || '確認事項', '', row);
           if (item.kind) add('p', item.kind, 'kp-muted', row);
+          if (item.contract === 'gardener-phase-review-1' && typeof options.answerApi === 'function'
+              && Array.isArray(item.answer_contract?.choices) && item.answer_contract.choices.length) {
+            const actions = add('div', '', 'kp-confirm-actions', row);
+            const status = add('p', '', 'kp-muted', row);
+            item.answer_contract.choices.forEach(choice => {
+              const button = add('button', choice.label || choice.value, 'kp-confirm-button', actions);
+              button.type = 'button';
+              button.addEventListener('click', async () => {
+                actions.querySelectorAll('button').forEach(value => { value.disabled = true; });
+                status.textContent = '保存中…';
+                try {
+                  const key = 'gardener-' + (globalThis.crypto?.randomUUID?.() || String(Date.now()));
+                  const result = await options.answerApi({
+                    decision_id: item.id,
+                    question_revision: item.question_revision,
+                    source_revision_references: item.source_revision_references,
+                    selected_option: choice.value,
+                    reason: null,
+                    idempotency_key: key,
+                  });
+                  if (!result?.answer || result.answer.persistence_status !== 'DURABLE_PERSISTED') throw Error('KAZ_PERSISTENCE_FAILED');
+                  status.textContent = '✓ 保存済み';
+                  actions.hidden = true;
+                } catch (error) {
+                  status.textContent = '保存できませんでした。再取得して確認してください。';
+                  actions.querySelectorAll('button').forEach(value => { value.disabled = false; });
+                }
+              });
+            });
+          }
         });
         add('p', `今日の3つ · ${focusCount}/3`, 'kp-muted');
       } else if (v2) {
