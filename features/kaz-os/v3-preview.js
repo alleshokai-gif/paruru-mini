@@ -39,16 +39,19 @@
     });
   }
 
-  function renderWindows(host, title, windows) {
+  function renderWindows(host, title, windows, empty = '利用可能な時間枠は未取得') {
     const section = text(host, 'section', '', 'kv3-section');
     text(section, 'h3', title);
     if (!rows(windows).length) {
-      text(section, 'p', '利用可能な時間枠は未取得', 'kv3-muted');
+      text(section, 'p', empty, 'kv3-muted');
       return;
     }
     rows(windows).slice(0, 30).forEach(window => {
       const card = text(section, 'article', '', 'kv3-window');
       text(card, 'strong', `${time(window.start)} – ${time(window.end)} · ${window.duration_min ?? '?'}分`);
+      if (window.constraints) {
+        text(card, 'small', Object.values(window.constraints).join(' · '), 'kv3-muted');
+      }
       if (rows(window.suggestions).length) renderItems(card, 'この枠でできる候補', window.suggestions);
       else text(card, 'p', '条件に合うWorkはなし', 'kv3-muted');
     });
@@ -97,12 +100,16 @@
       } else if (page === 'work') {
         renderItems(body, 'Work', snapshot.work, 'Workはありません');
       } else {
+        renderWindows(body, '🟢 ワイの空き時間', snapshot.today.kaz_free_windows);
         renderItems(body, 'NOW', snapshot.today.now, '今すぐの候補なし');
         renderItems(body, 'NEXT', snapshot.today.next, '次の候補なし');
         renderItems(body, '今日の予定', snapshot.today.scheduled, '予定なし');
-        renderWindows(body, '会社の空き時間', snapshot.today.company_free_windows);
-        renderWindows(body, '予定の空き時間', snapshot.today.personal_free_windows);
         renderItems(body, 'WAITING', snapshot.today.waiting, '待機中のWorkなし');
+        const details = text(body, 'details', '', 'kv3-breakdown');
+        text(details, 'summary', '内訳');
+        renderWindows(details, '会社の空き時間', snapshot.today.company_free_windows,
+          '勤務window未定義のため算出なし');
+        renderWindows(details, '予定の空き時間', snapshot.today.personal_free_windows);
       }
     } catch (error) {
       if (!current()) return;
