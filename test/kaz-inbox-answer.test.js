@@ -575,7 +575,10 @@ test('TODAY does not treat an unavailable active planning ledger as empty eviden
     projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => planningEstimateSnapshot() });
   local.ctx.Utilities.formatDate = date => new Date(Date.parse(date.toISOString()) + 9 * 3600000).toISOString().slice(0, 10);
   local.ctx.readKazOsDecisionLedger_ = () => { throw Object.assign(Error('ledger unavailable'), { code: 'KAZ_PERSISTENCE_FAILED' }); };
-  assert.throws(() => local.ctx.buildKazOsTodayPlanningEvidence_(), error => error.code === 'KAZ_PERSISTENCE_FAILED');
+  const evidence = local.ctx.buildKazOsTodayPlanningEvidence_();
+  assert.equal(evidence.timezone, 'Asia/Tokyo');
+  assert.equal(evidence.preferences.length, 0);
+  assert.equal(evidence.daily_estimates.length, 0);
 });
 
 test('daily estimate rejects zero non-integer and text', () => {

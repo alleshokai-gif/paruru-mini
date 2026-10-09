@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261009-kaz-os-v3-phase4-cutover-v1");
-// Release: v20261009-kaz-os-v3-phase4-cutover-v1
+importScripts("./build.js?v=v20261009-kaz-os-v3-gardener-review-v1");
+// Release: v20261009-kaz-os-v3-gardener-review-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
