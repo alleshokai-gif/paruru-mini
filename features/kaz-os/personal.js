@@ -63,7 +63,7 @@
     return result;
   }
   function route(hash) {
-    const match = /^#kaz-os(?:\/(today|work|projects|capa|inbox)(?:\/([^/]+))?)?$/.exec(hash || '');
+    const match = /^#kaz-os(?:\/(today|work|projects|capa|context|inbox)(?:\/([^/]+))?)?$/.exec(hash || '');
     if (!match) return { page: 'today', id: null };
     const page = match[1] || 'today';
     let id = null;
@@ -71,7 +71,7 @@
     return { page, id };
   }
   function render(host, selection, data, now = Date.now(), options = {}) {
-    if (!selection || !['today', 'work', 'projects', 'capa', 'inbox'].includes(selection.page)) selection = { page: 'today', id: null };
+    if (!selection || !['today', 'work', 'projects', 'capa', 'context', 'inbox'].includes(selection.page)) selection = { page: 'today', id: null };
     todayView?.dispose(host);
     inboxView?.dispose(host);
     host.replaceChildren();
@@ -424,6 +424,66 @@
       });
       return;
     }
+    if (selection.page === 'context') {
+      const head = part('CONTEXT');
+      add('p', 'Context Hubの育ち方を眺める。表示専用。', 'kp-subtitle', head);
+      const source = data?.source || data?.sources?.context_observatory || null;
+      if (!data || data.schema_version !== 'kaz-context-observatory-v1' || data.mode !== 'read_only'
+          || !data.totals || !source || source.status !== 'ok' || source.complete !== true) {
+        add('p', 'Context Observatoryを取得できません。0件ではありません。', 'kp-notice', head);
+        return;
+      }
+      const totals = data.totals;
+      const kpis = add('div', '', 'kp-kpis kc-kpis', head);
+      [
+        ['RAW', totals.raw],
+        ['HOLD', totals.raw_hold],
+        ['DECISION', totals.decision_candidate],
+        ['PAIN', totals.pain_point],
+        ['LESSON', totals.lesson],
+      ].forEach(([label, count]) => {
+        const box = add('div', '', '', kpis);
+        add('strong', String(count ?? 0), '', box);
+        add('span', label, '', box);
+      });
+      const generated = Number.isFinite(stamp(data.generated_at))
+        ? new Date(data.generated_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST'
+        : '生成時刻未確認';
+      add('p', `実データ · GitHub / READ-ONLY · ${generated}`, 'kp-muted', head);
+
+      const topics = part('Topic');
+      if (!(data.by_topic || []).length) add('p', 'Topic集計はまだありません。', 'kp-muted', topics);
+      else {
+        const rows = add('div', '', 'kc-topic-list', topics);
+        (data.by_topic || []).forEach(item => {
+          const row = add('div', '', 'kc-topic-row', rows);
+          add('span', item.topic || 'other', '', row);
+          add('strong', String(item.count ?? 0), '', row);
+        });
+      }
+
+      const attention = part('要確認');
+      const hold = data.attention?.raw_hold_count ?? totals.raw_hold ?? 0;
+      const high = data.attention?.high_importance_recent_count ?? 0;
+      add('p', hold ? `RAW HOLD ${hold}件` : 'RAW HOLDなし', hold ? 'kp-notice' : 'kp-muted', attention);
+      if (high) add('p', `最近のHigh importance ${high}件`, 'kp-muted', attention);
+
+      const recent = part('最近のContext');
+      if (!(data.recent || []).length) add('p', '最近のContextはありません。', 'kp-muted', recent);
+      else (data.recent || []).forEach(item => {
+        const row = add('article', '', 'kp-work-row kc-context-row', recent);
+        const top = add('div', '', 'kp-project-head', row);
+        top.append(el('strong', item.text || 'Context'));
+        top.append(el('span', item.route || 'UNKNOWN', 'kp-badge kp-unknown'));
+        const when = Number.isFinite(stamp(item.captured_at))
+          ? new Date(item.captured_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})
+          : '時刻未確認';
+        add('p', `${when} · ${(item.topics || []).join(' / ') || 'other'}`, 'kp-muted', row);
+      });
+      add('p', 'RawとIntermediateは自動整理用。Canonical化はGardenerのHuman Reviewを通します。', 'kp-muted');
+      return;
+    }
+
     if (selection.page === 'inbox') {
       if (inboxView) inboxView.render(host, selection, data, now, { ...options, health, workDetail });
       else host.textContent = 'INBOXの表示moduleを再取得してください。';
