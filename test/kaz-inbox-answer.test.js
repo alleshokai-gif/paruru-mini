@@ -107,6 +107,37 @@ function candidateSnapshot() {
   return value;
 }
 
+
+function gardenerReviewSnapshot(kind = 'GARDENER_IMPROVEMENT', decisions = ['ACCEPT','REJECT','HOLD']) {
+  const value = snapshot();
+  const candidateRef = 'kaz-pattern://PAT-123456789ABC@' + 'd'.repeat(64);
+  const revisionSeed = candidateRef + '\u0000' + 'd'.repeat(64) + '\u0000' + decisions.join('\u0000');
+  const sha = input => crypto.createHash('sha256').update(input).digest('hex');
+  const questionRevision = 'question-sha256:' + sha(revisionSeed);
+  const id = 'gardener-review-' + sha(candidateRef + '\u0000' + 'd'.repeat(64)).slice(0,20);
+  const choices = decisions.map(value => ({ value, label: value, effect: 'Human Review decision only' }));
+  value.inbox_items = [{
+    id, kind, contract: 'gardener-phase-review-1', owner: 'kaz',
+    decision_requested: true, decision_status: 'pending', write_allowed: false,
+    title: 'Gardener review', short_title: 'Gardener review', question: 'Gardener review',
+    reason: '', impact: '', estimate_min: 3, affects_today: false, urgent_today: false,
+    decision_date: null, due_at: null, project_id: null, entity_ref: 'PatternWiki/PAT-123456789ABC',
+    candidate_ref: candidateRef, candidate_source: 'PATTERN_CANDIDATE',
+    source_label: 'Context Gardener', entity_revision: 'd'.repeat(64),
+    question_revision: questionRevision,
+    source_revision_references: {
+      projects: value.sources.projects.source_revision,
+      work_items: value.sources.tasks.source_revision,
+      calendar: value.sources.calendar.source_revision,
+    },
+    answer_contract: { inbox_item_id: id, question_revision: questionRevision,
+      question: 'Gardener review', choices },
+    calendar_event: null, input_contract: null, selection_mode: null, selection_options: null,
+    recommended_option: null, recommendation_basis: null,
+  }];
+  return value;
+}
+
 let value = snapshot();
 function harness(rows) {
   const h = createHarness({ root, answerEnabled: true, decisionLedgerRows: rows,
@@ -193,6 +224,27 @@ test('read-back-verified Answer requests v3 rebuild; request failure preserves A
   assert.equal(afterFailure.data.v3_rebuild.status, 'request_failed');
   assert.equal(failed.rows.Kaz_OS_Decision_Ledger.length, 2);
 });
+
+test('Gardener Phase review is sanitized, persisted in shared ledger, and removed after answer', () => {
+  const gardener = gardenerReviewSnapshot();
+  const gh = createHarness({ root, answerEnabled: true, decisionLedgerRows: null, inboxProvider: () => gardener });
+  gh.setupDecisionLedger(); gh.resetStats();
+  const preflight = gh.call(gh.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
+  assert(preflight.success, JSON.stringify(preflight));
+  const item = preflight.data.inbox_items[0];
+  assert.equal(item.contract, 'gardener-phase-review-1');
+  const result = request(gh, item, 'ACCEPT', 'gardener-review-0001');
+  assert(result.success, JSON.stringify(result));
+  assert.equal(result.data.answer.persistence_status, 'DURABLE_PERSISTED');
+  assert.equal(result.data.proposal.change.kind, 'GARDENER_HUMAN_REVIEW');
+  assert.equal(result.data.proposal.change.review_kind, 'GARDENER_IMPROVEMENT');
+  assert.equal(result.data.proposal.change.decision, 'ACCEPT');
+  assert.equal(result.data.proposal.change.apply_status, 'APPROVED_PROPOSAL');
+  assert.equal(result.data.proposal.change.candidate_ref, gardener.inbox_items[0].candidate_ref);
+  assert.equal(result.data.inbox.inbox_items.length, 0);
+  assert.equal(gh.rows.Kaz_OS_Decision_Ledger.length, 2);
+});
+
 test('Generic Candidate WORK stores one answer and a read-only CREATE_WORK proposal after exact revision checks',()=>{
   const candidate=candidateSnapshot(),harness=createHarness({root,answerEnabled:true,decisionLedgerRows:null,inboxProvider:()=>candidate});
   harness.setupDecisionLedger();harness.resetStats();harness.props.KAZ_OS_INBOX_READ_URL='https://gateway.example/v1/inbox';harness.props.KAZ_OS_PROGRESS_READ_TOKEN='x'.repeat(40);
