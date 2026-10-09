@@ -1069,6 +1069,7 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsInboxApi: callAuthenticatedKazOsInbox_,
       kazOsV3DashboardApi: callAuthenticatedKazOsV3Dashboard_,
       kazOsV3InboxApi: callAuthenticatedKazOsV3Inbox_,
+      kazOsContextApi: callAuthenticatedKazOsContext_,
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
       nurseOkanCommentApi: callNurseOkanComment_,
@@ -5383,6 +5384,7 @@ async function callDirectKazOsRead_(kind, requestId) {
   if (kind === "inbox") return client.inbox(requestId ? { requestId } : undefined);
   if (kind === "dashboardV3") return client.dashboardV3();
   if (kind === "inboxV3") return client.inboxV3();
+  if (kind === "context") return client.context();
   throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
 }
 
@@ -5393,6 +5395,15 @@ async function callAuthenticatedKazOsV3Dashboard_() {
     throw createHomeControlError("FORBIDDEN");
   }
   return callDirectKazOsRead_("dashboardV3");
+}
+
+async function callAuthenticatedKazOsContext_() {
+  if (!isViewAllowed_("kaz-os")
+      || activeMembershipContext?.role !== "admin"
+      || selectedKazOsReadTransport_("context") !== "DIRECT_V2") {
+    throw createHomeControlError("FORBIDDEN");
+  }
+  return callDirectKazOsRead_("context");
 }
 
 async function callAuthenticatedKazOsV3Inbox_() {

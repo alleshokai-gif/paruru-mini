@@ -1,2 +1,2 @@
-// Gardener Human Review bridge into Kaz OS v3 TODAY confirmations.
-globalThis.BUILD_ID = "v20261009-kaz-os-v3-gardener-review-v1";
+// Kaz OS Context Observatory read-only dashboard.
+globalThis.BUILD_ID = "v20261010-kaz-os-context-observatory-v1";

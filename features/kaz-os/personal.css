@@ -93,3 +93,11 @@
 .kiq-warning,.kiq-error{font-size:12px;margin:6px 0;padding-top:4px;padding-bottom:4px}.kiq-warning[hidden],.kiq-error[hidden]{display:none}
 .kiq-text-button{width:auto;flex:0 0 auto;border:0;background:transparent;box-shadow:none;padding:5px 4px;min-height:48px;min-width:48px;font-size:13px;color:#64736c;text-decoration:underline;cursor:pointer}.kiq-text-button:focus-visible,.kiq-title-link:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
 .kiq-answered{padding:5px 0}.kiq-saved-title{font-size:13px;margin:0;color:#53675b}.kiq-saved{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:#2e715b}.kiq-footer{margin:8px 0}.kiq-local-note{font-size:11px;color:#64736c;line-height:1.4;margin:5px 0}.kiq-all{display:inline-flex;align-items:center;min-height:48px;color:#2e715b;font-size:13px}.kiq-feedback{margin:4px 0}.kiq-feedback:empty{display:none}.kiq-feedback-text{font-size:12px;line-height:1.4;color:#2e715b;margin:0}
+
+/* Context Observatory stays compact and read-only. */
+.kc-kpis{gap:14px 18px}
+.kc-topic-list{border-top:1px solid #d9e1df}
+.kc-topic-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:8px 0;border-bottom:1px solid #e2e8e4;font-size:14px}
+.kc-topic-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#355348}
+.kc-topic-row>strong{font-variant-numeric:tabular-nums;font-size:16px;color:#174b3b}
+.kc-context-row .kp-project-head>strong{white-space:normal;overflow:visible;text-overflow:clip;font-size:14px;line-height:1.5}
