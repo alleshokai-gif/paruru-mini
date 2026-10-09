@@ -295,9 +295,10 @@
     }
     clear();
     if (globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED
-        && /^#kaz-os\/v3(?:\/(?:work|inbox))?$/.test(location.hash)) {
+        && /^#kaz-os\/v3(?:\/(?:work|projects|capa))?$/.test(location.hash)) {
       const page = location.hash.endsWith('/work') ? 'work'
-        : location.hash.endsWith('/inbox') ? 'inbox' : 'today';
+        : location.hash.endsWith('/projects') ? 'projects'
+        : location.hash.endsWith('/capa') ? 'capa' : 'today';
       const requestEpoch = previewEpoch;
       const current = () => requestEpoch === previewEpoch && allowed() && active() && !document.hidden;
       byId('kazOsView')?.setAttribute('aria-label', 'Kaz OS v3 Snapshot Preview');
