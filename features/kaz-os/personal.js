@@ -154,8 +154,23 @@
       const renderFreeWindows = (title, windows, emptyMessage) => {
         const section = part(title);
         section.classList.add('kp-free-section');
-        if (!windows?.length) { add('p', emptyMessage, 'kp-muted', section); return; }
-        windows.forEach(window => {
+        const visible = (windows || []).map(window => {
+          if (!v3) return window;
+          const startMs = Math.max(stamp(window.start), now);
+          const endMs = stamp(window.end);
+          if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs >= endMs) return null;
+          const durationMin = Math.floor((endMs - startMs) / 60000);
+          return {
+            ...window,
+            start: new Date(startMs).toISOString(),
+            duration_min: durationMin,
+            suggestions: (window.suggestions || []).filter(w =>
+              Number.isFinite(w.estimate_min) && w.estimate_min <= durationMin
+            ),
+          };
+        }).filter(Boolean);
+        if (!visible.length) { add('p', emptyMessage, 'kp-muted', section); return; }
+        visible.forEach(window => {
           const slot = add('article', '', 'kp-free-window', section);
           add('h3', `${fmt(window.start)}–${fmt(window.end)}　${window.duration_min}分`, 'kp-free-time', slot);
           if (!window.suggestions?.length) add('p', 'この枠に収まるEstimate付きWorkはありません。', 'kp-muted', slot);
