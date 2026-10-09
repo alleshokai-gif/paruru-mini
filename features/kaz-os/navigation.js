@@ -296,6 +296,8 @@
     clear();
     if (globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED
         && /^#kaz-os\/v3(?:\/(?:work|projects|capa))?$/.test(location.hash)) {
+      const legacyNav = byId('kazOsNav');
+      if (legacyNav) legacyNav.hidden = true;
       const page = location.hash.endsWith('/work') ? 'work'
         : location.hash.endsWith('/projects') ? 'projects'
         : location.hash.endsWith('/capa') ? 'capa' : 'today';
@@ -307,6 +309,8 @@
       await globalThis.KazV3Preview?.render(host, page, v3DashboardApi, v3InboxApi, current);
       return;
     }
+    const legacyNav = byId('kazOsNav');
+    if (legacyNav) legacyNav.hidden = false;
     const selection = globalThis.KazPersonalView.route(location.hash);
     const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', inbox: '確認待ち' }[selection.page] || 'やること・確認';
     byId('kazOsView')?.setAttribute('aria-label', pageLabel);
