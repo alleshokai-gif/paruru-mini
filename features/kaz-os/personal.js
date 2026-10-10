@@ -452,6 +452,7 @@
       const kpis = add('div', '', 'kp-kpis kc-kpis', head);
       [
         ['RAW', totals.raw],
+        ['SAVED', totals.saved_context],
         ['HOLD', totals.raw_hold],
         ['DECISION', totals.decision_candidate],
         ['PAIN', totals.pain_point],
@@ -495,7 +496,7 @@
           : '時刻未確認';
         add('p', `${when} · ${(item.topics || []).join(' / ') || 'other'}`, 'kp-muted', row);
       });
-      add('p', 'RawとIntermediateは自動整理用。Canonical化はGardenerのHuman Reviewを通します。', 'kp-muted');
+      add('p', 'Saved Contextは明示保存した即時参照Context。Raw/Intermediateは自動整理用。Gardenerが重複・統合・成熟を進め、Canonical/Core変更だけHuman Reviewを通します。', 'kp-muted');
       return;
     }
 

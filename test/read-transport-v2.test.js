@@ -48,7 +48,7 @@ function inboxDto() {
 function contextDto() {
   return { schema_version: 'kaz-context-observatory-v1', mode: 'read_only',
     generated_at: '2026-10-10T08:00:00+09:00',
-    totals: { raw: 5, raw_hold: 1, decision_candidate: 2, pain_point: 1, lesson: 0, experience: 1, core_candidate: 0 },
+    totals: { raw: 5, saved_context: 151, raw_hold: 1, decision_candidate: 2, pain_point: 1, lesson: 0, experience: 1, core_candidate: 0 },
     by_route: [{ route: 'DECISION_CANDIDATE', count: 2 }],
     by_topic: [{ topic: 'ai_development', count: 5 }],
     recent: [{ intake_id: 'raw-a', captured_at: '2026-10-10T08:00:00+09:00',
