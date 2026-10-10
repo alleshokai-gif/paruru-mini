@@ -220,9 +220,9 @@ test('answer persists one first-class Answer and one controlled proposal', () =>
   assert.equal(result.data.proposal.change.expires_at, nextJstDayBoundary(result.data.proposal.change.valid_from));
   assert.equal(result.data.proposal.change.permanent_priority_change, false);
   assert.equal(result.data.proposal.change.permanent_status_change, false);
-  assert.equal(result.data.proposal.status, 'APPLIED');
-  assert.equal(result.data.proposal.requires_separate_write_approval, false);
-  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [1, 0, 0]);
+  assert.equal(result.data.proposal.status, 'PROPOSED');
+  assert.equal(result.data.proposal.requires_separate_write_approval, true);
+  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
   assert.equal(result.data.inbox.inbox_items.length, 1); assert.equal(h.rows.Kaz_OS_Decision_Ledger.length, 2);
 });
 test('read-back-verified Answer requests v3 rebuild; request failure preserves Answer', () => {
@@ -516,7 +516,9 @@ test('daily estimate persists integer minutes and permanently updates Estimate M
   assert.equal(change.permanent_estimate_change, true);
   assert.equal(change.operational_mutation_receipt.status, 'VERIFIED');
   assert.equal(change.operational_mutation_receipt.after, 30);
-  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
+  assert.equal(result.data.proposal.status, 'APPLIED');
+  assert.equal(result.data.proposal.requires_separate_write_approval, false);
+  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [1, 0, 0]);
 });
 
 test('Work planning Today stores preference and estimate in one revision-bound answer', () => {
@@ -538,6 +540,9 @@ test('Work planning Today stores preference and estimate in one revision-bound a
   assert.equal(change.permanent_estimate_change, true);
   assert.equal(change.work_item_source_revision, 'mutation-revision-30');
   assert.equal(change.operational_mutation_receipt.status, 'VERIFIED');
+  assert.equal(result.data.proposal.status, 'APPLIED');
+  assert.equal(result.data.proposal.requires_separate_write_approval, false);
+  assert.equal(result.data.proposal.notion_write, 1);
   assert.equal(result.data.inbox.inbox_items.some(item => item.id === question.id), false);
   assert.equal(result.data.inbox.feedback.message, '✓ 回答・Work更新とも保存済み');
   value.work_items[0].revision = change.work_item_source_revision;
