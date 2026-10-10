@@ -312,7 +312,7 @@ function applyKazOsEstimateMutation_(question, request) {
     operation: 'UPDATE_ESTIMATE',
     work_item_id: question.entity_ref,
     expected_source_revision: question.entity_revision,
-    idempotency_key: request.idempotency_key + ':estimate',
+    idempotency_key: 'work-estimate-sha256:' + kazOsSha256_(request.idempotency_key + '\u0000' + question.entity_ref + '\u0000' + String(estimate)),
     value: estimate
   };
   let response;
