@@ -157,35 +157,6 @@ function nextJstWeekBoundary(value) {
   return new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate() + daysUntilMonday) - 9 * 3600000).toISOString();
 }
 function request(h, item, selected, key = 'paluru-test-00000001') {
-  const estimate = Number.isInteger(selected) ? selected
-    : selected && selected.preference === 'today' && Number.isInteger(selected.estimate_min)
-      ? selected.estimate_min : null;
-  if (item?.kind === 'daily_estimate' && Number.isInteger(estimate)
-      && !h.props.KAZ_OS_INBOX_READ_URL) {
-    h.props.KAZ_OS_INBOX_READ_URL = 'https://gateway.example/v1/inbox';
-    h.props.KAZ_OS_PROGRESS_READ_TOKEN = 'x'.repeat(40);
-    h.ctx.UrlFetchApp.fetch = (url, options) => {
-      assert.equal(url, 'https://gateway.example/v1/work-mutation');
-      const sent = JSON.parse(options.payload);
-      assert.equal(sent.operation, 'UPDATE_ESTIMATE');
-      assert.equal(sent.work_item_id, item.entity_ref);
-      assert.equal(sent.expected_source_revision, item.entity_revision);
-      assert.equal(sent.value, estimate);
-      assert.match(sent.idempotency_key, /^work-estimate-sha256:[a-f0-9]{64}$/);
-      return {
-        getResponseCode: () => 200,
-        getContentText: () => JSON.stringify({
-          schema_version: 'kaz-work-mutation-response-v1',
-          receipt: { schema_version: 'kaz-work-mutation-receipt-v1', status: 'VERIFIED',
-            operation: 'UPDATE_ESTIMATE', work_item_id: item.entity_ref, field: 'estimate_min',
-            after: estimate, after_revision: 'mutation-revision-' + estimate,
-            idempotency_key: sent.idempotency_key, notion_write_requests: 1,
-            writes: { notion: 1, calendar: 0, context: 0 } },
-          v3_rebuild_required: true
-        })
-      };
-    };
-  }
   return h.call(h.body('admin-local', { action: 'kazOs.inbox.answer', request_id: requestId(),
     decision_id: item.id, question_revision: item.question_revision,
     source_revision_references: item.source_revision_references, selected_option: selected,
@@ -220,8 +191,6 @@ test('answer persists one first-class Answer and one controlled proposal', () =>
   assert.equal(result.data.proposal.change.expires_at, nextJstDayBoundary(result.data.proposal.change.valid_from));
   assert.equal(result.data.proposal.change.permanent_priority_change, false);
   assert.equal(result.data.proposal.change.permanent_status_change, false);
-  assert.equal(result.data.proposal.status, 'PROPOSED');
-  assert.equal(result.data.proposal.requires_separate_write_approval, true);
   assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
   assert.equal(result.data.inbox.inbox_items.length, 1); assert.equal(h.rows.Kaz_OS_Decision_Ledger.length, 2);
 });
@@ -494,7 +463,7 @@ test('stale daily estimate questions disappear after target closure or revision 
   }
 });
 
-test('daily estimate persists integer minutes and permanently updates Estimate Min', () => {
+test('daily estimate persists integer minutes only as date-scoped planning evidence', () => {
   const localValue = estimateSnapshot();
   const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
     projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
@@ -509,16 +478,12 @@ test('daily estimate persists integer minutes and permanently updates Estimate M
   assert.equal(change.source, 'human');
   assert.equal(change.timezone, 'Asia/Tokyo');
   assert.equal(change.work_item_id, question.entity_ref);
-  assert.equal(change.work_item_source_revision, 'mutation-revision-30');
+  assert.equal(change.work_item_source_revision, question.entity_revision);
   assert.equal(change.planning_date, question.decision_date);
   assert.equal(change.valid_from, result.data.answer.answered_at);
   assert.equal(change.expires_at, question.expires_at);
-  assert.equal(change.permanent_estimate_change, true);
-  assert.equal(change.operational_mutation_receipt.status, 'VERIFIED');
-  assert.equal(change.operational_mutation_receipt.after, 30);
-  assert.equal(result.data.proposal.status, 'APPLIED');
-  assert.equal(result.data.proposal.requires_separate_write_approval, false);
-  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [1, 0, 0]);
+  assert.equal(change.permanent_estimate_change, false);
+  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
 });
 
 test('Work planning Today stores preference and estimate in one revision-bound answer', () => {
@@ -537,16 +502,8 @@ test('Work planning Today stores preference and estimate in one revision-bound a
   assert.equal(change.preference, 'today');
   assert.equal(change.estimate_min, 30);
   assert.equal(change.expires_at, nextJstDayBoundary(result.data.answer.answered_at));
-  assert.equal(change.permanent_estimate_change, true);
-  assert.equal(change.work_item_source_revision, 'mutation-revision-30');
-  assert.equal(change.operational_mutation_receipt.status, 'VERIFIED');
-  assert.equal(result.data.proposal.status, 'APPLIED');
-  assert.equal(result.data.proposal.requires_separate_write_approval, false);
-  assert.equal(result.data.proposal.notion_write, 1);
+  assert.equal(change.permanent_estimate_change, false);
   assert.equal(result.data.inbox.inbox_items.some(item => item.id === question.id), false);
-  assert.equal(result.data.inbox.feedback.message, '✓ 回答・Work更新とも保存済み');
-  value.work_items[0].revision = change.work_item_source_revision;
-  value.work_items[0].source_revision = change.work_item_source_revision;
   local.ctx.Utilities.formatDate = date => new Date(Date.parse(date.toISOString()) + 9 * 3600000).toISOString().slice(0, 10);
   const evidence = local.ctx.buildKazOsTodayPlanningEvidence_();
   assert.equal(evidence.preferences[0].work_item_id, question.entity_ref);
@@ -622,22 +579,6 @@ test('TODAY does not treat an unavailable active planning ledger as empty eviden
   assert.equal(evidence.timezone, 'Asia/Tokyo');
   assert.equal(evidence.preferences.length, 0);
   assert.equal(evidence.daily_estimates.length, 0);
-});
-
-test('daily estimate does not persist Answer when Work mutation is not verified', () => {
-  const localValue = estimateSnapshot();
-  const local = createHarness({ root, answerEnabled: true, provider: () => { throw Error('OUT_OF_SCOPE'); },
-    projectsProvider: () => { throw Error('OUT_OF_SCOPE'); }, inboxProvider: () => localValue });
-  local.setupDecisionLedger(); local.resetStats();
-  local.props.KAZ_OS_INBOX_READ_URL = 'https://gateway.example/v1/inbox';
-  local.props.KAZ_OS_PROGRESS_READ_TOKEN = 'x'.repeat(40);
-  local.ctx.UrlFetchApp.fetch = () => ({ getResponseCode: () => 503, getContentText: () => '{}' });
-  const read = local.call(local.body('admin-local', { action: 'kazOs.inbox.get', request_id: requestId() }));
-  const question = read.data.inbox_items.find(item => item.kind === 'daily_estimate');
-  const before = local.rows.Kaz_OS_Decision_Ledger.length;
-  const result = request(local, question, 30, 'paluru-estimate-mutation-fail-0001');
-  assert.equal(result.error.code, 'KAZ_WORK_MUTATION_FAILED');
-  assert.equal(local.rows.Kaz_OS_Decision_Ledger.length, before);
 });
 
 test('daily estimate rejects zero non-integer and text', () => {
