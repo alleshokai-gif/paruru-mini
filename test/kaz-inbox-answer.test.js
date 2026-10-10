@@ -171,7 +171,7 @@ function request(h, item, selected, key = 'paluru-test-00000001') {
       assert.equal(sent.work_item_id, item.entity_ref);
       assert.equal(sent.expected_source_revision, item.entity_revision);
       assert.equal(sent.value, estimate);
-      assert.equal(sent.idempotency_key, key + ':estimate');
+      assert.match(sent.idempotency_key, /^work-estimate-sha256:[a-f0-9]{64}$/);
       return {
         getResponseCode: () => 200,
         getContentText: () => JSON.stringify({
@@ -179,7 +179,7 @@ function request(h, item, selected, key = 'paluru-test-00000001') {
           receipt: { schema_version: 'kaz-work-mutation-receipt-v1', status: 'VERIFIED',
             operation: 'UPDATE_ESTIMATE', work_item_id: item.entity_ref, field: 'estimate_min',
             after: estimate, after_revision: 'mutation-revision-' + estimate,
-            idempotency_key: key + ':estimate', notion_write_requests: 1,
+            idempotency_key: sent.idempotency_key, notion_write_requests: 1,
             writes: { notion: 1, calendar: 0, context: 0 } },
           v3_rebuild_required: true
         })
