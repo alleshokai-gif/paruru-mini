@@ -1,4 +1,5 @@
-// Durable Kaz-only Human Answer ledger. This never writes Notion, Calendar or Context.
+// Durable Kaz-only Human Answer ledger. GAS never writes Notion directly; a validated
+// daily-estimate answer may invoke the controlled Work mutation gateway before persistence.
 const KAZ_OS_DECISION_LEDGER_SHEET_ = 'Kaz_OS_Decision_Ledger';
 const KAZ_OS_DECISION_LEDGER_HEADERS_ = [
   'answerId', 'proposalId', 'decisionId', 'questionRevision', 'sourceRevisionsJson',
@@ -89,7 +90,8 @@ function answerKazOsInbox_(body, transportTrace) {
     }
     const candidateProposal = question.kind === 'generic_candidate_review'
       ? buildKazOsCandidateReviewProposal_(question, request) : null;
-    const persisted = persistKazOsAnswer_(question, request, actor, candidateProposal);
+    const mutationReceipt = applyKazOsEstimateMutation_(question, request);
+    const persisted = persistKazOsAnswer_(question, request, actor, candidateProposal, mutationReceipt);
     recordKazOsAnswerTransport_(transportTrace, 'DURABLE_PERSISTED', { outcome: 'success' });
     let v3Rebuild;
     try {
@@ -100,7 +102,15 @@ function answerKazOsInbox_(body, transportTrace) {
       v3Rebuild = { status: 'request_failed' };
     }
     const refreshed = applyKazOsDecisionLedger_(current);
-    refreshed.feedback = { message: '✓ 回答したで。Operational Sourceはまだ変更してへん',
+    if (mutationReceipt) {
+      // The mutation changes the Work revision, while `current` is the pre-write
+      // snapshot used for answer revalidation. Hide only the just-answered card;
+      // the requested V3 rebuild will re-read the verified post-write revision.
+      refreshed.inbox_items = refreshed.inbox_items.filter(function(item) {
+        return item.id !== question.id || item.question_revision !== question.question_revision;
+      });
+    }
+    refreshed.feedback = { message: mutationReceipt ? '✓ 回答・Work更新とも保存済み' : '✓ 回答したで。Operational Sourceはまだ変更してへん',
       answer_id: persisted.answer.answer_id, decision_id: persisted.answer.decision_id,
       question_revision: persisted.answer.question_revision,
       persistence_status: persisted.answer.persistence_status,
@@ -112,7 +122,8 @@ function answerKazOsInbox_(body, transportTrace) {
     const allowed = ['FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'KAZ_NOT_CONNECTED',
       'KAZ_READ_ONLY', 'KAZ_ANSWER_DISABLED', 'KAZ_ANSWER_INVALID', 'REVALIDATION_REQUIRED',
       'IDEMPOTENCY_CONFLICT', 'ANSWER_ALREADY_RECORDED', 'KAZ_PERSISTENCE_NOT_CONFIGURED',
-      'KAZ_PERSISTENCE_SCHEMA_MISMATCH', 'KAZ_PERSISTENCE_FAILED', 'KAZ_SOURCE_FAILED'];
+      'KAZ_PERSISTENCE_SCHEMA_MISMATCH', 'KAZ_PERSISTENCE_FAILED', 'KAZ_SOURCE_FAILED',
+      'KAZ_WORK_MUTATION_FAILED'];
     const code = allowed.indexOf(error && error.code) >= 0 ? error.code : 'KAZ_PERSISTENCE_FAILED';
     recordKazOsAnswerTransport_(transportTrace, 'ANSWER_FAILED', {
       classification: 'business', outcome: 'unresolved', errorCode: code
@@ -282,7 +293,61 @@ function readKazOsDecisionLedger_() {
   });
 }
 
-function persistKazOsAnswer_(question, request, actor, candidateProposal) {
+function applyKazOsEstimateMutation_(question, request) {
+  if (question.kind !== 'daily_estimate') return null;
+  const selected = request.selected_option;
+  const estimate = Number.isInteger(selected)
+    ? selected
+    : selected && selected.preference === 'today' && Number.isInteger(selected.estimate_min)
+      ? selected.estimate_min : null;
+  if (!Number.isInteger(estimate) || estimate <= 0) return null;
+  if (!question.entity_ref || !question.entity_revision) throw homeMembershipError_('REVALIDATION_REQUIRED');
+
+  const props = PropertiesService.getScriptProperties();
+  const inboxUrl = String(props.getProperty('KAZ_OS_INBOX_READ_URL') || '');
+  const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
+  if (!/^https:\/\/[^\s?#]+\/v1\/inbox$/.test(inboxUrl) || token.length < 32) {
+    throw homeMembershipError_('KAZ_NOT_CONNECTED');
+  }
+  const body = {
+    operation: 'UPDATE_ESTIMATE',
+    work_item_id: question.entity_ref,
+    expected_source_revision: question.entity_revision,
+    idempotency_key: 'work-estimate-sha256:' + kazOsSha256_(request.idempotency_key + '\u0000' + question.entity_ref + '\u0000' + String(estimate)),
+    value: estimate
+  };
+  let response;
+  try {
+    response = UrlFetchApp.fetch(inboxUrl.replace(/\/v1\/inbox$/, '/v1/work-mutation'), {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(body),
+      headers: { Authorization: 'Bearer ' + token, 'X-Kaz-Request-Id': request.request_id },
+      muteHttpExceptions: true,
+      followRedirects: false,
+      validateHttpsCertificates: true
+    });
+  } catch (_) {
+    throw homeMembershipError_('KAZ_WORK_MUTATION_FAILED');
+  }
+  if (response.getResponseCode() !== 200) throw homeMembershipError_('KAZ_WORK_MUTATION_FAILED');
+  let result;
+  try { result = JSON.parse(response.getContentText()); }
+  catch (_) { throw homeMembershipError_('KAZ_WORK_MUTATION_FAILED'); }
+  const receipt = result && result.receipt;
+  if (!result || result.schema_version !== 'kaz-work-mutation-response-v1'
+      || !receipt || ['VERIFIED','ALREADY_APPLIED'].indexOf(receipt.status) < 0
+      || receipt.operation !== 'UPDATE_ESTIMATE'
+      || receipt.work_item_id !== question.entity_ref
+      || receipt.field !== 'estimate_min'
+      || receipt.after !== estimate
+      || !result.v3_rebuild_required) {
+    throw homeMembershipError_('KAZ_WORK_MUTATION_FAILED');
+  }
+  return receipt;
+}
+
+function persistKazOsAnswer_(question, request, actor, candidateProposal, mutationReceipt) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -319,7 +384,7 @@ function persistKazOsAnswer_(question, request, actor, candidateProposal) {
       candidate_ref: request.candidate_ref, candidate_revision: request.candidate_revision, work_fields: request.work_fields });
     const proposal = candidateProposal
       ? Object.assign({}, candidateProposal, { proposal_id: proposalId, answer_id: answerId, created_at: answeredAt })
-      : buildKazOsControlledProposal_(question, answer, proposalId);
+      : buildKazOsControlledProposal_(question, answer, proposalId, mutationReceipt);
     const row = [answerId, proposalId, request.decision_id, request.question_revision,
       stableKazOsJson_(request.source_revision_references), 'Kaz', stableKazOsJson_(request.selected_option),
       request.reason || '', answeredAt, retainUntil, request.idempotency_key, requestHash,
@@ -388,7 +453,7 @@ function buildKazOsCandidateReviewProposal_(question, request) {
       create_work_proposal: workProposal } };
 }
 
-function buildKazOsControlledProposal_(question, answer, proposalId) {
+function buildKazOsControlledProposal_(question, answer, proposalId, mutationReceipt) {
   const selected = answer.selected_option;
   let change;
   if (question.contract === 'gardener-phase-review-1') {
@@ -442,16 +507,18 @@ function buildKazOsControlledProposal_(question, answer, proposalId) {
       change = { kind: 'DAILY_PLANNING_PREFERENCE', work_item_id: question.entity_ref,
         planning_date: question.decision_date, timezone: 'Asia/Tokyo', preference: preference,
         estimate_min: preference === 'today' ? selected.estimate_min : null, source: 'human',
-        work_item_source_revision: question.entity_revision, project_source_revision: null,
+        work_item_source_revision: mutationReceipt?.after_revision || question.entity_revision, project_source_revision: null,
         valid_from: answer.answered_at, expires_at: expires.toISOString(),
         permanent_priority_change: false, permanent_status_change: false,
-        permanent_estimate_change: false };
+        permanent_estimate_change: Boolean(mutationReceipt),
+        operational_mutation_receipt: mutationReceipt || null };
     } else {
       if (!Number.isInteger(selected) || selected <= 0) throw homeMembershipError_('KAZ_ANSWER_INVALID');
       change = { kind: 'DAILY_ESTIMATE', work_item_id: question.entity_ref,
         planning_date: question.decision_date, timezone: 'Asia/Tokyo', estimate_min: selected, source: 'human',
-        work_item_source_revision: question.entity_revision, valid_from: answer.answered_at,
-        expires_at: question.expires_at, permanent_estimate_change: false };
+        work_item_source_revision: mutationReceipt?.after_revision || question.entity_revision, valid_from: answer.answered_at,
+        expires_at: question.expires_at, permanent_estimate_change: Boolean(mutationReceipt),
+        operational_mutation_receipt: mutationReceipt || null };
     }
   } else if (question.kind === 'stale_state_confirmation') {
     change = selected === 'complete' ? { kind: 'WORK_ITEM_STATE_CHANGE', work_item_id: question.entity_ref,
@@ -463,10 +530,12 @@ function buildKazOsControlledProposal_(question, answer, proposalId) {
   } else {
     throw homeMembershipError_('KAZ_ANSWER_INVALID');
   }
+  const mutationApplied = Boolean(mutationReceipt);
   return { proposal_id: proposalId, answer_id: answer.answer_id, decision_id: answer.decision_id,
     question_revision: answer.question_revision, source_revision_references: answer.source_revision_references,
-    created_at: answer.answered_at, status: 'PROPOSED', write_allowed: false,
-    requires_separate_write_approval: true, notion_write: 0, calendar_write: 0, context_write: 0,
+    created_at: answer.answered_at, status: mutationApplied ? 'APPLIED' : 'PROPOSED', write_allowed: false,
+    requires_separate_write_approval: !mutationApplied,
+    notion_write: mutationApplied ? 1 : 0, calendar_write: 0, context_write: 0,
     change: change };
 }
 
