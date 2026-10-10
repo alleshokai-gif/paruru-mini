@@ -101,6 +101,14 @@ function answerKazOsInbox_(body, transportTrace) {
       v3Rebuild = { status: 'request_failed' };
     }
     const refreshed = applyKazOsDecisionLedger_(current);
+    if (mutationReceipt) {
+      // The mutation changes the Work revision, while `current` is the pre-write
+      // snapshot used for answer revalidation. Hide only the just-answered card;
+      // the requested V3 rebuild will re-read the verified post-write revision.
+      refreshed.inbox_items = refreshed.inbox_items.filter(function(item) {
+        return item.id !== question.id || item.question_revision !== question.question_revision;
+      });
+    }
     refreshed.feedback = { message: mutationReceipt ? '✓ 回答・Work更新とも保存済み' : '✓ 回答したで。Operational Sourceはまだ変更してへん',
       answer_id: persisted.answer.answer_id, decision_id: persisted.answer.decision_id,
       question_revision: persisted.answer.question_revision,
