@@ -220,7 +220,9 @@ test('answer persists one first-class Answer and one controlled proposal', () =>
   assert.equal(result.data.proposal.change.expires_at, nextJstDayBoundary(result.data.proposal.change.valid_from));
   assert.equal(result.data.proposal.change.permanent_priority_change, false);
   assert.equal(result.data.proposal.change.permanent_status_change, false);
-  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [0, 0, 0]);
+  assert.equal(result.data.proposal.status, 'APPLIED');
+  assert.equal(result.data.proposal.requires_separate_write_approval, false);
+  assert.deepEqual([result.data.proposal.notion_write, result.data.proposal.calendar_write, result.data.proposal.context_write], [1, 0, 0]);
   assert.equal(result.data.inbox.inbox_items.length, 1); assert.equal(h.rows.Kaz_OS_Decision_Ledger.length, 2);
 });
 test('read-back-verified Answer requests v3 rebuild; request failure preserves Answer', () => {
