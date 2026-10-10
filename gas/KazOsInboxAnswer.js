@@ -1,4 +1,5 @@
-// Durable Kaz-only Human Answer ledger. This never writes Notion, Calendar or Context.
+// Durable Kaz-only Human Answer ledger. GAS never writes Notion directly; a validated
+// daily-estimate answer may invoke the controlled Work mutation gateway before persistence.
 const KAZ_OS_DECISION_LEDGER_SHEET_ = 'Kaz_OS_Decision_Ledger';
 const KAZ_OS_DECISION_LEDGER_HEADERS_ = [
   'answerId', 'proposalId', 'decisionId', 'questionRevision', 'sourceRevisionsJson',
@@ -529,10 +530,12 @@ function buildKazOsControlledProposal_(question, answer, proposalId, mutationRec
   } else {
     throw homeMembershipError_('KAZ_ANSWER_INVALID');
   }
+  const mutationApplied = Boolean(mutationReceipt);
   return { proposal_id: proposalId, answer_id: answer.answer_id, decision_id: answer.decision_id,
     question_revision: answer.question_revision, source_revision_references: answer.source_revision_references,
-    created_at: answer.answered_at, status: 'PROPOSED', write_allowed: false,
-    requires_separate_write_approval: true, notion_write: 0, calendar_write: 0, context_write: 0,
+    created_at: answer.answered_at, status: mutationApplied ? 'APPLIED' : 'PROPOSED', write_allowed: false,
+    requires_separate_write_approval: !mutationApplied,
+    notion_write: mutationApplied ? 1 : 0, calendar_write: 0, context_write: 0,
     change: change };
 }
 
