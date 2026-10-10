@@ -8,12 +8,12 @@ async function main() {
   const pair = create();
   const listeners = new Map();
   const rendered = [];
-  const calls = { dashboard: 0, inbox: 0, v2: 0, answer: 0 };
+  const calls = { dashboard: 0, inbox: 0, v2: 0, context: 0, answer: 0 };
   const on = (name, fn) => listeners.set(name, [...(listeners.get(name) || []), fn]);
   const emit = (name, detail) => (listeners.get(name) || []).forEach(fn => fn({ detail }));
   const nav = { hidden: true };
   const host = { textContent: '', replaceChildren() {} };
-  const anchors = ['today', 'work', 'projects', 'capa', 'inbox'].map(page => ({
+  const anchors = ['today', 'work', 'projects', 'capa', 'context', 'inbox'].map(page => ({
     dataset: { kazPage: page }, setAttribute() {}, removeAttribute() {},
   }));
   const elements = {
@@ -34,7 +34,7 @@ async function main() {
     PALURU_KAZ_OS_V3_PREVIEW_ENABLED: true,
     KazInboxView: { dispose() {} },
     KazPersonalView: { route() {
-      throw Error('normal four-tab navigation must not use v2 routing');
+      throw Error('normal five-tab navigation must not use v2 routing');
     },
       render(_host, selection, data, _now, options) { rendered.push({ selection, data, options }); } },
   });
@@ -44,6 +44,7 @@ async function main() {
     kazOsTodayApi: async () => { calls.v2++; return pair.dashboard.component_data.today; },
     kazOsV3DashboardApi: async () => { calls.dashboard++; return pair.dashboard; },
     kazOsV3InboxApi: async () => { calls.inbox++; return pair.inbox; },
+    kazOsContextApi: async () => { calls.context++; return { schema_version: 'kaz-context-observatory-v1', mode: 'read_only', totals: { raw: 1 }, source: { status: 'ok', complete: true } }; },
     kazOsInboxAnswerApi: async answer => { calls.answer++; return { answer, inbox: pair.inbox }; },
   });
   const pending = [];
@@ -60,29 +61,29 @@ async function main() {
     confirmations: pair.dashboard.today.confirmations,
   });
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.dataset.kazPage),
-    ['today', 'work', 'projects', 'capa']);
-  for (const page of ['work', 'projects', 'capa']) {
+    ['today', 'work', 'projects', 'capa', 'context']);
+  for (const page of ['work', 'projects', 'capa', 'context']) {
     context.location.hash = `#kaz-os/v3/${page}`;
     const reads = [];
     emit('kaz-os:opened', { waitUntil: promise => reads.push(promise) });
     await Promise.all(reads);
     assert.equal(rendered.at(-1).selection.page, page);
   }
-  assert.deepEqual(calls, { dashboard: 5, inbox: 0, v2: 0, answer: 0 });
-  for (const page of ['today', 'work', 'projects', 'capa']) {
+  assert.equal(calls.context, 1);
+  for (const page of ['today', 'work', 'projects', 'capa', 'context']) {
     context.location.hash = `#kaz-os/${page}`;
     const normalReads = [];
     emit('kaz-os:opened', { waitUntil: promise => normalReads.push(promise) });
     await Promise.all(normalReads);
     assert.equal(rendered.at(-1).selection.page, page);
   }
-  assert.deepEqual(rendered.at(-4).data.today.confirmations, pair.dashboard.today.confirmations);
+  assert.deepEqual(rendered.at(-5).data.today.confirmations, pair.dashboard.today.confirmations);
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.dataset.kazPage),
-    ['today', 'work', 'projects', 'capa']);
+    ['today', 'work', 'projects', 'capa', 'context']);
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.href),
-    ['today', 'work', 'projects', 'capa'].map(page => `#kaz-os/${page}`));
-  assert.deepEqual(calls, { dashboard: 9, inbox: 0, v2: 0, answer: 0 });
-  console.log('PASS hidden and normal four-tab routes use Snapshot GET only');
+    ['today', 'work', 'projects', 'capa', 'context'].map(page => `#kaz-os/${page}`));
+  assert.equal(calls.context, 2);
+  console.log('PASS hidden and normal five-tab routes keep Snapshot pages and Context projection separate');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

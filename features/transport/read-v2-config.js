@@ -23,7 +23,8 @@
       today: phase2Canary ? 'DIRECT_V2' : 'GAS',
       inbox: 'DIRECT_V2',
       dashboardV3: 'DIRECT_V2',
-      inboxV3: v3Preview ? 'DIRECT_V2' : 'GAS'
+      inboxV3: v3Preview ? 'DIRECT_V2' : 'GAS',
+      context: 'DIRECT_V2'
     })
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

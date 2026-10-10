@@ -2,9 +2,9 @@
 (() => {
   'use strict';
   const byId = id => document.getElementById(id);
-  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, inboxAnswerApi = null;
+  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, inboxAnswerApi = null;
   let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0;
-  let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
+  let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, contextEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
   const isKazHash = () => /^#kaz-os(?:\/|$)/.test(location.hash);
@@ -43,6 +43,7 @@
     capaEpoch++;
     todayEpoch++;
     inboxEpoch++;
+    contextEpoch++;
     previewEpoch++;
     clearTimeout(projectExpiry);
     clearTimeout(workExpiry);
@@ -169,6 +170,37 @@
         sources: { capa: { status, complete: false } },
         capa_items: null,
         writes: { notion: 0, calendar: 0, context: 0 },
+      });
+    }
+  }
+
+  async function renderContext(selection) {
+    const host = byId('kazPersonalContent');
+    if (!host) return;
+    if (!contextApi || !active()) {
+      globalThis.KazPersonalView.render(host, selection, null);
+      return;
+    }
+    const requestEpoch = contextEpoch;
+    host.textContent = 'Contextを確認中…';
+    const current = () => requestEpoch === contextEpoch && allowed() && active() && !document.hidden;
+    try {
+      const data = await contextApi();
+      if (!current()) return;
+      globalThis.KazPersonalView.render(host, selection, data);
+    } catch (error) {
+      if (!current()) return;
+      const status = error?.code === 'KAZ_NOT_CONNECTED' ? 'not_connected' : 'failed';
+      globalThis.KazPersonalView.render(host, selection, {
+        schema_version: 'kaz-context-observatory-v1',
+        mode: 'read_only',
+        sources: { context_observatory: { status } },
+        totals: null,
+        by_topic: [],
+        by_route: [],
+        recent: [],
+        attention: null,
+        writes: { raw: 0, intermediate: 0, canonical: 0, notion: 0, calendar: 0 },
       });
     }
   }
@@ -311,8 +343,8 @@
     }
     clear();
     const preview = globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED
-      && /^#kaz-os\/v3(?:\/(today|work|projects|capa)(?:\/([^/]+))?)?$/.exec(location.hash);
-    const cutover = /^#kaz-os\/(today|work|projects|capa)(?:\/([^/]+))?$/.exec(location.hash);
+      && /^#kaz-os\/v3(?:\/(today|work|projects|capa|context)(?:\/([^/]+))?)?$/.exec(location.hash);
+    const cutover = /^#kaz-os\/(today|work|projects|capa|context)(?:\/([^/]+))?$/.exec(location.hash);
     if (preview || cutover) {
       const legacyNav = byId('kazOsNav');
       if (legacyNav) legacyNav.hidden = false;
@@ -321,12 +353,18 @@
       try { if ((preview || cutover)[2]) selection.id = decodeURIComponent((preview || cutover)[2]); } catch { /* Invalid ID is not selected. */ }
       const requestEpoch = previewEpoch;
       const current = () => requestEpoch === previewEpoch && allowed() && active() && !document.hidden;
-      const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', inbox: '確認待ち' }[selection.page];
+      const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', context: 'Context Observatory', inbox: '確認待ち' }[selection.page];
       byId('kazOsView')?.setAttribute('aria-label', pageLabel);
       const host = byId('kazPersonalContent');
       if (!host) return;
       host.textContent = `${pageLabel}を確認中…`;
       try {
+        if (selection.page === 'context') {
+          const data = await contextApi();
+          if (!current()) return;
+          globalThis.KazPersonalView.render(host, selection, data);
+          return;
+        }
         const snapshot = await (selection.page === 'inbox' ? v3InboxApi() : v3DashboardApi());
         if (!current()) return;
         const data = selection.page === 'inbox'
@@ -350,7 +388,7 @@
     if (legacyNav) legacyNav.hidden = false;
     const selection = globalThis.KazPersonalView.route(location.hash);
     configureKazNav(false, selection.page);
-    const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', inbox: '確認待ち' }[selection.page] || 'やること・確認';
+    const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', context: 'Context Observatory', inbox: '確認待ち' }[selection.page] || 'やること・確認';
     byId('kazOsView')?.setAttribute('aria-label', pageLabel);
     document.querySelectorAll('[data-kaz-page-launch]').forEach(item => {
       if (item.dataset.kazPage === selection.page) item.setAttribute('aria-current', 'page');
@@ -360,6 +398,7 @@
     else if (selection.page === 'inbox') await renderInbox(selection);
     else if (selection.page === 'work') await renderWork(selection);
     else if (selection.page === 'capa') await renderCapa(selection);
+    else if (selection.page === 'context') await renderContext(selection);
     else await renderProjects(selection);
   }
 
@@ -375,6 +414,7 @@
     capaApi = event.detail?.kazOsCapaApi || null;
     todayApi = event.detail?.kazOsTodayApi || null;
     inboxApi = event.detail?.kazOsInboxApi || null;
+    contextApi = event.detail?.kazOsContextApi || null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
     v3DashboardApi = event.detail?.kazOsV3DashboardApi || null;
     v3InboxApi = event.detail?.kazOsV3InboxApi || null;
@@ -394,6 +434,7 @@
     capaApi = null;
     todayApi = null;
     inboxApi = null;
+    contextApi = null;
     inboxAnswerApi = null;
     v3DashboardApi = null;
     v3InboxApi = null;
@@ -420,7 +461,7 @@
     const anchor = event.target.closest?.('a[href^="#kaz-os/"]');
     if (!anchor || !byId('kazOsView').contains(anchor)) return;
     const path = anchor.getAttribute('href').slice('#kaz-os/'.length);
-    if (!/^(today|work|projects|capa|inbox)(?:\/[^/]+)?$/.test(path)) return;
+    if (!/^(today|work|projects|capa|context|inbox)(?:\/[^/]+)?$/.test(path)) return;
     event.preventDefault();
     location.hash = `#kaz-os/v3/${path}`;
   });

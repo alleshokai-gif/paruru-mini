@@ -8,7 +8,8 @@
     today: Object.freeze({ key: 'today', path: '/poc/read-v2/today', action: 'kazOs.today.get' }),
     inbox: Object.freeze({ key: 'inbox', path: '/poc/read-v2/inbox', action: 'kazOs.inbox.get' }),
     dashboardV3: Object.freeze({ key: 'dashboardV3', path: '/v3/dashboard', action: 'kazOs.v3.dashboard.get' }),
-    inboxV3: Object.freeze({ key: 'inboxV3', path: '/v3/inbox', action: 'kazOs.v3.inbox.get' })
+    inboxV3: Object.freeze({ key: 'inboxV3', path: '/v3/inbox', action: 'kazOs.v3.inbox.get' }),
+    context: Object.freeze({ key: 'context', path: '/v2/read/context', action: 'kazOs.context.get' })
   });
 
   function codedError_(code, details) {
@@ -45,7 +46,8 @@
       today: requestedRoutes.today === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       inbox: requestedRoutes.inbox === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       dashboardV3: requestedRoutes.dashboardV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
-      inboxV3: requestedRoutes.inboxV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
+      inboxV3: requestedRoutes.inboxV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      context: requestedRoutes.context === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
     });
     return Object.freeze({ mode, baseUrl, v3BaseUrl, canaryCapability, routeModes });
   }
@@ -123,6 +125,27 @@
         || !Array.isArray(today.waiting) || !Array.isArray(today.availability)
         || !today.calendar_state || !Array.isArray(today.calendar_state.unknown)) {
       throw codedError_('TODAY_CONTRACT_INVALID', { transportClassification: 'parse' });
+    }
+    return value;
+  }
+
+  function validateContext_(value) {
+    const totals = value && value.totals;
+    const source = value && value.source;
+    const writes = value && value.writes;
+    const required = ['raw','raw_hold','decision_candidate','pain_point','lesson','experience','core_candidate'];
+    if (!value || value.schema_version !== 'kaz-context-observatory-v1'
+        || value.mode !== 'read_only'
+        || !totals || required.some(key => !Number.isInteger(totals[key]) || totals[key] < 0)
+        || !Array.isArray(value.by_topic) || value.by_topic.length > 20
+        || !Array.isArray(value.by_route) || value.by_route.length > 20
+        || !Array.isArray(value.recent) || value.recent.length > 20
+        || value.recent.some(item => !item || typeof item.text !== 'string' || item.text.length > 280)
+        || !source || source.status !== 'ok' || source.complete !== true
+        || typeof source.source_revision !== 'string' || !source.source_revision
+        || !writes || writes.raw !== 0 || writes.intermediate !== 0 || writes.canonical !== 0
+        || writes.notion !== 0 || writes.calendar !== 0) {
+      throw codedError_('CONTEXT_OBSERVATORY_CONTRACT_INVALID', { transportClassification: 'parse' });
     }
     return value;
   }
@@ -367,7 +390,8 @@
       dashboardV3: function() { return read_(ROUTES.dashboardV3,
         value => validateSnapshotV3_(value, 'kaz-os-dashboard-v3', ['work', 'projects', 'capa'])); },
       inboxV3: function() { return read_(ROUTES.inboxV3,
-        value => validateSnapshotV3_(value, 'kaz-os-inbox-v3', ['inbox_items'])); }
+        value => validateSnapshotV3_(value, 'kaz-os-inbox-v3', ['inbox_items'])); },
+      context: function() { return read_(ROUTES.context, validateContext_); }
     });
   }
 
