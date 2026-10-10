@@ -537,6 +537,9 @@ test('Work planning Today stores preference and estimate in one revision-bound a
   assert.equal(change.work_item_source_revision, 'mutation-revision-30');
   assert.equal(change.operational_mutation_receipt.status, 'VERIFIED');
   assert.equal(result.data.inbox.inbox_items.some(item => item.id === question.id), false);
+  assert.equal(result.data.inbox.feedback.message, '✓ 回答・Work更新とも保存済み');
+  value.work_items[0].revision = change.work_item_source_revision;
+  value.work_items[0].source_revision = change.work_item_source_revision;
   local.ctx.Utilities.formatDate = date => new Date(Date.parse(date.toISOString()) + 9 * 3600000).toISOString().slice(0, 10);
   const evidence = local.ctx.buildKazOsTodayPlanningEvidence_();
   assert.equal(evidence.preferences[0].work_item_id, question.entity_ref);
