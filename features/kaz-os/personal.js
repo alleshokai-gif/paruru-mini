@@ -568,31 +568,61 @@
         });
       });
 
-      const feedback = part('Feedback');
-      const fb = data.feedback || {};
-      if (!fb.available) {
-        add('p', 'Feedback projectionはまだありません。', 'kp-muted', feedback);
+      const advisory = part('Advisory');
+      const adv = data.advisory || {};
+      if (!adv.available) {
+        add('p', 'Advisory projectionはまだありません。', 'kp-muted', advisory);
       } else {
-        const summary = add('div', '', 'kp-kpis kc-kpis', feedback);
+        const summary = add('div', '', 'kp-kpis kc-kpis', advisory);
         [
-          ['候補', fb.candidate_count ?? 0],
-          ['観測継続', fb.observe_only_count ?? 0],
+          ['候補', adv.candidate_count ?? 0],
+          ['観測継続', adv.observe_only_count ?? 0],
         ].forEach(([label, count]) => {
           const box = add('div', '', '', summary);
           add('strong', String(count), '', box);
           add('span', label, '', box);
         });
-        add('p', fb.apply_allowed ? '自動反映あり' : 'READ-ONLY · 自動反映なし', 'kp-muted', feedback);
+        add('p', 'READ-ONLY · Derived Context · 自動反映なし', 'kp-muted', advisory);
+        (adv.items || []).forEach(item => {
+          const row = add('button', '', 'kc-feedback-row', advisory);
+          row.type = 'button';
+          const top = add('div', '', 'kp-project-head', row);
+          top.append(el('strong', item.title || item.kind || 'Advisory'));
+          top.append(el('span', item.status || 'observe_only', 'kp-badge kp-unknown'));
+          add('p', item.summary || '', 'kp-muted', row);
+          row.addEventListener('click', () => showDetail(
+            item.title || item.kind || 'Advisory',
+            `${item.summary || ''} / proposed use: ${item.proposed_use || '未設定'} / confidence: ${item.confidence || 'unknown'}`
+          ));
+        });
+      }
+
+      const feedback = part('Feedback');
+      const fb = data.feedback || {};
+      if (!fb.available) {
+        add('p', 'Outcome Feedbackはまだありません。', 'kp-muted', feedback);
+      } else {
+        const summary = add('div', '', 'kp-kpis kc-kpis', feedback);
+        [
+          ['Events', fb.event_count ?? 0],
+          ['Success', fb.assessment_counts?.success ?? 0],
+          ['Failure', fb.assessment_counts?.failure ?? 0],
+        ].forEach(([label, count]) => {
+          const box = add('div', '', '', summary);
+          add('strong', String(count), '', box);
+          add('span', label, '', box);
+        });
+        add('p', 'REAL OUTCOME · READ-ONLY · Human Review', 'kp-muted', feedback);
         (fb.items || []).forEach(item => {
           const row = add('button', '', 'kc-feedback-row', feedback);
           row.type = 'button';
           const top = add('div', '', 'kp-project-head', row);
-          top.append(el('strong', item.title || item.kind || 'Feedback'));
-          top.append(el('span', item.status || 'observe_only', 'kp-badge kp-unknown'));
-          add('p', item.summary || '', 'kp-muted', row);
+          top.append(el('strong', item.feedback_type || 'Feedback'));
+          top.append(el('span', item.assessment || 'unknown', 'kp-badge kp-unknown'));
+          add('p', item.outcome || '', 'kp-muted', row);
           row.addEventListener('click', () => showDetail(
-            item.title || item.kind || 'Feedback',
-            `${item.summary || ''} / proposed use: ${item.proposed_use || '未設定'} / confidence: ${item.confidence || 'unknown'}`
+            item.feedback_type || 'Feedback',
+            `action: ${item.action || ''} / outcome: ${item.outcome || ''} / proposed: ${item.proposed_action || '未設定'}`
           ));
         });
       }
