@@ -553,6 +553,13 @@
             showDetail(label, `観測 ${family.observation_days}日。LINE ${family.message_count} messages / 行動signal ${family.behavior_signal_count} / 生活Context ${family.context_signal_count}。週次Trend: ${trend}。Plan vs Actualは次段階。`);
             return;
           }
+          if (label === 'Active Topics' && data.active_topics_profile?.available) {
+            const active = data.active_topics_profile;
+            const themes = (active.theme_counts || []).map(item => `${item.theme} ${item.count}件`).join(' / ') || 'theme未確認';
+            const trend = active.weekly_trend?.status || 'insufficient';
+            showDetail(label, `観測 ${active.observation_count}件。テーマ: ${themes}。週次Trend: ${trend}。`);
+            return;
+          }
           showDetail(label, `Semantic Profileの観測数は ${count}件。Phase 2で時系列・傾向・フィードバックを追加予定。`);
         });
       });
