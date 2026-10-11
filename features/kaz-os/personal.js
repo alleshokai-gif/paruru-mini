@@ -564,6 +564,35 @@
         });
       });
 
+      const feedback = part('Feedback');
+      const fb = data.feedback || {};
+      if (!fb.available) {
+        add('p', 'Feedback projectionはまだありません。', 'kp-muted', feedback);
+      } else {
+        const summary = add('div', '', 'kp-kpis kc-kpis', feedback);
+        [
+          ['候補', fb.candidate_count ?? 0],
+          ['観測継続', fb.observe_only_count ?? 0],
+        ].forEach(([label, count]) => {
+          const box = add('div', '', '', summary);
+          add('strong', String(count), '', box);
+          add('span', label, '', box);
+        });
+        add('p', fb.apply_allowed ? '自動反映あり' : 'READ-ONLY · 自動反映なし', 'kp-muted', feedback);
+        (fb.items || []).forEach(item => {
+          const row = add('button', '', 'kc-feedback-row', feedback);
+          row.type = 'button';
+          const top = add('div', '', 'kp-project-head', row);
+          top.append(el('strong', item.title || item.kind || 'Feedback'));
+          top.append(el('span', item.status || 'observe_only', 'kp-badge kp-unknown'));
+          add('p', item.summary || '', 'kp-muted', row);
+          row.addEventListener('click', () => showDetail(
+            item.title || item.kind || 'Feedback',
+            `${item.summary || ''} / proposed use: ${item.proposed_use || '未設定'} / confidence: ${item.confidence || 'unknown'}`
+          ));
+        });
+      }
+
       const recentSignals = part('最近のExternal signal');
       if (!(pipeline.recent || []).length) add('p', 'External signalはまだありません。', 'kp-muted', recentSignals);
       else (pipeline.recent || []).slice(0, 8).forEach(item => {
