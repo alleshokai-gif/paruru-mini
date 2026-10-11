@@ -499,16 +499,31 @@
       arrow.setAttribute('aria-hidden', 'true');
 
       const classGrid = add('div', '', 'kc-flow-grid kc-flow-grid-classify', flow);
+      const dispositionSources = pipeline.disposition_sources || {};
+      const sourceLabel = source => ({gmail:'Gmail',line_export:'LINE',google_calendar:'Calendar',chatgpt:'ChatGPT'}[source] || source);
       [
-        ['SAVE', dispositions.save ?? 0, 'Saved Contextへ昇格する外部signal。'],
-        ['AGGREGATE', dispositions.aggregate ?? 0, '傾向・パターン分析の材料として保持。'],
-        ['IGNORE', dispositions.ignore ?? 0, '低価値ノイズとして上位Contextへは送らない。'],
-      ].forEach(([label, count, bodyText]) => {
+        ['SAVE', 'save', dispositions.save ?? 0, 'Saved Contextへ昇格する外部signal。'],
+        ['AGGREGATE', 'aggregate', dispositions.aggregate ?? 0, '傾向・パターン分析の材料として保持。'],
+        ['IGNORE', 'ignore', dispositions.ignore ?? 0, '低価値ノイズとして上位Contextへは送らない。'],
+      ].forEach(([label, key, count, bodyText]) => {
         const button = add('button', '', 'kc-flow-node kc-flow-node-compact', classGrid);
         button.type = 'button';
         add('span', label, '', button);
         add('strong', String(count), '', button);
-        button.addEventListener('click', () => showDetail(label, `${bodyText} 現在 ${count}件。`));
+        button.addEventListener('click', () => {
+          const sourceCounts = dispositionSources[key] || {};
+          const breakdown = Object.entries(sourceCounts)
+            .filter(([, value]) => Number(value) > 0)
+            .sort((a,b) => Number(b[1]) - Number(a[1]))
+            .map(([source, value]) => `${sourceLabel(source)} ${value}件`)
+            .join(' / ') || 'source内訳なし';
+          showDetail(label, `${bodyText} 現在 ${count}件。内訳: ${breakdown}`);
+          const matching = (pipeline.recent || []).filter(item => String(item.disposition || '').toUpperCase() === label);
+          if (matching.length) {
+            const list = matching.slice(0, 8).map(item => `${sourceLabel(item.source)}: ${item.summary || 'summaryなし'}`).join('｜');
+            detailText.textContent += ` 直近: ${list}`;
+          }
+        });
       });
 
       const profile = part('Semantic Profile');
