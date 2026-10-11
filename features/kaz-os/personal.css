@@ -126,3 +126,8 @@
 @media(max-width:360px){
   .kc-flow-grid-classify{grid-template-columns:1fr}
 }
+
+.kc-feedback-row{appearance:none;width:100%;border:0;border-top:1px solid #e2e8e4;background:transparent;padding:10px 0;text-align:left;color:inherit;display:block}
+.kc-feedback-row:first-of-type{margin-top:8px}
+.kc-feedback-row:focus-visible{outline:3px solid rgba(44,120,91,.22);outline-offset:2px;border-radius:8px}
+.kc-feedback-row .kp-project-head{margin-bottom:3px}
