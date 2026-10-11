@@ -101,3 +101,28 @@
 .kc-topic-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#355348}
 .kc-topic-row>strong{font-variant-numeric:tabular-nums;font-size:16px;color:#174b3b}
 .kc-context-row .kp-project-head>strong{white-space:normal;overflow:visible;text-overflow:clip;font-size:14px;line-height:1.5}
+
+
+.kc-flow-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+.kc-flow-grid-classify{grid-template-columns:repeat(3,minmax(0,1fr))}
+.kc-flow-node{appearance:none;border:1px solid #d9e1df;background:#fff;border-radius:14px;padding:12px;min-height:64px;text-align:left;color:#174b3b;display:flex;flex-direction:column;justify-content:space-between;gap:6px}
+.kc-flow-node>span{font-size:12px;color:#527066;line-height:1.3}
+.kc-flow-node>strong{font-size:22px;line-height:1;font-variant-numeric:tabular-nums}
+.kc-flow-node-compact{min-height:58px}
+.kc-flow-node:focus-visible,.kc-profile-bubble:focus-visible{outline:3px solid rgba(44,120,91,.22);outline-offset:2px}
+.kc-flow-arrow{text-align:center;color:#71867e;font-size:22px;line-height:1;margin:4px 0}
+.kc-flow-detail{margin-top:10px;padding:10px 12px;border-left:3px solid #7ca18f;background:#f5f8f6;border-radius:8px}
+.kc-flow-detail>strong{font-size:14px;color:#174b3b}
+.kc-flow-detail>p{margin:4px 0 0}
+.kc-profile-bubbles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
+.kc-profile-bubble{appearance:none;aspect-ratio:1/1;border:1px solid #d9e1df;background:#fff;border-radius:50%;padding:10px;color:#174b3b;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:5px}
+.kc-profile-bubble>strong{font-size:24px;line-height:1;font-variant-numeric:tabular-nums}
+.kc-profile-bubble>span{font-size:11px;line-height:1.2;color:#527066}
+@media(max-width:560px){
+  .kc-flow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kc-flow-grid-classify{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .kc-profile-bubbles{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:360px){
+  .kc-flow-grid-classify{grid-template-columns:1fr}
+}
