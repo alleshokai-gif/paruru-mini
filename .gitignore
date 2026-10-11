@@ -1,2 +1,11 @@
 features/auth/firebase-auth-poc-config.local.json
 features/auth/firebase-auth-poc-server.local.json
+
+# Local nested Codex worktrees
+/.codex/worktrees/
+
+# Local Wrangler cache and account metadata
+/gas/.wrangler/
+
+# Generated Home menu review fixture
+/test/fixtures/home-menu-review.html
