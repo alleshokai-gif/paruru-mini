@@ -552,7 +552,9 @@
             const trend = family.weekly_behavior?.status || 'insufficient';
             const sports = family.sports_signal_count || 0;
             const sportsDays = family.sports_observation_days || 0;
-            showDetail(label, `観測 ${family.observation_days}日。LINE ${family.message_count} messages / 行動signal ${family.behavior_signal_count} / 生活Context ${family.context_signal_count} / sports-team ${sports}（${sportsDays}日）。週次Trend: ${trend}。Plan vs Actualは次段階。`);
+            const attendance = family.school_attendance_signal_count || 0;
+            const attendanceDays = family.school_attendance_observation_days || 0;
+            showDetail(label, `観測 ${family.observation_days}件。LINE/学校実行動 ${family.message_count} observations / 行動signal ${family.behavior_signal_count} / 生活Context ${family.context_signal_count} / sports-team ${sports}（${sportsDays}日） / 学童入退室 ${attendance}（${attendanceDays}日）。週次Trend: ${trend}。Plan vs Actualは次段階。`);
             return;
           }
           if (label === 'Active Topics' && data.active_topics_profile?.available) {
