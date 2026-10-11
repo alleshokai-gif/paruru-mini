@@ -467,6 +467,79 @@
         : '生成時刻未確認';
       add('p', `実データ · GitHub / READ-ONLY · ${generated}`, 'kp-muted', head);
 
+      const pipeline = data.pipeline || {};
+      const sources = pipeline.sources || {};
+      const dispositions = pipeline.dispositions || {};
+      const profileCounts = data.semantic_profile?.counts || {};
+
+      const flow = part('Context Flow');
+      add('p', '入力 → 分類 → Saved / Aggregate → Profile。押すと内訳を表示。', 'kp-muted', flow);
+      const flowGrid = add('div', '', 'kc-flow-grid', flow);
+      const detail = add('div', '', 'kc-flow-detail', flow);
+      const detailTitle = add('strong', 'Context pipeline', '', detail);
+      const detailText = add('p', '各カードを押すと、現在の件数と役割を確認できます。', 'kp-muted', detail);
+      const showDetail = (titleText, bodyText) => {
+        detailTitle.textContent = titleText;
+        detailText.textContent = bodyText;
+      };
+      [
+        ['ChatGPT', sources.chatgpt?.saved_context ?? totals.saved_context ?? 0, '会話から意味単位をSaved Contextへ自動保存。'],
+        ['Gmail', sources.gmail?.federated ?? 0, '日次取得。重要メール粒度でSAVE / AGGREGATE / IGNOREへ分類。'],
+        ['LINE', sources.line?.federated ?? 0, '月次export。行動・生活Contextを日単位AGGREGATEへ。'],
+        ['Calendar', sources.calendar?.federated ?? 0, '日次取得。予定をSAVE / AGGREGATE / IGNOREへ分類。'],
+      ].forEach(([label, count, bodyText]) => {
+        const button = add('button', '', 'kc-flow-node', flowGrid);
+        button.type = 'button';
+        add('span', label, '', button);
+        add('strong', String(count), '', button);
+        button.addEventListener('click', () => showDetail(label, `${bodyText} 現在 ${count}件。`));
+      });
+
+      const arrow = add('div', '↓', 'kc-flow-arrow', flow);
+      arrow.setAttribute('aria-hidden', 'true');
+
+      const classGrid = add('div', '', 'kc-flow-grid kc-flow-grid-classify', flow);
+      [
+        ['SAVE', dispositions.save ?? 0, 'Saved Contextへ昇格する外部signal。'],
+        ['AGGREGATE', dispositions.aggregate ?? 0, '傾向・パターン分析の材料として保持。'],
+        ['IGNORE', dispositions.ignore ?? 0, '低価値ノイズとして上位Contextへは送らない。'],
+      ].forEach(([label, count, bodyText]) => {
+        const button = add('button', '', 'kc-flow-node kc-flow-node-compact', classGrid);
+        button.type = 'button';
+        add('span', label, '', button);
+        add('strong', String(count), '', button);
+        button.addEventListener('click', () => showDetail(label, `${bodyText} 現在 ${count}件。`));
+      });
+
+      const profile = part('Semantic Profile');
+      add('p', 'Phase 2で育てる4カテゴリ。バブルを押すと件数を確認。', 'kp-muted', profile);
+      const bubbles = add('div', '', 'kc-profile-bubbles', profile);
+      [
+        ['Career / Market', profileCounts.career_market ?? 0],
+        ['Services', profileCounts.services_spending ?? 0],
+        ['Family / Behavior', profileCounts.family_behavior ?? 0],
+        ['Active Topics', profileCounts.active_topics ?? 0],
+      ].forEach(([label, count]) => {
+        const button = add('button', '', 'kc-profile-bubble', bubbles);
+        button.type = 'button';
+        add('strong', String(count), '', button);
+        add('span', label, '', button);
+        button.addEventListener('click', () => showDetail(label, `Semantic Profileの観測数は ${count}件。Phase 2で時系列・傾向・フィードバックを追加予定。`));
+      });
+
+      const recentSignals = part('最近のExternal signal');
+      if (!(pipeline.recent || []).length) add('p', 'External signalはまだありません。', 'kp-muted', recentSignals);
+      else (pipeline.recent || []).slice(0, 8).forEach(item => {
+        const row = add('article', '', 'kp-work-row kc-context-row', recentSignals);
+        const top = add('div', '', 'kp-project-head', row);
+        top.append(el('strong', item.summary || item.source || 'External signal'));
+        top.append(el('span', item.disposition || 'UNKNOWN', 'kp-badge kp-unknown'));
+        const when = Number.isFinite(stamp(item.observed_at))
+          ? new Date(item.observed_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})
+          : String(item.observed_at || '時刻未確認');
+        add('p', `${item.source || 'other'} · ${when}`, 'kp-muted', row);
+      });
+
       const topics = part('Topic');
       if (!(data.by_topic || []).length) add('p', 'Topic集計はまだありません。', 'kp-muted', topics);
       else {
