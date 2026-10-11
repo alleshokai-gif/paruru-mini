@@ -539,7 +539,16 @@
         button.type = 'button';
         add('strong', String(count), '', button);
         add('span', label, '', button);
-        button.addEventListener('click', () => showDetail(label, `Semantic Profileの観測数は ${count}件。Phase 2で時系列・傾向・フィードバックを追加予定。`));
+        button.addEventListener('click', () => {
+          if (label === 'Services' && data.services_profile?.available) {
+            const services = (data.services_profile.active_services || [])
+              .map(item => `${item.service} ${item.count}件`).join(' / ') || 'service未確認';
+            const weekly = data.services_profile.weekly_trend?.status || 'insufficient';
+            showDetail(label, `観測 ${data.services_profile.observation_count ?? count}件。利用: ${services}。週次Trend: ${weekly}。支出総額はまだ計算していません。`);
+            return;
+          }
+          showDetail(label, `Semantic Profileの観測数は ${count}件。Phase 2で時系列・傾向・フィードバックを追加予定。`);
+        });
       });
 
       const recentSignals = part('最近のExternal signal');
