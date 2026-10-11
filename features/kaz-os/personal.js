@@ -547,6 +547,12 @@
             showDetail(label, `観測 ${data.services_profile.observation_count ?? count}件。利用: ${services}。週次Trend: ${weekly}。支出総額はまだ計算していません。`);
             return;
           }
+          if (label === 'Family / Behavior' && data.family_behavior_profile?.available) {
+            const family = data.family_behavior_profile;
+            const trend = family.weekly_behavior?.status || 'insufficient';
+            showDetail(label, `観測 ${family.observation_days}日。LINE ${family.message_count} messages / 行動signal ${family.behavior_signal_count} / 生活Context ${family.context_signal_count}。週次Trend: ${trend}。Plan vs Actualは次段階。`);
+            return;
+          }
           showDetail(label, `Semantic Profileの観測数は ${count}件。Phase 2で時系列・傾向・フィードバックを追加予定。`);
         });
       });
