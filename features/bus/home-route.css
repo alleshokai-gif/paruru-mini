@@ -2,6 +2,10 @@
 .bus-home-route-option { min-width: 0; padding: 12px; border: 1px solid #d8e3ec;
   border-radius: 12px; overflow-wrap: anywhere; }
 .bus-home-route-option.is-primary { background: #edf5fc; border-color: #90b5d6; }
+.bus-home-route-display-only { background: #fbfcfd; border-style: dashed; }
+.bus-home-route-display-only-title { margin: 8px 0 0; font-size: 16px; color: #425971; }
+.bus-home-route-display-only-note, .bus-home-route-display-only-more {
+  margin: 0; color: #526579; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .bus-home-route-option p { margin: 4px 0; }
 .bus-home-route-title { margin: 4px 0 0; font-size: 15px; color: #526579; }
 .bus-home-route-option-header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;

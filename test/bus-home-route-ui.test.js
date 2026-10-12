@@ -93,6 +93,58 @@ test('route decision shows station, bus, home arrival and static quality without
   assert.match(css, /\.bus-home-route-option\.is-primary \.bus-home-route-station\s*\{[^}]*font-size: 21px/);
 });
 
+test('unknown-arrival boarding options stay separate from recommendations and render beside a fastest result', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  const fastest = { stationId: 'noborito', stationLabel: '登戸駅', stationTimeAt: epoch('18:18'),
+    boardingAt: epoch('18:26'), departureAt: epoch('18:31'), provider: 'kawasaki', routeLabel: '登０５',
+    tripId: 'known-bus', homeArrivalAt: epoch('18:44'), timingQuality: 'static_only', recommendable: true };
+  const unknown = { placeId: 'mukougaoka', stationId: 'mukougaoka', stationLabel: '向ヶ丘遊園駅南口',
+    boardingAt: epoch('18:25'), departureAt: epoch('18:35'), provider: 'kawasaki', routeLabel: '溝１９',
+    tripId: 'unknown-bus', homeArrivalAt: null, timingQuality: 'arrival_unknown', recommendable: false };
+  ui.renderDecision(doc, mount, { status: 'partial', fastest, alternate: null,
+    differenceMinutes: null, options: [fastest, unknown], unavailableSources: ['tokyu:mukougaoka_to_kibukihoncho'] });
+  const text = renderedText(mount);
+  assert.match(text, /最速候補（到着時刻判明分）/);
+  assert.match(text, /最速候補.*18:31 川崎市バス 登０５.*神木本町 18:44着/s);
+  assert.match(text, /到着時刻不明の乗車候補.*18:35 川崎市バス 溝１９.*到着時刻は不明.*最速比較・推薦の対象外/s);
+  assert.match(text, /一部の経路情報を取得できませんでした/);
+  assert.doesNotMatch(text, /09:00|神木本町 null着/);
+});
+
+test('departure-only options remain visible when there is no rankable recommendation', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  const unknown = { placeId: 'noborito-normal', stationId: 'noborito', stationLabel: '登戸駅',
+    boardingAt: epoch('18:26'), departureAt: epoch('18:31'), provider: 'kawasaki', routeLabel: '登０５',
+    tripId: 'unknown-bus', homeArrivalAt: null, timingQuality: 'arrival_unknown', recommendable: false };
+  ui.renderDecision(doc, mount, { status: 'insufficient_data', fastest: null, alternate: null,
+    options: [unknown], unavailablePlaces: [] });
+  assert.match(renderedText(mount), /帰宅時刻を比較できません.*到着時刻不明の乗車候補.*18:31 川崎市バス 登０５.*到着時刻は不明/s);
+  assert.doesNotMatch(renderedText(mount), /09:00|神木本町 null着/);
+});
+
+test('display-only options reject invalid times, deduplicate trips, sort and cap the list', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  const option = (time, tripId) => ({ placeId: 'noborito-normal', stationId: 'noborito',
+    stationLabel: '登戸駅', boardingAt: epoch('18:00'), departureAt: epoch(time),
+    provider: 'kawasaki', routeLabel: '登０５', tripId, homeArrivalAt: null,
+    timingQuality: 'arrival_unknown', recommendable: false });
+  const options = [option('18:40', 'bus-40'), option('18:10', 'duplicate'),
+    option('18:50', 'bus-50'), option('18:55', 'bus-55'), option('18:20', 'bus-20'), option('18:30', 'bus-30'),
+    option('18:11', 'duplicate'), option('18:05', 'invalid-null'),
+    { ...option('18:06', 'invalid-nan'), departureAt: NaN },
+    { ...option('18:07', 'invalid-string'), departureAt: 'not-a-time' },
+    { ...option('18:08', 'invalid-boarding'), boardingAt: epoch('18:09') },
+    { ...option('18:09', 'arrival-present'), homeArrivalAt: epoch('18:30') }];
+  options[7] = { ...options[7], departureAt: null };
+  ui.renderDecision(doc, mount, { status: 'insufficient_data', fastest: null, alternate: null,
+    options, unavailablePlaces: [] });
+  const text = renderedText(mount);
+  assert.match(text, /18:10.*18:20.*18:30.*18:40.*18:50/s);
+  assert.match(text, /ほか 1 件は省略しています/);
+  assert.equal((text.match(/川崎市バス 登０５/g) || []).length, 5);
+  assert.doesNotMatch(text, /09:00|18:11|not-a-time|invalid-null|invalid-nan/);
+});
+
 test('JR train choice presents station times as arrivals while preserving departure metadata', () => {
   const doc = fakeDocument(), choice = doc.createElement('div'), result = doc.createElement('div');
   const train = { id: 'jr-4554f',
@@ -158,9 +210,9 @@ test('Tamagawa route keeps Noborito as the rail station and highlights the separ
   assert.doesNotMatch(text, /🚃 登戸駅多摩川口/);
 });
 
-test('partial source failure is visible even when its station still has buses', () => {
+test('unavailable source warning is visible with insufficient data and no fastest option', () => {
   const doc = fakeDocument(), mount = doc.createElement('div');
-  ui.renderDecision(doc, mount, { status: 'partial', fastest: null, alternate: null,
+  ui.renderDecision(doc, mount, { status: 'insufficient_data', fastest: null, alternate: null,
     unavailablePlaces: [], unavailableSources: ['tokyu:mukougaoka_to_kibukihoncho'] });
   assert.match(renderedText(mount), /一部の経路情報を取得できませんでした/);
 });

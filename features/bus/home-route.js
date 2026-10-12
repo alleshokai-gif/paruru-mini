@@ -9,6 +9,7 @@
   const providerName = Object.freeze({ kawasaki: '川崎市バス', tokyu: '東急バス' });
   const railStationName = Object.freeze({ noborito: '登戸', mukougaoka: '向ヶ丘遊園',
     musashi_mizonokuchi: '武蔵溝ノ口' });
+  const DISPLAY_ONLY_LIMIT = 5;
   let active = false, expanded = false, generation = 0, mounted = false, activate = null;
   const clock = (epoch) => new Date((epoch + 9 * 3600) * 1000).toISOString().slice(11, 16);
   const node = (doc, tag, className, value) => {
@@ -28,6 +29,11 @@
       option.timingQuality === 'departure_delay_projection' ? '発車遅延からの推定' : '到着予測';
     const stationTime = option.stationTimeAt ?? option.stationArrivalAt;
     const station = railStationName[option.stationId] ?? option.stationLabel;
+    const stationClock = Number.isFinite(stationTime) && stationTime >= 0 ? clock(stationTime) : null;
+    const departureClock = Number.isFinite(option.departureAt) && option.departureAt >= 0
+      ? clock(option.departureAt) : null;
+    const arrivalClock = Number.isFinite(option.homeArrivalAt) && option.homeArrivalAt >= 0
+      ? clock(option.homeArrivalAt) : null;
     const railQuality = option.railTimingQuality === 'delay_projection'
       ? '・遅延に基づく見込み' : '';
     const header = node(doc, 'div', 'bus-home-route-option-header', '');
@@ -37,7 +43,7 @@
     if (option.placeId === 'noborito-tamagawa')
       header.append(node(doc, 'span', 'bus-home-route-area', '多摩川口'));
     section.append(header,
-      node(doc, 'p', 'bus-home-route-rail', `🚃 ${station} ${clock(stationTime)}着${railQuality}`),
+      node(doc, 'p', 'bus-home-route-rail', `🚃 ${station}${stationClock ? ` ${stationClock}着` : ''}${railQuality}`),
       node(doc, 'p', 'bus-home-route-arrow', '↓'));
     if (transferLabel) section.append(node(doc, 'p', 'bus-home-route-walk', `🚶 ${transferLabel}`),
       node(doc, 'p', 'bus-home-route-arrow', '↓'));
@@ -45,11 +51,50 @@
       section.append(node(doc, 'p', 'bus-home-route-rush', '🏃 急げば間に合う'));
     section.append(
       node(doc, 'p', 'bus-home-route-bus',
-        `🚌 ${clock(option.departureAt)} ${providerName[option.provider] || option.provider} ${option.routeLabel}`),
+        `🚌 ${departureClock || '時刻不明'} ${providerName[option.provider] || option.provider} ${option.routeLabel}`),
       node(doc, 'p', 'bus-home-route-board', `乗り場：${option.stationLabel}`),
-      node(doc, 'p', 'bus-home-route-arrow', '↓'),
-      node(doc, 'p', 'bus-home-route-arrival', `🏠 神木本町 ${clock(option.homeArrivalAt)}着`),
-      node(doc, 'p', 'bus-home-route-quality', quality));
+      node(doc, 'p', 'bus-home-route-arrow', '↓'));
+    if (arrivalClock) section.append(node(doc, 'p', 'bus-home-route-arrival',
+      `🏠 神木本町 ${arrivalClock}着`));
+    section.append(node(doc, 'p', 'bus-home-route-quality', quality));
+    return section;
+  }
+  function displayOnlyOptions(options) {
+    if (!Array.isArray(options)) return [];
+    const candidates = options.filter((option) => option && Number.isFinite(option.departureAt)
+      && option.departureAt >= 0 && Number.isFinite(option.boardingAt)
+      && option.departureAt >= option.boardingAt && option.homeArrivalAt === null
+      && option.timingQuality === 'arrival_unknown' && option.recommendable === false);
+    candidates.sort((a, b) => a.departureAt - b.departureAt
+      || String(a.tripId || '').localeCompare(String(b.tripId || ''))
+      || String(a.placeId || '').localeCompare(String(b.placeId || '')));
+    const seen = new Set();
+    return candidates.filter((option) => {
+      const key = option.tripId
+        ? `${option.provider || ''}:${option.tripId}`
+        : JSON.stringify([option.provider, option.queryId, option.routeLabel,
+          option.departureAt, option.stationLabel, option.platform]);
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+  }
+  function renderDisplayOnlyOption(doc, option) {
+    const section = node(doc, 'section', 'bus-home-route-option bus-home-route-display-only', '');
+    const station = railStationName[option.stationId] ?? option.stationLabel ?? '乗換駅';
+    const header = node(doc, 'div', 'bus-home-route-option-header', '');
+    header.append(node(doc, 'h3', 'bus-home-route-station', `${station}で下車`));
+    section.append(header);
+    if (Number.isFinite(option.stationTimeAt) && option.stationTimeAt >= 0)
+      section.append(node(doc, 'p', 'bus-home-route-rail',
+        `🚃 ${station} ${clock(option.stationTimeAt)}着`));
+    if (option.transferMode === 'rush')
+      section.append(node(doc, 'p', 'bus-home-route-rush', '🏃 急げば間に合う'));
+    section.append(
+      node(doc, 'p', 'bus-home-route-bus',
+        `🚌 ${clock(option.departureAt)} ${providerName[option.provider] || option.provider || 'バス'} ${option.routeLabel || '路線名不明'}`),
+      node(doc, 'p', 'bus-home-route-board', `乗り場：${option.stationLabel || '不明'}`),
+      node(doc, 'p', 'bus-home-route-arrival', '🏠 到着時刻は不明'),
+      node(doc, 'p', 'bus-home-route-quality', '最速比較・推薦の対象外'));
     return section;
   }
   function trainChoiceLabel(train) {
@@ -63,15 +108,28 @@
   function renderDecision(doc, mount, result) {
     if (!mount || !result || !['available', 'partial', 'insufficient_data'].includes(result.status))
       throw Error('BUS_HOME_ROUTE_RESULT_INVALID');
-    const nodes = [];
+    const nodes = [], displayOnly = displayOnlyOptions(result.options);
     if (result.fastest) {
       const staticFirst = result.fastest.timingQuality === 'static_only';
-      nodes.push(node(doc, 'h2', 'bus-home-route-title', staticFirst ? '時刻表上の最速候補' : '最速候補'),
+      const title = staticFirst ? '時刻表上の最速候補' : '最速候補';
+      nodes.push(node(doc, 'h2', 'bus-home-route-title',
+        displayOnly.length ? `${title}（到着時刻判明分）` : title),
         renderOption(doc, result.fastest, true));
       if (result.alternate) nodes.push(renderOption(doc, result.alternate, false));
       if (Number.isFinite(result.differenceMinutes)) nodes.push(node(doc, 'p', 'bus-home-route-difference',
         `${result.differenceMinutes}分差`));
     } else nodes.push(node(doc, 'p', 'bus-home-route-unavailable', '帰宅時刻を比較できません'));
+    if (displayOnly.length) {
+      nodes.push(node(doc, 'h2', 'bus-home-route-display-only-title',
+        '到着時刻不明の乗車候補'));
+      nodes.push(node(doc, 'p', 'bus-home-route-display-only-note',
+        '出発時刻が分かる便です。帰宅時刻の比較・推薦には含めていません。'));
+      nodes.push(...displayOnly.slice(0, DISPLAY_ONLY_LIMIT)
+        .map((option) => renderDisplayOnlyOption(doc, option)));
+      if (displayOnly.length > DISPLAY_ONLY_LIMIT)
+        nodes.push(node(doc, 'p', 'bus-home-route-display-only-more',
+          `ほか ${displayOnly.length - DISPLAY_ONLY_LIMIT} 件は省略しています`));
+    }
     if (result.unavailablePlaces?.length || result.unavailableSources?.length)
       nodes.push(node(doc, 'p', 'bus-home-route-partial',
       '一部の経路情報を取得できませんでした'));
