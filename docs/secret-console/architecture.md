@@ -172,6 +172,24 @@ Connectivity is three separate facts:
 
 Only the third may be shown as `connectivity=pass`. None implies end-user acceptance.
 
+## 7.1 Native/runtime-pull preference
+
+Before selecting a secret-distribution transport, ask whether the consumer can use a platform identity to read the canonical Secret Manager value itself. If yes, prefer **runtime pull** over copying the secret into local consumer configuration.
+
+For scheduled GAS consumers, the accepted first pattern is:
+
+```text
+GAS runtime
+  -> ScriptApp.getOAuthToken()
+  -> Google Secret Manager REST
+  -> one allowlisted secret
+  -> transient use only
+```
+
+The secret value is never written to Script Properties. The GAS principal receives secret-level IAM only. Runtime pull is not universal; high-frequency or latency-sensitive consumers require a separate availability review.
+
+This principle reduces physical credential copies and therefore reduces rotation/reconciliation work. Secret Console still owns the logical credential lifecycle and redacted status, while Google identity and Secret Manager IAM provide the delivery authorization.
+
 ## 8. First PoC design: `kaz_os_read`
 
 The proposed stable logical ID is `kaz_os_read`. It represents the private bearer used by these consumer routes:
