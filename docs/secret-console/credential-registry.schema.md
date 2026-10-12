@@ -175,12 +175,14 @@ Allowed delivery modes:
 cloud_run_env_pinned
 cloud_run_volume_versioned
 runtime_api_versioned
+runtime_pull_google_identity
 ```
 
 Rules:
 
 - `cloud_run_env_pinned` requires an explicit numeric version alias in adapter-owned rotation state and a new Cloud Run revision for activation.
 - `latest` is rejected for environment-variable delivery.
+- `runtime_pull_google_identity` is allowed for bounded scheduled GAS consumers that authenticate to Secret Manager with their own Google OAuth identity. It stores no secret value in Script Properties and requires secret-level IAM plus a fail-closed runtime fetch.
 - IAM is granted at the individual secret where practical.
 - Project number, secret resource name, version name, service account email, and environment variable name are excluded from redacted projections.
 
