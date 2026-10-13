@@ -62,7 +62,7 @@ function readKazOsInbox_(trace, transportTrace) {
   setKazOsInboxFailureStage_(trace, 'GATEWAY_CONFIG');
   const props = PropertiesService.getScriptProperties();
   const url = String(props.getProperty('KAZ_OS_INBOX_READ_URL') || '');
-  const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
+  const token = String(getKazOsProgressReadToken_() || '');
   if (!/^https:\/\/[^\s?#]+\/v1\/inbox$/.test(url) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
   let capture;
   setKazOsInboxFailureStage_(trace, 'CALENDAR_CAPTURE');
