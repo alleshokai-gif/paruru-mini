@@ -27,12 +27,14 @@ function createHarness(options = {}) {
     SpreadsheetApp:{getActiveSpreadsheet:()=>({getSheetByName:sheet,insertSheet:name=>{if(rows[name])throw Error('DUPLICATE_SHEET');rows[name]=[];return sheet(name);}}),flush(){}},
     LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
     Utilities:{DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},computeDigest:(_,v)=>Array.from(crypto.createHash('sha256').update(v).digest()),
-      formatDate:d=>d.toISOString(), getUuid:()=>crypto.randomUUID()},
+      formatDate:d=>d.toISOString(), getUuid:()=>crypto.randomUUID(),
+      base64Decode:v=>Buffer.from(v,'base64'), newBlob:v=>({getDataAsString:()=>Buffer.from(v).toString('utf8')})},
+    ScriptApp:{getOAuthToken:()=> 'synthetic-oauth-token'},
     UrlFetchApp:{fetch(){throw Error('EXTERNAL_FETCH_FORBIDDEN');}},
     ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},
   };
   vm.createContext(ctx);
-  ['gas/HomeMemberPolicy.js','gas/HomeMembershipService.js','gas/DevicePairingService.js','gas/Code.js','gas/KazOsInboxAnswer.js','gas/KazOsProgress.js','gas/KazOsProjects.js','gas/KazOsWork.js','gas/KazOsCapa.js','gas/KazOsToday.js','gas/KazOsInbox.js'].forEach(f=>vm.runInContext(source(f),ctx,{filename:f}));
+  ['gas/HomeMemberPolicy.js','gas/HomeMembershipService.js','gas/DevicePairingService.js','gas/Code.js','gas/KazOsInboxAnswer.js','gas/KazOsSecretManager.js','gas/KazOsProgress.js','gas/KazOsProjects.js','gas/KazOsWork.js','gas/KazOsCapa.js','gas/KazOsToday.js','gas/KazOsInbox.js'].forEach(f=>vm.runInContext(source(f),ctx,{filename:f}));
   ctx.resolveFirebaseAuthenticatedActor_ = body => {
     const subject = String(body && body.auth && body.auth.idToken || '');
     const actors = {
