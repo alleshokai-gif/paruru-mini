@@ -170,7 +170,7 @@ test('TODAY sanitizer rejects write claims malformed planning slots and unsafe c
 test('gateway derives /v1/today and POSTs bounded transient planning input',()=>{
   data=snapshot();
   h.props.KAZ_OS_PROJECTS_READ_URL='https://reader.invalid/v1/projects';
-  h.props.KAZ_OS_PROGRESS_READ_TOKEN='synthetic-reader-token-01234567890123456789';
+  h.ctx.getKazOsProgressReadToken_=()=> 'synthetic-reader-token-01234567890123456789';
   let calls=0,observedPayload=null;
   h.ctx.UrlFetchApp.fetch=(url,options)=>{
     calls++;

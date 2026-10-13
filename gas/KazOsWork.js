@@ -2,7 +2,7 @@
 function readKazOsWork_(transportTrace) {
   const props = PropertiesService.getScriptProperties();
   const projectsUrl = String(props.getProperty('KAZ_OS_PROJECTS_READ_URL') || '');
-  const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
+  const token = String(getKazOsProgressReadToken_() || '');
   if (!/^https:\/\/[^\s?#]+\/v1\/projects$/.test(projectsUrl) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
   const url = projectsUrl.replace(/\/v1\/projects$/, '/v1/work');
   recordKazOsTransport_(transportTrace, 'CLOUD_RUN_START', { outcome: 'progress' });

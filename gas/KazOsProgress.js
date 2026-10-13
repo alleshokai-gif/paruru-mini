@@ -111,7 +111,7 @@ function authorizeKazOsOwner_(actor) {
 function readKazOsProgress_() {
   const props = PropertiesService.getScriptProperties();
   const url = String(props.getProperty('KAZ_OS_PROGRESS_READ_URL') || '');
-  const token = String(props.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
+  const token = String(getKazOsProgressReadToken_() || '');
   if (!/^https:\/\/[^\s?#]+\/v1\/progress$/.test(url) || token.length < 32) throw homeMembershipError_('KAZ_NOT_CONNECTED');
   const response = UrlFetchApp.fetch(url, { method: 'get', headers: { Authorization: 'Bearer ' + token },
     muteHttpExceptions: true, followRedirects: false, validateHttpsCertificates: true });
