@@ -54,7 +54,7 @@ test('fixture, duplicates and missing fields fail closed',()=>{
   data=snapshot();delete data.projects[0].next_action;assert.equal(call().success,false);
 });
 test('gateway source client is only GET with no redirects',()=>{
-  h.props.KAZ_OS_PROJECTS_READ_URL='https://reader.invalid/v1/projects';h.props.KAZ_OS_PROGRESS_READ_TOKEN='synthetic-reader-token-01234567890123456789';
+  h.props.KAZ_OS_PROJECTS_READ_URL='https://reader.invalid/v1/projects';h.ctx.getKazOsProgressReadToken_=()=> 'synthetic-reader-token-01234567890123456789';
   let calls=0;h.ctx.UrlFetchApp.fetch=(url,options)=>{calls++;assert.equal(url,h.props.KAZ_OS_PROJECTS_READ_URL);assert.equal(options.method,'get');assert.equal(options.followRedirects,false);return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(snapshot())};};
   // Restore the original source function so this test covers the configured transport.
   const fs=require('node:fs'),vm=require('node:vm');vm.runInContext(fs.readFileSync(path.join(root,'gas/KazOsProjects.js'),'utf8'),h.ctx);
