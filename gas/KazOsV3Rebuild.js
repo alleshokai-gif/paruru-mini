@@ -14,8 +14,7 @@ function requestKazOsV3Rebuild_(reason, source, correlationId, dependencies) {
       || !/^[A-Za-z0-9:_-]{8,256}$/.test(String(correlationId || ''))) {
     throw kazOsV3RebuildError_('REBUILD_REQUEST_INVALID');
   }
-  const properties = deps.properties || PropertiesService.getScriptProperties();
-  const token = String(properties.getProperty('KAZ_OS_PROGRESS_READ_TOKEN') || '');
+  const token = deps.token != null ? String(deps.token || '').trim() : String(getKazOsProgressReadToken_() || '').trim();
   if (token.length < 32) throw kazOsV3RebuildError_('REBUILD_AUTH_UNAVAILABLE');
   const fetch = deps.fetch || UrlFetchApp.fetch;
   let response;
