@@ -77,7 +77,7 @@ test('duplicates invalid enums and writes fail closed',()=>{
 test('gateway derives /v1/work from existing Projects URL and performs GET only',()=>{
   data=snapshot();
   h.props.KAZ_OS_PROJECTS_READ_URL='https://reader.invalid/v1/projects';
-  h.props.KAZ_OS_PROGRESS_READ_TOKEN='synthetic-reader-token-01234567890123456789';
+  h.ctx.getKazOsProgressReadToken_=()=> 'synthetic-reader-token-01234567890123456789';
   let calls=0;h.ctx.UrlFetchApp.fetch=(url,options)=>{calls++;assert.equal(url,'https://reader.invalid/v1/work');
     assert.equal(options.method,'get');assert.equal(options.followRedirects,false);
     return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(snapshot())};};
