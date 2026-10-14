@@ -113,9 +113,21 @@ function readKazOsInbox_(trace, transportTrace) {
     httpStatus: httpStatus,
     errorCode: httpStatus === 200 ? null : 'KAZ_SOURCE_FAILED'
   });
+  let upstreamErrorCode = null;
+  if (httpStatus !== 200) {
+    try {
+      const errorBody = JSON.parse(response.getContentText());
+      const candidate = String(errorBody && errorBody.error && errorBody.error.code || '');
+      if (/^[A-Z0-9_]{1,80}$/.test(candidate)) upstreamErrorCode = candidate;
+    } catch (_) {}
+  }
   recordKazOsInboxTrace_(trace, 'GATEWAY_RESPONSE', { event_count: eventCount, http_status: httpStatus,
-    error_code: httpStatus === 200 ? null : 'KAZ_SOURCE_FAILED' });
-  if (httpStatus !== 200) throw homeMembershipError_('KAZ_SOURCE_FAILED');
+    error_code: httpStatus === 200 ? null : (upstreamErrorCode || 'KAZ_SOURCE_FAILED') });
+  if (httpStatus !== 200) {
+    const error = homeMembershipError_('KAZ_SOURCE_FAILED');
+    error.upstream_code = upstreamErrorCode;
+    throw error;
+  }
   setKazOsInboxFailureStage_(trace, 'GATEWAY_RESPONSE_PARSE');
   const text = response.getContentText();
   if (text.length > 524288) throw homeMembershipError_('KAZ_SOURCE_FAILED');
