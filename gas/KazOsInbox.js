@@ -117,8 +117,19 @@ function readKazOsInbox_(trace, transportTrace) {
   if (httpStatus !== 200) {
     try {
       const errorBody = JSON.parse(response.getContentText());
-      const candidate = String(errorBody && errorBody.error && errorBody.error.code || '');
-      if (/^[A-Z0-9_]{1,80}$/.test(candidate)) upstreamErrorCode = candidate;
+      const candidates = [
+        errorBody && errorBody.error && errorBody.error.code,
+        errorBody && errorBody.code,
+        errorBody && typeof errorBody.error === 'string' ? errorBody.error : null,
+        errorBody && errorBody.message
+      ];
+      for (let i = 0; i < candidates.length; i++) {
+        const candidate = String(candidates[i] || '');
+        if (/^[A-Z0-9_]{1,80}$/.test(candidate)) {
+          upstreamErrorCode = candidate;
+          break;
+        }
+      }
     } catch (_) {}
   }
   recordKazOsInboxTrace_(trace, 'GATEWAY_RESPONSE', { event_count: eventCount, http_status: httpStatus,
