@@ -3,7 +3,11 @@ var KAZ_OS_INBOX_TRACE_RELEASE_ = 'phase4c3-redacted-trace-v1';
 var KAZ_OS_INBOX_TRACE_STAGES_ = ['REQUEST_RECEIVED', 'ROUTER_MATCHED', 'AUTH_PASSED', 'INBOX_READ_STARTED',
   'CALENDAR_CAPTURE_OK', 'CALENDAR_CAPTURE_FAILED', 'GATEWAY_POST_STARTED', 'GATEWAY_RESPONSE', 'SANITIZER_OK', 'RESPONSE_SENT'];
 var KAZ_OS_INBOX_TRACE_ERROR_CODES_ = ['FORBIDDEN', 'UNAUTHORIZED_DEVICE', 'MEMBERSHIP_NOT_FOUND', 'KAZ_NOT_CONNECTED',
-  'KAZ_READ_ONLY', 'KAZ_REQUEST_ID_INVALID', 'KAZ_SOURCE_FAILED'];
+  'KAZ_READ_ONLY', 'KAZ_REQUEST_ID_INVALID', 'KAZ_SOURCE_FAILED',
+  'PROJECTS_SOURCE_UNAVAILABLE', 'WORK_ITEMS_SOURCE_UNAVAILABLE', 'PLANNING_SOURCE_UNAVAILABLE',
+  'TODAY_PLANNING_INVALID', 'CALENDAR_OR_PLANNING_INVALID', 'CANDIDATE_SOURCE_UNAVAILABLE',
+  'RESPONSE_TOO_LARGE', 'UPSTREAM_CODE_UNRECOGNIZED', 'UPSTREAM_CODE_MISSING',
+  'UPSTREAM_BODY_NON_JSON'];
 
 function createKazOsInboxTrace_(requestId) {
   const normalized = String(requestId || '').trim().toLowerCase();
@@ -123,14 +127,18 @@ function readKazOsInbox_(trace, transportTrace) {
         errorBody && typeof errorBody.error === 'string' ? errorBody.error : null,
         errorBody && errorBody.message
       ];
+      const allowed = KAZ_OS_INBOX_TRACE_ERROR_CODES_;
       for (let i = 0; i < candidates.length; i++) {
         const candidate = String(candidates[i] || '');
-        if (/^[A-Z0-9_]{1,80}$/.test(candidate)) {
-          upstreamErrorCode = candidate;
-          break;
-        }
+        if (!candidate) continue;
+        upstreamErrorCode = allowed.indexOf(candidate) >= 0
+          ? candidate : 'UPSTREAM_CODE_UNRECOGNIZED';
+        break;
       }
-    } catch (_) {}
+      if (!upstreamErrorCode) upstreamErrorCode = 'UPSTREAM_CODE_MISSING';
+    } catch (_) {
+      upstreamErrorCode = 'UPSTREAM_BODY_NON_JSON';
+    }
   }
   recordKazOsInboxTrace_(trace, 'GATEWAY_RESPONSE', { event_count: eventCount, http_status: httpStatus,
     error_code: httpStatus === 200 ? null : (upstreamErrorCode || 'KAZ_SOURCE_FAILED') });
