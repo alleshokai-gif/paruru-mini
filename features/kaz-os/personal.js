@@ -130,6 +130,79 @@
         const fetched = Number.isFinite(stamp(source.fetched_at)) ? new Date(source.fetched_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST' : '取得時刻未確認';
         add('p', `実データ · Notion / READ-ONLY · ${source.fetch_status} · ${fetched}`, 'kp-muted', head);
       }
+      // Keep a previous-day projection out of today's plan. WorkBusy freshness
+      // is advisory: the server already generated the windows from known BUSY.
+      if (v3) {
+        const dayJst = value => {
+          const ms = typeof value === 'number' ? value : stamp(value);
+          return Number.isFinite(ms) ? new Date(ms + 9 * 3600000).toISOString().slice(0, 10) : null;
+        };
+        const todayHealth = health(data.sources?.today, now);
+        const calendarHealth = health(data.sources?.calendar, now);
+        const busySource = data.sources?.work_busy;
+        const reportedBusyHealth = busySource?.snapshot_status === 'current' ? 'ok'
+          : ['stale', 'failed', 'not_connected'].includes(busySource?.snapshot_status)
+            ? busySource.snapshot_status : 'not_connected';
+        const busyDeadline = stamp(busySource?.snapshot_valid_until);
+        const busyHealth = reportedBusyHealth === 'ok'
+          && (!Number.isFinite(busyDeadline) || busyDeadline <= now)
+          ? 'stale' : reportedBusyHealth;
+        const snapshotDay = dayJst(data.v3_snapshot?.generated_at);
+        const safeToday = (data.v3_snapshot?.status === 'CURRENT'
+            || (data.v3_snapshot?.status === 'DEGRADED' && busyHealth !== 'ok'))
+          && todayHealth === 'ok' && workHealth === 'ok'
+          && calendarHealth === 'ok'
+          && snapshotDay !== null && snapshotDay === dayJst(now) && !!data.today;
+        if (safeToday && busyHealth !== 'ok') {
+          const observedAt = stamp(busySource?.snapshot_updated_at);
+          const observed = Number.isFinite(observedAt)
+            ? new Date(observedAt).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',
+                month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST'
+            : '時刻未確認';
+          add('p', `WorkBusy ${busyHealth.toUpperCase()} · 会社のBUSYは最終取得 ${observed} 時点の情報です。空き時間は予定上の目安です。`, 'kp-notice', head);
+        }
+        if (!safeToday) {
+          add('p', 'TODAY未確定 · 更新結果が揃っていないため、現在の空き時間・NOW・NEXT・時間付き配置は表示しません。', 'kp-notice', head);
+          add('p', `保存Snapshot: ${Number.isFinite(stamp(data.v3_snapshot?.generated_at)) ? fmt(data.v3_snapshot.generated_at) + ' JST / ' + snapshotDay : '時刻未確認'} · TODAY ${todayHealth.toUpperCase()} · Work ${workHealth.toUpperCase()} · Calendar ${calendarHealth.toUpperCase()} · WorkBusy ${busyHealth.toUpperCase()}`, 'kp-muted', head);
+          const saved = part('Work情報（最終保存値・現在とは限りません）');
+          const catalog = data.last_known_work;
+          const recordedAt = Number.isFinite(stamp(catalog?.generated_at))
+            ? new Date(catalog.generated_at).toLocaleString('ja-JP', {timeZone: 'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) + ' JST'
+            : '時刻未確認';
+          add('p', `Work source更新 ${recordedAt} · 読み取り専用 · Work状態も変わっている可能性があります。`, 'kp-muted', saved);
+          if (!Array.isArray(catalog?.items) || !catalog.items.length) {
+            add('p', '表示できる最終保存Work情報はありません。', 'kp-muted', saved);
+          } else {
+            catalog.items.forEach(item => {
+              const row = add('article', '', 'kp-work-row', saved);
+              add('strong', String(item.title || 'タイトル未確認'), '', row);
+              add('p', `${item.work_id || 'ID未確認'} · ${item.project_name || 'Project未確認'} · 保存時状態: ${item.state || '不明'}`, 'kp-muted', row);
+            });
+            if (Number.isInteger(catalog.total) && catalog.total > catalog.items.length) {
+              add('p', `保存Work ${catalog.total}件のうち${catalog.items.length}件を表示。最新情報はWORKタブで確認してください。`, 'kp-muted', saved);
+            }
+          }
+          const savedProjects = part('Projects情報（最終保存値・現在とは限りません）');
+          const projectsCatalog = data.last_known_projects;
+          const projectsAt = Number.isFinite(stamp(projectsCatalog?.generated_at))
+            ? new Date(projectsCatalog.generated_at).toLocaleString('ja-JP', {timeZone: 'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) + ' JST'
+            : '時刻未確認';
+          add('p', `Projects source更新 ${projectsAt} · 読み取り専用 · Project状態も変わっている可能性があります。`, 'kp-muted', savedProjects);
+          if (!Array.isArray(projectsCatalog?.items) || !projectsCatalog.items.length) {
+            add('p', '表示できる最終保存Projects情報はありません。', 'kp-muted', savedProjects);
+          } else {
+            projectsCatalog.items.forEach(item => {
+              const row = add('article', '', 'kp-work-row', savedProjects);
+              add('strong', String(item.title || 'タイトル未確認'), '', row);
+              add('p', `保存時状態: ${item.status || '不明'}`, 'kp-muted', row);
+            });
+            if (Number.isInteger(projectsCatalog.total) && projectsCatalog.total > projectsCatalog.items.length) {
+              add('p', `保存Projects ${projectsCatalog.total}件のうち${projectsCatalog.items.length}件を表示。最新情報はPROJECTSタブで確認してください。`, 'kp-muted', savedProjects);
+            }
+          }
+          return;
+        }
+      }
       if (workHealth !== 'ok' || !data?.today) return;
 
       const t = data.today, v2 = data.schema_version === 'kaz-today-plan-v2';
