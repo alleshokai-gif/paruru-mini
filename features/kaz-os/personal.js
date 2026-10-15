@@ -139,7 +139,12 @@
         };
         const todayHealth = health(data.sources?.today, now);
         const calendarHealth = health(data.sources?.calendar, now);
-        const busyHealth = health(data.sources?.work_busy, now);
+        const busySource = data.sources?.work_busy;
+        const reportedBusyHealth = health(busySource, now);
+        const busyDeadline = stamp(busySource?.snapshot_valid_until);
+        const busyHealth = reportedBusyHealth === 'ok'
+          && (!Number.isFinite(busyDeadline) || busyDeadline <= now)
+          ? 'stale' : reportedBusyHealth;
         const snapshotDay = dayJst(data.v3_snapshot?.generated_at);
         const safeToday = data.v3_snapshot?.status === 'CURRENT'
           && todayHealth === 'ok' && workHealth === 'ok'
@@ -153,7 +158,7 @@
           const recordedAt = Number.isFinite(stamp(catalog?.generated_at))
             ? new Date(catalog.generated_at).toLocaleString('ja-JP', {timeZone: 'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) + ' JST'
             : '時刻未確認';
-          add('p', `取得済みSnapshot ${recordedAt} · 読み取り専用 · Work状態も変わっている可能性があります。`, 'kp-muted', saved);
+          add('p', `Work source更新 ${recordedAt} · 読み取り専用 · Work状態も変わっている可能性があります。`, 'kp-muted', saved);
           if (!Array.isArray(catalog?.items) || !catalog.items.length) {
             add('p', '表示できる最終保存Work情報はありません。', 'kp-muted', saved);
           } else {
@@ -164,6 +169,24 @@
             });
             if (Number.isInteger(catalog.total) && catalog.total > catalog.items.length) {
               add('p', `保存Work ${catalog.total}件のうち${catalog.items.length}件を表示。最新情報はWORKタブで確認してください。`, 'kp-muted', saved);
+            }
+          }
+          const savedProjects = part('Projects情報（最終保存値・現在とは限りません）');
+          const projectsCatalog = data.last_known_projects;
+          const projectsAt = Number.isFinite(stamp(projectsCatalog?.generated_at))
+            ? new Date(projectsCatalog.generated_at).toLocaleString('ja-JP', {timeZone: 'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) + ' JST'
+            : '時刻未確認';
+          add('p', `Projects source更新 ${projectsAt} · 読み取り専用 · Project状態も変わっている可能性があります。`, 'kp-muted', savedProjects);
+          if (!Array.isArray(projectsCatalog?.items) || !projectsCatalog.items.length) {
+            add('p', '表示できる最終保存Projects情報はありません。', 'kp-muted', savedProjects);
+          } else {
+            projectsCatalog.items.forEach(item => {
+              const row = add('article', '', 'kp-work-row', savedProjects);
+              add('strong', String(item.title || 'タイトル未確認'), '', row);
+              add('p', `保存時状態: ${item.status || '不明'}`, 'kp-muted', row);
+            });
+            if (Number.isInteger(projectsCatalog.total) && projectsCatalog.total > projectsCatalog.items.length) {
+              add('p', `保存Projects ${projectsCatalog.total}件のうち${projectsCatalog.items.length}件を表示。最新情報はPROJECTSタブで確認してください。`, 'kp-muted', savedProjects);
             }
           }
           return;
