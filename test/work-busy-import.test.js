@@ -36,6 +36,8 @@ function fakeSheet() {
     headers: [],
     rows: [],
     failRowWriteOnce: false,
+    corruptNextRowReadAfterWrite: false,
+    corruptReadbackOnce: false,
     frozenRows: 0,
     getLastRow() { return this.headers.length ? this.rows.length + 1 : 0; },
     getLastColumn() { return this.headers.length; },
@@ -57,14 +59,23 @@ function fakeSheet() {
           for (let index = 0; index < rowCount; index += 1) {
             sheet.rows[row - 2 + index] = values[index].slice(0, columnCount);
           }
+          if (sheet.corruptNextRowReadAfterWrite) {
+            sheet.corruptNextRowReadAfterWrite = false;
+            sheet.corruptReadbackOnce = true;
+          }
           return this;
         },
         getValues() {
           if (row === 1) return [sheet.headers.slice(column - 1, column - 1 + columnCount)];
-          return Array.from({ length: rowCount }, (_, index) => {
+          const values = Array.from({ length: rowCount }, (_, index) => {
             const value = sheet.rows[row - 2 + index] || [];
             return Array.from({ length: columnCount }, (__, cell) => value[column - 1 + cell] ?? '');
           });
+          if (sheet.corruptReadbackOnce) {
+            sheet.corruptReadbackOnce = false;
+            values[0][sheet.headers.indexOf('end')] = 'INVALID';
+          }
+          return values;
         },
         clearContent() {
           sheet.rows = sheet.rows.slice(0, row - 2);
@@ -424,6 +435,18 @@ test('rebuild request failure keeps verified rows for existing reconciliation', 
     if(previousHash===undefined) delete context.kazOsSha256_;
     else context.kazOsSha256_=previousHash;
   }
+});
+
+test('corrupt read-back restores the previous rows and skips rebuild', () => {
+  const sheet=fakeSheet(), spreadsheet=fakeSpreadsheet(sheet);
+  const deps={now:new Date('2026-10-02T08:00:00+09:00'),spreadsheet,
+    gmailApp:fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00').gmailApp};
+  importLatest(deps);
+  const prior=sheet.rows.map(row=>row.slice());
+  sheet.corruptNextRowReadAfterWrite=true;
+  deps.gmailApp=fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=10:00-11:00').gmailApp;
+  assert.throws(()=>importLatest(deps),error=>error.code==='STORAGE_DATA_ERROR');
+  assert.deepEqual(sheet.rows,prior);
 });
 
 test('verified WorkBusy import requests one rebuild; failed import requests none', () => {
