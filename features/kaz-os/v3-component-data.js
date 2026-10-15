@@ -26,9 +26,48 @@
           calendar_free_windows: snapshot.today.personal_free_windows,
         },
       };
-      sources.work_items = source(sources.work_items, snapshot.sources?.today);
+      // TODAY freshness and Work source health are independent dimensions.
+      // The old mapping marked Work STALE when only the TODAY projection was stale.
+      sources.work_items = source(sources.work_items, snapshot.sources?.work);
+      sources.today = source(sources.work_items, snapshot.sources?.today);
       sources.calendar = source(sources.calendar, snapshot.sources?.calendar);
-      sources.work_busy = source(sources.work_busy, snapshot.sources?.work_busy);
+      sources.work_busy = {
+        ...source(sources.work_busy, snapshot.sources?.work_busy),
+        snapshot_valid_until: snapshot.sources?.work_busy?.valid_until || null,
+      };
+      // Display-only, already authorized material. Historical Work is NOT a
+      // time-valid plan and must never feed NOW/NEXT/available-window rendering.
+      const workStatus = snapshot.sources?.work?.status;
+      const savedWork = snapshot.component_data?.work?.work_items;
+      const projectStatus = snapshot.sources?.projects?.status;
+      const savedProjects = snapshot.component_data?.projects?.projects;
+      view = {
+        ...view,
+        v3_snapshot: {
+          status: snapshot.status || 'UNKNOWN',
+          generated_at: snapshot.generated_at || null,
+        },
+        last_known_work: {
+          status: workStatus || 'failed',
+          generated_at: snapshot.sources?.work?.updated_at || null,
+          total: Array.isArray(savedWork) && ['current', 'stale'].includes(workStatus) ? savedWork.length : null,
+          items: Array.isArray(savedWork) && ['current', 'stale'].includes(workStatus)
+            ? savedWork.slice(0, 5).map(w => ({
+                id: w.id, title: w.title, work_id: w.work_id,
+                state: w.state, project_name: w.project_name,
+              }))
+            : [],
+        },
+        last_known_projects: {
+          status: projectStatus || 'failed',
+          generated_at: snapshot.sources?.projects?.updated_at || null,
+          total: Array.isArray(savedProjects) && ['current', 'stale'].includes(projectStatus)
+            ? savedProjects.length : null,
+          items: Array.isArray(savedProjects) && ['current', 'stale'].includes(projectStatus)
+            ? savedProjects.slice(0, 5).map(p => ({ id: p.id, title: p.title, status: p.status }))
+            : [],
+        },
+      };
     } else if (page === 'work') {
       sources.work_items = source(sources.work_items, snapshot.sources?.work);
     } else if (page === 'capa') {
