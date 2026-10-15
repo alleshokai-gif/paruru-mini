@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261012-bus-home-route-unknown-arrival-v1");
-// Release: v20261012-bus-home-route-unknown-arrival-v1
+importScripts("./build.js?v=v20261015-wi60-morning-today-v1");
+// Release: v20261015-wi60-morning-today-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
