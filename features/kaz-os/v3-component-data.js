@@ -71,6 +71,7 @@
       };
     } else if (page === 'work') {
       sources.work_items = source(sources.work_items, snapshot.sources?.work);
+      sources.projects = source(sources.projects, snapshot.sources?.projects);
     } else if (page === 'capa') {
       sources.capa = source(sources.capa, snapshot.sources?.capa);
     } else {

@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261015-wi60-morning-today-v1");
-// Release: v20261015-wi60-morning-today-v1
+importScripts("./build.js?v=v20261017-kaz-project-work-progress-v1");
+// Release: v20261017-kaz-project-work-progress-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

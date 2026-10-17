@@ -92,8 +92,30 @@
       return status;
     }
     const projects = list(data?.projects), work = list(data?.work_items), capa = list(data?.capa_items);
+    const progressUi = data?.progress_ui?.schema_version === 'kaz-project-work-progress-v1' ? data.progress_ui : null;
+    const inRecordedOrder = (rows, ids) => {
+      if (!rows || !Array.isArray(ids) || ids.length !== rows.length) return rows;
+      const byId = new Map(rows.map(row => [row.id, row]));
+      return new Set(ids).size === rows.length && ids.every(id => byId.has(id))
+        ? ids.map(id => byId.get(id)) : rows;
+    };
     const project = id => projects?.find(p => p.id === id);
     const wi = id => work?.find(w => w.id === id);
+    const detailOf = row => data?.page_details?.[row?.id];
+    const detailText = (row, key) => detailOf(row)?.status === 'current'
+      ? detailOf(row)[key] || '未記録'
+      : detailOf(row)?.status === 'unavailable' ? '本文を取得できません' : '未記録';
+    function workLink(w, parent) {
+      const row = link('', 'work', w.id, 'kp-work-row kp-work-link');
+      row.dataset.workItem = w.id;
+      const top = el('div', '', 'kp-project-head');
+      top.append(el('strong', w.title), el('span', w.state, 'kp-badge kp-' + String(w.state).toLowerCase()));
+      if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
+      row.append(top, el('span', `${w.project_name || 'Project未確認'} · ${w.work_id || 'ID未確認'}`, 'kp-muted'));
+      row.append(el('span', w.state === 'DONE' ? '進捗: 完了' : '進捗率: 未記録', 'kp-muted'));
+      parent.append(row);
+      return row;
+    }
     function workDetail(w, parent) {
       const d = fold(`${w.title} · ${w.state} · ${estimate(w.estimate_min)}`, parent);
       d.dataset.workItem = w.id;
@@ -378,29 +400,48 @@
       }
       if (!['ok', 'partial'].includes(workHealth)) return;
       if (!work) { add('p', 'Work Items一覧を確認できません。重複・欠落を解消してください。', 'kp-notice'); return; }
-      add('p', `${work.length} Work Items · 表示順はOperational state順。UIで独自priority scoreは付けません。`, 'kp-muted', head);
+      if (selection.id) {
+        head.prepend(link('← WORK', 'work', null, 'kp-back'));
+        const w = wi(selection.id);
+        if (!w) { add('p', 'この取得範囲にWorkが見つかりません。'); return; }
+        add('h3', w.title, 'kp-project-title');
+        add('p', `${w.state} · ${w.priority || 'Priority未設定'} · ${w.work_id || 'ID未確認'}`, 'kp-muted');
+        add('p', `作業の目的: ${detailText(w, 'purpose')}`);
+        for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', '進捗記録']])
+          if (detailOf(w)?.status === 'current' && detailOf(w)[key]) add('p', `${label}: ${detailOf(w)[key]}`);
+        add('p', w.state === 'DONE' ? '進捗: NotionでDONEと記録済み。' : '進捗率: 未記録。状態から割合は推測しません。', 'kp-muted');
+        add('p', `実施済み: ${detailText(w, 'completed')}`);
+        add('p', `残作業: ${detailText(w, 'remaining')}`);
+        add('p', `次の行動: ${w.next_action || '未記録'}`);
+        add('p', `ブロッカー: ${w.blocker || '未記録'}`);
+        const updated = Number.isFinite(stamp(w.source_revision))
+          ? new Date(w.source_revision).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST'
+          : '未確認';
+        add('p', `更新日時: ${updated}`, 'kp-muted');
+        if (w.project_id && project(w.project_id)) host.append(link(`所属Project: ${w.project_name}`, 'projects', w.project_id, 'kp-back'));
+        else add('p', `所属Project: ${w.project_name || '未確認'}`, 'kp-muted');
+        if (w.work_id === 'WI-53' && data.wi53_progress?.schema_version === 'wi53-progress-summary-v1') {
+          const summary = data.wi53_progress, totals = summary.totals, statuses = summary.statuses;
+          const ledger = part('WI-53 台帳');
+          add('p', `全${totals.all_registry_entries}項目 · Secret関連${totals.credential_and_legacy_entries}項目`, '', ledger);
+          add('p', `移行済み ${statuses.migrated} · 作業中 ${statuses.in_progress} · 未移行 ${statuses.not_migrated} · 人間判断待ち ${statuses.human_decision} · 保留 ${statuses.deferred}`, '', ledger);
+          add('p', `兄弟の判断待ち: ${summary.human_decisions}件 · 台帳時点 ${summary.as_of}`, 'kp-muted', ledger);
+          add('p', '台帳上の進捗です。Secret値や認証情報は表示しません。', 'kp-muted', ledger);
+        }
+        return;
+      }
+      add('p', `${work.length} Work Items · ${progressUi ? 'Notion Priority順 · 完了/取消は末尾' : '取得順'}`, 'kp-muted', head);
       if (!work.length) { add('p', 'この取得範囲のWork Itemは0件です。'); return; }
       const rows = add('div', '', 'kp-work-list');
       const terminal = [];
-      work.forEach(w => {
+      inRecordedOrder(work, progressUi?.work_order).forEach(w => {
         if (!WORK_STATES.includes(w.state)) return;
         if (['DONE','CANCELLED'].includes(w.state)) { terminal.push(w); return; }
-        const row = add('article', '', 'kp-work-row', rows); row.dataset.workItem = w.id;
-        const top = add('div', '', 'kp-project-head', row);
-        top.append(el('strong', w.title));
-        top.append(el('span', w.state, 'kp-badge kp-' + w.state.toLowerCase()));
-        if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
-        add('p', `${w.project_name} · ${w.work_id} · ${estimate(w.estimate_min)}`, 'kp-muted', row);
-        if (w.next_action) add('p', `NEXT ${w.next_action}`, 'kp-next', row);
-        if (w.blocker || w.state === 'BLOCKED') add('p', `BLOCKER ${w.blocker || '理由は未確認'}`, 'kp-blocker', row);
+        workLink(w, rows);
       });
       if (terminal.length) {
         const closed = fold(`終了した項目 ${terminal.length}件`);
-        terminal.forEach(w => {
-          const row = add('div', '', 'kp-work-row', closed); row.dataset.workItem = w.id;
-          add('strong', w.title, '', row);
-          add('p', `${w.project_name} · ${w.work_id} · ${w.state}`, 'kp-muted', row);
-        });
+        terminal.forEach(w => workLink(w, closed));
       }
       return;
     }
@@ -467,10 +508,20 @@
         const p = project(selection.id);
         if (!p) { add('p', 'この取得範囲にProjectが見つかりません。'); return; }
         add('h3', p.title, 'kp-project-title'); host.append(badge(state(p.status)));
-        add('p', `FOCUS ${p.current_focus || '未設定'}`);
+        add('p', `目的: ${detailText(p, 'purpose')}`);
+        for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', '進捗記録']])
+          if (detailOf(p)?.status === 'current' && detailOf(p)[key]) add('p', `${label}: ${detailOf(p)[key]}`);
+        add('p', `現在の焦点: ${p.current_focus || '未記録'}`);
         progressRow(p, host, current);
-        add('p', `NEXT ${p.next_action || '未設定'}`);
-        if (p.blocker || p.status === 'BLOCKED') add('p', `BLOCKER ${p.blocker || '未確認'}`);
+        const projectProgress = progressUi?.projects?.[p.id];
+        const completed = projectProgress?.completed_work_ids?.map(id => wi(id)?.title).filter(Boolean);
+        add('p', `完了事項: ${detailText(p, 'completed')}`);
+        add('p', `完了Work: ${completed ? completed.length ? completed.join(' / ') : '該当Workなし' : '取得範囲では未確認'}`);
+        add('p', `残件: ${Number.isInteger(projectProgress?.remaining_work_count) ? `${projectProgress.remaining_work_count} Work` : '未確認'}`);
+        if (projectProgress?.state_counts) add('p', `Work状態: ${Object.entries(projectProgress.state_counts).map(([name, count]) => `${name} ${count}`).join(' · ')}`, 'kp-muted');
+        add('p', `残作業の記録: ${detailText(p, 'remaining')}`);
+        add('p', `次の行動: ${p.next_action || '未記録'}`);
+        add('p', `ブロッカー: ${p.blocker || '未記録'}`);
         const proof = fold('Milestoneの定義とAcceptance');
         if (Array.isArray(p.milestones)) p.milestones.forEach(m => add('p', `${m.id} · ${m.accepted ? 'Acceptance参照 ' + (m.evidence_ref || '未取得') : '未完了'}`, 'kp-muted', proof));
         else add('p', p.milestones_done != null ? 'NotionのDone / Total集計値。個別MilestoneのAcceptance Evidenceは未取得。' : 'milestone未定義', 'kp-muted', proof);
@@ -481,11 +532,12 @@
         }
         const items = part('Work Items'); const h = notice('tasks', items);
         if (!work || !['ok', 'partial'].includes(h)) return;
-        const members = work.filter(w => w.project_id === p.id);
+        const members = inRecordedOrder(work.filter(w => w.project_id === p.id), projectProgress?.work_ids);
         add('p', `${members.length}件 · 取得範囲内`, 'kp-muted', items);
         const terminal = members.filter(w => ['DONE', 'CANCELLED'].includes(w.state));
-        members.filter(w => !terminal.includes(w)).forEach(w => workDetail(w, items));
-        if (terminal.length) { const closed = fold(`終了した項目 ${terminal.length}件`, items); terminal.forEach(w => workDetail(w, closed)); }
+        const activeRows = add('div', '', 'kp-work-list', items);
+        members.filter(w => !terminal.includes(w)).forEach(w => workLink(w, activeRows));
+        if (terminal.length) { const closed = fold(`終了した項目 ${terminal.length}件`, items); terminal.forEach(w => workLink(w, closed)); }
         return;
       }
       const summary = projectSummary(data, now);
@@ -493,21 +545,18 @@
         const kpis = add('div', '', 'kp-kpis', head);
         Object.entries(summary).forEach(([key, count]) => { const n = add('div', '', '', kpis); n.dataset.projectKpi = key; add('strong', String(count), '', n); add('span', key === 'MOVED' ? 'moved this week' : key, '', n); });
       }
-      add('p', `${projects.length} Projects · ${current ? data.sources.projects.scope : '部分取得'}`, 'kp-muted', head);
+      add('p', `${projects.length} Projects · ${progressUi ? '残Workの優先度順' : '取得順'} · ${current ? data.sources.projects.scope : '部分取得'}`, 'kp-muted', head);
       if (!projects.length) { add('p', 'この取得範囲のProjectは0件です。'); return; }
       const rows = add('div', '', 'kp-projects');
-      projects.forEach(p => {
+      inRecordedOrder(projects, progressUi?.project_order).forEach(p => {
         const row = link('', 'projects', p.id, 'kp-project-row'); row.dataset.projectId = p.id;
         const title = el('div', '', 'kp-project-head'); title.append(el('strong', p.title), badge(state(p.status))); title.title = p.title; row.append(title);
-        const focus = add('div', p.current_focus || '未設定', 'kp-focus', row); focus.title = p.current_focus || '未設定';
         const footer = add('div', '', 'kp-project-footer', row);
         progressRow(p, footer, current, true);
-        const blocked = p.status === 'BLOCKED' || Boolean(p.blocker);
-        const action = blocked ? p.blocker || '理由は未確認' : p.next_action || '未設定';
-        const next = add('div', '', blocked ? 'kp-blocker' : 'kp-next', footer);
-        next.title = `${blocked ? 'Blocker' : '次の行動'}: ${action}`; next.setAttribute('aria-label', next.title);
-        const icon = el('span', blocked ? '⚠' : '⏭'); icon.setAttribute('aria-hidden', 'true');
-        next.append(icon, el('span', action, 'kp-project-action-text'));
+        const priority = progressUi?.projects?.[p.id]?.priority;
+        if (priority) add('span', priority, 'kp-badge kp-priority', footer);
+        const remaining = progressUi?.projects?.[p.id]?.remaining_work_count;
+        add('span', `残Work ${Number.isInteger(remaining) ? `${remaining}件` : '未確認'}`, 'kp-muted', footer);
         rows.append(row);
       });
       return;
