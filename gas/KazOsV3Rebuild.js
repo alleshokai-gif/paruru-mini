@@ -50,3 +50,63 @@ function kazOsV3RebuildError_(code) {
   error.code = code;
   return error;
 }
+
+
+function diagnoseKazOsV3RebuildProduction() {
+  const result = {
+    diagnostic: 'kaz-os-v3-rebuild-production-v1',
+    ok: false,
+    stage: 'START',
+    detail: null
+  };
+
+  try {
+    result.stage = 'SECRET_READ';
+    const token = String(getKazOsProgressReadToken_() || '').trim();
+    if (token.length < 32) throw kazOsV3RebuildError_('REBUILD_AUTH_UNAVAILABLE');
+
+    result.stage = 'REQUEST';
+    const correlation = 'diagnostic-' + Utilities.getUuid().replace(/-/g, '').slice(0, 24);
+    const response = UrlFetchApp.fetch(KAZ_OS_V3_REBUILD_ENDPOINT_, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({
+        reason: 'RECONCILE',
+        source: 'reconcile',
+        correlation_id: correlation
+      }),
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true,
+      followRedirects: false,
+      validateHttpsCertificates: true
+    });
+
+    const status = response.getResponseCode();
+    let body = null;
+    try { body = JSON.parse(response.getContentText()); } catch (_) {}
+
+    result.stage = 'RESPONSE';
+    result.detail = {
+      http_status: status,
+      status: body && typeof body.status === 'string' ? body.status : null,
+      has_event_id: Boolean(body && /^[a-f0-9]{64}$/.test(String(body.event_id || '')))
+    };
+    result.ok = (status === 200 && result.detail.status === 'already_published')
+      || (status === 202 && result.detail.status === 'requested');
+
+    if (typeof Logger !== 'undefined' && typeof Logger.log === 'function') {
+      Logger.log('[KAZ_OS_V3_REBUILD_DIAGNOSTIC] ' + JSON.stringify(result));
+    }
+    return result;
+  } catch (error) {
+    result.stage = 'FAILED';
+    result.detail = {
+      error_code: /^[A-Z0-9_]{1,80}$/.test(String(error && error.code || ''))
+        ? String(error.code) : 'UNCLASSIFIED_ERROR'
+    };
+    if (typeof Logger !== 'undefined' && typeof Logger.log === 'function') {
+      Logger.log('[KAZ_OS_V3_REBUILD_DIAGNOSTIC] ' + JSON.stringify(result));
+    }
+    return result;
+  }
+}
