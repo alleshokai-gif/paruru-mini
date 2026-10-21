@@ -422,10 +422,13 @@
     async function submitObservation_(payload) {
       if (config.mode !== MODES.DIRECT_V2 || config.routeModes.aiObservation !== MODES.DIRECT_V2)
         throw codedError_('AI_OBSERVATION_NOT_SELECTED');
+      const progress = payload && Object.hasOwn(payload, 'action');
       if (!payload || !['check_in', 'night_review'].includes(payload.feature)
           || typeof payload.work_id !== 'string' || typeof payload.observed_at !== 'string'
-          || typeof payload.note !== 'string' || !payload.note.trim()
-          || payload.note.length > 400) throw codedError_('AI_OBSERVATION_INVALID');
+          || typeof payload.note !== 'string' || payload.note.length > (progress ? 300 : 400)
+          || progress && !({ check_in: ['on_track', 'delayed', 'done'],
+            night_review: ['carry_forward'] }[payload.feature] || []).includes(payload.action)
+          || !progress && !payload.note.trim()) throw codedError_('AI_OBSERVATION_INVALID');
       const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');
       if (!requestId) throw codedError_('DIRECT_READ_REQUEST_ID_UNAVAILABLE');
       const auth = await getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs);
@@ -450,6 +453,16 @@
           throw codedError_(code, { httpStatus: response.status });
         }
         const value = await response.json();
+        if (progress) {
+          if (!value || value.schema_version !== 'kaz-ai-engine-progress-receipt-v1'
+              || value.feature !== payload.feature || value.action !== payload.action
+              || !['saved', 'already_saved'].includes(value.status)
+              || value.work_updated !== ['done', 'carry_forward'].includes(payload.action)
+              || value.provider_calls !== 0
+              || value.raw_payload_stored !== false)
+            throw codedError_('AI_PROGRESS_RECEIPT_INVALID');
+          return value;
+        }
         if (!value || value.schema_version !== 'kaz-ai-engine-observation-receipt-v1'
             || value.feature !== payload.feature
             || !['queued', 'already_queued', 'execution_unknown'].includes(value.status)

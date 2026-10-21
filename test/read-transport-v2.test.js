@@ -128,6 +128,19 @@ async function main() {
     assert.equal(calls[0].method, 'POST');
     assert.equal(calls[0].url, 'https://v3.example.test/v2/ai-engine/observations');
     assert.deepEqual(calls[0].body, payload);
+    const progressCalls = [];
+    const progressHarness = load(async (url, options) => {
+      progressCalls.push(JSON.parse(options.body));
+      return response(200, { schema_version: 'kaz-ai-engine-progress-receipt-v1',
+        feature: 'check_in', action: 'done', status: 'saved',
+        work_updated: true, provider_calls: 0, raw_payload_stored: false });
+    });
+    const progressClient = progressHarness.create({ config: { mode: 'DIRECT_V2',
+      baseUrl: 'https://reader.example.test', v3BaseUrl: 'https://v3.example.test',
+      routeModes: { aiObservation: 'DIRECT_V2' } } });
+    const progress = { ...payload, action: 'done', note: '' };
+    assert.equal((await progressClient.aiObservation(progress)).work_updated, true);
+    assert.deepEqual(progressCalls, [progress]);
     let attempts = 0;
     const unknown = load(async () => { attempts++; throw Error('network unavailable'); });
     const unknownClient = unknown.create({ config: { mode: 'DIRECT_V2',

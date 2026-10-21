@@ -30,8 +30,8 @@
     inbox: ['gardener', 'feedback'],
   });
   const aiFeatureLabels = Object.freeze({
-    daily_planner: 'Daily Planner', check_in: 'Check-in',
-    night_review: 'Night Review', gardener: 'Gardener',
+    daily_planner: '今日の提案', check_in: '今日の進み具合',
+    night_review: '明日への持ち越し', gardener: '記憶の整理',
     feedback: 'Feedback', capa: 'CAPA',
   });
   const aiJudgmentLabels = Object.freeze({
@@ -41,7 +41,7 @@
     DUPLICATE_REVIEW: '重複候補を確認', CONFLICT_REVIEW: '文脈の衝突を確認',
     CONTEXT_GAP_REVIEW: 'Contextの不足を確認', WORKFLOW_REVIEW: '手順の改善を確認',
     RECURRENCE_REVIEW: '再発傾向を確認', EFFECTIVENESS_REVIEW: '対策の効果を確認',
-    NO_ADVICE: '追加提案なし', NEEDS_INPUT: '本人入力待ち',
+    NO_ADVICE: '追加提案なし', NEEDS_INPUT: '必要なときだけ進み具合を選択',
   });
 
   async function appendAiJudgments(host, page, current) {
@@ -52,7 +52,7 @@
     heading.textContent = 'AI提案（確認用）';
     section.appendChild(heading);
     const note = document.createElement('p');
-    note.textContent = 'AIの判断は候補です。予定・Contextの確定は行いません。';
+    note.textContent = '提案は確認用です。予定や記録の確定は行いません。';
     section.appendChild(note);
     try {
       const view = await aiEngineApi();
@@ -61,24 +61,13 @@
       const rows = view.judgments.filter(row => wanted.has(row.feature));
       if (!rows.length) {
         const empty = document.createElement('p');
-        empty.textContent = 'この範囲のAI判断は未生成です。';
+        empty.textContent = 'いま表示できる提案はありません。';
         section.appendChild(empty);
       }
       for (const row of rows) {
         const item = document.createElement('p');
-        item.textContent = `${aiFeatureLabels[row.feature]}: ${aiJudgmentLabels[row.judgment]}（${row.status === 'review_pending' ? '人の確認待ち・根拠照合済み' : '判断なし'}）`;
+        item.textContent = `${aiFeatureLabels[row.feature]}: ${aiJudgmentLabels[row.judgment] || '確認してください'}`;
         section.appendChild(item);
-      }
-      if (page === 'today') {
-        for (const feature of ['check_in', 'night_review']) {
-          if (!rows.some(row => row.feature === feature)) continue;
-          const controls = host.querySelector(`[data-ai-observation-feature="${feature}"]`);
-          if (!controls) continue;
-          controls.querySelectorAll('.kai-observation-send').forEach(button => { button.disabled = true; });
-          const notice = document.createElement('p');
-          notice.textContent = 'このAI判断は今回の評価枠で実施済みです。下の結果を確認してください。';
-          controls.appendChild(notice);
-        }
       }
     } catch (_) {
       if (!current()) return;
@@ -97,7 +86,7 @@
       .map(row => work.get(row?.id)).filter(item => {
         if (!item || seen.has(item.id)) return false;
         seen.add(item.id); return true;
-      }).slice(0, 3);
+      });
   }
 
   function jstParts(date = new Date()) {
@@ -121,75 +110,71 @@
   }
 
   function appendAiObservationControls(host, snapshot, current) {
-    if (!aiObservationApi || !aiEngineApi || !current()
-        || snapshot?.status !== 'CURRENT'
-        || !sameJstDay(snapshot.generated_at)
-        || ['projects', 'work', 'today', 'calendar'].some(key => snapshot.sources?.[key]?.status !== 'current')) return;
+    if (!current()) return;
     const work = observationCandidates(snapshot);
-    if (!work.length) return;
     const section = document.createElement('section');
     section.className = 'kp-card kai-observation';
     section.dataset.aiObservationFeature = 'check_in';
-    const title = document.createElement('h2'); title.textContent = 'Check-in';
+    const title = document.createElement('h2'); title.textContent = '今日の進み具合';
     const guidance = document.createElement('p');
-    guidance.textContent = '実際の進み具合をタップ。予定やWorkの情報は自動で参照します。';
+    guidance.textContent = '変わった項目だけ選んでください。変わりなければ操作は不要です。';
     section.append(title, guidance);
+    if (!aiObservationApi || snapshot?.status !== 'CURRENT'
+        || !sameJstDay(snapshot.generated_at)
+        || ['work', 'today'].some(key => snapshot.sources?.[key]?.status !== 'current')) {
+      const unavailable = document.createElement('p');
+      unavailable.textContent = '現在のやることを確認できないため、記録は使えません。画面を更新してください。';
+      section.appendChild(unavailable); host.prepend(section); return;
+    }
+    if (!work.length) {
+      const empty = document.createElement('p'); empty.textContent = 'いま操作が必要な項目はありません。';
+      section.appendChild(empty); host.prepend(section); return;
+    }
     const note = document.createElement('textarea'); note.maxLength = 300;
     note.rows = 2; note.placeholder = '補足があれば入力（任意）';
     const details = document.createElement('details');
     const summary = document.createElement('summary'); summary.textContent = '補足を追加';
     details.append(summary, note);
-    const status = document.createElement('p'); status.setAttribute('role', 'status');
-    status.setAttribute('aria-live', 'polite');
-    const buttons = { check_in: [], night_review: [] };
-    const refreshButtons = {};
-    function refreshControl(feature, output) {
-      const button = document.createElement('button'); button.type = 'button';
-      button.className = 'kp-button kai-observation-refresh';
-      button.textContent = 'AI判断を確認'; button.hidden = true;
-      button.addEventListener('click', async () => {
-        button.disabled = true;
-        output.textContent = '保存済みのAI判断を読み取り中…';
-        try {
-          const view = await aiEngineApi();
-          if (!current()) return;
-          const judgment = view.judgments.find(row => row.feature === feature);
-          output.textContent = judgment
-            ? `${aiFeatureLabels[feature]}: ${aiJudgmentLabels[judgment.judgment]}（Shadow読取済み・人の確認待ち）`
-            : 'AI判断は処理中または未確定です。送信し直さず後で確認してください。';
-        } catch (_) {
-          if (current()) output.textContent = 'AI判断を読み取れません。送信し直さず後で確認してください。';
-        } finally { button.disabled = false; }
-      });
-      refreshButtons[feature] = button;
-      return button;
-    }
-    async function submit(feature, item, statement, output) {
-      buttons[feature].forEach(button => { button.disabled = true; });
-      output.textContent = '観測を保存中…画面はそのまま操作できます。';
-      const extra = note.value.trim();
+    const completed = new Set();
+    const allButtons = new Map();
+    async function submit(feature, item, action, label, output, buttons) {
+      if (completed.has(item.id)) return;
+      buttons.forEach(button => { button.disabled = true; });
+      output.textContent = '記録しています…';
       try {
-        const receipt = await aiObservationApi({ feature, work_id: item.id,
-          observed_at: observedAtJst(), note: `${statement}${extra ? ` 補足: ${extra}` : ''}` });
+        const receipt = await aiObservationApi({ feature, work_id: item.id, action,
+          observed_at: observedAtJst(), note: feature === 'check_in' ? note.value.trim() : '' });
         if (!current()) return;
-        if (receipt.status === 'execution_unknown') {
-          output.textContent = '観測は保存済み。AI起動は不明です。再送信せず後で確認してください。';
-          refreshButtons[feature].hidden = false;
-          return;
+        if (receipt.work_updated === true) {
+          output.textContent = action === 'done'
+            ? '完了を反映しました。' : '明日へ持ち越しました。';
+          completed.add(item.id);
+          if (action === 'done') item.state = 'DONE';
+          (allButtons.get(item.id) || []).forEach(button => { button.disabled = true; });
+        } else {
+          output.textContent = receipt.status === 'already_saved'
+            ? '同じ選択は記録済みです。' : `${label}を記録しました。`;
+          buttons.forEach(button => { button.disabled = button.dataset.progressAction === action; });
         }
-        output.textContent = receipt.status === 'already_queued'
-          ? '同じ観測は保存済みです。AI判断は下のボタンから確認できます。'
-          : '観測は保存済みです。AI判断は処理後に下のボタンから確認できます。';
-        refreshButtons[feature].hidden = false;
       } catch (error) {
         if (!current()) return;
-        if (['AI_OBSERVATION_INVALID', 'AUTHENTICATION_REQUIRED', 'AUTH_ENVELOPE_TIMEOUT'].includes(error?.code)) {
-          output.textContent = '送信前に入力または認証を確認できませんでした。確認後に操作してください。';
-          buttons[feature].forEach(button => { button.disabled = false; });
-        } else if (error?.code === 'AI_OBSERVATION_ALREADY_EVALUATED') {
-          output.textContent = 'このAI判断は保存済みです。下のAI提案を確認してください。';
+        if (['AUTHENTICATION_REQUIRED', 'AUTH_ENVELOPE_TIMEOUT'].includes(error?.code)) {
+          output.textContent = 'ログインを確認できませんでした。再ログイン後に操作してください。';
+          buttons.forEach(button => { button.disabled = false; });
+        } else if (['AI_PROGRESS_INVALID', 'AI_PROGRESS_TIME_INVALID', 'AI_PROGRESS_WORK_INVALID'].includes(error?.code)) {
+          output.textContent = 'やることの状態や時刻が変わっています。画面を更新して確認してください。';
+          buttons.forEach(button => { button.disabled = false; });
+        } else if (error?.code === 'AI_PROGRESS_TIMED_SCHEDULE') {
+          output.textContent = '時刻付きの予定は上書きできません。予定を確認してください。';
+          buttons.forEach(button => { button.disabled = false; });
+        } else if (error?.code === 'AI_PROGRESS_WRITE_CONFIG_INVALID') {
+          output.textContent = '更新の準備ができていません。しばらくしてから確認してください。';
+          buttons.forEach(button => { button.disabled = false; });
+        } else if (error?.code === 'AI_PROGRESS_STORE_UNAVAILABLE') {
+          output.textContent = '保存できませんでした。接続を確認し、後で操作してください。';
+          buttons.forEach(button => { button.disabled = false; });
         } else {
-          output.textContent = '保存またはAI起動の結果が不明です。再送信せず後で確認してください。';
+          output.textContent = '保存結果を確認できません。重複を避けるため、この画面からは再送信しないでください。';
         }
       }
     }
@@ -197,33 +182,44 @@
       const row = document.createElement('div'); row.className = 'kai-observation-work';
       const name = document.createElement('strong'); name.textContent = item.title || '名称未設定のWork';
       const actions = document.createElement('div'); actions.className = 'kai-observation-actions';
-      for (const label of ['予定どおり', '遅れてる', '完了']) {
+      const output = document.createElement('p'); output.setAttribute('role', 'status');
+      output.setAttribute('aria-live', 'polite');
+      const buttons = [];
+      for (const [action, label] of [['on_track', '予定どおり'], ['delayed', '遅れている'], ['done', '完了']]) {
         const button = document.createElement('button'); button.type = 'button';
         button.textContent = label; button.className = 'kp-button kai-observation-send';
+        button.dataset.progressAction = action;
         button.setAttribute('aria-label', `${item.title || '名称未設定のWork'}: ${label}`);
         button.addEventListener('click', () => void submit('check_in', item,
-          `本人が「${label}」を選択。`, status));
-        buttons.check_in.push(button); actions.appendChild(button);
+          action, label, output, buttons));
+        buttons.push(button); actions.appendChild(button);
       }
-      row.append(name, actions); section.appendChild(row);
+      allButtons.set(item.id, buttons);
+      row.append(name, actions, output); section.appendChild(row);
     }
-    section.append(details, status, refreshControl('check_in', status));
+    section.appendChild(details);
     host.prepend(section);
     if (Number(jstParts().hour) < 20) return;
     const night = document.createElement('section'); night.className = 'kp-card kai-observation kai-night-review';
     night.dataset.aiObservationFeature = 'night_review';
-    const nightTitle = document.createElement('h2'); nightTitle.textContent = 'Night Review';
+    const nightTitle = document.createElement('h2'); nightTitle.textContent = '明日への持ち越し';
     const nightText = document.createElement('p');
-    nightText.textContent = `未完了のWork候補 ${work.length}件。実績を推測せず、明日への持ち越しを確認します。`;
-    const nightButton = document.createElement('button'); nightButton.type = 'button';
-    nightButton.className = 'kp-button kai-observation-send'; nightButton.textContent = '持ち越し候補をAIに確認';
-    const nightStatus = document.createElement('p'); nightStatus.setAttribute('role', 'status');
-    nightStatus.setAttribute('aria-live', 'polite');
-    nightButton.addEventListener('click', () => void submit('night_review', work[0],
-      '本人が今夜の持ち越し提案を依頼。未確認の実績は完了扱いにしない。', nightStatus));
-    buttons.night_review.push(nightButton);
-    night.append(nightTitle, nightText, nightButton, nightStatus,
-      refreshControl('night_review', nightStatus));
+    nightText.textContent = '未完了の項目だけ表示しています。明日も続けるものだけ選んでください。';
+    night.append(nightTitle, nightText);
+    for (const item of work) {
+      const row = document.createElement('div'); row.className = 'kai-observation-work';
+      const name = document.createElement('strong'); name.textContent = item.title || '名称未設定のWork';
+      const button = document.createElement('button'); button.type = 'button';
+      button.className = 'kp-button kai-observation-send'; button.textContent = '明日へ持ち越し';
+      button.dataset.progressAction = 'carry_forward';
+      button.setAttribute('aria-label', `${item.title || '名称未設定のWork'}: 明日へ持ち越し`);
+      const output = document.createElement('p'); output.setAttribute('role', 'status');
+      output.setAttribute('aria-live', 'polite');
+      button.addEventListener('click', () => void submit('night_review', item,
+        'carry_forward', '明日への持ち越し', output, [button]));
+      allButtons.get(item.id)?.push(button);
+      row.append(name, button, output); night.appendChild(row);
+    }
     section.after(night);
   }
 

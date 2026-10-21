@@ -70,38 +70,42 @@ async function run(hourJst, slowShadow = false, claimed = false) {
     kazOsAiEngineApi: slowShadow ? () => new Promise(() => {})
       : async () => ({ judgments: claimed ? [{ feature: 'check_in',
         judgment: 'NEEDS_INPUT', status: 'no_advice' }] : [] }),
-    kazOsAiObservationApi: async payload => { sent.push(payload); return { status: 'queued' }; },
+    kazOsAiObservationApi: async payload => { sent.push(payload); return {
+      schema_version: 'kaz-ai-engine-progress-receipt-v1', status: 'saved',
+      work_updated: ['done', 'carry_forward'].includes(payload.action), provider_calls: 0 }; },
   } });
   await new Promise(resolve => setImmediate(resolve));
   const all = descendants(host);
   const buttons = all.filter(node => node.tag === 'button');
+  assert.equal(all.some(node => node.textContent === '今日の進み具合'), true);
+  assert.equal(buttons.filter(node => node.textContent === '完了').length, 1);
   assert.equal(buttons.filter(node => node.textContent === '予定どおり').length, 1);
+  assert.equal(buttons.filter(node => node.textContent === '遅れている').length, 1);
   assert.equal(all.some(node => node.textContent === '対象Workを選択'), false);
   assert.equal(all.some(node => node.tag === 'textarea' && node.required), false);
-  const night = buttons.find(node => node.textContent === '持ち越し候補をAIに確認');
+  const night = buttons.find(node => node.textContent === '明日へ持ち越し');
   assert.equal(Boolean(night), hourJst >= 20);
   if (claimed) {
-    assert.equal(buttons.find(node => node.textContent === '予定どおり').disabled, true);
+    assert.equal(Boolean(buttons.find(node => node.textContent === '完了').disabled), false);
     assert.equal(Boolean(night?.disabled), false);
-    return;
   }
-  buttons.find(node => node.textContent === '予定どおり').listeners.click();
+  buttons.find(node => node.textContent === '完了').listeners.click();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(sent.length, 1);
   assert.equal(sent[0].feature, 'check_in');
   assert.equal(sent[0].work_id, 'work-1');
+  assert.equal(sent[0].action, 'done');
   assert.match(sent[0].observed_at, /^2026-10-21T\d\d:\d\d:\d\d\+09:00$/);
-  assert.match(sent[0].note, /予定どおり/);
+  assert.equal(sent[0].note, '');
+  assert.equal(all.some(node => node.textContent.includes('完了を反映しました')), true);
   if (night) {
-    assert.equal(Boolean(night.disabled), false);
+    assert.equal(Boolean(night.disabled), true);
     night.listeners.click();
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(sent.length, 2);
-    assert.equal(sent[1].feature, 'night_review');
-    assert.match(sent[1].note, /未確認の実績は完了扱いにしない/);
+    assert.equal(sent.length, 1);
   }
 }
 
 Promise.all([run(18), run(21), run(18, true), run(21, false, true)]).then(() => {
-  process.stdout.write('PASS AI observation one-tap, night-only, and slow Shadow UI\n');
+  process.stdout.write('PASS progress actions after AI claim and explicit Work readback receipt\n');
 }).catch(error => { process.stderr.write(String(error) + '\n'); process.exitCode = 1; });
