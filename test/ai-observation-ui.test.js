@@ -6,7 +6,7 @@ const path = require('node:path');
 
 class Node {
   constructor(tag = 'div') {
-    this.tag = tag; this.children = []; this.listeners = {};
+    this.tag = tag; this.children = []; this.listeners = {}; this.dataset = {};
     this.classList = { contains: name => name === 'is-active' };
     this.value = ''; this.hidden = false;
   }
@@ -20,6 +20,14 @@ class Node {
     this.parent.children.splice(this.parent.children.indexOf(this) + 1, 0, item);
   }
   replaceChildren() { this.children = []; }
+  querySelector(selector) {
+    const feature = /data-ai-observation-feature="([a-z_]+)"/.exec(selector)?.[1];
+    return descendants(this).find(node => node.dataset.aiObservationFeature === feature) || null;
+  }
+  querySelectorAll(selector) {
+    return descendants(this).filter(node => selector === '.kai-observation-send'
+      && String(node.className || '').split(' ').includes('kai-observation-send'));
+  }
   setAttribute() {}
   addEventListener(name, handler) { this.listeners[name] = handler; }
 }
@@ -27,7 +35,7 @@ function descendants(node) {
   return [node, ...node.children.flatMap(descendants)];
 }
 
-async function run(hourJst, slowShadow = false) {
+async function run(hourJst, slowShadow = false, claimed = false) {
   const handlers = {};
   const host = new Node();
   const view = new Node();
@@ -60,7 +68,8 @@ async function run(hourJst, slowShadow = false) {
     context: { role: 'admin', allowedViews: ['kaz-os'] },
     kazOsV3DashboardApi: async () => snapshot,
     kazOsAiEngineApi: slowShadow ? () => new Promise(() => {})
-      : async () => ({ judgments: [] }),
+      : async () => ({ judgments: claimed ? [{ feature: 'check_in',
+        judgment: 'NEEDS_INPUT', status: 'no_advice' }] : [] }),
     kazOsAiObservationApi: async payload => { sent.push(payload); return { status: 'queued' }; },
   } });
   await new Promise(resolve => setImmediate(resolve));
@@ -71,6 +80,11 @@ async function run(hourJst, slowShadow = false) {
   assert.equal(all.some(node => node.tag === 'textarea' && node.required), false);
   const night = buttons.find(node => node.textContent === '持ち越し候補をAIに確認');
   assert.equal(Boolean(night), hourJst >= 20);
+  if (claimed) {
+    assert.equal(buttons.find(node => node.textContent === '予定どおり').disabled, true);
+    assert.equal(Boolean(night?.disabled), false);
+    return;
+  }
   buttons.find(node => node.textContent === '予定どおり').listeners.click();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(sent.length, 1);
@@ -88,6 +102,6 @@ async function run(hourJst, slowShadow = false) {
   }
 }
 
-Promise.all([run(18), run(21), run(18, true)]).then(() => {
+Promise.all([run(18), run(21), run(18, true), run(21, false, true)]).then(() => {
   process.stdout.write('PASS AI observation one-tap, night-only, and slow Shadow UI\n');
 }).catch(error => { process.stderr.write(String(error) + '\n'); process.exitCode = 1; });

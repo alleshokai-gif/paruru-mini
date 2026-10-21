@@ -69,6 +69,17 @@
         item.textContent = `${aiFeatureLabels[row.feature]}: ${aiJudgmentLabels[row.judgment]}（${row.status === 'review_pending' ? '人の確認待ち・根拠照合済み' : '判断なし'}）`;
         section.appendChild(item);
       }
+      if (page === 'today') {
+        for (const feature of ['check_in', 'night_review']) {
+          if (!rows.some(row => row.feature === feature)) continue;
+          const controls = host.querySelector(`[data-ai-observation-feature="${feature}"]`);
+          if (!controls) continue;
+          controls.querySelectorAll('.kai-observation-send').forEach(button => { button.disabled = true; });
+          const notice = document.createElement('p');
+          notice.textContent = 'このAI判断は今回の評価枠で実施済みです。下の結果を確認してください。';
+          controls.appendChild(notice);
+        }
+      }
     } catch (_) {
       if (!current()) return;
       const unavailable = document.createElement('p');
@@ -118,6 +129,7 @@
     if (!work.length) return;
     const section = document.createElement('section');
     section.className = 'kp-card kai-observation';
+    section.dataset.aiObservationFeature = 'check_in';
     const title = document.createElement('h2'); title.textContent = 'Check-in';
     const guidance = document.createElement('p');
     guidance.textContent = '実際の進み具合をタップ。予定やWorkの情報は自動で参照します。';
@@ -187,7 +199,7 @@
       const actions = document.createElement('div'); actions.className = 'kai-observation-actions';
       for (const label of ['予定どおり', '遅れてる', '完了']) {
         const button = document.createElement('button'); button.type = 'button';
-        button.textContent = label; button.className = 'kp-button';
+        button.textContent = label; button.className = 'kp-button kai-observation-send';
         button.setAttribute('aria-label', `${item.title || '名称未設定のWork'}: ${label}`);
         button.addEventListener('click', () => void submit('check_in', item,
           `本人が「${label}」を選択。`, status));
@@ -199,11 +211,12 @@
     host.prepend(section);
     if (Number(jstParts().hour) < 20) return;
     const night = document.createElement('section'); night.className = 'kp-card kai-observation kai-night-review';
+    night.dataset.aiObservationFeature = 'night_review';
     const nightTitle = document.createElement('h2'); nightTitle.textContent = 'Night Review';
     const nightText = document.createElement('p');
     nightText.textContent = `未完了のWork候補 ${work.length}件。実績を推測せず、明日への持ち越しを確認します。`;
     const nightButton = document.createElement('button'); nightButton.type = 'button';
-    nightButton.className = 'kp-button'; nightButton.textContent = '持ち越し候補をAIに確認';
+    nightButton.className = 'kp-button kai-observation-send'; nightButton.textContent = '持ち越し候補をAIに確認';
     const nightStatus = document.createElement('p'); nightStatus.setAttribute('role', 'status');
     nightStatus.setAttribute('aria-live', 'polite');
     nightButton.addEventListener('click', () => void submit('night_review', work[0],
