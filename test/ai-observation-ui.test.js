@@ -72,17 +72,18 @@ async function run(hourJst, slowShadow = false, claimed = false) {
         judgment: 'NEEDS_INPUT', status: 'no_advice' }] : [] }),
     kazOsAiObservationApi: async payload => { sent.push(payload); return {
       schema_version: 'kaz-ai-engine-progress-receipt-v1', status: 'saved',
-      work_updated: false, provider_calls: 0 }; },
+      work_updated: ['done', 'carry_forward'].includes(payload.action), provider_calls: 0 }; },
   } });
   await new Promise(resolve => setImmediate(resolve));
   const all = descendants(host);
   const buttons = all.filter(node => node.tag === 'button');
   assert.equal(all.some(node => node.textContent === '今日の進み具合'), true);
   assert.equal(buttons.filter(node => node.textContent === '完了').length, 1);
-  assert.equal(buttons.filter(node => node.textContent === '進行中').length, 0);
+  assert.equal(buttons.filter(node => node.textContent === '予定どおり').length, 1);
+  assert.equal(buttons.filter(node => node.textContent === '遅れている').length, 1);
   assert.equal(all.some(node => node.textContent === '対象Workを選択'), false);
   assert.equal(all.some(node => node.tag === 'textarea' && node.required), false);
-  const night = buttons.find(node => node.textContent === '明日に回す');
+  const night = buttons.find(node => node.textContent === '明日へ持ち越し');
   assert.equal(Boolean(night), hourJst >= 20);
   if (claimed) {
     assert.equal(Boolean(buttons.find(node => node.textContent === '完了').disabled), false);
@@ -96,17 +97,15 @@ async function run(hourJst, slowShadow = false, claimed = false) {
   assert.equal(sent[0].action, 'done');
   assert.match(sent[0].observed_at, /^2026-10-21T\d\d:\d\d:\d\d\+09:00$/);
   assert.equal(sent[0].note, '');
-  assert.equal(all.some(node => node.textContent.includes('正式な状態はまだ変わっていません')), true);
+  assert.equal(all.some(node => node.textContent.includes('完了を反映しました')), true);
   if (night) {
-    assert.equal(Boolean(night.disabled), false);
+    assert.equal(Boolean(night.disabled), true);
     night.listeners.click();
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(sent.length, 2);
-    assert.equal(sent[1].feature, 'night_review');
-    assert.equal(sent[1].action, 'carry_forward');
+    assert.equal(sent.length, 1);
   }
 }
 
 Promise.all([run(18), run(21), run(18, true), run(21, false, true)]).then(() => {
-  process.stdout.write('PASS progress actions after AI claim, night-only carryover, and no implicit Work mutation\n');
+  process.stdout.write('PASS progress actions after AI claim and explicit Work readback receipt\n');
 }).catch(error => { process.stderr.write(String(error) + '\n'); process.exitCode = 1; });

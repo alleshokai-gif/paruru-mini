@@ -117,7 +117,7 @@
     section.dataset.aiObservationFeature = 'check_in';
     const title = document.createElement('h2'); title.textContent = '今日の進み具合';
     const guidance = document.createElement('p');
-    guidance.textContent = '変わった項目だけ選んでください。変わりなければ操作は不要です。選択内容は記録しますが、やることの正式な状態はまだ変わりません。';
+    guidance.textContent = '変わった項目だけ選んでください。変わりなければ操作は不要です。';
     section.append(title, guidance);
     if (!aiObservationApi || snapshot?.status !== 'CURRENT'
         || !sameJstDay(snapshot.generated_at)
@@ -135,17 +135,27 @@
     const details = document.createElement('details');
     const summary = document.createElement('summary'); summary.textContent = '補足を追加';
     details.append(summary, note);
+    const completed = new Set();
+    const allButtons = new Map();
     async function submit(feature, item, action, label, output, buttons) {
+      if (completed.has(item.id)) return;
       buttons.forEach(button => { button.disabled = true; });
       output.textContent = '記録しています…';
       try {
         const receipt = await aiObservationApi({ feature, work_id: item.id, action,
           observed_at: observedAtJst(), note: feature === 'check_in' ? note.value.trim() : '' });
         if (!current()) return;
-        output.textContent = receipt.status === 'already_saved'
-          ? '同じ選択は記録済みです。補足の変更は反映されていません。やることの正式な状態はまだ変わっていません。'
-          : `${label}を記録しました。やることの正式な状態はまだ変わっていません。`;
-        buttons.forEach(button => { button.disabled = button.dataset.progressAction === action; });
+        if (receipt.work_updated === true) {
+          output.textContent = action === 'done'
+            ? '完了を反映しました。' : '明日へ持ち越しました。';
+          completed.add(item.id);
+          if (action === 'done') item.state = 'DONE';
+          (allButtons.get(item.id) || []).forEach(button => { button.disabled = true; });
+        } else {
+          output.textContent = receipt.status === 'already_saved'
+            ? '同じ選択は記録済みです。' : `${label}を記録しました。`;
+          buttons.forEach(button => { button.disabled = button.dataset.progressAction === action; });
+        }
       } catch (error) {
         if (!current()) return;
         if (['AUTHENTICATION_REQUIRED', 'AUTH_ENVELOPE_TIMEOUT'].includes(error?.code)) {
@@ -153,6 +163,12 @@
           buttons.forEach(button => { button.disabled = false; });
         } else if (['AI_PROGRESS_INVALID', 'AI_PROGRESS_TIME_INVALID', 'AI_PROGRESS_WORK_INVALID'].includes(error?.code)) {
           output.textContent = 'やることの状態や時刻が変わっています。画面を更新して確認してください。';
+          buttons.forEach(button => { button.disabled = false; });
+        } else if (error?.code === 'AI_PROGRESS_TIMED_SCHEDULE') {
+          output.textContent = '時刻付きの予定は上書きできません。予定を確認してください。';
+          buttons.forEach(button => { button.disabled = false; });
+        } else if (error?.code === 'AI_PROGRESS_WRITE_CONFIG_INVALID') {
+          output.textContent = '更新の準備ができていません。しばらくしてから確認してください。';
           buttons.forEach(button => { button.disabled = false; });
         } else if (error?.code === 'AI_PROGRESS_STORE_UNAVAILABLE') {
           output.textContent = '保存できませんでした。接続を確認し、後で操作してください。';
@@ -169,8 +185,7 @@
       const output = document.createElement('p'); output.setAttribute('role', 'status');
       output.setAttribute('aria-live', 'polite');
       const buttons = [];
-      for (const [action, label] of [['in_progress', '進行中'], ['done', '完了'], ['deferred', '後回し']]) {
-        if (action === 'in_progress' && item.state === 'DOING') continue;
+      for (const [action, label] of [['on_track', '予定どおり'], ['delayed', '遅れている'], ['done', '完了']]) {
         const button = document.createElement('button'); button.type = 'button';
         button.textContent = label; button.className = 'kp-button kai-observation-send';
         button.dataset.progressAction = action;
@@ -179,6 +194,7 @@
           action, label, output, buttons));
         buttons.push(button); actions.appendChild(button);
       }
+      allButtons.set(item.id, buttons);
       row.append(name, actions, output); section.appendChild(row);
     }
     section.appendChild(details);
@@ -194,13 +210,14 @@
       const row = document.createElement('div'); row.className = 'kai-observation-work';
       const name = document.createElement('strong'); name.textContent = item.title || '名称未設定のWork';
       const button = document.createElement('button'); button.type = 'button';
-      button.className = 'kp-button kai-observation-send'; button.textContent = '明日に回す';
+      button.className = 'kp-button kai-observation-send'; button.textContent = '明日へ持ち越し';
       button.dataset.progressAction = 'carry_forward';
-      button.setAttribute('aria-label', `${item.title || '名称未設定のWork'}: 明日に回す`);
+      button.setAttribute('aria-label', `${item.title || '名称未設定のWork'}: 明日へ持ち越し`);
       const output = document.createElement('p'); output.setAttribute('role', 'status');
       output.setAttribute('aria-live', 'polite');
       button.addEventListener('click', () => void submit('night_review', item,
         'carry_forward', '明日への持ち越し', output, [button]));
+      allButtons.get(item.id)?.push(button);
       row.append(name, button, output); night.appendChild(row);
     }
     section.after(night);

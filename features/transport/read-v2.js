@@ -426,7 +426,7 @@
       if (!payload || !['check_in', 'night_review'].includes(payload.feature)
           || typeof payload.work_id !== 'string' || typeof payload.observed_at !== 'string'
           || typeof payload.note !== 'string' || payload.note.length > (progress ? 300 : 400)
-          || progress && !({ check_in: ['in_progress', 'done', 'deferred'],
+          || progress && !({ check_in: ['on_track', 'delayed', 'done'],
             night_review: ['carry_forward'] }[payload.feature] || []).includes(payload.action)
           || !progress && !payload.note.trim()) throw codedError_('AI_OBSERVATION_INVALID');
       const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');
@@ -457,7 +457,8 @@
           if (!value || value.schema_version !== 'kaz-ai-engine-progress-receipt-v1'
               || value.feature !== payload.feature || value.action !== payload.action
               || !['saved', 'already_saved'].includes(value.status)
-              || value.work_updated !== false || value.provider_calls !== 0
+              || value.work_updated !== ['done', 'carry_forward'].includes(payload.action)
+              || value.provider_calls !== 0
               || value.raw_payload_stored !== false)
             throw codedError_('AI_PROGRESS_RECEIPT_INVALID');
           return value;

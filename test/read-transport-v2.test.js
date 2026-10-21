@@ -133,13 +133,13 @@ async function main() {
       progressCalls.push(JSON.parse(options.body));
       return response(200, { schema_version: 'kaz-ai-engine-progress-receipt-v1',
         feature: 'check_in', action: 'done', status: 'saved',
-        work_updated: false, provider_calls: 0, raw_payload_stored: false });
+        work_updated: true, provider_calls: 0, raw_payload_stored: false });
     });
     const progressClient = progressHarness.create({ config: { mode: 'DIRECT_V2',
       baseUrl: 'https://reader.example.test', v3BaseUrl: 'https://v3.example.test',
       routeModes: { aiObservation: 'DIRECT_V2' } } });
     const progress = { ...payload, action: 'done', note: '' };
-    assert.equal((await progressClient.aiObservation(progress)).work_updated, false);
+    assert.equal((await progressClient.aiObservation(progress)).work_updated, true);
     assert.deepEqual(progressCalls, [progress]);
     let attempts = 0;
     const unknown = load(async () => { attempts++; throw Error('network unavailable'); });
