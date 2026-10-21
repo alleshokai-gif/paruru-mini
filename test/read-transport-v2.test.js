@@ -112,6 +112,32 @@ function load(fetchImpl, records = []) {
 
 async function main() {
   {
+    const calls = [];
+    const harness = load(async (url, options) => {
+      calls.push({ url, method: options.method, body: JSON.parse(options.body) });
+      return response(200, { schema_version: 'kaz-ai-engine-observation-receipt-v1',
+        feature: 'check_in', status: 'queued', provider_calls: 0, raw_payload_stored: false });
+    });
+    const client = harness.create({ config: { mode: 'DIRECT_V2',
+      baseUrl: 'https://reader.example.test', v3BaseUrl: 'https://v3.example.test',
+      routeModes: { aiObservation: 'DIRECT_V2' } } });
+    const payload = { feature: 'check_in', work_id: 'work-1',
+      observed_at: '2026-10-21T18:00:00+09:00', note: '本人の観測' };
+    assert.equal((await client.aiObservation(payload)).status, 'queued');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].method, 'POST');
+    assert.equal(calls[0].url, 'https://v3.example.test/v2/ai-engine/observations');
+    assert.deepEqual(calls[0].body, payload);
+    let attempts = 0;
+    const unknown = load(async () => { attempts++; throw Error('network unavailable'); });
+    const unknownClient = unknown.create({ config: { mode: 'DIRECT_V2',
+      baseUrl: 'https://reader.example.test',
+      routeModes: { aiObservation: 'DIRECT_V2' } } });
+    await assert.rejects(unknownClient.aiObservation(payload),
+      error => error.code === 'AI_OBSERVATION_RESULT_UNKNOWN');
+    assert.equal(attempts, 1, 'uncertain write must not retry');
+  }
+  {
     const context = { globalThis: null, Object };
     context.globalThis = context;
     vm.createContext(context);
@@ -126,6 +152,7 @@ async function main() {
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.today, 'GAS');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.inbox, 'DIRECT_V2');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.context, 'DIRECT_V2');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.aiObservation, 'DIRECT_V2');
 
     const canaryContext = { globalThis: null, Object,
       location: { search: '?paluru_read_transport_phase2_canary=1' } };

@@ -1071,6 +1071,7 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsV3InboxApi: callAuthenticatedKazOsV3Inbox_,
       kazOsContextApi: callAuthenticatedKazOsContext_,
       kazOsAiEngineApi: callAuthenticatedKazOsAiEngine_,
+      kazOsAiObservationApi: callAuthenticatedKazOsAiObservation_,
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
       nurseOkanCommentApi: callNurseOkanComment_,
@@ -5415,6 +5416,26 @@ async function callAuthenticatedKazOsAiEngine_() {
     throw createHomeControlError("FORBIDDEN");
   }
   return callDirectKazOsRead_("aiEngine");
+}
+
+async function callAuthenticatedKazOsAiObservation_(payload) {
+  if (!isViewAllowed_("kaz-os")
+      || activeMembershipContext?.role !== "admin"
+      || selectedKazOsReadTransport_("aiObservation") !== "DIRECT_V2") {
+    throw createHomeControlError("FORBIDDEN");
+  }
+  const adapter = globalThis.PALURUReadTransportV2;
+  if (!adapter || typeof adapter.create !== "function" || !firebaseAuthService)
+    throw createHomeControlError("DIRECT_READ_UNAVAILABLE");
+  const client = adapter.create({
+    config: globalThis.PALURU_READ_TRANSPORT_V2_CONFIG,
+    fetchImpl: globalThis.fetch.bind(globalThis),
+    getAuthEnvelope: forceRefresh => firebaseAuthService.getAuthEnvelope(forceRefresh),
+    diagnostics: transportDiagnostics_(),
+    timeoutMs: Math.max(KAZ_OS_READ_TIMEOUT_MS, 20000),
+    retryDelayMs: KAZ_OS_READ_RETRY_DELAY_MS,
+  });
+  return client.aiObservation(payload);
 }
 
 async function callAuthenticatedKazOsV3Inbox_() {

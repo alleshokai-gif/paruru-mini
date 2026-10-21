@@ -10,7 +10,8 @@
     dashboardV3: Object.freeze({ key: 'dashboardV3', path: '/v3/dashboard', action: 'kazOs.v3.dashboard.get' }),
     inboxV3: Object.freeze({ key: 'inboxV3', path: '/v3/inbox', action: 'kazOs.v3.inbox.get' }),
     context: Object.freeze({ key: 'context', path: '/v2/read/context', action: 'kazOs.context.get' }),
-    aiEngine: Object.freeze({ key: 'aiEngine', path: '/v2/read/ai-engine', action: 'kazOs.aiEngine.get' })
+    aiEngine: Object.freeze({ key: 'aiEngine', path: '/v2/read/ai-engine', action: 'kazOs.aiEngine.get' }),
+    aiObservation: Object.freeze({ key: 'aiObservation', path: '/v2/ai-engine/observations', action: 'kazOs.aiObservation.submit' })
   });
 
   function codedError_(code, details) {
@@ -49,7 +50,8 @@
       dashboardV3: requestedRoutes.dashboardV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       inboxV3: requestedRoutes.inboxV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       context: requestedRoutes.context === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
-      aiEngine: requestedRoutes.aiEngine === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
+      aiEngine: requestedRoutes.aiEngine === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      aiObservation: requestedRoutes.aiObservation === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
     });
     return Object.freeze({ mode, baseUrl, v3BaseUrl, canaryCapability, routeModes });
   }
@@ -417,6 +419,51 @@
       throw lastError || codedError_('DIRECT_READ_FAILED', { transportClassification: 'unknown' });
     }
 
+    async function submitObservation_(payload) {
+      if (config.mode !== MODES.DIRECT_V2 || config.routeModes.aiObservation !== MODES.DIRECT_V2)
+        throw codedError_('AI_OBSERVATION_NOT_SELECTED');
+      if (!payload || !['check_in', 'night_review'].includes(payload.feature)
+          || typeof payload.work_id !== 'string' || typeof payload.observed_at !== 'string'
+          || typeof payload.note !== 'string' || !payload.note.trim()
+          || payload.note.length > 400) throw codedError_('AI_OBSERVATION_INVALID');
+      const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');
+      if (!requestId) throw codedError_('DIRECT_READ_REQUEST_ID_UNAVAILABLE');
+      const auth = await getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs);
+      const token = String(auth && auth.provider === 'firebase' && auth.idToken || '');
+      if (!token) throw codedError_('AUTHENTICATION_REQUIRED');
+      const controller = new AbortController();
+      const timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+      try {
+        // Deliberately no retry: a timeout may follow a durable save or Job run.
+        const response = await fetchImpl(config.v3BaseUrl + ROUTES.aiObservation.path, {
+          method: 'POST', cache: 'no-store', redirect: 'error',
+          headers: { Authorization: 'Bearer ' + token,
+            'X-Paluru-Request-Id': requestId, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload), signal: controller.signal
+        });
+        if (!response.ok) {
+          let code = 'AI_OBSERVATION_UNAVAILABLE';
+          try {
+            const body = await response.clone().json();
+            if (/^[A-Z0-9_]{1,80}$/.test(String(body?.error?.code || ''))) code = body.error.code;
+          } catch (_) {}
+          throw codedError_(code, { httpStatus: response.status });
+        }
+        const value = await response.json();
+        if (!value || value.schema_version !== 'kaz-ai-engine-observation-receipt-v1'
+            || value.feature !== payload.feature
+            || !['queued', 'already_queued', 'execution_unknown'].includes(value.status)
+            || value.provider_calls !== 0 || value.raw_payload_stored !== false)
+          throw codedError_('AI_OBSERVATION_RECEIPT_INVALID');
+        return value;
+      } catch (error) {
+        if (error?.code) throw error;
+        throw codedError_('AI_OBSERVATION_RESULT_UNKNOWN');
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
     return Object.freeze({
       mode: config.mode,
       projects: function() { return read_(ROUTES.projects, validateProjects_); },
@@ -428,7 +475,8 @@
       inboxV3: function() { return read_(ROUTES.inboxV3,
         value => validateSnapshotV3_(value, 'kaz-os-inbox-v3', ['inbox_items'])); },
       context: function() { return read_(ROUTES.context, validateContext_); },
-      aiEngine: function() { return read_(ROUTES.aiEngine, validateAiEngine_); }
+      aiEngine: function() { return read_(ROUTES.aiEngine, validateAiEngine_); },
+      aiObservation: submitObservation_
     });
   }
 
