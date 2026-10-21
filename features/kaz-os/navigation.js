@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const byId = id => document.getElementById(id);
-  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, inboxAnswerApi = null, aiEngineApi = null;
+  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, inboxAnswerApi = null, aiEngineApi = null, aiObservationApi = null;
   let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0;
   let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, contextEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
@@ -76,6 +76,86 @@
       section.appendChild(unavailable);
     }
     if (current()) host.appendChild(section);
+  }
+
+  function appendAiObservationForm(host, snapshot, current) {
+    if (!aiObservationApi || !aiEngineApi || !current()
+        || snapshot?.status !== 'CURRENT'
+        || ['projects', 'work', 'today', 'calendar'].some(key => snapshot.sources?.[key]?.status !== 'current')) return;
+    const work = (snapshot.work || []).filter(item => item && typeof item.id === 'string'
+      && !['DONE', 'CANCELLED'].includes(item.state)).slice(0, 30);
+    if (!work.length) return;
+    const section = document.createElement('section');
+    section.className = 'kp-card kai-observation';
+    const title = document.createElement('h2'); title.textContent = '本人の観測からAI判断';
+    const guidance = document.createElement('p');
+    guidance.textContent = 'Check-inまたはNight Reviewの実際の観測を入力してください。送信時だけAIを起動します。';
+    const form = document.createElement('form');
+    const field = (caption, control) => {
+      const label = document.createElement('label'); label.className = 'kai-observation-field';
+      const name = document.createElement('span'); name.textContent = caption;
+      label.append(name, control); form.appendChild(label); return control;
+    };
+    const feature = document.createElement('select');
+    for (const [value, text] of [['', '選択してください'], ['check_in', 'Check-in'],
+                                  ['night_review', 'Night Review']]) {
+      const option = document.createElement('option'); option.value = value; option.textContent = text;
+      feature.appendChild(option);
+    }
+    feature.required = true; field('評価の種類', feature);
+    const workSelect = document.createElement('select');
+    const blank = document.createElement('option'); blank.value = ''; blank.textContent = '対象Workを選択';
+    workSelect.appendChild(blank);
+    for (const item of work) {
+      const option = document.createElement('option'); option.value = item.id;
+      option.textContent = item.title || '名称未設定のWork'; workSelect.appendChild(option);
+    }
+    workSelect.required = true; field('対象Work', workSelect);
+    const time = document.createElement('input'); time.type = 'datetime-local'; time.required = true;
+    time.value = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16);
+    field('観測日時（JST）', time);
+    const note = document.createElement('textarea'); note.required = true; note.maxLength = 400;
+    note.rows = 3; field('本人が確認した事実（400字以内）', note);
+    const button = document.createElement('button'); button.type = 'submit';
+    button.className = 'kp-button'; button.textContent = '観測を保存してAI判断';
+    const status = document.createElement('p'); status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    form.append(button, status);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (button.disabled || !current() || !form.reportValidity()) return;
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(time.value)) return;
+      button.disabled = true;
+      status.textContent = '保存とAI起動を確認中…';
+      const selectedFeature = feature.value;
+      const submittedAt = Date.now();
+      try {
+        const receipt = await aiObservationApi({ feature: selectedFeature,
+          work_id: workSelect.value, observed_at: `${time.value}:00+09:00`, note: note.value });
+        if (!current()) return;
+        if (receipt.status === 'execution_unknown') {
+          status.textContent = '観測は保存されました。AI起動の結果は不明です。再送信せず確認してください。';
+          return;
+        }
+        status.textContent = '観測を保存しました。AI判断を確認中…';
+        for (let attempt = 0; attempt < 8 && current(); attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 2500));
+          try {
+            const view = await aiEngineApi();
+            const judgment = view.judgments.find(row => row.feature === selectedFeature
+              && Date.parse(row.as_of) >= submittedAt - 1000);
+            if (judgment) {
+              status.textContent = `${aiFeatureLabels[selectedFeature]}: ${aiJudgmentLabels[judgment.judgment]}（Shadow読取済み・人の確認待ち）`;
+              return;
+            }
+          } catch (_) { /* Keep the saved submission pending; never resubmit it. */ }
+        }
+        if (current()) status.textContent = '観測は保存済みです。AI判断は処理中または未確定です。再送信せず後で確認してください。';
+      } catch (_) {
+        if (current()) status.textContent = '保存またはAI起動の結果が不明です。再送信せず確認してください。';
+      }
+    });
+    section.append(title, guidance, form); host.appendChild(section);
   }
 
 
@@ -436,6 +516,7 @@
         } : {};
         globalThis.KazPersonalView.render(host, selection, data, Date.now(), options);
         await appendAiJudgments(host, selection.page, current);
+        if (['today', 'work'].includes(selection.page)) appendAiObservationForm(host, snapshot, current);
       } catch (_) {
         if (!current()) return;
         const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];
@@ -475,6 +556,7 @@
     inboxApi = event.detail?.kazOsInboxApi || null;
     contextApi = event.detail?.kazOsContextApi || null;
     aiEngineApi = event.detail?.kazOsAiEngineApi || null;
+    aiObservationApi = event.detail?.kazOsAiObservationApi || null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
     v3DashboardApi = event.detail?.kazOsV3DashboardApi || null;
     v3InboxApi = event.detail?.kazOsV3InboxApi || null;
@@ -496,6 +578,7 @@
     inboxApi = null;
     contextApi = null;
     aiEngineApi = null;
+    aiObservationApi = null;
     inboxAnswerApi = null;
     v3DashboardApi = null;
     v3InboxApi = null;
