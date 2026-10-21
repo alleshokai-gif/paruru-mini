@@ -460,6 +460,34 @@ async function main() {
   const answer = appSource.slice(appSource.indexOf('async function callAuthenticatedKazOsInboxAnswer_'), appSource.indexOf('function applyMembershipCapabilityVisibility_'));
   assert(answer.includes('callHomeControlApi') && !answer.includes('callDirectKazOsRead_'), 'write path must remain on GAS');
 
+  {
+    const row = { schema_version: 'kaz-ai-engine-judgment-v1',
+      judgment_id: 'a'.repeat(64), feature: 'daily_planner',
+      as_of: '2026-10-21T12:00:00+09:00', judgment: 'NO_ADVICE',
+      confidence: 0.8, evidence: null, model: 'gpt-6-luna',
+      input_tokens: 20, output_tokens: 5, latency_ms: 50,
+      cost_usd: null, cost_basis: 'provider_invoice_unknown',
+      status: 'no_advice', auto_apply_allowed: false,
+      raw_payload_stored: false };
+    const view = { schema_version: 'kaz-ai-engine-shadow-day-v1',
+      day: '2026-10-21', judgments: [row], raw_payload_stored: false };
+    const config = { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+      v3BaseUrl: 'https://shadow.example.test', routeModes: { aiEngine: 'DIRECT_V2' } };
+    const urls = [];
+    const reader = load(async url => { urls.push(url); return response(200, view); });
+    assert.deepEqual(await reader.create({ config }).aiEngine(), view);
+    assert.deepEqual(urls, ['https://shadow.example.test/v2/read/ai-engine']);
+    for (const bad of [
+      { ...row, judgment: 'RECURRENCE_REVIEW' },
+      { ...row, raw_text: 'private text' },
+      { ...row, auto_apply_allowed: true },
+    ]) {
+      const invalid = load(async () => response(200, { ...view, judgments: [bad] }));
+      await assert.rejects(invalid.create({ config }).aiEngine(),
+        error => error.code === 'AI_ENGINE_CONTRACT_INVALID');
+    }
+  }
+
   
 (function testGithubCandidateWithPaluruMetadataStillUsesGithubContract() {
   const source = fs.readFileSync(path.join(root, 'features', 'transport', 'read-v2.js'), 'utf8');
