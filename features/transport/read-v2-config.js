@@ -24,7 +24,8 @@
       inbox: 'DIRECT_V2',
       dashboardV3: 'DIRECT_V2',
       inboxV3: v3Preview ? 'DIRECT_V2' : 'GAS',
-      context: 'DIRECT_V2'
+      context: 'DIRECT_V2',
+      aiEngine: 'DIRECT_V2'
     })
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

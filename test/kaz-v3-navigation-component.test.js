@@ -8,11 +8,13 @@ async function main() {
   const pair = create();
   const listeners = new Map();
   const rendered = [];
+  const aiSections = [];
   const calls = { dashboard: 0, inbox: 0, v2: 0, context: 0, answer: 0 };
   const on = (name, fn) => listeners.set(name, [...(listeners.get(name) || []), fn]);
   const emit = (name, detail) => (listeners.get(name) || []).forEach(fn => fn({ detail }));
   const nav = { hidden: true };
-  const host = { textContent: '', replaceChildren() {} };
+  const host = { textContent: '', replaceChildren() {},
+    appendChild(node) { aiSections.push(node); } };
   const anchors = ['today', 'work', 'projects', 'capa', 'context', 'inbox'].map(page => ({
     dataset: { kazPage: page }, setAttribute() {}, removeAttribute() {},
   }));
@@ -26,6 +28,8 @@ async function main() {
   const context = vm.createContext({
     location: { hash: '#kaz-os/v3' },
     document: { hidden: false, getElementById: id => elements[id] || null,
+      createElement: tag => ({ tag, textContent: '', className: '', children: [],
+        appendChild(node) { this.children.push(node); } }),
       querySelectorAll: selector => selector === '#kazOsNav a' ? anchors : [],
       addEventListener: on },
     window: { addEventListener() {}, scrollTo() {} },
@@ -45,6 +49,8 @@ async function main() {
     kazOsV3DashboardApi: async () => { calls.dashboard++; return pair.dashboard; },
     kazOsV3InboxApi: async () => { calls.inbox++; return pair.inbox; },
     kazOsContextApi: async () => { calls.context++; return { schema_version: 'kaz-context-observatory-v1', mode: 'read_only', totals: { raw: 1 }, source: { status: 'ok', complete: true } }; },
+    kazOsAiEngineApi: async () => ({ judgments: [{ feature: 'daily_planner',
+      judgment: 'FOCUS_REVIEW', status: 'review_pending' }] }),
     kazOsInboxAnswerApi: async answer => { calls.answer++; return { answer, inbox: pair.inbox }; },
   });
   const pending = [];
@@ -56,6 +62,8 @@ async function main() {
   assert.equal(calls.dashboard, 2); // Authentication render plus opened render.
   assert.equal(rendered.at(-1).selection.page, 'today');
   assert.equal(typeof rendered.at(-1).options.answerApi, 'function');
+  assert(aiSections.some(section => section.children.some(child =>
+    child.textContent.includes('Daily Planner: 今日の集中対象を確認'))));
   assert.deepEqual(rendered.at(-1).data.today, {
     ...pair.dashboard.component_data.today.today,
     confirmations: pair.dashboard.today.confirmations,

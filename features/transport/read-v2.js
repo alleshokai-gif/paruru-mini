@@ -9,7 +9,8 @@
     inbox: Object.freeze({ key: 'inbox', path: '/poc/read-v2/inbox', action: 'kazOs.inbox.get' }),
     dashboardV3: Object.freeze({ key: 'dashboardV3', path: '/v3/dashboard', action: 'kazOs.v3.dashboard.get' }),
     inboxV3: Object.freeze({ key: 'inboxV3', path: '/v3/inbox', action: 'kazOs.v3.inbox.get' }),
-    context: Object.freeze({ key: 'context', path: '/v2/read/context', action: 'kazOs.context.get' })
+    context: Object.freeze({ key: 'context', path: '/v2/read/context', action: 'kazOs.context.get' }),
+    aiEngine: Object.freeze({ key: 'aiEngine', path: '/v2/read/ai-engine', action: 'kazOs.aiEngine.get' })
   });
 
   function codedError_(code, details) {
@@ -47,7 +48,8 @@
       inbox: requestedRoutes.inbox === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       dashboardV3: requestedRoutes.dashboardV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       inboxV3: requestedRoutes.inboxV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
-      context: requestedRoutes.context === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
+      context: requestedRoutes.context === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      aiEngine: requestedRoutes.aiEngine === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
     });
     return Object.freeze({ mode, baseUrl, v3BaseUrl, canaryCapability, routeModes });
   }
@@ -171,6 +173,39 @@
           || (item.kind === 'generic_candidate_review'
             && !validCandidateReview_(item, value.sources)))) {
       throw codedError_('INBOX_CONTRACT_INVALID', { transportClassification: 'parse' });
+    }
+    return value;
+  }
+
+  function validateAiEngine_(value) {
+    const features = new Set(['daily_planner', 'check_in', 'night_review',
+      'gardener', 'feedback', 'capa']);
+    const codes = {
+      daily_planner: ['FOCUS_REVIEW', 'BLOCKER_REVIEW', 'NO_ADVICE'],
+      check_in: ['REPLAN_REVIEW', 'PROGRESS_REVIEW', 'NEEDS_INPUT'],
+      night_review: ['CARRY_FORWARD_REVIEW', 'LESSON_REVIEW', 'NO_ADVICE'],
+      gardener: ['DUPLICATE_REVIEW', 'CONFLICT_REVIEW', 'NO_ADVICE'],
+      feedback: ['CONTEXT_GAP_REVIEW', 'WORKFLOW_REVIEW', 'NO_ADVICE'],
+      capa: ['RECURRENCE_REVIEW', 'EFFECTIVENESS_REVIEW', 'NO_ADVICE']
+    };
+    const rows = value && value.judgments;
+    if (!value || value.schema_version !== 'kaz-ai-engine-shadow-day-v1'
+        || value.raw_payload_stored !== false
+        || !/^\d{4}-\d{2}-\d{2}$/.test(String(value.day || ''))
+        || !Array.isArray(rows) || rows.length > 60
+        || rows.some(row => !row || row.schema_version !== 'kaz-ai-engine-judgment-v1'
+          || !features.has(row.feature) || !codes[row.feature].includes(row.judgment)
+          || row.auto_apply_allowed !== false || row.raw_payload_stored !== false
+          || Object.keys(row).sort().join(',') !== [
+            'as_of', 'auto_apply_allowed', 'confidence', 'cost_basis', 'cost_usd',
+            'evidence', 'feature', 'input_tokens', 'judgment', 'judgment_id',
+            'latency_ms', 'model', 'output_tokens', 'raw_payload_stored',
+            'schema_version', 'status'].sort().join(',')
+          || !['review_pending', 'no_advice'].includes(row.status)
+          || typeof row.confidence !== 'number' || row.confidence < 0
+          || row.confidence > 1 || !Number.isFinite(Date.parse(row.as_of))
+          || !/^[a-f0-9]{64}$/.test(String(row.judgment_id || '')))) {
+      throw codedError_('AI_ENGINE_CONTRACT_INVALID', { transportClassification: 'parse' });
     }
     return value;
   }
@@ -319,6 +354,7 @@
           controller = new AbortController();
           timer = setTimeout(function() { controller.abort(); }, timeoutMs);
           const baseUrl = route.key === 'dashboardV3' || route.key === 'inboxV3'
+            || route.key === 'aiEngine'
             ? config.v3BaseUrl : config.baseUrl;
           const response = await fetchImpl(baseUrl + route.path, {
             method: 'GET',
@@ -391,7 +427,8 @@
         value => validateSnapshotV3_(value, 'kaz-os-dashboard-v3', ['work', 'projects', 'capa'])); },
       inboxV3: function() { return read_(ROUTES.inboxV3,
         value => validateSnapshotV3_(value, 'kaz-os-inbox-v3', ['inbox_items'])); },
-      context: function() { return read_(ROUTES.context, validateContext_); }
+      context: function() { return read_(ROUTES.context, validateContext_); },
+      aiEngine: function() { return read_(ROUTES.aiEngine, validateAiEngine_); }
     });
   }
 

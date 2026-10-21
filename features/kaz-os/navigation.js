@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const byId = id => document.getElementById(id);
-  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, inboxAnswerApi = null;
+  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, inboxAnswerApi = null, aiEngineApi = null;
   let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0;
   let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, contextEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
@@ -20,6 +20,63 @@
     && data?.writes?.notion === 0
     && data?.writes?.calendar === 0
     && data?.writes?.context === 0;
+
+  const aiFeaturesByPage = Object.freeze({
+    today: ['daily_planner', 'check_in', 'night_review'],
+    work: ['check_in', 'night_review'],
+    projects: ['daily_planner'],
+    capa: ['capa'],
+    context: ['gardener', 'feedback'],
+    inbox: ['gardener', 'feedback'],
+  });
+  const aiFeatureLabels = Object.freeze({
+    daily_planner: 'Daily Planner', check_in: 'Check-in',
+    night_review: 'Night Review', gardener: 'Gardener',
+    feedback: 'Feedback', capa: 'CAPA',
+  });
+  const aiJudgmentLabels = Object.freeze({
+    FOCUS_REVIEW: '今日の集中対象を確認', BLOCKER_REVIEW: '障害を確認',
+    REPLAN_REVIEW: '再計画を確認', PROGRESS_REVIEW: '進捗を確認',
+    CARRY_FORWARD_REVIEW: '翌日への繰越を確認', LESSON_REVIEW: '振り返りを確認',
+    DUPLICATE_REVIEW: '重複候補を確認', CONFLICT_REVIEW: '文脈の衝突を確認',
+    CONTEXT_GAP_REVIEW: 'Contextの不足を確認', WORKFLOW_REVIEW: '手順の改善を確認',
+    RECURRENCE_REVIEW: '再発傾向を確認', EFFECTIVENESS_REVIEW: '対策の効果を確認',
+    NO_ADVICE: '追加提案なし', NEEDS_INPUT: '本人入力待ち',
+  });
+
+  async function appendAiJudgments(host, page, current) {
+    if (!aiEngineApi || !aiFeaturesByPage[page] || !current()) return;
+    const section = document.createElement('section');
+    section.className = 'kp-card';
+    const heading = document.createElement('h2');
+    heading.textContent = 'AI提案（確認用）';
+    section.appendChild(heading);
+    const note = document.createElement('p');
+    note.textContent = 'AIの判断は候補です。予定・Contextの確定は行いません。';
+    section.appendChild(note);
+    try {
+      const view = await aiEngineApi();
+      if (!current()) return;
+      const wanted = new Set(aiFeaturesByPage[page]);
+      const rows = view.judgments.filter(row => wanted.has(row.feature));
+      if (!rows.length) {
+        const empty = document.createElement('p');
+        empty.textContent = 'この範囲のAI判断は未生成です。';
+        section.appendChild(empty);
+      }
+      for (const row of rows) {
+        const item = document.createElement('p');
+        item.textContent = `${aiFeatureLabels[row.feature]}: ${aiJudgmentLabels[row.judgment]}（${row.status === 'review_pending' ? '人の確認待ち・根拠照合済み' : '判断なし'}）`;
+        section.appendChild(item);
+      }
+    } catch (_) {
+      if (!current()) return;
+      const unavailable = document.createElement('p');
+      unavailable.textContent = 'AI提案を読み取れません。既存の予定・作業表示は継続します。';
+      section.appendChild(unavailable);
+    }
+    if (current()) host.appendChild(section);
+  }
 
 
   function configureKazNav(previewMode, page) {
@@ -363,6 +420,7 @@
           const data = await contextApi();
           if (!current()) return;
           globalThis.KazPersonalView.render(host, selection, data);
+          await appendAiJudgments(host, selection.page, current);
           return;
         }
         const snapshot = await (selection.page === 'inbox' ? v3InboxApi() : v3DashboardApi());
@@ -377,6 +435,7 @@
           answerApi: typeof inboxAnswerApi === 'function' ? inboxAnswerApi : null,
         } : {};
         globalThis.KazPersonalView.render(host, selection, data, Date.now(), options);
+        await appendAiJudgments(host, selection.page, current);
       } catch (_) {
         if (!current()) return;
         const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];
@@ -415,6 +474,7 @@
     todayApi = event.detail?.kazOsTodayApi || null;
     inboxApi = event.detail?.kazOsInboxApi || null;
     contextApi = event.detail?.kazOsContextApi || null;
+    aiEngineApi = event.detail?.kazOsAiEngineApi || null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
     v3DashboardApi = event.detail?.kazOsV3DashboardApi || null;
     v3InboxApi = event.detail?.kazOsV3InboxApi || null;
@@ -435,6 +495,7 @@
     todayApi = null;
     inboxApi = null;
     contextApi = null;
+    aiEngineApi = null;
     inboxAnswerApi = null;
     v3DashboardApi = null;
     v3InboxApi = null;
