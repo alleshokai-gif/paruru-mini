@@ -78,84 +78,140 @@
     if (current()) host.appendChild(section);
   }
 
-  function appendAiObservationForm(host, snapshot, current) {
+  function observationCandidates(snapshot) {
+    const work = new Map((snapshot.work || []).filter(item => item && typeof item.id === 'string'
+      && !['DONE', 'CANCELLED'].includes(item.state)).map(item => [item.id, item]));
+    const seen = new Set();
+    return ['now', 'next', 'scheduled'].flatMap(lane => snapshot.today?.[lane] || [])
+      .map(row => work.get(row?.id)).filter(item => {
+        if (!item || seen.has(item.id)) return false;
+        seen.add(item.id); return true;
+      }).slice(0, 3);
+  }
+
+  function jstParts(date = new Date()) {
+    return Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(date).filter(part => part.type !== 'literal')
+      .map(part => [part.type, part.value]));
+  }
+
+  function observedAtJst() {
+    const p = jstParts();
+    return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}+09:00`;
+  }
+
+  function sameJstDay(instant) {
+    const parsed = Date.parse(instant);
+    if (!Number.isFinite(parsed)) return false;
+    const source = jstParts(new Date(parsed)), now = jstParts();
+    return source.year === now.year && source.month === now.month && source.day === now.day;
+  }
+
+  function appendAiObservationControls(host, snapshot, current) {
     if (!aiObservationApi || !aiEngineApi || !current()
         || snapshot?.status !== 'CURRENT'
+        || !sameJstDay(snapshot.generated_at)
         || ['projects', 'work', 'today', 'calendar'].some(key => snapshot.sources?.[key]?.status !== 'current')) return;
-    const work = (snapshot.work || []).filter(item => item && typeof item.id === 'string'
-      && !['DONE', 'CANCELLED'].includes(item.state)).slice(0, 30);
+    const work = observationCandidates(snapshot);
     if (!work.length) return;
     const section = document.createElement('section');
     section.className = 'kp-card kai-observation';
-    const title = document.createElement('h2'); title.textContent = '本人の観測からAI判断';
+    const title = document.createElement('h2'); title.textContent = 'Check-in';
     const guidance = document.createElement('p');
-    guidance.textContent = 'Check-inまたはNight Reviewの実際の観測を入力してください。送信時だけAIを起動します。';
-    const form = document.createElement('form');
-    const field = (caption, control) => {
-      const label = document.createElement('label'); label.className = 'kai-observation-field';
-      const name = document.createElement('span'); name.textContent = caption;
-      label.append(name, control); form.appendChild(label); return control;
-    };
-    const feature = document.createElement('select');
-    for (const [value, text] of [['', '選択してください'], ['check_in', 'Check-in'],
-                                  ['night_review', 'Night Review']]) {
-      const option = document.createElement('option'); option.value = value; option.textContent = text;
-      feature.appendChild(option);
-    }
-    feature.required = true; field('評価の種類', feature);
-    const workSelect = document.createElement('select');
-    const blank = document.createElement('option'); blank.value = ''; blank.textContent = '対象Workを選択';
-    workSelect.appendChild(blank);
-    for (const item of work) {
-      const option = document.createElement('option'); option.value = item.id;
-      option.textContent = item.title || '名称未設定のWork'; workSelect.appendChild(option);
-    }
-    workSelect.required = true; field('対象Work', workSelect);
-    const time = document.createElement('input'); time.type = 'datetime-local'; time.required = true;
-    time.value = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16);
-    field('観測日時（JST）', time);
-    const note = document.createElement('textarea'); note.required = true; note.maxLength = 400;
-    note.rows = 3; field('本人が確認した事実（400字以内）', note);
-    const button = document.createElement('button'); button.type = 'submit';
-    button.className = 'kp-button'; button.textContent = '観測を保存してAI判断';
+    guidance.textContent = '実際の進み具合をタップ。予定やWorkの情報は自動で参照します。';
+    section.append(title, guidance);
+    const note = document.createElement('textarea'); note.maxLength = 300;
+    note.rows = 2; note.placeholder = '補足があれば入力（任意）';
+    const details = document.createElement('details');
+    const summary = document.createElement('summary'); summary.textContent = '補足を追加';
+    details.append(summary, note);
     const status = document.createElement('p'); status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    form.append(button, status);
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
-      if (button.disabled || !current() || !form.reportValidity()) return;
-      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(time.value)) return;
-      button.disabled = true;
-      status.textContent = '保存とAI起動を確認中…';
-      const selectedFeature = feature.value;
-      const submittedAt = Date.now();
+    const buttons = { check_in: [], night_review: [] };
+    const refreshButtons = {};
+    function refreshControl(feature, output) {
+      const button = document.createElement('button'); button.type = 'button';
+      button.className = 'kp-button kai-observation-refresh';
+      button.textContent = 'AI判断を確認'; button.hidden = true;
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        output.textContent = '保存済みのAI判断を読み取り中…';
+        try {
+          const view = await aiEngineApi();
+          if (!current()) return;
+          const judgment = view.judgments.find(row => row.feature === feature);
+          output.textContent = judgment
+            ? `${aiFeatureLabels[feature]}: ${aiJudgmentLabels[judgment.judgment]}（Shadow読取済み・人の確認待ち）`
+            : 'AI判断は処理中または未確定です。送信し直さず後で確認してください。';
+        } catch (_) {
+          if (current()) output.textContent = 'AI判断を読み取れません。送信し直さず後で確認してください。';
+        } finally { button.disabled = false; }
+      });
+      refreshButtons[feature] = button;
+      return button;
+    }
+    async function submit(feature, item, statement, output) {
+      buttons[feature].forEach(button => { button.disabled = true; });
+      output.textContent = '観測を保存中…画面はそのまま操作できます。';
+      const extra = note.value.trim();
       try {
-        const receipt = await aiObservationApi({ feature: selectedFeature,
-          work_id: workSelect.value, observed_at: `${time.value}:00+09:00`, note: note.value });
+        const receipt = await aiObservationApi({ feature, work_id: item.id,
+          observed_at: observedAtJst(), note: `${statement}${extra ? ` 補足: ${extra}` : ''}` });
         if (!current()) return;
         if (receipt.status === 'execution_unknown') {
-          status.textContent = '観測は保存されました。AI起動の結果は不明です。再送信せず確認してください。';
+          output.textContent = '観測は保存済み。AI起動は不明です。再送信せず後で確認してください。';
+          refreshButtons[feature].hidden = false;
           return;
         }
-        status.textContent = '観測を保存しました。AI判断を確認中…';
-        for (let attempt = 0; attempt < 8 && current(); attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 2500));
-          try {
-            const view = await aiEngineApi();
-            const judgment = view.judgments.find(row => row.feature === selectedFeature
-              && Date.parse(row.as_of) >= submittedAt - 1000);
-            if (judgment) {
-              status.textContent = `${aiFeatureLabels[selectedFeature]}: ${aiJudgmentLabels[judgment.judgment]}（Shadow読取済み・人の確認待ち）`;
-              return;
-            }
-          } catch (_) { /* Keep the saved submission pending; never resubmit it. */ }
+        output.textContent = receipt.status === 'already_queued'
+          ? '同じ観測は保存済みです。AI判断は下のボタンから確認できます。'
+          : '観測は保存済みです。AI判断は処理後に下のボタンから確認できます。';
+        refreshButtons[feature].hidden = false;
+      } catch (error) {
+        if (!current()) return;
+        if (['AI_OBSERVATION_INVALID', 'AUTHENTICATION_REQUIRED', 'AUTH_ENVELOPE_TIMEOUT'].includes(error?.code)) {
+          output.textContent = '送信前に入力または認証を確認できませんでした。確認後に操作してください。';
+          buttons[feature].forEach(button => { button.disabled = false; });
+        } else if (error?.code === 'AI_OBSERVATION_ALREADY_EVALUATED') {
+          output.textContent = 'このAI判断は保存済みです。下のAI提案を確認してください。';
+        } else {
+          output.textContent = '保存またはAI起動の結果が不明です。再送信せず後で確認してください。';
         }
-        if (current()) status.textContent = '観測は保存済みです。AI判断は処理中または未確定です。再送信せず後で確認してください。';
-      } catch (_) {
-        if (current()) status.textContent = '保存またはAI起動の結果が不明です。再送信せず確認してください。';
       }
-    });
-    section.append(title, guidance, form); host.appendChild(section);
+    }
+    for (const item of work) {
+      const row = document.createElement('div'); row.className = 'kai-observation-work';
+      const name = document.createElement('strong'); name.textContent = item.title || '名称未設定のWork';
+      const actions = document.createElement('div'); actions.className = 'kai-observation-actions';
+      for (const label of ['予定どおり', '遅れてる', '完了']) {
+        const button = document.createElement('button'); button.type = 'button';
+        button.textContent = label; button.className = 'kp-button';
+        button.setAttribute('aria-label', `${item.title || '名称未設定のWork'}: ${label}`);
+        button.addEventListener('click', () => void submit('check_in', item,
+          `本人が「${label}」を選択。`, status));
+        buttons.check_in.push(button); actions.appendChild(button);
+      }
+      row.append(name, actions); section.appendChild(row);
+    }
+    section.append(details, status, refreshControl('check_in', status));
+    host.prepend(section);
+    if (Number(jstParts().hour) < 20) return;
+    const night = document.createElement('section'); night.className = 'kp-card kai-observation kai-night-review';
+    const nightTitle = document.createElement('h2'); nightTitle.textContent = 'Night Review';
+    const nightText = document.createElement('p');
+    nightText.textContent = `未完了のWork候補 ${work.length}件。実績を推測せず、明日への持ち越しを確認します。`;
+    const nightButton = document.createElement('button'); nightButton.type = 'button';
+    nightButton.className = 'kp-button'; nightButton.textContent = '持ち越し候補をAIに確認';
+    const nightStatus = document.createElement('p'); nightStatus.setAttribute('role', 'status');
+    nightStatus.setAttribute('aria-live', 'polite');
+    nightButton.addEventListener('click', () => void submit('night_review', work[0],
+      '本人が今夜の持ち越し提案を依頼。未確認の実績は完了扱いにしない。', nightStatus));
+    buttons.night_review.push(nightButton);
+    night.append(nightTitle, nightText, nightButton, nightStatus,
+      refreshControl('night_review', nightStatus));
+    section.after(night);
   }
 
 
@@ -515,8 +571,8 @@
           answerApi: typeof inboxAnswerApi === 'function' ? inboxAnswerApi : null,
         } : {};
         globalThis.KazPersonalView.render(host, selection, data, Date.now(), options);
-        await appendAiJudgments(host, selection.page, current);
-        if (['today', 'work'].includes(selection.page)) appendAiObservationForm(host, snapshot, current);
+        if (selection.page === 'today') appendAiObservationControls(host, snapshot, current);
+        void appendAiJudgments(host, selection.page, current);
       } catch (_) {
         if (!current()) return;
         const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];

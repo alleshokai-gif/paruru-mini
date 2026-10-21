@@ -1,0 +1,93 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+
+class Node {
+  constructor(tag = 'div') {
+    this.tag = tag; this.children = []; this.listeners = {};
+    this.classList = { contains: name => name === 'is-active' };
+    this.value = ''; this.hidden = false;
+  }
+  set textContent(value) { this._text = value; this.children = []; }
+  get textContent() { return this._text || ''; }
+  append(...items) { for (const item of items) { item.parent = this; this.children.push(item); } }
+  appendChild(item) { this.append(item); }
+  prepend(item) { item.parent = this; this.children.unshift(item); }
+  after(item) {
+    item.parent = this.parent;
+    this.parent.children.splice(this.parent.children.indexOf(this) + 1, 0, item);
+  }
+  replaceChildren() { this.children = []; }
+  setAttribute() {}
+  addEventListener(name, handler) { this.listeners[name] = handler; }
+}
+function descendants(node) {
+  return [node, ...node.children.flatMap(descendants)];
+}
+
+async function run(hourJst, slowShadow = false) {
+  const handlers = {};
+  const host = new Node();
+  const view = new Node();
+  const nodes = { kazOsView: view, kazPersonalContent: host };
+  const DateAt = class extends Date {
+    constructor(...args) { super(...(args.length ? args : [`2026-10-21T${String(hourJst - 9).padStart(2, '0')}:00:00Z`])); }
+    static now() { return new DateAt().getTime(); }
+  };
+  const document = {
+    hidden: false, createElement: tag => new Node(tag),
+    getElementById: id => nodes[id] || null,
+    querySelectorAll: () => [],
+    addEventListener: (name, handler) => { handlers[name] = handler; },
+  };
+  const sandbox = { document, window: { addEventListener() {}, scrollTo() {} },
+    location: { hash: '#kaz-os/today' }, Date: DateAt, Intl, setTimeout, clearTimeout };
+  sandbox.globalThis = sandbox;
+  sandbox.KazV3ComponentData = { dashboard: () => ({}) };
+  sandbox.KazPersonalView = { render: target => target.replaceChildren() };
+  const source = fs.readFileSync(path.join(__dirname, '../features/kaz-os/navigation.js'), 'utf8');
+  vm.runInNewContext(source, sandbox);
+  const sent = [];
+  const snapshot = { schema_version: 'kaz-os-dashboard-v3', status: 'CURRENT',
+    generated_at: '2026-10-21T12:00:00+09:00',
+    sources: Object.fromEntries(['projects', 'work', 'today', 'calendar'].map(name => [name, { status: 'current' }])),
+    work: [{ id: 'work-1', title: '架空の作業', state: 'DOING' },
+      { id: 'work-2', title: '取消済み', state: 'CANCELLED' }],
+    today: { now: [{ id: 'work-1' }], next: [{ id: 'work-2' }], scheduled: [] } };
+  handlers['paruru:authenticated']({ detail: {
+    context: { role: 'admin', allowedViews: ['kaz-os'] },
+    kazOsV3DashboardApi: async () => snapshot,
+    kazOsAiEngineApi: slowShadow ? () => new Promise(() => {})
+      : async () => ({ judgments: [] }),
+    kazOsAiObservationApi: async payload => { sent.push(payload); return { status: 'queued' }; },
+  } });
+  await new Promise(resolve => setImmediate(resolve));
+  const all = descendants(host);
+  const buttons = all.filter(node => node.tag === 'button');
+  assert.equal(buttons.filter(node => node.textContent === '予定どおり').length, 1);
+  assert.equal(all.some(node => node.textContent === '対象Workを選択'), false);
+  assert.equal(all.some(node => node.tag === 'textarea' && node.required), false);
+  const night = buttons.find(node => node.textContent === '持ち越し候補をAIに確認');
+  assert.equal(Boolean(night), hourJst >= 20);
+  buttons.find(node => node.textContent === '予定どおり').listeners.click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].feature, 'check_in');
+  assert.equal(sent[0].work_id, 'work-1');
+  assert.match(sent[0].observed_at, /^2026-10-21T\d\d:\d\d:\d\d\+09:00$/);
+  assert.match(sent[0].note, /予定どおり/);
+  if (night) {
+    assert.equal(Boolean(night.disabled), false);
+    night.listeners.click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1].feature, 'night_review');
+    assert.match(sent[1].note, /未確認の実績は完了扱いにしない/);
+  }
+}
+
+Promise.all([run(18), run(21), run(18, true)]).then(() => {
+  process.stdout.write('PASS AI observation one-tap, night-only, and slow Shadow UI\n');
+}).catch(error => { process.stderr.write(String(error) + '\n'); process.exitCode = 1; });
