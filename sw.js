@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261022-kaz-development-metrics-v4");
-// Release: v20261022-kaz-development-metrics-v4
+importScripts("./build.js?v=v20261023-kaz-development-metrics-v5");
+// Release: v20261023-kaz-development-metrics-v5
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -235,7 +235,6 @@ function shouldIgnoreSearch(request) {
   const url = new URL(request.url);
   return isAppShellRequest(request) && url.origin === self.location.origin;
 }
-
 
 
 
