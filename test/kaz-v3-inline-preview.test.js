@@ -84,3 +84,4 @@ assert(!html.includes('data-kaz-page="inbox"'), 'normal navigation must omit INB
 assert.deepEqual(dashboard.today.company_free_windows, []);
 
 console.log('PASS same-condition v2 component DTO and v3 Snapshot data consistency');
+
