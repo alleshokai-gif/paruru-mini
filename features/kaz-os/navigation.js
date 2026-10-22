@@ -856,6 +856,9 @@
     table.append(tbody); tableWrap.append(table); host.append(tableWrap);
     const contextHeading = document.createElement('h3');
     contextHeading.textContent = 'Kaz Context参照とGitHub成果'; host.append(contextHeading);
+    const contextSummary = document.createElement('p');
+    contextSummary.textContent = `resolve_context記録: ${totals.resolve_context_sessions ?? 'unknown'}セッション / ${totals.resolve_context_calls ?? 'unknown'}回（成功 ${totals.resolve_context_successes ?? 'unknown'}・明示エラー ${totals.resolve_context_errors ?? 'unknown'}・結果unknown ${totals.resolve_context_unknown ?? 'unknown'}）。`;
+    host.append(contextSummary);
     const contextNote = document.createElement('p');
     contextNote.textContent = 'resolve_contextの明示記録があるセッション別の相関比較。因果効果は示さず、cache hit率はContext効果として扱わへん。';
     host.append(contextNote);
