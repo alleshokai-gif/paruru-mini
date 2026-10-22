@@ -75,7 +75,12 @@
       const view = await aiEngineApi();
       if (!current()) return;
       const wanted = new Set(aiFeaturesByPage[page]);
-      const rows = view.judgments.filter(row => wanted.has(row.feature));
+      const latest = new Map();
+      for (const row of view.judgments.filter(row => wanted.has(row.feature))) {
+        const prior = latest.get(row.feature);
+        if (!prior || Date.parse(row.as_of) > Date.parse(prior.as_of)) latest.set(row.feature, row);
+      }
+      const rows = [...latest.values()];
       if (!rows.length) {
         const empty = document.createElement('p');
         empty.textContent = 'いま表示できる提案はありません。';
@@ -89,7 +94,10 @@
         const action = target && !['DONE', 'CANCELLED'].includes(target.state)
           ? [target.title, target.next_action].filter(value => typeof value === 'string' && value.trim())
               .join('：') : '';
-        item.textContent = `${aiFeatureLabels[row.feature]}: ${aiJudgmentLabels[row.judgment] || '確認してください'}`
+        const time = Number.isFinite(Date.parse(row.as_of))
+          ? `（${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
+            hour: '2-digit', minute: '2-digit' }).format(new Date(row.as_of))}時点）` : '';
+        item.textContent = `${aiFeatureLabels[row.feature]}${time}: ${aiJudgmentLabels[row.judgment] || '確認してください'}`
           + (action ? ` — ${action}` : '');
         section.appendChild(item);
       }
