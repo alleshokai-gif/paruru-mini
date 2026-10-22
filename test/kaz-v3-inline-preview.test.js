@@ -72,6 +72,9 @@ assert.match(navigation, /const metricsOnly = location\.hash === '#kaz-os\/v3\/m
   'the metrics page must open without the general v3 preview flag');
 assert.match(navigation, /最終収集/);
 assert.match(navigation, /収集状態/);
+assert.match(navigation, /cached input/);
+assert.match(navigation, /取得状況/);
+assert.match(navigation, /モデル別/);
 const dashboardGate = app.slice(app.indexOf('async function callAuthenticatedKazOsV3Dashboard_()'),
   app.indexOf('async function callAuthenticatedKazOsV3Inbox_()'));
 assert(dashboardGate.includes('isViewAllowed_("kaz-os")')
@@ -84,4 +87,3 @@ assert(!html.includes('data-kaz-page="inbox"'), 'normal navigation must omit INB
 assert.deepEqual(dashboard.today.company_free_windows, []);
 
 console.log('PASS same-condition v2 component DTO and v3 Snapshot data consistency');
-
