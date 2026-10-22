@@ -771,6 +771,14 @@
         void appendAiJudgments(host, selection.page, current, snapshot, brief);
       } catch (_) {
         if (!current()) return;
+        if (selection.page === 'metrics') {
+          host.replaceChildren();
+          const unavailable = document.createElement('p');
+          unavailable.setAttribute('role', 'status');
+          unavailable.textContent = '開発実績を読み込めませんでした。統計は未確認やで（0件とは扱わへん）。';
+          host.append(unavailable);
+          return;
+        }
         const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];
         globalThis.KazPersonalView.render(host, selection, { sources: { [sourceName]: { status: 'failed' } } });
       }
