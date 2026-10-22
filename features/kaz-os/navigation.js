@@ -818,8 +818,50 @@
     const sourceStatus = value.source?.status;
     summary.textContent = sourceStatus === 'empty'
       ? 'まだ統計は取り込まれてへん。'
-      : `セッション ${totals.sessions ?? 'unknown'}件 / tokens ${totals.total_tokens ?? 'unknown'} / 観測時間 ${totals.observed_span_ms == null ? 'unknown' : Math.round(totals.observed_span_ms / 60000) + '分'}${sourceStatus === 'partial' ? ' / 一部ログ未読' : ''}`;
+      : `セッション ${totals.sessions ?? 'unknown'}件 / input ${totals.input_tokens ?? 'unknown'} / output ${totals.output_tokens ?? 'unknown'} / 観測時間 ${totals.observed_span_ms == null ? 'unknown' : Math.round(totals.observed_span_ms / 60000) + '分'}${sourceStatus === 'partial' ? ' / 一部ログ未読' : ''}`;
     host.append(summary);
+    const tokenNote = document.createElement('p');
+    tokenNote.textContent = `合計は各セッションのthread累積値の最大スナップショットを1回ずつ足した値（ログ内の更新を重複加算していない）。inputにはcached input ${totals.cached_input_tokens ?? 'unknown'}を含む（内数）。cache write ${totals.cache_write_input_tokens ?? 'unknown'}、reasoning output ${totals.reasoning_output_tokens ?? 'unknown'}（outputの内数）。観測時間はセッションごとの開始〜最終記録の合計で、並行セッションは重なる。`;
+    host.append(tokenNote);
+    const modelHeading = document.createElement('h3');
+    modelHeading.textContent = 'モデル別';
+    host.append(modelHeading);
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'development-metrics-table-wrap';
+    const table = document.createElement('table');
+    table.className = 'development-metrics-table';
+    const headers = ['モデル', 'セッション', 'input', 'output', 'cached input', '観測時間', '人間メッセージ', '中断ターン'];
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    for (const label of headers) { const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = label; headerRow.append(cell); }
+    thead.append(headerRow); table.append(thead);
+    const tbody = document.createElement('tbody');
+    for (const model of value.models || []) {
+      const row = document.createElement('tr');
+      for (const cellValue of [model.model, model.sessions, model.input_tokens, model.output_tokens,
+        model.cached_input_tokens, model.observed_span_ms == null ? 'unknown' : Math.round(model.observed_span_ms / 60000) + '分',
+        model.human_message_count, model.aborted_turn_count]) {
+        const cell = document.createElement('td'); cell.textContent = cellValue == null ? 'unknown' : String(cellValue); row.append(cell);
+      }
+      tbody.append(row);
+    }
+    table.append(tbody); tableWrap.append(table); host.append(tableWrap);
+    const qualityHeading = document.createElement('h3');
+    qualityHeading.textContent = '取得状況'; host.append(qualityHeading);
+    const quality = document.createElement('ul');
+    for (const [label, key] of [['モデル', 'model'], ['推論レベル', 'reasoning_level'], ['input tokens', 'input_tokens'], ['total tokens', 'total_tokens'],
+      ['output tokens', 'output_tokens'], ['cached input', 'cached_input_tokens'], ['観測時間', 'observed_span_ms'],
+      ['人間メッセージ数', 'human_message_count'], ['中断ターン数', 'aborted_turn_count'],
+      ['明示エラー数', 'explicit_error_count'], ['成果判定', 'work_outcome']]) {
+      const item = document.createElement('li'); const stat = value.availability?.[key];
+      const rate = Number.isFinite(stat?.known_rate) ? `${Math.round(stat.known_rate * 100)}%` : 'unknown';
+      item.textContent = `${label}: 取得 ${stat?.known ?? 'unknown'} / unknown ${stat?.unknown ?? 'unknown'} (${rate})`;
+      quality.append(item);
+    }
+    host.append(quality);
+    const intervention = document.createElement('p');
+    intervention.textContent = `人間メッセージ ${totals.human_message_count ?? 'unknown'} / 中断ターン ${totals.aborted_turn_count ?? 'unknown'} / 明示エラー ${totals.explicit_error_count ?? 'unknown'}。再試行回数・完成成果はログだけで確定できないためunknown。`;
+    host.append(intervention);
     const ledger = document.createElement('p');
     ledger.textContent = 'OpenAI API Ledger: unknown（Codexプラン利用とは別集計）';
     host.append(ledger);
@@ -837,7 +879,7 @@
     for (const item of value.sessions || []) {
       const row = document.createElement('li');
       const date = item.started_at ? new Date(item.started_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '日時 unknown';
-      row.textContent = `${date} / ${item.model || 'model unknown'} / ${item.reasoning_level || 'effort unknown'} / ${item.total_tokens ?? 'tokens unknown'} tokens / human messages ${item.human_message_count ?? 'unknown'} / outcome ${item.work_outcome || 'unknown'} / rework ${item.rework_count ?? 'unknown'} / GitHub unknown`;
+      row.textContent = `${date} / ${item.model || 'model unknown'} / ${item.reasoning_level || 'effort unknown'} / input ${item.input_tokens ?? 'unknown'} / output ${item.output_tokens ?? 'unknown'} / cached ${item.cached_input_tokens ?? 'unknown'} / human messages ${item.human_message_count ?? 'unknown'} / aborted ${item.aborted_turn_count ?? 'unknown'} / outcome ${item.work_outcome || 'unknown'} / GitHub unknown`;
       list.append(row);
     }
     host.append(list);
@@ -933,3 +975,4 @@
     else if (allowed() && active()) render();
   });
 })();
+
