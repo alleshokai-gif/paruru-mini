@@ -157,7 +157,7 @@
   }
 
   function validateDevelopmentMetrics_(value) {
-    if (!value || value.schema_version !== 'kaz-development-metrics-view-0.1'
+    if (!value || !['kaz-development-metrics-view-0.1', 'kaz-development-metrics-view-0.2'].includes(value.schema_version)
         || !value.totals || typeof value.totals !== 'object'
         || !Array.isArray(value.sessions) || value.sessions.length > 30
         || !value.api_ledger || value.api_ledger.status !== 'unknown')
@@ -507,3 +507,4 @@
 
   root.PALURUReadTransportV2 = Object.freeze({ MODES, ROUTES, selectMode, create });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
+
