@@ -50,6 +50,7 @@ assert.throws(() => componentData.dashboard({ ...dashboard, component_data: null
 const navigation = fs.readFileSync(path.join(__dirname, '..', 'features/kaz-os/navigation.js'), 'utf8');
 const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const config = fs.readFileSync(path.join(__dirname, '..', 'features/transport/read-v2-config.js'), 'utf8');
+const transport = fs.readFileSync(path.join(__dirname, '..', 'features/transport/read-v2.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 assert.match(navigation, /KazV3ComponentData\.dashboard/);
 assert.match(navigation, /KazV3ComponentData\.inbox/);
@@ -72,9 +73,9 @@ assert.match(navigation, /const metricsOnly = location\.hash === '#kaz-os\/v3\/m
   'the metrics page must open without the general v3 preview flag');
 assert.match(navigation, /最終収集/);
 assert.match(navigation, /収集状態/);
-assert.match(navigation, /cached input/);
-assert.match(navigation, /取得状況/);
-assert.match(navigation, /モデル別/);
+assert.match(navigation, /GitHub成果の明示リンク/);
+assert.match(navigation, /context_comparison/);
+assert.match(transport, /kaz-development-metrics-view-0\.3/);
 const dashboardGate = app.slice(app.indexOf('async function callAuthenticatedKazOsV3Dashboard_()'),
   app.indexOf('async function callAuthenticatedKazOsV3Inbox_()'));
 assert(dashboardGate.includes('isViewAllowed_("kaz-os")')
