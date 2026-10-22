@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const byId = id => document.getElementById(id);
-  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, inboxAnswerApi = null, aiEngineApi = null, aiObservationApi = null;
+  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, developmentMetricsApi = null, inboxAnswerApi = null, aiEngineApi = null, aiObservationApi = null;
   let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0;
   let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, contextEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
@@ -721,7 +721,7 @@
     }
     clear();
     const preview = globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED
-      && /^#kaz-os\/v3(?:\/(today|work|projects|capa|context)(?:\/([^/]+))?)?$/.exec(location.hash);
+      && /^#kaz-os\/v3(?:\/(today|work|projects|capa|context|metrics)(?:\/([^/]+))?)?$/.exec(location.hash);
     const cutover = /^#kaz-os\/(today|work|projects|capa|context)(?:\/([^/]+))?$/.exec(location.hash);
     if (preview || cutover) {
       const legacyNav = byId('kazOsNav');
@@ -731,7 +731,7 @@
       try { if ((preview || cutover)[2]) selection.id = decodeURIComponent((preview || cutover)[2]); } catch { /* Invalid ID is not selected. */ }
       const requestEpoch = previewEpoch;
       const current = () => requestEpoch === previewEpoch && allowed() && active() && !document.hidden;
-      const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', context: 'Context Observatory', inbox: '確認待ち' }[selection.page];
+      const pageLabel = { today: '今日の予定', work: 'やること', projects: 'プロジェクト', capa: 'CAPA', context: 'Context Observatory', metrics: '開発実績', inbox: '確認待ち' }[selection.page];
       byId('kazOsView')?.setAttribute('aria-label', pageLabel);
       const host = byId('kazPersonalContent');
       if (!host) return;
@@ -742,6 +742,13 @@
           if (!current()) return;
           globalThis.KazPersonalView.render(host, selection, data);
           await appendAiJudgments(host, selection.page, current);
+          return;
+        }
+        if (selection.page === 'metrics') {
+          if (typeof developmentMetricsApi !== 'function') throw Error('DEVELOPMENT_METRICS_UNAVAILABLE');
+          const metrics = await developmentMetricsApi();
+          if (!current()) return;
+          renderDevelopmentMetrics(host, metrics);
           return;
         }
         const snapshot = await (selection.page === 'inbox' ? v3InboxApi() : v3DashboardApi());
@@ -791,6 +798,31 @@
     if (allowed()) document.dispatchEvent(new CustomEvent('paruru:view-request', { detail: { viewName: 'kaz-os' } }));
   }
 
+  function renderDevelopmentMetrics(host, value) {
+    host.replaceChildren();
+    const heading = document.createElement('h2');
+    heading.textContent = '開発実績';
+    host.append(heading);
+    const totals = value.totals || {};
+    const summary = document.createElement('p');
+    const sourceStatus = value.source?.status;
+    summary.textContent = sourceStatus === 'empty'
+      ? 'まだ統計は取り込まれてへん。'
+      : `セッション ${totals.sessions ?? 'unknown'}件 / tokens ${totals.total_tokens ?? 'unknown'} / 観測時間 ${totals.observed_span_ms == null ? 'unknown' : Math.round(totals.observed_span_ms / 60000) + '分'}${sourceStatus === 'partial' ? ' / 一部ログ未読' : ''}`;
+    host.append(summary);
+    const ledger = document.createElement('p');
+    ledger.textContent = 'OpenAI API Ledger: unknown（Codexプラン利用とは別集計）';
+    host.append(ledger);
+    const list = document.createElement('ul');
+    for (const item of value.sessions || []) {
+      const row = document.createElement('li');
+      const date = item.started_at ? new Date(item.started_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '日時 unknown';
+      row.textContent = `${date} / ${item.model || 'model unknown'} / ${item.reasoning_level || 'effort unknown'} / ${item.total_tokens ?? 'tokens unknown'} tokens / human messages ${item.human_message_count ?? 'unknown'} / outcome ${item.work_outcome || 'unknown'} / rework ${item.rework_count ?? 'unknown'} / GitHub unknown`;
+      list.append(row);
+    }
+    host.append(list);
+  }
+
   document.addEventListener('paruru:authenticated', event => {
     clear();
     context = event.detail?.context || null;
@@ -800,6 +832,7 @@
     todayApi = event.detail?.kazOsTodayApi || null;
     inboxApi = event.detail?.kazOsInboxApi || null;
     contextApi = event.detail?.kazOsContextApi || null;
+    developmentMetricsApi = event.detail?.kazOsDevelopmentMetricsApi || null;
     aiEngineApi = event.detail?.kazOsAiEngineApi || null;
     aiObservationApi = event.detail?.kazOsAiObservationApi || null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
@@ -807,6 +840,8 @@
     v3InboxApi = event.detail?.kazOsV3InboxApi || null;
     const previewLink = byId('kazOsV3PreviewLink');
     if (previewLink) previewLink.hidden = !allowed() || !globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED;
+    const metricsLink = byId('kazOsDevelopmentMetricsLink');
+    if (metricsLink) metricsLink.hidden = !allowed() || !globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED;
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = !allowed();
     const status = byId('kazOsEntryStatus');
@@ -822,6 +857,7 @@
     todayApi = null;
     inboxApi = null;
     contextApi = null;
+    developmentMetricsApi = null;
     aiEngineApi = null;
     aiObservationApi = null;
     inboxAnswerApi = null;
@@ -829,6 +865,8 @@
     v3InboxApi = null;
     const previewLink = byId('kazOsV3PreviewLink');
     if (previewLink) previewLink.hidden = true;
+    const metricsLink = byId('kazOsDevelopmentMetricsLink');
+    if (metricsLink) metricsLink.hidden = true;
     clear();
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = true;
@@ -850,7 +888,7 @@
     const anchor = event.target.closest?.('a[href^="#kaz-os/"]');
     if (!anchor || !byId('kazOsView').contains(anchor)) return;
     const path = anchor.getAttribute('href').slice('#kaz-os/'.length);
-    if (!/^(today|work|projects|capa|context|inbox)(?:\/[^/]+)?$/.test(path)) return;
+    if (!/^(today|work|projects|capa|context|metrics|inbox)(?:\/[^/]+)?$/.test(path)) return;
     event.preventDefault();
     location.hash = `#kaz-os/v3/${path}`;
   });

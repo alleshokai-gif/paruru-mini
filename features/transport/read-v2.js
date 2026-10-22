@@ -9,6 +9,7 @@
     inbox: Object.freeze({ key: 'inbox', path: '/poc/read-v2/inbox', action: 'kazOs.inbox.get' }),
     dashboardV3: Object.freeze({ key: 'dashboardV3', path: '/v3/dashboard', action: 'kazOs.v3.dashboard.get' }),
     inboxV3: Object.freeze({ key: 'inboxV3', path: '/v3/inbox', action: 'kazOs.v3.inbox.get' }),
+    developmentMetrics: Object.freeze({ key: 'developmentMetrics', path: '/v3/development-metrics', action: 'kazOs.developmentMetrics.get' }),
     context: Object.freeze({ key: 'context', path: '/v2/read/context', action: 'kazOs.context.get' }),
     aiEngine: Object.freeze({ key: 'aiEngine', path: '/v2/read/ai-engine', action: 'kazOs.aiEngine.get' }),
     aiObservation: Object.freeze({ key: 'aiObservation', path: '/v2/ai-engine/observations', action: 'kazOs.aiObservation.submit' })
@@ -49,6 +50,7 @@
       inbox: requestedRoutes.inbox === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       dashboardV3: requestedRoutes.dashboardV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       inboxV3: requestedRoutes.inboxV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      developmentMetrics: requestedRoutes.developmentMetrics === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       context: requestedRoutes.context === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       aiEngine: requestedRoutes.aiEngine === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       aiObservation: requestedRoutes.aiObservation === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
@@ -151,6 +153,15 @@
         || writes.notion !== 0 || writes.calendar !== 0) {
       throw codedError_('CONTEXT_OBSERVATORY_CONTRACT_INVALID', { transportClassification: 'parse' });
     }
+    return value;
+  }
+
+  function validateDevelopmentMetrics_(value) {
+    if (!value || value.schema_version !== 'kaz-development-metrics-view-0.1'
+        || !value.totals || typeof value.totals !== 'object'
+        || !Array.isArray(value.sessions) || value.sessions.length > 30
+        || !value.api_ledger || value.api_ledger.status !== 'unknown')
+      throw codedError_('DEVELOPMENT_METRICS_RESPONSE_INVALID', { transportClassification: 'parse' });
     return value;
   }
 
@@ -355,7 +366,7 @@
           if (!token) throw codedError_('AUTHENTICATION_REQUIRED', { transportClassification: 'business' });
           controller = new AbortController();
           timer = setTimeout(function() { controller.abort(); }, timeoutMs);
-          const baseUrl = route.key === 'dashboardV3' || route.key === 'inboxV3'
+          const baseUrl = route.key === 'dashboardV3' || route.key === 'inboxV3' || route.key === 'developmentMetrics'
             || route.key === 'aiEngine'
             ? config.v3BaseUrl : config.baseUrl;
           const response = await fetchImpl(baseUrl + route.path, {
@@ -487,6 +498,7 @@
         value => validateSnapshotV3_(value, 'kaz-os-dashboard-v3', ['work', 'projects', 'capa'])); },
       inboxV3: function() { return read_(ROUTES.inboxV3,
         value => validateSnapshotV3_(value, 'kaz-os-inbox-v3', ['inbox_items'])); },
+      developmentMetrics: function() { return read_(ROUTES.developmentMetrics, validateDevelopmentMetrics_); },
       context: function() { return read_(ROUTES.context, validateContext_); },
       aiEngine: function() { return read_(ROUTES.aiEngine, validateAiEngine_); },
       aiObservation: submitObservation_
