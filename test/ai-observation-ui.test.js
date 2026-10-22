@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
+const { createHash, webcrypto } = require('node:crypto');
 
 class Node {
   constructor(tag = 'div') {
@@ -35,7 +36,7 @@ function descendants(node) {
   return [node, ...node.children.flatMap(descendants)];
 }
 
-async function run(hourJst, slowShadow = false, claimed = false) {
+async function run(hourJst, slowShadow = false, claimed = false, targeted = false) {
   const handlers = {};
   const host = new Node();
   const view = new Node();
@@ -51,7 +52,8 @@ async function run(hourJst, slowShadow = false, claimed = false) {
     addEventListener: (name, handler) => { handlers[name] = handler; },
   };
   const sandbox = { document, window: { addEventListener() {}, scrollTo() {} },
-    location: { hash: '#kaz-os/today' }, Date: DateAt, Intl, setTimeout, clearTimeout };
+    location: { hash: '#kaz-os/today' }, Date: DateAt, Intl, setTimeout, clearTimeout,
+    crypto: webcrypto, TextEncoder };
   sandbox.globalThis = sandbox;
   sandbox.KazV3ComponentData = { dashboard: () => ({}) };
   sandbox.KazPersonalView = { render: target => target.replaceChildren() };
@@ -61,21 +63,27 @@ async function run(hourJst, slowShadow = false, claimed = false) {
   const snapshot = { schema_version: 'kaz-os-dashboard-v3', status: 'CURRENT',
     generated_at: '2026-10-21T12:00:00+09:00',
     sources: Object.fromEntries(['projects', 'work', 'today', 'calendar'].map(name => [name, { status: 'current' }])),
-    work: [{ id: 'work-1', title: '架空の作業', state: 'DOING' },
+    work: [{ id: 'work-1', title: '架空の作業', state: 'DOING', next_action: '資料を確認する' },
       { id: 'work-2', title: '取消済み', state: 'CANCELLED' }],
     today: { now: [{ id: 'work-1' }], next: [{ id: 'work-2' }], scheduled: [] } };
   handlers['paruru:authenticated']({ detail: {
     context: { role: 'admin', allowedViews: ['kaz-os'] },
     kazOsV3DashboardApi: async () => snapshot,
     kazOsAiEngineApi: slowShadow ? () => new Promise(() => {})
-      : async () => ({ judgments: claimed ? [{ feature: 'check_in',
-        judgment: 'NEEDS_INPUT', status: 'no_advice' }] : [] }),
+      : async () => ({ judgments: targeted ? [{ feature: 'check_in',
+        judgment: 'REPLAN_REVIEW', status: 'review_pending',
+        evidence: { source: 'work', source_ref_hash: createHash('sha256')
+          .update(JSON.stringify({ original_ref: 'work-1', source: 'work' })).digest('hex') } }]
+        : claimed ? [{ feature: 'check_in', judgment: 'NEEDS_INPUT', status: 'no_advice' }] : [] }),
     kazOsAiObservationApi: async payload => { sent.push(payload); return {
       schema_version: 'kaz-ai-engine-progress-receipt-v1', status: 'saved',
       work_updated: ['done', 'carry_forward'].includes(payload.action), provider_calls: 0 }; },
   } });
   await new Promise(resolve => setImmediate(resolve));
+  if (targeted) await new Promise(resolve => setTimeout(resolve, 30));
   const all = descendants(host);
+  if (targeted) assert.equal(all.some(node =>
+    node.textContent.includes('再計画を確認') && node.textContent.includes('資料を確認する')), true);
   const buttons = all.filter(node => node.tag === 'button');
   assert.equal(all.some(node => node.textContent === '今日の進み具合'), true);
   assert.equal(buttons.filter(node => node.textContent === '完了').length, 1);
@@ -106,6 +114,7 @@ async function run(hourJst, slowShadow = false, claimed = false) {
   }
 }
 
-Promise.all([run(18), run(21), run(18, true), run(21, false, true)]).then(() => {
+Promise.all([run(18), run(21), run(18, true), run(21, false, true),
+  run(18, false, false, true)]).then(() => {
   process.stdout.write('PASS progress actions after AI claim and explicit Work readback receipt\n');
 }).catch(error => { process.stderr.write(String(error) + '\n'); process.exitCode = 1; });

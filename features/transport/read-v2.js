@@ -184,7 +184,7 @@
       'gardener', 'feedback', 'capa']);
     const codes = {
       daily_planner: ['FOCUS_REVIEW', 'BLOCKER_REVIEW', 'NO_ADVICE'],
-      check_in: ['REPLAN_REVIEW', 'PROGRESS_REVIEW', 'NEEDS_INPUT'],
+      check_in: ['REPLAN_REVIEW', 'PROGRESS_REVIEW', 'NEEDS_INPUT', 'NO_ADVICE'],
       night_review: ['CARRY_FORWARD_REVIEW', 'LESSON_REVIEW', 'NO_ADVICE'],
       gardener: ['DUPLICATE_REVIEW', 'CONFLICT_REVIEW', 'NO_ADVICE'],
       feedback: ['CONTEXT_GAP_REVIEW', 'WORKFLOW_REVIEW', 'NO_ADVICE'],

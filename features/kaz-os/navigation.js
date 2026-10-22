@@ -44,7 +44,24 @@
     NO_ADVICE: '追加提案なし', NEEDS_INPUT: '必要なときだけ進み具合を選択',
   });
 
-  async function appendAiJudgments(host, page, current) {
+  async function workForEvidence(evidence, snapshot) {
+    if (evidence?.source !== 'work' || !/^[a-f0-9]{64}$/.test(evidence.source_ref_hash || '')
+        || !snapshot?.work || !globalThis.crypto?.subtle || !globalThis.TextEncoder) return null;
+    const encoder = new globalThis.TextEncoder();
+    const todayIds = new Set(['now', 'next', 'scheduled'].flatMap(lane =>
+      (snapshot.today?.[lane] || []).map(row => row?.id)));
+    for (const item of snapshot.work) {
+      if (!item || typeof item.id !== 'string' || item.state === 'CANCELLED') continue;
+      if (!todayIds.has(item.id)) continue;
+      const bytes = encoder.encode(JSON.stringify({ original_ref: item.id, source: 'work' }));
+      const hash = [...new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes))]
+        .map(byte => byte.toString(16).padStart(2, '0')).join('');
+      if (hash === evidence.source_ref_hash) return item;
+    }
+    return null;
+  }
+
+  async function appendAiJudgments(host, page, current, snapshot = null) {
     if (!aiEngineApi || !aiFeaturesByPage[page] || !current()) return;
     const section = document.createElement('section');
     section.className = 'kp-card';
@@ -58,7 +75,12 @@
       const view = await aiEngineApi();
       if (!current()) return;
       const wanted = new Set(aiFeaturesByPage[page]);
-      const rows = view.judgments.filter(row => wanted.has(row.feature));
+      const latest = new Map();
+      for (const row of view.judgments.filter(row => wanted.has(row.feature))) {
+        const prior = latest.get(row.feature);
+        if (!prior || Date.parse(row.as_of) > Date.parse(prior.as_of)) latest.set(row.feature, row);
+      }
+      const rows = [...latest.values()];
       if (!rows.length) {
         const empty = document.createElement('p');
         empty.textContent = 'いま表示できる提案はありません。';
@@ -66,7 +88,17 @@
       }
       for (const row of rows) {
         const item = document.createElement('p');
-        item.textContent = `${aiFeatureLabels[row.feature]}: ${aiJudgmentLabels[row.judgment] || '確認してください'}`;
+        const target = page === 'today' && row.status === 'review_pending'
+          ? await workForEvidence(row.evidence, snapshot) : null;
+        if (!current()) return;
+        const action = target && !['DONE', 'CANCELLED'].includes(target.state)
+          ? [target.title, target.next_action].filter(value => typeof value === 'string' && value.trim())
+              .join('：') : '';
+        const time = Number.isFinite(Date.parse(row.as_of))
+          ? `（${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
+            hour: '2-digit', minute: '2-digit' }).format(new Date(row.as_of))}時点）` : '';
+        item.textContent = `${aiFeatureLabels[row.feature]}${time}: ${aiJudgmentLabels[row.judgment] || '確認してください'}`
+          + (action ? ` — ${action}` : '');
         section.appendChild(item);
       }
     } catch (_) {
@@ -148,6 +180,8 @@
         if (receipt.work_updated === true) {
           output.textContent = action === 'done'
             ? '完了を反映しました。' : '明日へ持ち越しました。';
+          if (receipt.snapshot_refresh === 'unknown' || receipt.snapshot_refresh === 'not_configured')
+            output.textContent += ' 一覧の更新は確認中です。';
           completed.add(item.id);
           if (action === 'done') item.state = 'DONE';
           (allButtons.get(item.id) || []).forEach(button => { button.disabled = true; });
@@ -581,7 +615,7 @@
         } : {};
         globalThis.KazPersonalView.render(host, selection, data, Date.now(), options);
         if (selection.page === 'today') appendAiObservationControls(host, snapshot, current);
-        void appendAiJudgments(host, selection.page, current);
+        void appendAiJudgments(host, selection.page, current, snapshot);
       } catch (_) {
         if (!current()) return;
         const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];
