@@ -3632,4 +3632,3 @@ body:not(.is-authenticated) .drawer-overlay {
 .development-metrics-table { border-collapse: collapse; min-width: 720px; width: 100%; }
 .development-metrics-table th, .development-metrics-table td { border: 1px solid #d8dbe8; padding: 0.55rem; text-align: left; white-space: nowrap; }
 .development-metrics-table th { background: #f1f3fa; }
-
