@@ -24,7 +24,7 @@
       inbox: 'DIRECT_V2',
       dashboardV3: 'DIRECT_V2',
       inboxV3: v3Preview ? 'DIRECT_V2' : 'GAS',
-      developmentMetrics: v3Preview ? 'DIRECT_V2' : 'GAS',
+      developmentMetrics: 'DIRECT_V2',
       context: 'DIRECT_V2',
       aiEngine: 'DIRECT_V2',
       aiObservation: 'DIRECT_V2'

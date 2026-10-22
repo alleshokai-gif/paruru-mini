@@ -720,14 +720,16 @@
       return;
     }
     clear();
-    const preview = globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED
+    const metricsOnly = location.hash === '#kaz-os/v3/metrics';
+    const previewEnabled = Boolean(globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED);
+    const preview = (previewEnabled || metricsOnly)
       && /^#kaz-os\/v3(?:\/(today|work|projects|capa|context|metrics)(?:\/([^/]+))?)?$/.exec(location.hash);
     const cutover = /^#kaz-os\/(today|work|projects|capa|context)(?:\/([^/]+))?$/.exec(location.hash);
     if (preview || cutover) {
       const legacyNav = byId('kazOsNav');
       if (legacyNav) legacyNav.hidden = false;
       const selection = { page: preview ? (preview[1] || 'today') : cutover[1], id: null };
-      configureKazNav(Boolean(preview), selection.page);
+      configureKazNav(previewEnabled, selection.page);
       try { if ((preview || cutover)[2]) selection.id = decodeURIComponent((preview || cutover)[2]); } catch { /* Invalid ID is not selected. */ }
       const requestEpoch = previewEpoch;
       const current = () => requestEpoch === previewEpoch && allowed() && active() && !document.hidden;
@@ -821,6 +823,16 @@
     const ledger = document.createElement('p');
     ledger.textContent = 'OpenAI API Ledger: unknown（Codexプラン利用とは別集計）';
     host.append(ledger);
+    const collected = document.createElement('p');
+    const generatedAt = Date.parse(value.generated_at || '');
+    const collectionTime = Number.isFinite(generatedAt)
+      ? new Date(generatedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) + ' JST'
+      : '日時 unknown';
+    const collectionState = sourceStatus === 'current' ? '正常'
+      : sourceStatus === 'partial' ? `一部ログ未読 ${value.source?.unreadable_count ?? 'unknown'}件`
+        : sourceStatus === 'empty' ? '未収集' : '状態 unknown';
+    collected.textContent = `最終収集 ${collectionTime} / 収集状態 ${collectionState}`;
+    host.append(collected);
     const list = document.createElement('ul');
     for (const item of value.sessions || []) {
       const row = document.createElement('li');
@@ -849,7 +861,7 @@
     const previewLink = byId('kazOsV3PreviewLink');
     if (previewLink) previewLink.hidden = !allowed() || !globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED;
     const metricsLink = byId('kazOsDevelopmentMetricsLink');
-    if (metricsLink) metricsLink.hidden = !allowed() || !globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED;
+    if (metricsLink) metricsLink.hidden = !allowed();
     const entry = byId('kazOsEntry');
     if (entry) entry.hidden = !allowed();
     const status = byId('kazOsEntryStatus');
@@ -892,7 +904,8 @@
     }
   }, true));
   byId('kazOsView')?.addEventListener?.('click', event => {
-    if (!globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED || !/^#kaz-os\/v3(?:\/|$)/.test(location.hash)) return;
+    if (!globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED && location.hash !== '#kaz-os/v3/metrics') return;
+    if (!/^#kaz-os\/v3(?:\/|$)/.test(location.hash)) return;
     const anchor = event.target.closest?.('a[href^="#kaz-os/"]');
     if (!anchor || !byId('kazOsView').contains(anchor)) return;
     const path = anchor.getAttribute('href').slice('#kaz-os/'.length);

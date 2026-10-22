@@ -66,6 +66,12 @@ assert(navigation.includes('const cutover = /^#kaz-os'),
   'normal Kaz OS routes must select the Snapshot branch');
 assert.match(config, /dashboardV3: 'DIRECT_V2'/,
   'normal Kaz OS must use the authenticated v3 HTTP route');
+assert.match(config, /developmentMetrics: 'DIRECT_V2'/,
+  'development metrics must not silently fall back to TODAY/GAS');
+assert.match(navigation, /const metricsOnly = location\.hash === '#kaz-os\/v3\/metrics'/,
+  'the metrics page must open without the general v3 preview flag');
+assert.match(navigation, /最終収集/);
+assert.match(navigation, /収集状態/);
 const dashboardGate = app.slice(app.indexOf('async function callAuthenticatedKazOsV3Dashboard_()'),
   app.indexOf('async function callAuthenticatedKazOsV3Inbox_()'));
 assert(dashboardGate.includes('isViewAllowed_("kaz-os")')
