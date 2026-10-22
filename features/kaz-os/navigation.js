@@ -823,6 +823,11 @@
     const tokenNote = document.createElement('p');
     tokenNote.textContent = `合計は各セッションのthread累積値の最大スナップショットを1回ずつ足した値（ログ内の更新を重複加算していない）。inputにはcached input ${totals.cached_input_tokens ?? 'unknown'}を含む（内数）。cache write ${totals.cache_write_input_tokens ?? 'unknown'}、reasoning output ${totals.reasoning_output_tokens ?? 'unknown'}（outputの内数）。観測時間はセッションごとの開始〜最終記録の合計で、並行セッションは重なる。`;
     host.append(tokenNote);
+    const outcomes = totals.github_outcomes || {};
+    const linked = totals.github_linked_sessions;
+    const outcomeSummary = document.createElement('p');
+    outcomeSummary.textContent = `GitHub成果の明示リンク ${linked ?? 'unknown'} / ${totals.sessions ?? 'unknown'} セッション (${Number.isFinite(totals.github_linked_rate) ? Math.round(totals.github_linked_rate * 100) + '%' : 'unknown'})。PR/CIで確認できた状態: complete ${outcomes.complete ?? 'unknown'} / incomplete ${outcomes.incomplete ?? 'unknown'} / failed ${outcomes.failed ?? 'unknown'} / unknown ${outcomes.unknown ?? 'unknown'}。merged PRはGitHub上の証拠で、作業全体の完成判定とは別。`;
+    host.append(outcomeSummary);
     const modelHeading = document.createElement('h3');
     modelHeading.textContent = 'モデル別';
     host.append(modelHeading);
@@ -830,7 +835,7 @@
     tableWrap.className = 'development-metrics-table-wrap';
     const table = document.createElement('table');
     table.className = 'development-metrics-table';
-    const headers = ['モデル', 'セッション', 'input', 'output', 'cached input', '観測時間', '人間メッセージ', '中断ターン'];
+    const headers = ['モデル', 'セッション', 'input', 'output', 'cached input', '観測時間', '人間メッセージ', '中断ターン', 'GitHub complete', 'input / complete', 'output / complete', '観測時間 / complete', 'human messages / complete', 'resolve_context'];
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     for (const label of headers) { const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = label; headerRow.append(cell); }
@@ -840,12 +845,43 @@
       const row = document.createElement('tr');
       for (const cellValue of [model.model, model.sessions, model.input_tokens, model.output_tokens,
         model.cached_input_tokens, model.observed_span_ms == null ? 'unknown' : Math.round(model.observed_span_ms / 60000) + '分',
-        model.human_message_count, model.aborted_turn_count]) {
+        model.human_message_count, model.aborted_turn_count, model.github_complete_sessions,
+        model.input_tokens_per_complete_session, model.output_tokens_per_complete_session,
+        model.observed_span_ms_per_complete_session == null ? 'unknown' : Math.round(model.observed_span_ms_per_complete_session / 60000) + '分',
+        model.human_messages_per_complete_session, model.context_reference_sessions]) {
         const cell = document.createElement('td'); cell.textContent = cellValue == null ? 'unknown' : String(cellValue); row.append(cell);
       }
       tbody.append(row);
     }
     table.append(tbody); tableWrap.append(table); host.append(tableWrap);
+    const contextHeading = document.createElement('h3');
+    contextHeading.textContent = 'Kaz Context参照とGitHub成果'; host.append(contextHeading);
+    const contextNote = document.createElement('p');
+    contextNote.textContent = 'resolve_contextの明示記録があるセッション別の相関比較。因果効果は示さず、cache hit率はContext効果として扱わへん。';
+    host.append(contextNote);
+    const contextWrap = document.createElement('div');
+    contextWrap.className = 'development-metrics-table-wrap';
+    const contextTable = document.createElement('table');
+    contextTable.className = 'development-metrics-table';
+    const contextHeaders = ['参照記録', 'セッション', 'GitHub complete', 'input / complete', 'output / complete', '観測時間 / complete', 'human messages / complete'];
+    const contextHead = document.createElement('thead');
+    const contextHeaderRow = document.createElement('tr');
+    for (const label of contextHeaders) { const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = label; contextHeaderRow.append(cell); }
+    contextHead.append(contextHeaderRow); contextTable.append(contextHead);
+    const contextBody = document.createElement('tbody');
+    const contextLabels = { reference_observed: 'あり', no_recorded_reference: '記録なし', reference_unknown: 'unknown' };
+    for (const group of value.context_comparison || []) {
+      const row = document.createElement('tr');
+      for (const cellValue of [contextLabels[group.group] || 'unknown', group.sessions,
+        group.github_complete_sessions, group.input_tokens_per_complete_session,
+        group.output_tokens_per_complete_session,
+        group.observed_span_ms_per_complete_session == null ? 'unknown' : Math.round(group.observed_span_ms_per_complete_session / 60000) + '分',
+        group.human_messages_per_complete_session]) {
+        const cell = document.createElement('td'); cell.textContent = cellValue == null ? 'unknown' : String(cellValue); row.append(cell);
+      }
+      contextBody.append(row);
+    }
+    contextTable.append(contextBody); contextWrap.append(contextTable); host.append(contextWrap);
     const qualityHeading = document.createElement('h3');
     qualityHeading.textContent = '取得状況'; host.append(qualityHeading);
     const quality = document.createElement('ul');
@@ -860,7 +896,7 @@
     }
     host.append(quality);
     const intervention = document.createElement('p');
-    intervention.textContent = `人間メッセージ ${totals.human_message_count ?? 'unknown'} / 中断ターン ${totals.aborted_turn_count ?? 'unknown'} / 明示エラー ${totals.explicit_error_count ?? 'unknown'}。再試行回数・完成成果はログだけで確定できないためunknown。`;
+    intervention.textContent = `観測できた人間メッセージ ${totals.human_message_count ?? 'unknown'} / 中断ターン ${totals.aborted_turn_count ?? 'unknown'} / 明示エラー ${totals.explicit_error_count ?? 'unknown'}。メッセージ数は介入回数そのものではなくproxy。手戻り・再試行はunknown、作業全体の完成判定もunknown。`;
     host.append(intervention);
     const ledger = document.createElement('p');
     ledger.textContent = 'OpenAI API Ledger: unknown（Codexプラン利用とは別集計）';
@@ -879,7 +915,22 @@
     for (const item of value.sessions || []) {
       const row = document.createElement('li');
       const date = item.started_at ? new Date(item.started_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '日時 unknown';
-      row.textContent = `${date} / ${item.model || 'model unknown'} / ${item.reasoning_level || 'effort unknown'} / input ${item.input_tokens ?? 'unknown'} / output ${item.output_tokens ?? 'unknown'} / cached ${item.cached_input_tokens ?? 'unknown'} / human messages ${item.human_message_count ?? 'unknown'} / aborted ${item.aborted_turn_count ?? 'unknown'} / outcome ${item.work_outcome || 'unknown'} / GitHub unknown`;
+      const github = document.createElement('span');
+      const links = Array.isArray(item.github_links) ? item.github_links : [];
+      if (!links.length) github.textContent = `GitHub ${item.github_outcome || 'unknown'}`;
+      else links.forEach((link, index) => {
+        if (index) github.append(document.createTextNode(' / '));
+        const anchor = document.createElement('a');
+        if (link.kind === 'pull_request' && Number.isInteger(link.number)) {
+          anchor.href = `https://github.com/${link.repository}/pull/${link.number}`;
+          anchor.textContent = `PR #${link.number} (${link.status || 'unknown'})`;
+        } else if (link.kind === 'commit' && /^[a-f0-9]{40}$/.test(link.sha || '')) {
+          anchor.href = `https://github.com/${link.repository}/commit/${link.sha}`;
+          anchor.textContent = `commit ${link.sha.slice(0, 8)} (CI ${link.ci_status || 'unknown'})`;
+        } else { anchor.textContent = 'GitHub unknown'; }
+        github.append(anchor);
+      });
+      row.append(document.createTextNode(`${date} / ${item.model || 'model unknown'} / ${item.reasoning_level || 'effort unknown'} / input ${item.input_tokens ?? 'unknown'} / output ${item.output_tokens ?? 'unknown'} / cached ${item.cached_input_tokens ?? 'unknown'} / human messages ${item.human_message_count ?? 'unknown'} / aborted ${item.aborted_turn_count ?? 'unknown'} / work outcome ${item.work_outcome || 'unknown'} / `), github);
       list.append(row);
     }
     host.append(list);
@@ -975,4 +1026,3 @@
     else if (allowed() && active()) render();
   });
 })();
-
