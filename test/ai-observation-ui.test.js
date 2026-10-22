@@ -66,7 +66,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   const sent = [];
   const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const evidence = id => {
-    const text = id === 'work-1' ? '架空の作業 · DOING · 資料を確認する'
+    const text = id === 'work-1' ? '架空の作業 · DOING · 資料を確認する。残りの説明はWork詳細で確認する'
       : '次の作業 · READY · 次の資料を用意する';
     const quote = id === 'work-1' ? '資料を確認する' : '次の資料を用意する';
     const start = Array.from(text.slice(0, text.indexOf(quote))).length;
@@ -79,7 +79,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   const snapshot = { schema_version: 'kaz-os-dashboard-v3', status: 'CURRENT',
     generated_at: '2026-10-21T12:00:00+09:00',
     sources: Object.fromEntries(['projects', 'work', 'today', 'calendar'].map(name => [name, { status: 'current' }])),
-    work: [{ id: 'work-1', title: '架空の作業', state: 'DOING', next_action: '資料を確認する' },
+    work: [{ id: 'work-1', title: '架空の作業', state: 'DOING',
+      next_action: '資料を確認する。残りの説明はWork詳細で確認する' },
       { id: 'work-2', title: '取消済み', state: 'CANCELLED' },
       { id: 'work-3', title: '次の作業', state: 'READY', next_action: '次の資料を用意する' }],
     today: { now: [{ id: 'work-1' }], next: [{ id: 'work-2' }, { id: 'work-3' }],
@@ -111,6 +112,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   assert.equal(all.some(node => node.textContent === '明日へ持ち越すこと'), true);
   if (targeted && targeted !== 'invalid') {
     assert.equal(all.some(node => node.textContent.includes('AIが注目したWork')), true);
+    assert.equal(all.some(node => node.textContent.includes('次の行動: 資料を確認する…（全文はWork詳細）')), true);
     assert.equal(all.some(node => node.textContent.includes('Calendar反映後の空き時間')), true);
     assert.equal(all.some(node => node.textContent.includes('AIの持ち越し候補')), true);
   }

@@ -109,8 +109,13 @@
       link.href = `#kaz-os/work/${encodeURIComponent(item.id)}`;
       link.textContent = item.title || '名称未設定のWork';
       parent.appendChild(link);
-      addText(parent, 'p', typeof item.next_action === 'string' && item.next_action.trim()
-        ? `最初の一歩: ${item.next_action.trim()}` : '次の行動は未記録です。Workの詳細を確認してください。');
+      const fullAction = typeof item.next_action === 'string' ? item.next_action.trim() : '';
+      const firstSentence = fullAction.split(/[。\n]/, 1)[0];
+      const excerpt = Array.from(firstSentence).slice(0, 110).join('');
+      const shortened = Array.from(firstSentence).length > 110 || firstSentence.length < fullAction.length;
+      addText(parent, 'p', fullAction
+        ? `次の行動: ${excerpt}${shortened ? '…（全文はWork詳細）' : ''}`
+        : '次の行動は未記録です。Workの詳細を確認してください。');
       addText(parent, 'p', source, 'kai-action-source');
       if (progress.get(item.id) === 'delayed')
         addText(parent, 'p', '遅れていると記録済み。次のAI判断を待っています。', 'kai-action-source');
