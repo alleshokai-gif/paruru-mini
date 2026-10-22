@@ -20,6 +20,10 @@ class Node {
     item.parent = this.parent;
     this.parent.children.splice(this.parent.children.indexOf(this) + 1, 0, item);
   }
+  before(item) {
+    item.parent = this.parent;
+    this.parent.children.splice(this.parent.children.indexOf(this), 0, item);
+  }
   replaceChildren() { this.children = []; }
   querySelector(selector) {
     const feature = /data-ai-observation-feature="([a-z_]+)"/.exec(selector)?.[1];
@@ -60,35 +64,66 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   const source = fs.readFileSync(path.join(__dirname, '../features/kaz-os/navigation.js'), 'utf8');
   vm.runInNewContext(source, sandbox);
   const sent = [];
+  const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const evidence = id => {
+    const text = id === 'work-1' ? '架空の作業 · DOING · 資料を確認する'
+      : '次の作業 · READY · 次の資料を用意する';
+    const quote = id === 'work-1' ? '資料を確認する' : '次の資料を用意する';
+    const start = Array.from(text.slice(0, text.indexOf(quote))).length;
+    return { source: 'work', source_ref_hash: digest({ original_ref: id, source: 'work' }),
+      source_revision: digest({ original_ref: id, revision: null, source: 'work', text }),
+      quote_hash: digest(quote), start, end: start + Array.from(quote).length };
+  };
+  const selectedEvidence = id => targeted === 'invalid'
+    ? { ...evidence(id), quote_hash: '0'.repeat(64) } : evidence(id);
   const snapshot = { schema_version: 'kaz-os-dashboard-v3', status: 'CURRENT',
     generated_at: '2026-10-21T12:00:00+09:00',
     sources: Object.fromEntries(['projects', 'work', 'today', 'calendar'].map(name => [name, { status: 'current' }])),
     work: [{ id: 'work-1', title: '架空の作業', state: 'DOING', next_action: '資料を確認する' },
-      { id: 'work-2', title: '取消済み', state: 'CANCELLED' }],
-    today: { now: [{ id: 'work-1' }], next: [{ id: 'work-2' }], scheduled: [] } };
+      { id: 'work-2', title: '取消済み', state: 'CANCELLED' },
+      { id: 'work-3', title: '次の作業', state: 'READY', next_action: '次の資料を用意する' }],
+    today: { now: [{ id: 'work-1' }], next: [{ id: 'work-2' }, { id: 'work-3' }],
+      scheduled: [], kaz_free_windows: [{ start: '2026-10-21T22:00:00+09:00',
+        end: '2026-10-21T23:00:00+09:00' }] } };
   handlers['paruru:authenticated']({ detail: {
     context: { role: 'admin', allowedViews: ['kaz-os'] },
     kazOsV3DashboardApi: async () => snapshot,
     kazOsAiEngineApi: slowShadow ? () => new Promise(() => {})
       : async () => ({ judgments: targeted ? [{ feature: 'check_in',
-        judgment: 'REPLAN_REVIEW', status: 'review_pending',
-        evidence: { source: 'work', source_ref_hash: createHash('sha256')
-          .update(JSON.stringify({ original_ref: 'work-1', source: 'work' })).digest('hex') } }]
+        judgment: 'REPLAN_REVIEW', status: 'review_pending', as_of: '2026-10-21T18:00:00+09:00',
+        evidence: selectedEvidence('work-1') }, { feature: 'daily_planner',
+        judgment: 'FOCUS_REVIEW', status: 'review_pending', as_of: '2026-10-21T18:00:00+09:00',
+        evidence: selectedEvidence('work-3') }, { feature: 'night_review',
+        judgment: 'CARRY_FORWARD_REVIEW', status: 'review_pending', as_of: '2026-10-21T21:00:00+09:00',
+        evidence: selectedEvidence('work-3') }]
         : claimed ? [{ feature: 'check_in', judgment: 'NEEDS_INPUT', status: 'no_advice' }] : [] }),
     kazOsAiObservationApi: async payload => { sent.push(payload); return {
       schema_version: 'kaz-ai-engine-progress-receipt-v1', status: 'saved',
       work_updated: ['done', 'carry_forward'].includes(payload.action), provider_calls: 0 }; },
   } });
   await new Promise(resolve => setImmediate(resolve));
-  if (targeted) await new Promise(resolve => setTimeout(resolve, 30));
+  if (targeted) await new Promise(resolve => setTimeout(resolve, 60));
   const all = descendants(host);
-  if (targeted) assert.equal(all.some(node =>
+  if (targeted && targeted !== 'invalid') assert.equal(all.some(node =>
     node.textContent.includes('再計画を確認') && node.textContent.includes('資料を確認する')), true);
+  assert.equal(all.some(node => node.textContent === '今やること'), true);
+  assert.equal(all.some(node => node.textContent === '次にやること'), true);
+  assert.equal(all.some(node => node.textContent === '明日へ持ち越すこと'), true);
+  if (targeted && targeted !== 'invalid') {
+    assert.equal(all.some(node => node.textContent.includes('AIが注目したWork')), true);
+    assert.equal(all.some(node => node.textContent.includes('Calendar反映後の空き時間')), true);
+    assert.equal(all.some(node => node.textContent.includes('AIの持ち越し候補')), true);
+  }
+  if (targeted === 'invalid') {
+    assert.equal(all.some(node => node.textContent.includes('AIが注目したWork')), false);
+    assert.equal(all.some(node => node.textContent.includes('AIの持ち越し候補')), false);
+    assert.equal(all.some(node => node.textContent.includes('根拠が現在のWorkと一致しません')), true);
+  }
   const buttons = all.filter(node => node.tag === 'button');
   assert.equal(all.some(node => node.textContent === '今日の進み具合'), true);
-  assert.equal(buttons.filter(node => node.textContent === '完了').length, 1);
-  assert.equal(buttons.filter(node => node.textContent === '予定どおり').length, 1);
-  assert.equal(buttons.filter(node => node.textContent === '遅れている').length, 1);
+  assert.equal(buttons.filter(node => node.textContent === '完了').length, 2);
+  assert.equal(buttons.filter(node => node.textContent === '予定どおり').length, 2);
+  assert.equal(buttons.filter(node => node.textContent === '遅れている').length, 2);
   assert.equal(all.some(node => node.textContent === '対象Workを選択'), false);
   assert.equal(all.some(node => node.tag === 'textarea' && node.required), false);
   const night = buttons.find(node => node.textContent === '明日へ持ち越し');
@@ -106,6 +141,10 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   assert.match(sent[0].observed_at, /^2026-10-21T\d\d:\d\d:\d\d\+09:00$/);
   assert.equal(sent[0].note, '');
   assert.equal(all.some(node => node.textContent.includes('完了を反映しました')), true);
+  await new Promise(resolve => setTimeout(resolve, 60));
+  const currentNow = descendants(host).find(node => node.dataset.actionSlot === 'now');
+  assert.ok(currentNow);
+  assert.equal(descendants(currentNow).some(node => node.textContent === '架空の作業'), false);
   if (night) {
     assert.equal(Boolean(night.disabled), true);
     night.listeners.click();
@@ -115,6 +154,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
 }
 
 Promise.all([run(18), run(21), run(18, true), run(21, false, true),
-  run(18, false, false, true)]).then(() => {
+  run(18, false, false, true), run(21, false, false, true),
+  run(21, false, false, 'invalid')]).then(() => {
   process.stdout.write('PASS progress actions after AI claim and explicit Work readback receipt\n');
-}).catch(error => { process.stderr.write(String(error) + '\n'); process.exitCode = 1; });
+}).catch(error => { process.stderr.write(String(error.stack || error) + '\n'); process.exitCode = 1; });

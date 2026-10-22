@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261022-kaz-progress-v5");
-// Release: v20261022-kaz-progress-v5
+importScripts("./build.js?v=v20261022-kaz-next-actions-v1");
+// Release: v20261022-kaz-next-actions-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

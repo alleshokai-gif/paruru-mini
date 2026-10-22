@@ -1,2 +1,2 @@
-// Kaz OS progress observation release.
-globalThis.BUILD_ID = "v20261022-kaz-progress-v5";
+// Kaz OS next action guidance release.
+globalThis.BUILD_ID = "v20261022-kaz-next-actions-v1";

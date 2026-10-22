@@ -83,6 +83,7 @@
 .kai-observation details{margin-top:10px}.kai-observation summary{min-height:48px;display:flex;align-items:center;color:#2e715b;cursor:pointer}
 .kai-observation textarea{box-sizing:border-box;width:100%;min-height:72px;padding:9px;font-size:16px;border:1px solid #b9c9c0;border-radius:6px}
 .kai-night-review button{min-height:48px;font-size:16px}.kai-observation [role=status]{min-height:1.5em;overflow-wrap:anywhere}
+.kai-action-brief{min-width:0}.kai-action-brief>h2{margin-bottom:4px}.kai-action-row{min-width:0;margin-top:12px;padding:10px 12px;border-left:3px solid #4b8967;background:#f4f8f5;border-radius:0 8px 8px 0}.kai-action-row h3{font-size:16px;margin:0 0 4px}.kai-action-row p{font-size:14px;line-height:1.5;margin:4px 0;overflow-wrap:anywhere}.kai-action-source{color:#52695e}.kai-action-link{display:flex;align-items:center;min-height:48px;font-size:16px;font-weight:650;line-height:1.4;color:#245e48;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}.kai-action-link:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
 /* Bounded TODAY batch: overview first, answer inline, evidence on demand. */
 .kiq-header{margin-bottom:8px}.kiq-header .ki-heading{font-size:17px;letter-spacing:.02em}.kiq-header .kt-origin{margin:3px 0;font-size:11px}
 .kiq-progress{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap;margin-top:5px;font-size:13px}.kiq-progress>strong{font-size:14px;font-variant-numeric:tabular-nums}.kiq-progress>span{color:#55695e}
