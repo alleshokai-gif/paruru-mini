@@ -44,24 +44,158 @@
     NO_ADVICE: '追加提案なし', NEEDS_INPUT: '必要なときだけ進み具合を選択',
   });
 
+  async function digestJson(value) {
+    const bytes = new globalThis.TextEncoder().encode(JSON.stringify(value));
+    return [...new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes))]
+      .map(byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  function workEvidenceText(item, withBlocker) {
+    const fields = ['title', 'state', 'next_action', ...(withBlocker ? ['blocker'] : [])];
+    return Array.from(fields.map(key => typeof item[key] === 'string' ? item[key].trim() : '')
+      .filter(Boolean).join(' · ').trim()).slice(0, 400).join('');
+  }
+
   async function workForEvidence(evidence, snapshot) {
     if (evidence?.source !== 'work' || !/^[a-f0-9]{64}$/.test(evidence.source_ref_hash || '')
+        || !/^[a-f0-9]{64}$/.test(evidence.source_revision || '')
+        || !/^[a-f0-9]{64}$/.test(evidence.quote_hash || '')
+        || !Number.isInteger(evidence.start) || !Number.isInteger(evidence.end)
+        || evidence.start < 0 || evidence.end <= evidence.start
         || !snapshot?.work || !globalThis.crypto?.subtle || !globalThis.TextEncoder) return null;
-    const encoder = new globalThis.TextEncoder();
     const todayIds = new Set(['now', 'next', 'scheduled'].flatMap(lane =>
       (snapshot.today?.[lane] || []).map(row => row?.id)));
     for (const item of snapshot.work) {
-      if (!item || typeof item.id !== 'string' || item.state === 'CANCELLED') continue;
+      if (!item || typeof item.id !== 'string' || ['DONE', 'CANCELLED'].includes(item.state)) continue;
       if (!todayIds.has(item.id)) continue;
-      const bytes = encoder.encode(JSON.stringify({ original_ref: item.id, source: 'work' }));
-      const hash = [...new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes))]
-        .map(byte => byte.toString(16).padStart(2, '0')).join('');
-      if (hash === evidence.source_ref_hash) return item;
+      if (await digestJson({ original_ref: item.id, source: 'work' }) !== evidence.source_ref_hash) continue;
+      for (const withBlocker of [true, false]) {
+        const text = workEvidenceText(item, withBlocker);
+        if (await digestJson({ original_ref: item.id, revision: item.source_revision ?? null,
+          source: 'work', text }) !== evidence.source_revision) continue;
+        const quote = Array.from(text).slice(evidence.start, evidence.end).join('');
+        if (quote && text.split(quote).length === 2
+            && await digestJson(quote) === evidence.quote_hash) return item;
+      }
     }
     return null;
   }
 
-  async function appendAiJudgments(host, page, current, snapshot = null) {
+  function createTodayActionBrief(host, snapshot, current) {
+    const section = document.createElement('section');
+    section.className = 'kp-card kai-action-brief';
+    section.dataset.aiActionBrief = 'true';
+    const observation = host.querySelector('[data-ai-observation-feature="check_in"]');
+    if (observation) observation.before(section);
+    else host.prepend(section);
+    let rows = [], renderEpoch = 0;
+    const progress = new Map();
+    const activeWork = new Map((snapshot.work || []).filter(item => item
+      && typeof item.id === 'string' && !['DONE', 'CANCELLED'].includes(item.state))
+      .map(item => [item.id, item]));
+    const lane = name => (snapshot.today?.[name] || []).map(item => activeWork.get(item?.id))
+      .filter((item, index, all) => item && !['done', 'carry_forward'].includes(progress.get(item.id))
+        && all.findIndex(other => other?.id === item.id) === index);
+    const addText = (parent, tag, value, className = '') => {
+      const node = document.createElement(tag);
+      node.className = className;
+      node.textContent = value;
+      parent.appendChild(node);
+      return node;
+    };
+    const addWork = (parent, item, source) => {
+      const link = document.createElement('a');
+      link.className = 'kai-action-link';
+      link.href = `#kaz-os/work/${encodeURIComponent(item.id)}`;
+      link.textContent = item.title || '名称未設定のWork';
+      parent.appendChild(link);
+      addText(parent, 'p', typeof item.next_action === 'string' && item.next_action.trim()
+        ? `最初の一歩: ${item.next_action.trim()}` : '次の行動は未記録です。Workの詳細を確認してください。');
+      addText(parent, 'p', source, 'kai-action-source');
+      if (progress.get(item.id) === 'delayed')
+        addText(parent, 'p', '遅れていると記録済み。次のAI判断を待っています。', 'kai-action-source');
+    };
+    const addSlot = parent => {
+      const now = Date.now();
+      const window = (snapshot.today?.kaz_free_windows || []).find(item =>
+        Number.isFinite(Date.parse(item?.start)) && Number.isFinite(Date.parse(item?.end))
+        && Date.parse(item.end) > now && Date.parse(item.start) < Date.parse(item.end));
+      if (!window) return addText(parent, 'p', 'Calendarを反映した確定空き時間はありません。', 'kai-action-source');
+      const clock = value => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
+        hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+      addText(parent, 'p', `Calendar反映後の空き時間 ${clock(window.start)}–${clock(window.end)}`,
+        'kai-action-source');
+    };
+    async function update(nextRows = rows) {
+      rows = nextRows;
+      const epoch = ++renderEpoch;
+      const now = Date.now();
+      const valid = snapshot?.status === 'CURRENT' && sameJstDay(snapshot.generated_at)
+        && ['work', 'today', 'calendar'].every(key => {
+          const source = snapshot.sources?.[key];
+          return source?.status === 'current'
+            && (source.valid_until == null || Date.parse(source.valid_until) > now);
+        });
+      if (!current()) return;
+      section.replaceChildren();
+      addText(section, 'h2', '次の一手');
+      addText(section, 'p', '予定とWorkから次の候補を整理しました。根拠が一致したAI提案だけ反映します。変更は本人の操作で確定します。',
+        'kai-action-source');
+      if (!valid) {
+        addText(section, 'p', '最新の予定とWorkを確認できません。下の一覧で状態を確認してください。');
+        return;
+      }
+      const latest = new Map();
+      for (const row of rows.filter(row => sameJstDay(row?.as_of)
+        && ['daily_planner', 'check_in', 'night_review'].includes(row.feature))) {
+        const prior = latest.get(row.feature);
+        if (!prior || Date.parse(row.as_of) > Date.parse(prior.as_of)) latest.set(row.feature, row);
+      }
+      const resolved = new Map();
+      for (const [feature, row] of latest) {
+        if (row.status === 'review_pending') resolved.set(feature, await workForEvidence(row.evidence, snapshot));
+      }
+      if (epoch !== renderEpoch || !current()) return;
+      const nowItems = lane('now'), nextItems = lane('next');
+      const focus = ['check_in', 'daily_planner'].map(feature => resolved.get(feature)).filter(Boolean);
+      const nowWork = focus.find(item => nowItems.some(candidate => candidate.id === item.id)) || nowItems[0];
+      const nextWork = focus.find(item => item.id !== nowWork?.id
+        && nextItems.some(candidate => candidate.id === item.id))
+        || nextItems.find(item => item.id !== nowWork?.id)
+        || lane('scheduled').find(item => item.id !== nowWork?.id);
+      const card = (title, key) => {
+        const box = document.createElement('div');
+        box.className = 'kai-action-row'; box.dataset.actionSlot = key;
+        addText(box, 'h3', title); section.appendChild(box); return box;
+      };
+      const doing = card('今やること', 'now');
+      if (nowWork) addWork(doing, nowWork, focus.some(item => item.id === nowWork.id)
+        ? 'AIが注目したWork · TODAYの現在候補' : 'TODAYの現在候補');
+      else addText(doing, 'p', 'いま着手するWorkはありません。');
+      const following = card('次にやること', 'next');
+      if (nextWork) addWork(following, nextWork, focus.some(item => item.id === nextWork.id)
+        ? 'AIが注目したWork · TODAYの次候補' : 'TODAYの次候補');
+      else addText(following, 'p', '次のWork候補はありません。');
+      addSlot(following);
+      const tomorrow = card('明日へ持ち越すこと', 'tomorrow');
+      const night = latest.get('night_review');
+      const carried = night?.judgment === 'CARRY_FORWARD_REVIEW'
+        ? resolved.get('night_review') : null;
+      if (carried) addWork(tomorrow, carried, 'AIの持ち越し候補 · 本人の確認待ち');
+      else if (night?.judgment === 'CARRY_FORWARD_REVIEW')
+        addText(tomorrow, 'p', 'AIの根拠が現在のWorkと一致しません。Work一覧で確認してください。');
+      else addText(tomorrow, 'p', night
+        ? 'AIから持ち越しの提案はありません。未完了のWorkは下の一覧で確認できます。'
+        : '夜の判断後、持ち越し候補があればここに表示します。');
+    }
+    void update([]);
+    return { update, onProgress(itemId, action) {
+      progress.set(itemId, action);
+      void update();
+    } };
+  }
+
+  async function appendAiJudgments(host, page, current, snapshot = null, brief = null) {
     if (!aiEngineApi || !aiFeaturesByPage[page] || !current()) return;
     const section = document.createElement('section');
     section.className = 'kp-card';
@@ -81,6 +215,7 @@
         if (!prior || Date.parse(row.as_of) > Date.parse(prior.as_of)) latest.set(row.feature, row);
       }
       const rows = [...latest.values()];
+      if (brief) void brief.update(rows);
       if (!rows.length) {
         const empty = document.createElement('p');
         empty.textContent = 'いま表示できる提案はありません。';
@@ -141,7 +276,7 @@
     return source.year === now.year && source.month === now.month && source.day === now.day;
   }
 
-  function appendAiObservationControls(host, snapshot, current) {
+  function appendAiObservationControls(host, snapshot, current, onProgress = null) {
     if (!current()) return;
     const work = observationCandidates(snapshot);
     const section = document.createElement('section');
@@ -185,10 +320,12 @@
           completed.add(item.id);
           if (action === 'done') item.state = 'DONE';
           (allButtons.get(item.id) || []).forEach(button => { button.disabled = true; });
+          onProgress?.(item.id, action);
         } else {
           output.textContent = receipt.status === 'already_saved'
             ? '同じ選択は記録済みです。' : `${label}を記録しました。`;
           buttons.forEach(button => { button.disabled = button.dataset.progressAction === action; });
+          onProgress?.(item.id, action);
         }
       } catch (error) {
         if (!current()) return;
@@ -614,8 +751,12 @@
           answerApi: typeof inboxAnswerApi === 'function' ? inboxAnswerApi : null,
         } : {};
         globalThis.KazPersonalView.render(host, selection, data, Date.now(), options);
-        if (selection.page === 'today') appendAiObservationControls(host, snapshot, current);
-        void appendAiJudgments(host, selection.page, current, snapshot);
+        let brief = null;
+        if (selection.page === 'today') {
+          appendAiObservationControls(host, snapshot, current, (id, action) => brief?.onProgress(id, action));
+          brief = createTodayActionBrief(host, snapshot, current);
+        }
+        void appendAiJudgments(host, selection.page, current, snapshot, brief);
       } catch (_) {
         if (!current()) return;
         const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];
