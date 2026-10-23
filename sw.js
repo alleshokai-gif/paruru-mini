@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261023-paluru-ui-finish-v2");
-// Release: v20261023-paluru-ui-finish-v2
+importScripts("./build.js?v=v20261023-kaz-os-p0-v1");
+// Release: v20261023-kaz-os-p0-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
