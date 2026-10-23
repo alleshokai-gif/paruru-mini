@@ -170,7 +170,7 @@
 @media(max-width:600px){#kazOsView #kazPersonalContent .kai-action-brief{padding:12px}}
 @media(max-width:360px){#kazOsView #kazOsNav a{font-size:10px;letter-spacing:-.06em;padding-inline:0}}
 
-#kazPersonalContent .development-metrics-dashboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,165px),1fr));gap:12px;margin:12px 0 18px}
+#kazPersonalContent .development-metrics-dashboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr));gap:12px;margin:12px 0 18px}
 #kazPersonalContent .development-metrics-card{min-width:0;padding:14px;border:1px solid #d9e1df;border-radius:12px;background:#fff}
 #kazPersonalContent .development-metrics-card h3{margin:0 0 8px;font-size:13px;color:#566763}
 #kazPersonalContent .development-metrics-card strong{display:block;font-size:20px;line-height:1.25;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:#154d42}
