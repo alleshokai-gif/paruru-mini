@@ -520,11 +520,19 @@ async function main() {
     const reasonView = { ...view, judgments: [{ ...row, reason: '次の予定までに終えられる項目から着手する判断です。' }] };
     assert.deepEqual(await load(async () => response(200, reasonView)).create({ config }).aiEngine(), reasonView,
       'bounded AI reason summaries must be readable for the TODAY home card');
+    const actionView = { ...view, judgments: [{ ...row, status: 'review_pending',
+      evidence: { source: 'work', source_ref_hash: 'b'.repeat(64),
+        source_revision: 'c'.repeat(64), quote_hash: 'd'.repeat(64), start: 0, end: 8 },
+      recommendation: { first_step: 'Work内容を開いて確認する',
+        action_origin: 'ai_generated', reason: '確認作業が記録されています。', estimate_min: null } }] };
+    assert.deepEqual(await load(async () => response(200, actionView)).create({ config }).aiEngine(), actionView,
+      'structured AI first steps must be readable while retaining their provenance');
     for (const bad of [
       { ...row, judgment: 'RECURRENCE_REVIEW' },
       { ...row, raw_text: 'private text' },
       { ...row, reason: { raw: 'private text' } },
       { ...row, reason: 'x'.repeat(1001) },
+      { ...row, recommendation: { first_step: 'x', action_origin: 'guessed', reason: '', estimate_min: null } },
       { ...row, auto_apply_allowed: true },
     ]) {
       const invalid = load(async () => response(200, { ...view, judgments: [bad] }));

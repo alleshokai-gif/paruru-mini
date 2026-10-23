@@ -103,7 +103,10 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
       : async () => ({ judgments: targeted ? [{ feature: 'check_in',
         judgment: 'REPLAN_REVIEW', status: 'review_pending', as_of: '2026-10-21T18:00:00+09:00',
         evidence: selectedEvidence('work-1') }, { feature: 'daily_planner',
-        judgment: 'FOCUS_REVIEW', status: 'review_pending', as_of: '2026-10-21T18:00:00+09:00',
+        judgment: 'FOCUS_REVIEW', status: 'review_pending',
+        as_of: targeted === 'generated' ? '2026-10-21T18:30:00+09:00' : '2026-10-21T18:00:00+09:00',
+        ...(targeted === 'generated' ? { recommendation: { first_step: 'Work内容を開いて確認する',
+          action_origin: 'ai_generated', reason: '確認作業がWorkに記録されています。', estimate_min: null } } : {}),
         evidence: selectedEvidence('work-3') }, { feature: 'night_review',
         judgment: 'CARRY_FORWARD_REVIEW', status: 'review_pending', as_of: '2026-10-21T21:00:00+09:00',
         evidence: selectedEvidence('work-3') }]
@@ -116,18 +119,27 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   if (targeted) await new Promise(resolve => setTimeout(resolve, 60));
   const all = descendants(host);
   if (targeted && targeted !== 'invalid') {
-    assert.equal(all.some(node => node.textContent.includes('再計画を確認')), true);
-    assert.equal(all.some(node => node.textContent.includes('対象Work: 架空の作業')), true);
+    if (targeted !== 'generated') {
+      assert.equal(all.some(node => node.textContent.includes('再計画を確認')), true);
+      assert.equal(all.some(node => node.textContent.includes('対象Work: 架空の作業')), true);
+    }
     all.find(node => node.tag === 'button' && node.textContent === 'このWorkの進捗操作を開く').listeners.click();
     assert.equal(descendants(host).find(node => node.className === 'kai-observation-review').open, true);
-    assert.equal(descendants(host).find(node => node.dataset.workItem === 'work-1').open, true);
+    assert.equal(descendants(host).find(node => node.dataset.workItem
+      === (targeted === 'generated' ? 'work-3' : 'work-1')).open, true);
   }
   assert.equal(all.some(node => node.textContent === 'PlannerのWork候補（AI判断とは別） · 2件'), true);
   if (targeted && targeted !== 'invalid') {
     assert.equal(all.some(node => node.textContent.includes('AI判断が参照したWork')), true);
-    assert.equal(all.some(node => node.textContent.includes('最初の一手（Work記録）: 資料を確認する')), true);
-    assert.equal(all.some(node => node.textContent.includes('空き時間の目安')
-      && node.textContent.includes('Work見積り30分（予定への割当なし）')), true);
+    if (targeted === 'generated') {
+      assert.equal(all.some(node => node.textContent.includes(
+        '最初の一手（AI生成（根拠はWork記録））: Work内容を開いて確認する')), true);
+      assert.equal(all.some(node => node.textContent.includes('確認作業がWorkに記録されています。')), true);
+    } else {
+      assert.equal(all.some(node => node.textContent.includes('最初の一手（Work記録）: 資料を確認する')), true);
+      assert.equal(all.some(node => node.textContent.includes('空き時間の目安')
+        && node.textContent.includes('Work見積り30分（予定への割当なし）')), true);
+    }
     assert.equal(all.some(node => node.textContent === 'AIが参照した根拠（Work記録）'), true);
   }
   if (targeted === 'invalid') {
@@ -140,7 +152,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   assert.equal(openedRows.length, targeted && targeted !== 'invalid' ? 2 : 0);
   if (openedRows.length) {
     assert.equal(openedRows.find(node => node.className === 'kai-observation-review').open, true);
-    assert.equal(openedRows.find(node => node.dataset.workItem === 'work-1').open, true);
+    assert.equal(openedRows.find(node => node.dataset.workItem
+      === (targeted === 'generated' ? 'work-3' : 'work-1')).open, true);
   }
   assert.equal(buttons.filter(node => node.textContent === '完了').length, 2);
   assert.equal(buttons.filter(node => node.textContent === '予定どおり').length, 2);
@@ -172,6 +185,6 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
 
 Promise.all([run(18), run(21), run(18, true), run(21, false, true),
   run(18, false, false, true), run(21, false, false, true),
-  run(21, false, false, 'invalid')]).then(() => {
+  run(21, false, false, 'invalid'), run(18, false, false, 'generated')]).then(() => {
   process.stdout.write('PASS progress actions after AI claim and explicit Work readback receipt\n');
 }).catch(error => { process.stderr.write(String(error.stack || error) + '\n'); process.exitCode = 1; });
