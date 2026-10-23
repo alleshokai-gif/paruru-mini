@@ -31,7 +31,7 @@ async function main() {
   const context = vm.createContext({
     location: { hash: '#kaz-os/v3' },
     document: { hidden: false, getElementById: id => elements[id] || null,
-      createElement: tag => ({ tag, textContent: '', className: '', children: [], dataset: {},
+      createElement: tag => ({ tag, textContent: '', className: '', children: [], dataset: {}, open: false,
         appendChild(node) { this.children.push(node); },
         append(...nodes) { this.children.push(...nodes); },
         addEventListener() {}, setAttribute() {},
@@ -110,8 +110,12 @@ async function main() {
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.href),
     ['today', 'work', 'projects', 'capa', 'context'].map(page => `#kaz-os/${page}`),
     'development metrics must leave the five-tab navigation on normal routes');
-  assert.equal(host.children[0].className, 'development-metrics-return');
-  assert.equal(host.children[0].href, '#kaz-os/context', 'return link keeps the prior screen');
+  assert.equal(host.children[0].tag, 'h2', 'metrics share the Kaz OS page heading');
+  assert.equal(host.children[1].className, 'development-metrics-dashboard');
+  assert.equal(host.children[2].className, 'development-metrics-details');
+  assert.equal(host.children[2].open, false, 'technical details start collapsed');
+  assert.equal(anchors.some(anchor => anchor.className === 'development-metrics-return'), false,
+    'the shared five-tab navigation replaces the standalone return link');
   assert.equal(calls.context, 2);
   console.log('PASS hidden and normal five-tab routes keep Snapshot pages and Context projection separate');
 }
