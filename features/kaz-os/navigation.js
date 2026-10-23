@@ -825,7 +825,9 @@
       const legacyNav = byId('kazOsNav');
       if (legacyNav) legacyNav.hidden = false;
       const selection = { page: preview ? (preview[1] || 'today') : cutover[1], id: null };
-      configureKazNav(Boolean(preview), selection.page);
+      // Metrics are read from the direct API even when opened through the V3 route.
+      // Keep the surrounding five-tab navigation on the normal supported routes.
+      configureKazNav(Boolean(preview && selection.page !== 'metrics'), selection.page);
       try { if ((preview || cutover)[2]) selection.id = decodeURIComponent((preview || cutover)[2]); } catch { /* Invalid ID is not selected. */ }
       const requestEpoch = previewEpoch;
       const current = () => requestEpoch === previewEpoch && allowed() && active() && !document.hidden;
