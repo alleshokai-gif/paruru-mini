@@ -1085,7 +1085,7 @@
     }
   }, true));
   byId('kazOsView')?.addEventListener?.('click', event => {
-    if (!globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED && location.hash !== '#kaz-os/v3/metrics') return;
+    if (!globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED) return;
     if (!/^#kaz-os\/v3(?:\/|$)/.test(location.hash)) return;
     const anchor = event.target.closest?.('a[href^="#kaz-os/"]');
     if (!anchor || !byId('kazOsView').contains(anchor)) return;

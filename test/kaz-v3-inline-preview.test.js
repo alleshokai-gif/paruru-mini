@@ -71,6 +71,8 @@ assert.match(config, /developmentMetrics: 'DIRECT_V2'/,
   'development metrics must not silently fall back to TODAY/GAS');
 assert.match(navigation, /const metricsOnly = location\.hash === '#kaz-os\/v3\/metrics'/,
   'the metrics page must open without the general v3 preview flag');
+assert.match(navigation, /if \(!globalThis\.PALURU_KAZ_OS_V3_PREVIEW_ENABLED\) return;[\s\S]*const anchor = event\.target\.closest/,
+  'metrics-only access must not rewrite normal tab links to unavailable V3 preview routes');
 assert.match(navigation, /最終収集/);
 assert.match(navigation, /収集状態/);
 assert.match(navigation, /GitHub成果の明示リンク/);
