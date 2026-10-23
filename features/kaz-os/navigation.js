@@ -828,6 +828,54 @@
     const outcomeSummary = document.createElement('p');
     outcomeSummary.textContent = `GitHub成果の明示リンク ${linked ?? 'unknown'} / ${totals.sessions ?? 'unknown'} セッション (${Number.isFinite(totals.github_linked_rate) ? Math.round(totals.github_linked_rate * 100) + '%' : 'unknown'})。PR/CIで確認できた状態: complete ${outcomes.complete ?? 'unknown'} / incomplete ${outcomes.incomplete ?? 'unknown'} / failed ${outcomes.failed ?? 'unknown'} / unknown ${outcomes.unknown ?? 'unknown'}。merged PRはGitHub上の証拠で、作業全体の完成判定とは別。`;
     host.append(outcomeSummary);
+    if (value.schema_version === 'kaz-development-metrics-view-0.4') {
+      const taskOutcomes = totals.task_outcomes || {};
+      const reportOutcomes = totals.task_self_reports || {};
+      const taskSummary = document.createElement('p');
+      taskSummary.textContent = `GitHub識別子で束ねたタスク ${totals.tasks ?? 'unknown'}件（完了 ${taskOutcomes.complete ?? 'unknown'} / 未完了 ${taskOutcomes.incomplete ?? 'unknown'} / 失敗 ${taskOutcomes.failed ?? 'unknown'} / unknown ${taskOutcomes.unknown ?? 'unknown'}）。Codex最終報告の自己申告: 完了 ${reportOutcomes.complete ?? 'unknown'} / 未完了 ${reportOutcomes.incomplete ?? 'unknown'} / 失敗 ${reportOutcomes.failed ?? 'unknown'} / unknown ${reportOutcomes.unknown ?? 'unknown'}。紐付け不能・複数候補 ${totals.unlinked_or_ambiguous_sessions ?? 'unknown'}セッション。`;
+      host.append(taskSummary);
+      const taskNote = document.createElement('p');
+      taskNote.textContent = 'タスクは全セッションに共通する単一のPRまたはcommit識別子だけで束ねる。GitHub証拠と最終報告の自己申告は別集計。経過時間は最初の開始〜最後の記録、観測時間は各セッションの合計で、並行作業では一致しない。';
+      host.append(taskNote);
+      const taskWrap = document.createElement('div');
+      taskWrap.className = 'development-metrics-table-wrap';
+      const taskTable = document.createElement('table');
+      taskTable.className = 'development-metrics-table';
+      const taskHeaders = ['GitHub識別子', 'セッション', 'GitHub証拠 / CI', '自己申告', 'モデル / 推論', 'input / output / cached', '経過時間', '観測時間', '人間 / 中断 / エラー', '再試行 / 手戻り', 'Context参照'];
+      const taskHead = document.createElement('thead');
+      const taskHeadRow = document.createElement('tr');
+      for (const label of taskHeaders) { const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = label; taskHeadRow.append(cell); }
+      taskHead.append(taskHeadRow); taskTable.append(taskHead);
+      const taskBody = document.createElement('tbody');
+      for (const task of value.tasks || []) {
+        const row = document.createElement('tr');
+        const referenceCell = document.createElement('td');
+        const reference = task.reference || {};
+        const anchor = document.createElement('a');
+        if (reference.kind === 'pull_request' && Number.isInteger(reference.number)
+            && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(reference.repository || '')) {
+          anchor.href = `https://github.com/${reference.repository}/pull/${reference.number}`;
+          anchor.textContent = `PR #${reference.number}`;
+        } else if (reference.kind === 'commit' && /^[a-f0-9]{40}$/.test(reference.sha || '')
+            && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(reference.repository || '')) {
+          anchor.href = `https://github.com/${reference.repository}/commit/${reference.sha}`;
+          anchor.textContent = `commit ${reference.sha.slice(0, 8)}`;
+        } else anchor.textContent = 'GitHub unknown';
+        referenceCell.append(anchor); row.append(referenceCell);
+        const context = task.context_usage || {};
+        const values = [task.session_count, `${task.github_outcome || 'unknown'} / ${task.github_status || 'unknown'} / ${task.reference_source || 'unknown'}`, task.self_reported_outcome,
+          `${task.model || 'unknown'} / ${task.reasoning_level || 'unknown'}`,
+          `${task.input_tokens ?? 'unknown'} / ${task.output_tokens ?? 'unknown'} / ${task.cached_input_tokens ?? 'unknown'}`,
+          task.elapsed_time_ms == null ? 'unknown' : `${Math.round(task.elapsed_time_ms / 60000)}分`,
+          task.observed_time_ms == null ? 'unknown' : `${Math.round(task.observed_time_ms / 60000)}分`,
+          `${task.human_message_count ?? 'unknown'} / ${task.aborted_turn_count ?? 'unknown'} / ${task.explicit_error_count ?? 'unknown'}`,
+          `${task.retry_count ?? 'unknown'} / ${task.rework_count ?? 'unknown'}`,
+          context.status === 'known' ? `${context.calls}回（成功${context.successes}・失敗${context.errors}・unknown${context.unknown_results}）` : 'unknown'];
+        for (const valueCell of values) { const cell = document.createElement('td'); cell.textContent = valueCell == null ? 'unknown' : String(valueCell); row.append(cell); }
+        taskBody.append(row);
+      }
+      taskTable.append(taskBody); taskWrap.append(taskTable); host.append(taskWrap);
+    }
     const modelHeading = document.createElement('h3');
     modelHeading.textContent = 'モデル別';
     host.append(modelHeading);

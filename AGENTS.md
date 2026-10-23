@@ -62,6 +62,10 @@ deploy（GAS Web Appのdeployment作成・更新のみユーザー本人。そ�
 - APIキー、Calendar ID、個人メモ本文を通常ログへ出さない
 - Android PWAのService Worker更新経路を壊さない
 
+## 開発実績の自動記録
+
+開発タスクの最終報告に `開発成果ステータス: 完了|未完了|失敗|unknown` を含める。単一で明確なPRまたはcommitが作業を識別する場合は `開発成果GitHub: https://github.com/owner/repo/pull/123`（またはcommit URL）も含める。`完了` は客観的なGitHub証拠で確認できる場合だけ使い、それ以外で未完了・失敗を確認できない場合は `unknown` とする。これらはcollectorが端末上でenum化する信号であり、プロンプト・コード・パス・秘密情報を報告や計測データへ追加しない。
+
 ## v1.0のデータ方針
 
 - PALURU Inboxは未処理項目の置き場
