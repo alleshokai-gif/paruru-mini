@@ -27,8 +27,36 @@ function calendarContextInternal_(body, method, dependencies) {
   }
 }
 
+// Single source of truth: GCP Secret Manager. Do not inspect old GAS token properties.
+function loadInternalCalendarSecret_() {
+  const url = 'https://secretmanager.googleapis.com/v1/projects/paluru-bus/secrets/'
+    + PALURU_CALENDAR_API_TOKEN_PROPERTY + '/versions/latest:access';
+  let response;
+  try {
+    response = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true
+    });
+  } catch (_) {
+    throw internalCalendarError_('UNAUTHORIZED');
+  }
+  if (response.getResponseCode() !== 200) throw internalCalendarError_('UNAUTHORIZED');
+  let encoded;
+  try {
+    const body = JSON.parse(response.getContentText());
+    encoded = body && body.payload && body.payload.data;
+    if (typeof encoded !== 'string' || !encoded) throw new Error('invalid payload');
+    const value = Utilities.newBlob(Utilities.base64Decode(encoded)).getDataAsString();
+    if (value.length < 32) throw new Error('invalid secret');
+    return value;
+  } catch (_) {
+    throw internalCalendarError_('UNAUTHORIZED');
+  }
+}
+
 function authenticateInternalCalendar_(providedToken) {
-  const expected = String(PropertiesService.getScriptProperties().getProperty(PALURU_CALENDAR_API_TOKEN_PROPERTY) || '');
+  const expected = loadInternalCalendarSecret_();
   const actual = typeof providedToken === 'string' ? providedToken : '';
   if (!expected || !actual || !constantTimeEqualsCalendar_(expected, actual)) {
     throw internalCalendarError_('UNAUTHORIZED');

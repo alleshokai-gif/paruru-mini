@@ -4,7 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const gas = path.resolve(__dirname, '..', 'gas');
-const properties = { PALURU_CALENDAR_API_TOKEN: 'calendar-test-token', PALURU_HOME_ID: 'home_test' };
+const properties = { PALURU_HOME_ID: 'home_test' };
+const fixtureToken = 'calendar-test-token-for-mock-only-0000';
 let calendarCalls = 0;
 
 function parts(date) {
@@ -45,9 +46,19 @@ const context = {
     formatDate: (date, timezone, pattern) => formatDate(date, pattern),
     computeDigest: (algorithm, text) => Array.from(Buffer.from(String(text))).slice(0, 32),
     base64EncodeWebSafe: (bytes) => Buffer.from(bytes).toString('base64url'),
+    base64Decode: (s) => [...Buffer.from(s, 'base64')],
+    newBlob: (bytes) => ({getDataAsString: () => Buffer.from(bytes).toString('utf8')}),
     DigestAlgorithm: { SHA_256: 'SHA_256' }, Charset: { UTF_8: 'UTF_8' },
   },
   PropertiesService: { getScriptProperties: () => ({ getProperty: (name) => properties[name] || '' }) },
+  ScriptApp: { getOAuthToken: () => 'fake-google-oauth-token' },
+  UrlFetchApp: { fetch: (url, options) => {
+    if (!url.includes('/secrets/PALURU_CALENDAR_API_TOKEN/versions/latest:access')) throw new Error('unexpected fetch');
+    if (options.headers.Authorization !== 'Bearer fake-google-oauth-token') throw new Error('bad oauth');
+    return { getResponseCode: () => 200, getContentText: () => JSON.stringify({
+      payload: { data: Buffer.from(fixtureToken).toString('base64') }
+    }) };
+  } },
   ContentService: {
     MimeType: { JSON: 'JSON' },
     createTextOutput: (text) => ({ text, setMimeType() { return this; }, getContent() { return this.text; } }),
@@ -167,7 +178,7 @@ test('internal API authenticates before service execution', () => {
 
 test('internal API success and GET rejection keep schema', () => {
   const service = { readContext: () => ({ data: { status: 'current', events: [] }, warnings: [] }) };
-  const body = { action: 'calendarContextInternal', internalToken: 'calendar-test-token', period: 'today', scope: 'mine', actor: internalActor };
+  const body = { action: 'calendarContextInternal', internalToken: fixtureToken, period: 'today', scope: 'mine', actor: internalActor };
   const ok = parse(context.calendarContextInternal_(body, 'POST', { calendarReadService: service }));
   const get = parse(context.calendarContextInternal_(body, 'GET', { calendarReadService: service }));
   assert(ok.success && ok.schemaVersion === 'calendar-context-internal-1.0', 'internal success contract wrong');
@@ -190,7 +201,7 @@ test('private Kurobe snapshot uses explicit roster tags and omits event titles',
   };
   const result = parse(context.calendarContextInternal_({
     action: 'calendarContextInternal', snapshot: true, period: 'today', scope: 'family',
-    internalToken: 'calendar-test-token', actor: { memberUserId: 'father' }
+    internalToken: fixtureToken, actor: { memberUserId: 'father' }
   }, 'POST', { calendarReadService: service }));
   assert(result.success && result.schemaVersion === 'kurobe-family-calendar-snapshot-v1', 'snapshot response schema wrong');
   assert(result.data.date === date && result.data.events.length === 1, 'snapshot filter wrong');
@@ -217,12 +228,12 @@ test('weather internal API authenticates first and returns only observed weather
   };
   const unauthorized = parse(context.weatherContextInternal_({ action: 'weatherContextInternal', internalToken: 'wrong', date: '2026-08-02' }, 'POST'));
   assert(!unauthorized.success && unauthorized.error.code === 'UNAUTHORIZED' && calls === 0, 'weather auth did not short-circuit');
-  const result = parse(context.weatherContextInternal_({ action: 'weatherContextInternal', internalToken: 'calendar-test-token', date: '2026-08-02' }, 'POST'));
+  const result = parse(context.weatherContextInternal_({ action: 'weatherContextInternal', internalToken: fixtureToken, date: '2026-08-02' }, 'POST'));
   assert(result.success && result.schemaVersion === 'weather-context-internal-1.0', 'weather internal schema changed');
   assert(result.data.currentTemperature === 30 && result.data.weather === '晴れ' && calls === 1, 'weather observation was not returned');
 
   context.getWeatherSummarySkill_ = () => ({ success: true, data: { date: '2026-08-02' }, warnings: [] });
-  const unavailable = parse(context.weatherContextInternal_({ action: 'weatherContextInternal', internalToken: 'calendar-test-token', date: '2026-08-02' }, 'POST'));
+  const unavailable = parse(context.weatherContextInternal_({ action: 'weatherContextInternal', internalToken: fixtureToken, date: '2026-08-02' }, 'POST'));
   assert(!unavailable.success && unavailable.error.code === 'WEATHER_UNAVAILABLE', 'empty weather data was treated as a forecast');
 });
 
