@@ -1,9 +1,9 @@
-FROM node:24-bookworm-slim AS dependencies
+FROM node:24.22.1-bookworm-slim AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
-FROM node:24-bookworm-slim
+FROM node:24.22.1-bookworm-slim
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules

@@ -18,6 +18,8 @@ steps:
         assert.equal(PREORIGIN_HEADERS[0], 'preorigin_observation_id');
         const c=preoriginObservationConfig({ODPT_ACCESS_TOKEN:'synthetic-build-only',OBSERVATION_HMAC_KEY:'x'.repeat(32),PALURU_BUS_OBSERVATION_SPREADSHEET_ID:'A'.repeat(24)});
         assert.equal(c.sampleCount,10);assert.equal(c.intervalSec,32);assert.equal(c.maxRunSec,310);
+        const [major, minor, patch] = process.versions.node.split('.').map(Number);
+        assert.ok(major > 24 || (major === 24 && (minor > 22 || (minor === 22 && patch >= 1))), 'Node.js must be >=24.22.1');
         console.log(JSON.stringify({status:'PREORIGIN_IMAGE_SMOKE_PASS',nodeVersion:process.versions.node}));
 images: ['${_IMAGE}']
 options:

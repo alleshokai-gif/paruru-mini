@@ -66,7 +66,8 @@ steps:
             assert.equal((await commute.json()).routes.length,3);
             assert.equal(existsSync("/app/scripts"),false);
             assert.equal(existsSync("/app/node_modules/fflate"),false);
-            assert.equal(process.versions.node.split(".")[0],"24");
+            const [major, minor, patch] = process.versions.node.split(".").map(Number);
+            assert.ok(major > 24 || (major === 24 && (minor > 22 || (minor === 22 && patch >= 1))), "Node.js must be >=24.22.1");
             const denied = await fetch("http://127.0.0.1:8080/health",{headers:{Origin:"http://localhost:8788"}});
             assert.equal(denied.status,403);
             console.log(JSON.stringify({status:"IMAGE_HEALTH_PASS",nodeVersion:process.versions.node}));
