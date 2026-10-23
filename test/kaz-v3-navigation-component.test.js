@@ -13,7 +13,7 @@ async function main() {
   const on = (name, fn) => listeners.set(name, [...(listeners.get(name) || []), fn]);
   const emit = (name, detail) => (listeners.get(name) || []).forEach(fn => fn({ detail }));
   const nav = { hidden: true };
-  const host = { textContent: '', replaceChildren() { this.children = []; }, children: [],
+  const host = { textContent: '', replaceChildren(...nodes) { this.children = nodes; }, children: [],
     appendChild(node) { this.children.push(node); aiSections.push(node); },
     prepend(node) { this.children.unshift(node); aiSections.push(node); },
     append(...nodes) { this.children.push(...nodes); aiSections.push(...nodes); },
