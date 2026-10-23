@@ -143,9 +143,7 @@
     if (selection.page === 'today') {
       const head = part('TODAY');
       const v3 = data?.schema_version === 'kaz-os-dashboard-v3-component';
-      add('p', v3
-        ? 'WorkBusyとFamily Calendarの（父）予定を統合し、ワイの空き時間を表示します。'
-        : 'WorkBusyとFamily Calendarの空き時間を別々に表示。枠に収まるWork候補を確認できます。', 'kp-subtitle', head);
+      if (!v3) add('p', 'WorkBusyとFamily Calendarの空き時間を別々に表示。枠に収まるWork候補を確認できます。', 'kp-subtitle', head);
       const workHealth = notice('work_items', head);
       if (data?.origin === 'notion_official_api' && data?.sources?.work_items) {
         const source = data.sources.work_items;
@@ -260,7 +258,7 @@
       };
 
       const focusCount=(t.now?.items?.length||0)+(t.next?.items?.length||0);
-      const renderFreeWindows = (title, windows, emptyMessage, parent = host, includeSuggestions = true) => {
+      const renderFreeWindows = (title, windows, emptyMessage, parent = host, includeSuggestions = true, compact = false) => {
         const section = part(title, parent);
         section.classList.add('kp-free-section');
         const visible = (windows || []).map(window => {
@@ -279,6 +277,10 @@
           };
         }).filter(Boolean);
         if (!visible.length) { add('p', emptyMessage, 'kp-muted', section); return; }
+        if (compact) {
+          visible.forEach(window => add('p', `${fmt(window.start)}–${fmt(window.end)} · ${window.duration_min}分`, 'kp-calendar-compact', section));
+          return;
+        }
         visible.forEach(window => {
           const slot = add('article', '', 'kp-free-window', section);
           add('h3', `${fmt(window.start)}–${fmt(window.end)}　${window.duration_min}分`, 'kp-free-time', slot);
@@ -295,8 +297,16 @@
         const overview = part('今日の予定・空き時間');
         overview.dataset.todayOverview = 'true';
         add('p', 'Calendar確認済みの空き枠です。Work優先候補への自動割当はありません。 · JST', 'kp-muted', overview);
-        renderFreeWindows('Calendar空き時間', t.kaz_free_windows,
-          '今日の残りに確認済みの空き時間はありません。', overview, false);
+        const currentWindows = (t.kaz_free_windows || []).filter(window =>
+          Number.isFinite(stamp(window.start)) && Number.isFinite(stamp(window.end))
+          && stamp(window.end) > now && stamp(window.start) < stamp(window.end));
+        renderFreeWindows('Calendar空き時間', currentWindows.slice(0, 2),
+          '今日の残りに確認済みの空き時間はありません。', overview, false, true);
+        if (currentWindows.length > 2) {
+          const remainingWindows = fold(`ほかの空き時間 ${currentWindows.length - 2}件`, overview);
+          renderFreeWindows('追加の空き時間', currentWindows.slice(2),
+            '追加の空き時間はありません。', remainingWindows, false, true);
+        }
         if (t.calendar_state?.unknown_count)
           add('p', `未分類/不明のCalendar予定 ${t.calendar_state.unknown_count}件は空き時間扱いしていません。`, 'kp-notice', overview);
         const confirmations = fold('確認待ち');
