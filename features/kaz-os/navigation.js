@@ -1117,8 +1117,9 @@
     host.append(list);
     host.querySelector('.development-metrics-return')?.remove();
     const nodes = Array.from(host.children);
-    const title = nodes[1];
-    const supportingDetails = nodes.slice(3);
+    const titleIndex = nodes.findIndex(node => node.tag === 'h2' || node.tagName?.toLowerCase() === 'h2');
+    const title = nodes[titleIndex];
+    const supportingDetails = nodes.slice(titleIndex + 2);
     const dashboard = document.createElement('div');
     dashboard.className = 'development-metrics-dashboard';
     const addCard = (label, value, detail) => {
