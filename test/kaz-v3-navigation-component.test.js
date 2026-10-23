@@ -9,7 +9,7 @@ async function main() {
   const listeners = new Map();
   const rendered = [];
   const aiSections = [];
-  const calls = { dashboard: 0, inbox: 0, v2: 0, context: 0, answer: 0 };
+  const calls = { dashboard: 0, inbox: 0, v2: 0, context: 0, answer: 0, metrics: 0 };
   const on = (name, fn) => listeners.set(name, [...(listeners.get(name) || []), fn]);
   const emit = (name, detail) => (listeners.get(name) || []).forEach(fn => fn({ detail }));
   const nav = { hidden: true };
@@ -59,6 +59,7 @@ async function main() {
     kazOsTodayApi: async () => { calls.v2++; return pair.dashboard.component_data.today; },
     kazOsV3DashboardApi: async () => { calls.dashboard++; return pair.dashboard; },
     kazOsV3InboxApi: async () => { calls.inbox++; return pair.inbox; },
+    kazOsDevelopmentMetricsApi: async () => { calls.metrics++; return { source: { status: 'empty' }, totals: {}, models: [] }; },
     kazOsContextApi: async () => { calls.context++; return { schema_version: 'kaz-context-observatory-v1', mode: 'read_only', totals: { raw: 1 }, source: { status: 'ok', complete: true } }; },
     kazOsAiEngineApi: async () => ({ judgments: [{ feature: 'daily_planner',
       judgment: 'FOCUS_REVIEW', status: 'review_pending' }] }),
@@ -101,6 +102,16 @@ async function main() {
     ['today', 'work', 'projects', 'capa', 'context']);
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.href),
     ['today', 'work', 'projects', 'capa', 'context'].map(page => `#kaz-os/${page}`));
+  context.location.hash = '#kaz-os/v3/metrics';
+  const metricsReads = [];
+  emit('kaz-os:opened', { waitUntil: promise => metricsReads.push(promise) });
+  await Promise.all(metricsReads);
+  assert.equal(calls.metrics, 1);
+  assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.href),
+    ['today', 'work', 'projects', 'capa', 'context'].map(page => `#kaz-os/${page}`),
+    'development metrics must leave the five-tab navigation on normal routes');
+  assert.equal(host.children[0].className, 'development-metrics-return');
+  assert.equal(host.children[0].href, '#kaz-os/context', 'return link keeps the prior screen');
   assert.equal(calls.context, 2);
   console.log('PASS hidden and normal five-tab routes keep Snapshot pages and Context projection separate');
 }
