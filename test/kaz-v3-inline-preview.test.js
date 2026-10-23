@@ -76,7 +76,9 @@ assert.match(navigation, /収集状態/);
 assert.match(navigation, /GitHub成果の明示リンク/);
 assert.match(navigation, /context_comparison/);
 assert.match(navigation, /resolve_context記録/);
-assert.match(transport, /kaz-development-metrics-view-0\.3/);
+assert.match(navigation, /GitHub識別子で束ねたタスク/);
+assert.match(navigation, /最終報告の自己申告/);
+assert.match(transport, /kaz-development-metrics-view-0\.4/);
 const dashboardGate = app.slice(app.indexOf('async function callAuthenticatedKazOsV3Dashboard_()'),
   app.indexOf('async function callAuthenticatedKazOsV3Inbox_()'));
 assert(dashboardGate.includes('isViewAllowed_("kaz-os")')

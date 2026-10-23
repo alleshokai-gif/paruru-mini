@@ -157,12 +157,14 @@
   }
 
   function validateDevelopmentMetrics_(value) {
-    if (!value || !['kaz-development-metrics-view-0.1', 'kaz-development-metrics-view-0.2', 'kaz-development-metrics-view-0.3'].includes(value.schema_version)
+    if (!value || !['kaz-development-metrics-view-0.1', 'kaz-development-metrics-view-0.2', 'kaz-development-metrics-view-0.3', 'kaz-development-metrics-view-0.4'].includes(value.schema_version)
         || !value.totals || typeof value.totals !== 'object'
         || !Array.isArray(value.sessions) || value.sessions.length > 30
         || !value.api_ledger || value.api_ledger.status !== 'unknown'
         || (value.schema_version === 'kaz-development-metrics-view-0.3'
-          && !Array.isArray(value.context_comparison)))
+          && !Array.isArray(value.context_comparison))
+        || (value.schema_version === 'kaz-development-metrics-view-0.4'
+          && (!Array.isArray(value.context_comparison) || !Array.isArray(value.tasks))))
       throw codedError_('DEVELOPMENT_METRICS_RESPONSE_INVALID', { transportClassification: 'parse' });
     return value;
   }
