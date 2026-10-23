@@ -13,8 +13,11 @@ async function main() {
   const on = (name, fn) => listeners.set(name, [...(listeners.get(name) || []), fn]);
   const emit = (name, detail) => (listeners.get(name) || []).forEach(fn => fn({ detail }));
   const nav = { hidden: true };
-  const host = { textContent: '', replaceChildren() {},
-    appendChild(node) { aiSections.push(node); } };
+  const host = { textContent: '', replaceChildren() { this.children = []; }, children: [],
+    appendChild(node) { this.children.push(node); aiSections.push(node); },
+    prepend(node) { this.children.unshift(node); aiSections.push(node); },
+    append(...nodes) { this.children.push(...nodes); aiSections.push(...nodes); },
+    querySelector() { return null; } };
   const anchors = ['today', 'work', 'projects', 'capa', 'context', 'inbox'].map(page => ({
     dataset: { kazPage: page }, setAttribute() {}, removeAttribute() {},
   }));
@@ -28,12 +31,20 @@ async function main() {
   const context = vm.createContext({
     location: { hash: '#kaz-os/v3' },
     document: { hidden: false, getElementById: id => elements[id] || null,
-      createElement: tag => ({ tag, textContent: '', className: '', children: [],
-        appendChild(node) { this.children.push(node); } }),
+      createElement: tag => ({ tag, textContent: '', className: '', children: [], dataset: {},
+        appendChild(node) { this.children.push(node); },
+        append(...nodes) { this.children.push(...nodes); },
+        addEventListener() {}, setAttribute() {},
+        replaceChildren(...nodes) { this.children = nodes; },
+        after(node) { aiSections.push(node); } }),
       querySelectorAll: selector => selector === '#kazOsNav a' ? anchors : [],
       addEventListener: on },
     window: { addEventListener() {}, scrollTo() {} },
     clearTimeout, setTimeout,
+    Date: class FixtureDate extends Date {
+      constructor(...args) { super(...(args.length ? args : [pair.dashboard.generated_at])); }
+      static now() { return Date.parse(pair.dashboard.generated_at); }
+    },
     KazV3ComponentData: componentData,
     PALURU_KAZ_OS_V3_PREVIEW_ENABLED: true,
     KazInboxView: { dispose() {} },
@@ -62,8 +73,8 @@ async function main() {
   assert.equal(calls.dashboard, 2); // Authentication render plus opened render.
   assert.equal(rendered.at(-1).selection.page, 'today');
   assert.equal(typeof rendered.at(-1).options.answerApi, 'function');
-  assert(aiSections.some(section => section.children.some(child =>
-    child.textContent.includes('Daily Planner: 今日の集中対象を確認'))));
+  assert(aiSections.some(section => section.className === 'kp-card kai-action-brief'
+    && JSON.stringify(section).includes('今、何をする？')));
   assert.deepEqual(rendered.at(-1).data.today, {
     ...pair.dashboard.component_data.today.today,
     confirmations: pair.dashboard.today.confirmations,

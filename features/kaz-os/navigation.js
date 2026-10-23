@@ -4,6 +4,7 @@
   const byId = id => document.getElementById(id);
   let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, developmentMetricsApi = null, inboxAnswerApi = null, aiEngineApi = null, aiObservationApi = null;
   let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0;
+  let lastKazRoute = '#kaz-os/today';
   let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, contextEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
@@ -85,12 +86,8 @@
     const section = document.createElement('section');
     section.className = 'kp-card kai-action-brief';
     section.dataset.aiActionBrief = 'true';
-    const overview = host.querySelector('[data-today-overview]');
-    const observation = host.querySelector('[data-ai-observation-feature="check_in"]');
-    if (overview) overview.after(section);
-    else if (observation) observation.before(section);
-    else host.prepend(section);
-    let rows = [], renderEpoch = 0;
+    host.prepend(section);
+    let rows = [], renderEpoch = 0, aiState = 'loading', aiError = '';
     const progress = new Map();
     const activeWork = new Map((snapshot.work || []).filter(item => item
       && typeof item.id === 'string' && !['DONE', 'CANCELLED'].includes(item.state))
@@ -136,8 +133,48 @@
       if (progress.get(item.id) === 'delayed')
         addText(parent, 'p', '遅れていると記録済み。次のAI判断を待っています。', 'kai-action-source');
     };
-    async function update(nextRows = rows) {
+    const openProgressFor = item => {
+      const review = host.querySelector('.kai-observation-review');
+      const section = host.querySelector('[data-ai-observation-feature="check_in"]');
+      const row = section && [...section.querySelectorAll('.kai-observation-work')]
+        .find(candidate => candidate.dataset.workItem === item.id);
+      if (!review || !row) return;
+      review.open = true;
+      row.open = true;
+      row.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    };
+    const addProgressButton = (parent, item) => {
+      const button = addText(parent, 'button', 'このWorkの進捗操作を開く', 'kp-button kai-action-progress');
+      button.type = 'button';
+      button.addEventListener('click', () => openProgressFor(item));
+    };
+    const availableTime = now => {
+      const source = snapshot?.sources?.calendar;
+      const windows = (snapshot?.today?.kaz_free_windows || []).filter(window => {
+        const start = Date.parse(window?.start), end = Date.parse(window?.end);
+        return Number.isFinite(start) && Number.isFinite(end) && end > now && start < end;
+      }).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+      if (source?.status !== 'current') return '利用できる時間は未確認です。';
+      const window = windows[0];
+      if (!window) return '今日の確認済み空き時間はありません。';
+      const start = Math.max(Date.parse(window.start), now), end = Date.parse(window.end);
+      const clock = value => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
+        hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+      const minutes = Math.max(0, Math.floor((end - start) / 60000));
+      return `次の確認済み空き時間 ${clock(start)}–${clock(end)} · ${minutes}分`;
+    };
+    const judgmentText = row => ({
+      FOCUS_REVIEW: '今日の集中対象として確認',
+      BLOCKER_REVIEW: '作業を止めている要因を確認',
+      REPLAN_REVIEW: '予定の組み直しを確認',
+      PROGRESS_REVIEW: '進捗に応じた次の行動を確認',
+      NEEDS_INPUT: '判断に必要な入力を確認',
+      NO_ADVICE: 'いま個別の行動提案はありません',
+    })[row?.judgment] || 'AIの判断内容を確認してください';
+    async function update(nextRows = rows, nextState = aiState, errorCode = aiError) {
       rows = nextRows;
+      aiState = nextState;
+      aiError = errorCode;
       const epoch = ++renderEpoch;
       const now = Date.now();
       const valid = snapshot?.status === 'CURRENT' && sameJstDay(snapshot.generated_at)
@@ -148,16 +185,14 @@
         });
       if (!current()) return;
       section.replaceChildren();
-      addText(section, 'h2', '次の一手');
-      addText(section, 'p', 'Workの優先候補とCalendarの空き時間を分けて表示します。候補を予定へ自動割当しません。',
-        'kai-action-source');
+      addText(section, 'h2', '今、何をする？');
       if (!valid) {
-        addText(section, 'p', '最新の予定とWorkを確認できません。下の一覧で状態を確認してください。');
+        addText(section, 'p', '今日の予定またはWorkを確認できません。最新のAI判断と空き時間は未確認です。', 'kp-notice');
         return;
       }
       const latest = new Map();
       for (const row of rows.filter(row => sameJstDay(row?.as_of)
-        && ['daily_planner', 'check_in', 'night_review'].includes(row.feature))) {
+        && ['daily_planner', 'check_in'].includes(row.feature))) {
         const prior = latest.get(row.feature);
         if (!prior || Date.parse(row.as_of) > Date.parse(prior.as_of)) latest.set(row.feature, row);
       }
@@ -166,47 +201,54 @@
         if (row.status === 'review_pending') resolved.set(feature, await workForEvidence(row.evidence, snapshot));
       }
       if (epoch !== renderEpoch || !current()) return;
-      const nowItems = lane('now'), nextItems = lane('next');
-      const focus = ['check_in', 'daily_planner'].map(feature => resolved.get(feature)).filter(Boolean);
-      const nowWork = focus.find(item => nowItems.some(candidate => candidate.id === item.id)) || nowItems[0];
-      const nextWork = focus.find(item => item.id !== nowWork?.id
-        && nextItems.some(candidate => candidate.id === item.id))
-        || nextItems.find(item => item.id !== nowWork?.id)
-        || lane('scheduled').find(item => item.id !== nowWork?.id);
-      const card = (title, key) => {
-        const box = document.createElement('div');
-        box.className = 'kai-action-row'; box.dataset.actionSlot = key;
-        addText(box, 'h3', title); section.appendChild(box); return box;
-      };
-      const doing = card('今やるWork候補', 'now');
-      if (nowWork) addWork(doing, nowWork, focus.some(item => item.id === nowWork.id)
-        ? 'AIが注目したWork · 現在の優先候補（実行予定とは別）' : 'TODAYのWork優先候補（実行予定とは別）');
-      else addText(doing, 'p', 'いま着手するWorkはありません。');
-      const following = card('次のWork優先候補', 'next');
-      if (nextWork) addWork(following, nextWork, focus.some(item => item.id === nextWork.id)
-        ? 'AIが注目したWork · 優先候補（Calendarの実行予定ではありません）'
-        : 'TODAYの優先順位候補（Calendarの実行予定ではありません）');
-      else addText(following, 'p', '次のWork優先候補はありません。');
-      const tomorrow = card('明日へ持ち越すこと', 'tomorrow');
-      const night = latest.get('night_review');
-      const carried = night?.judgment === 'CARRY_FORWARD_REVIEW'
-        ? resolved.get('night_review') : null;
-      if (carried) addWork(tomorrow, carried, 'AIの持ち越し候補 · 本人の確認待ち');
-      else if (night?.judgment === 'CARRY_FORWARD_REVIEW')
-        addText(tomorrow, 'p', 'AIの根拠が現在のWorkと一致しません。Work一覧で確認してください。');
-      else addText(tomorrow, 'p', night
-        ? 'AIから持ち越しの提案はありません。未完了のWorkは下の一覧で確認できます。'
-        : '夜の判断後、持ち越し候補があればここに表示します。');
+      addText(section, 'p', availableTime(now), 'kai-action-availability');
+      const row = [...latest.values()].sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of))[0] || null;
+      const target = row ? resolved.get(row.feature) : null;
+      if (aiState === 'loading') {
+        addText(section, 'p', 'AI Plannerの今日の判断を確認しています…', 'kai-action-source');
+      } else if (aiState === 'unavailable') {
+        addText(section, 'p', `AI判断は未取得です${aiError ? `（${aiError}）` : ''}。下のWork候補は別のPlanner情報として表示します。`, 'kp-notice');
+      } else if (!row) {
+        addText(section, 'p', '今日のAI判断はありません。下のWork候補はAI判断とは別の情報です。', 'kai-action-source');
+      } else {
+        addText(section, 'p', `AI提案 · ${judgmentText(row)}`, 'kai-action-recommendation');
+        if (row.reason) addText(section, 'p', `理由: ${Array.from(row.reason.trim()).slice(0, 160).join('')}`, 'kai-action-reason');
+        else addText(section, 'p', '推薦理由の詳細はこのAI応答に含まれていません。', 'kai-action-source');
+        if (row.judgment === 'NO_ADVICE') {
+          addText(section, 'p', 'AIから個別のWork提案は出ていません。', 'kai-action-source');
+        } else if (target) {
+          addWork(section, target, `AI判断をWorkの証拠と照合 · ${row.feature === 'daily_planner' ? 'Daily Planner' : 'Check-in'}`);
+          addProgressButton(section, target);
+        } else {
+          addText(section, 'p', 'このAI判断を、今日のWork候補に結び付ける証拠は確認できません。', 'kp-notice');
+        }
+      }
+      const candidates = [...new Map([...lane('now'), ...lane('next')].map(item => [item.id, item])).values()];
+      const fallback = document.createElement('details');
+      fallback.className = 'kai-work-candidates';
+      const fallbackSummary = document.createElement('summary');
+      fallbackSummary.textContent = `PlannerのWork候補（AI判断とは別） · ${candidates.length}件`;
+      fallback.appendChild(fallbackSummary);
+      candidates.slice(0, 3).forEach(item => addWork(fallback, item, 'TODAY Plannerの優先候補 · AI判断ではありません'));
+      if (!candidates.length) addText(fallback, 'p', 'Work候補はありません。');
+      section.appendChild(fallback);
     }
-    void update([]);
+    void update([], 'loading');
     return { update, onProgress(itemId, action) {
       progress.set(itemId, action);
-      void update();
+      void update(rows, aiState, aiError);
+    }, unavailable(error) {
+      const code = typeof error === 'string' && /^[A-Z0-9_]{1,80}$/.test(error) ? error : '';
+      void update(rows, 'unavailable', code);
     } };
   }
 
   async function appendAiJudgments(host, page, current, snapshot = null, brief = null) {
-    if (!aiEngineApi || !aiFeaturesByPage[page] || !current()) return;
+    if (!current()) return;
+    if (!aiEngineApi || !aiFeaturesByPage[page]) {
+      if (page === 'today') brief?.unavailable('AI_ENGINE_UNAVAILABLE');
+      return;
+    }
     const section = document.createElement('section');
     section.className = 'kp-card kai-ai-judgments';
     const heading = document.createElement('h2');
@@ -225,7 +267,7 @@
         if (!prior || Date.parse(row.as_of) > Date.parse(prior.as_of)) latest.set(row.feature, row);
       }
       const rows = [...latest.values()];
-      if (brief) void brief.update(rows);
+      if (brief) void brief.update(rows, 'ready');
       if (!rows.length) {
         const empty = document.createElement('p');
         empty.textContent = 'いま表示できる提案はありません。';
@@ -258,13 +300,20 @@
         }
         section.appendChild(item);
       }
-    } catch (_) {
+    } catch (error) {
       if (!current()) return;
+      if (brief) brief.unavailable(error?.code);
       const unavailable = document.createElement('p');
-      unavailable.textContent = 'AI提案を読み取れません。既存の予定・作業表示は継続します。';
+      const code = typeof error?.code === 'string' && /^[A-Z0-9_]{1,80}$/.test(error.code)
+        ? `（${error.code}）` : '';
+      unavailable.textContent = `AI判断は未取得です${code}。予定・Work候補の表示は続けます。`;
       section.appendChild(unavailable);
     }
-    if (current()) host.appendChild(section);
+    if (current()) {
+      const briefSection = page === 'today' && host.querySelector('.kai-action-brief');
+      if (briefSection) briefSection.after(section);
+      else host.appendChild(section);
+    }
   }
 
   function observationCandidates(snapshot) {
@@ -385,6 +434,7 @@
     }
     for (const item of work) {
       const row = document.createElement('details'); row.className = 'kai-observation-work';
+      row.dataset.workItem = item.id;
       const name = document.createElement('summary'); name.textContent = item.title || '名称未設定のWork';
       const actions = document.createElement('div'); actions.className = 'kai-observation-actions';
       const output = document.createElement('p'); output.setAttribute('role', 'status');
@@ -438,18 +488,18 @@
         a.removeAttribute('aria-current');
         return;
       }
-      if (key === 'metrics') {
-        a.hidden = !allowed();
-        a.href = '#kaz-os/v3/metrics';
-        if (key === page) a.setAttribute('aria-current', 'page');
-        else a.removeAttribute('aria-current');
-        return;
-      }
       a.hidden = false;
       a.href = previewMode ? (key === 'today' ? '#kaz-os/v3' : `#kaz-os/v3/${key}`) : `#kaz-os/${key}`;
       if (key === page) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
     });
+    const metrics = byId('kazOsDevelopmentMetricsLink');
+    if (metrics) {
+      metrics.hidden = !allowed();
+      metrics.href = '#kaz-os/v3/metrics';
+      if (page === 'metrics') metrics.setAttribute('aria-current', 'page');
+      else metrics.removeAttribute('aria-current');
+    }
   }
 
   function clear() {
@@ -758,6 +808,15 @@
     }
     clear();
     const metricsOnly = location.hash === '#kaz-os/v3/metrics';
+    if (!metricsOnly && /^#kaz-os\/(today|work|projects|capa|context)(?:\/[^/]+)?$/.test(location.hash)) {
+      lastKazRoute = location.hash;
+      try { sessionStorage.setItem('paluruKazMetricsReturnRoute', lastKazRoute); } catch (_) { /* In-memory return still works. */ }
+    } else if (metricsOnly && lastKazRoute === '#kaz-os/today') {
+      try {
+        const savedRoute = sessionStorage.getItem('paluruKazMetricsReturnRoute');
+        if (/^#kaz-os\/(today|work|projects|capa|context)(?:\/[^/]+)?$/.test(savedRoute || '')) lastKazRoute = savedRoute;
+      } catch (_) { /* Direct metrics links return to TODAY. */ }
+    }
     const previewEnabled = Boolean(globalThis.PALURU_KAZ_OS_V3_PREVIEW_ENABLED);
     const preview = (previewEnabled || metricsOnly)
       && /^#kaz-os\/v3(?:\/(today|work|projects|capa|context|metrics)(?:\/([^/]+))?)?$/.exec(location.hash);
@@ -766,7 +825,7 @@
       const legacyNav = byId('kazOsNav');
       if (legacyNav) legacyNav.hidden = false;
       const selection = { page: preview ? (preview[1] || 'today') : cutover[1], id: null };
-      configureKazNav(previewEnabled, selection.page);
+      configureKazNav(Boolean(preview), selection.page);
       try { if ((preview || cutover)[2]) selection.id = decodeURIComponent((preview || cutover)[2]); } catch { /* Invalid ID is not selected. */ }
       const requestEpoch = previewEpoch;
       const current = () => requestEpoch === previewEpoch && allowed() && active() && !document.hidden;
@@ -847,6 +906,17 @@
 
   function renderDevelopmentMetrics(host, value) {
     host.replaceChildren();
+    const returnLink = document.createElement('a');
+    returnLink.className = 'development-metrics-return';
+    returnLink.href = /^#kaz-os\/(today|work|projects|capa|context)(?:\/[^/]+)?$/.test(lastKazRoute)
+      ? lastKazRoute : '#kaz-os/today';
+    const route = returnLink.href.slice(returnLink.href.indexOf('#'));
+    returnLink.textContent = '← ' + ({
+      '#kaz-os/today': 'TODAYへ戻る', '#kaz-os/work': 'WORKへ戻る',
+      '#kaz-os/projects': 'PROJECTSへ戻る', '#kaz-os/capa': 'CAPAへ戻る',
+      '#kaz-os/context': 'CONTEXTへ戻る',
+    }[route] || '元の画面へ戻る');
+    host.append(returnLink);
     const heading = document.createElement('h2');
     heading.textContent = '開発実績';
     host.append(heading);
