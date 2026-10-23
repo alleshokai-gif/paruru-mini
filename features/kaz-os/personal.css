@@ -142,3 +142,22 @@
 .kc-feedback-row:first-of-type{margin-top:8px}
 .kc-feedback-row:focus-visible{outline:3px solid rgba(44,120,91,.22);outline-offset:2px;border-radius:8px}
 .kc-feedback-row .kp-project-head{margin-bottom:3px}
+
+/* TODAY dashboard: preserve compact cards while keeping six tabs reachable on phones. */
+#kazOsView #kazOsNav{min-width:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+#kazOsView #kazOsNav a{flex:0 0 auto;min-width:72px;padding:0 8px;white-space:nowrap}
+#kazOsView #kazOsNav a[hidden]{display:none}
+#kazOsView #kazPersonalContent{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
+#kazOsView #kazPersonalContent [data-today-overview] .kp-project-head>strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow:hidden;text-overflow:ellipsis;overflow-wrap:anywhere}
+#kazOsView #kazPersonalContent .kai-action-brief details>summary,
+#kazOsView #kazPersonalContent .kai-ai-judgments details>summary,
+#kazOsView #kazPersonalContent .kai-observation-review>summary,
+#kazOsView #kazPersonalContent .kai-observation-work>summary,
+#kazOsView #kazPersonalContent [data-today-overview] details>summary{display:flex;align-items:center;min-height:48px;cursor:pointer;line-height:1.4;overflow-wrap:anywhere;color:#2e715b}
+#kazOsView #kazPersonalContent .kai-calendar-window{font-size:16px;font-variant-numeric:tabular-nums;font-weight:650;color:#245e48}
+#kazOsView #kazPersonalContent .kai-observation-review{margin-top:8px}
+#kazOsView #kazPersonalContent .kai-observation-work{min-width:0}
+#kazOsView #kazPersonalContent .kai-ai-judgment{border-top:1px solid #dce4df;padding:2px 0}
+#kazOsView #kazPersonalContent .kai-ai-judgment p,
+#kazOsView #kazPersonalContent .kai-action-detail p{margin:5px 0;line-height:1.5;overflow-wrap:anywhere}
+@media(max-width:600px){#kazOsView #kazOsNav{margin-right:-4px;padding-right:4px}#kazOsView #kazPersonalContent .kai-action-brief{padding:12px}}

@@ -78,7 +78,7 @@
     const doc = host.ownerDocument;
     const el = (tag, text = '', cls = '') => { const n = doc.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
     const add = (tag, text, cls, parent = host) => { const n = el(tag, text, cls); parent.append(n); return n; };
-    const part = title => { const s = add('section', '', 'kp-section'); add('h2', title, '', s); return s; };
+    const part = (title, parent = host) => { const s = add('section', '', 'kp-section', parent); add('h2', title, '', s); return s; };
     const link = (text, page, id, cls = '') => { const a = el('a', text, cls); a.href = `#kaz-os/${page}${id ? '/' + encodeURIComponent(id) : ''}`; return a; };
     const fold = (text, parent = host) => { const d = add('details', '', 'kp-detail', parent); add('summary', text, '', d); return d; };
     const fmt = value => Number.isFinite(stamp(value)) ? new Date(value).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) : '時刻未確認';
@@ -232,22 +232,36 @@
         const row = add('article', '', 'kp-work-row kp-today-row', parent);
         row.dataset.workItem = w.id;
         const top = add('div', '', 'kp-project-head', row);
-        top.append(el('strong', w.title));
+        const title = String(w.title || '名称未設定のWork');
+        top.append(el('strong', title));
         top.append(el('span', w.state, 'kp-badge kp-' + String(w.state || '').toLowerCase()));
         if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
         if (w.planning_preference) top.append(el('span', w.planning_preference, 'kp-badge kp-planning-preference'));
+        if (Array.from(title).length > 72) {
+          const titleDetail = fold('タイトル全文', row);
+          add('p', title, 'kp-muted', titleDetail);
+        }
         add('p', `${w.project_name} · ${w.work_id} · ${estimate(w.estimate_min)}`, 'kp-muted', row);
-        if (w.plan_start && w.plan_end) add('p', `${fmt(w.plan_start)}–${fmt(w.plan_end)} · ${w.placement || '配置済み'}`, 'kp-muted', row);
+        if (w.plan_start && w.plan_end && (!v3 || label === 'SCHEDULED'))
+          add('p', `${fmt(w.plan_start)}–${fmt(w.plan_end)} · ${w.placement || '配置候補'}`, 'kp-muted', row);
         else if (w.placement === 'ESTIMATE_REQUIRED') add('p', '所要時間未設定。INBOXで分数を答えると配置できます。', 'kp-notice', row);
         else if (w.placement === 'NO_AVAILABLE_SLOT') add('p', '今日は確定している空き時間に収まりません。', 'kp-notice', row);
         else if (w.waiting_reason) add('p', `待ち理由: ${w.waiting_reason}`, 'kp-muted', row);
-        if (w.next_action) add('p', `${label} ${w.next_action}`, 'kp-next', row);
-        if (w.blocker) add('p', `BLOCKER ${w.blocker}`, 'kp-blocker', row);
+        if (w.next_action) {
+          const sentence = w.next_action.split(/[。\n]/, 1)[0];
+          const excerpt = Array.from(sentence).slice(0, 72).join('');
+          const action = fold(`${label} · ${excerpt}${excerpt.length < sentence.length || sentence.length < w.next_action.length ? '… 詳細' : ''}`, row);
+          add('p', w.next_action, 'kp-next', action);
+        }
+        if (w.blocker) {
+          const blocker = fold('Blockerを確認', row);
+          add('p', w.blocker, 'kp-blocker', blocker);
+        }
       };
 
       const focusCount=(t.now?.items?.length||0)+(t.next?.items?.length||0);
-      const renderFreeWindows = (title, windows, emptyMessage) => {
-        const section = part(title);
+      const renderFreeWindows = (title, windows, emptyMessage, parent = host, includeSuggestions = true) => {
+        const section = part(title, parent);
         section.classList.add('kp-free-section');
         const visible = (windows || []).map(window => {
           if (!v3) return window;
@@ -259,9 +273,9 @@
             ...window,
             start: new Date(startMs).toISOString(),
             duration_min: durationMin,
-            suggestions: (window.suggestions || []).filter(w =>
+            suggestions: includeSuggestions ? (window.suggestions || []).filter(w =>
               Number.isFinite(w.estimate_min) && w.estimate_min <= durationMin
-            ),
+            ) : [],
           };
         }).filter(Boolean);
         if (!visible.length) { add('p', emptyMessage, 'kp-muted', section); return; }
@@ -278,10 +292,14 @@
         });
       };
       if (v3) {
-        add('p', '今日の現在時刻から日付の終わりまで · JST', 'kp-muted', head);
-        renderFreeWindows('🟢 ワイの空き時間', t.kaz_free_windows,
-          '今日の残りに確定できる空き時間はありません。');
-        const confirmations = part('確認');
+        const overview = part('今日の予定・空き時間');
+        overview.dataset.todayOverview = 'true';
+        add('p', 'Calendar確認済みの空き枠です。Work優先候補への自動割当はありません。 · JST', 'kp-muted', overview);
+        renderFreeWindows('Calendar空き時間', t.kaz_free_windows,
+          '今日の残りに確認済みの空き時間はありません。', overview, false);
+        if (t.calendar_state?.unknown_count)
+          add('p', `未分類/不明のCalendar予定 ${t.calendar_state.unknown_count}件は空き時間扱いしていません。`, 'kp-notice', overview);
+        const confirmations = fold('確認待ち');
         if (!(t.confirmations || []).length) add('p', '確認待ちはありません。', 'kp-muted', confirmations);
         else (t.confirmations || []).forEach(item => {
           const row = add('article', '', 'kp-work-row', confirmations);
@@ -334,20 +352,23 @@
         add('p', `今日の3つ · ${focusCount}/3`, 'kp-muted');
       }
 
-      const nowSection = part('NOW');
-      if (t.now?.kind === 'none') add('p', (v2 || v3) ? 'いま着手する項目はありません。' : 'DOINGのWork Itemはありません。', 'kp-muted', nowSection);
-      else (t.now?.items || []).forEach(w => renderCandidate(w, nowSection, 'NOW'));
+      if (!v3) {
+        const nowSection = part('NOW');
+        if (t.now?.kind === 'none') add('p', v2 ? 'いま着手する項目はありません。' : 'DOINGのWork Itemはありません。', 'kp-muted', nowSection);
+        else (t.now?.items || []).forEach(w => renderCandidate(w, nowSection, 'NOW'));
 
-      const nextSection = part('NEXT');
-      if (t.next?.kind === 'none') add('p', '次候補はありません。', 'kp-muted', nextSection);
-      else (t.next?.items || []).forEach(w => renderCandidate(w, nextSection, 'NEXT'));
+        const nextSection = part('NEXT');
+        if (t.next?.kind === 'none') add('p', '次候補はありません。', 'kp-muted', nextSection);
+        else (t.next?.items || []).forEach(w => renderCandidate(w, nextSection, 'NEXT'));
+      }
 
       if (v2 || v3) {
-        const scheduled = part('SCHEDULED');
+        const scheduled = v3 ? fold('Work配置案 · Calendarの確定予定とは別') : part('SCHEDULED');
+        if (v3) add('p', 'Workの優先順から作られた配置候補です。Calendar上の実行予定としては扱いません。', 'kp-muted', scheduled);
         if (!(t.scheduled || []).length) add('p', '今日の時間付き配置はありません。', 'kp-muted', scheduled);
         else (t.scheduled || []).forEach(w => renderCandidate(w, scheduled, 'SCHEDULED'));
 
-        const waiting = part('WAITING');
+        const waiting = v3 ? fold('WAITING · 状態待ち') : part('WAITING');
         add('p', `${t.waiting_count}件 · Human/state/Estimate待ち`, 'kp-muted', waiting);
         if (!(t.waiting || []).length) add('p', '待ち項目はありません。', 'kp-muted', waiting);
         else (t.waiting || []).forEach(w => renderCandidate(w, waiting, 'WAITING'));

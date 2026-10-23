@@ -85,8 +85,10 @@
     const section = document.createElement('section');
     section.className = 'kp-card kai-action-brief';
     section.dataset.aiActionBrief = 'true';
+    const overview = host.querySelector('[data-today-overview]');
     const observation = host.querySelector('[data-ai-observation-feature="check_in"]');
-    if (observation) observation.before(section);
+    if (overview) overview.after(section);
+    else if (observation) observation.before(section);
     else host.prepend(section);
     let rows = [], renderEpoch = 0;
     const progress = new Map();
@@ -107,29 +109,32 @@
       const link = document.createElement('a');
       link.className = 'kai-action-link';
       link.href = `#kaz-os/work/${encodeURIComponent(item.id)}`;
-      link.textContent = item.title || '名称未設定のWork';
+      const fullTitle = item.title || '名称未設定のWork';
+      const titleExcerpt = Array.from(fullTitle).slice(0, 72).join('');
+      link.textContent = `${titleExcerpt}${titleExcerpt.length < fullTitle.length ? '…' : ''}`;
       parent.appendChild(link);
+      if (titleExcerpt.length < fullTitle.length) {
+        const titleDetail = document.createElement('details');
+        titleDetail.className = 'kai-action-detail';
+        const titleSummary = document.createElement('summary'); titleSummary.textContent = 'タイトル全文';
+        const titleBody = document.createElement('p'); titleBody.textContent = fullTitle;
+        titleDetail.append(titleSummary, titleBody); parent.appendChild(titleDetail);
+      }
       const fullAction = typeof item.next_action === 'string' ? item.next_action.trim() : '';
       const firstSentence = fullAction.split(/[。\n]/, 1)[0];
       const excerpt = Array.from(firstSentence).slice(0, 110).join('');
       const shortened = Array.from(firstSentence).length > 110 || firstSentence.length < fullAction.length;
-      addText(parent, 'p', fullAction
-        ? `次の行動: ${excerpt}${shortened ? '…（全文はWork詳細）' : ''}`
-        : '次の行動は未記録です。Workの詳細を確認してください。');
+      if (fullAction) {
+        const action = document.createElement('details');
+        action.className = 'kai-action-detail';
+        const summary = document.createElement('summary');
+        summary.textContent = `次の行動: ${excerpt}${shortened ? '…' : ''}`;
+        const body = document.createElement('p'); body.textContent = fullAction;
+        action.append(summary, body); parent.appendChild(action);
+      } else addText(parent, 'p', '次の行動は未記録です。Workの詳細を確認してください。');
       addText(parent, 'p', source, 'kai-action-source');
       if (progress.get(item.id) === 'delayed')
         addText(parent, 'p', '遅れていると記録済み。次のAI判断を待っています。', 'kai-action-source');
-    };
-    const addSlot = parent => {
-      const now = Date.now();
-      const window = (snapshot.today?.kaz_free_windows || []).find(item =>
-        Number.isFinite(Date.parse(item?.start)) && Number.isFinite(Date.parse(item?.end))
-        && Date.parse(item.end) > now && Date.parse(item.start) < Date.parse(item.end));
-      if (!window) return addText(parent, 'p', 'Calendarを反映した確定空き時間はありません。', 'kai-action-source');
-      const clock = value => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
-        hour: '2-digit', minute: '2-digit' }).format(new Date(value));
-      addText(parent, 'p', `Calendar反映後の空き時間 ${clock(window.start)}–${clock(window.end)}`,
-        'kai-action-source');
     };
     async function update(nextRows = rows) {
       rows = nextRows;
@@ -144,7 +149,7 @@
       if (!current()) return;
       section.replaceChildren();
       addText(section, 'h2', '次の一手');
-      addText(section, 'p', '予定とWorkから次の候補を整理しました。根拠が一致したAI提案だけ反映します。変更は本人の操作で確定します。',
+      addText(section, 'p', 'Workの優先候補とCalendarの空き時間を分けて表示します。候補を予定へ自動割当しません。',
         'kai-action-source');
       if (!valid) {
         addText(section, 'p', '最新の予定とWorkを確認できません。下の一覧で状態を確認してください。');
@@ -173,15 +178,15 @@
         box.className = 'kai-action-row'; box.dataset.actionSlot = key;
         addText(box, 'h3', title); section.appendChild(box); return box;
       };
-      const doing = card('今やること', 'now');
+      const doing = card('今やるWork候補', 'now');
       if (nowWork) addWork(doing, nowWork, focus.some(item => item.id === nowWork.id)
-        ? 'AIが注目したWork · TODAYの現在候補' : 'TODAYの現在候補');
+        ? 'AIが注目したWork · 現在の優先候補（実行予定とは別）' : 'TODAYのWork優先候補（実行予定とは別）');
       else addText(doing, 'p', 'いま着手するWorkはありません。');
-      const following = card('次にやること', 'next');
+      const following = card('次のWork優先候補', 'next');
       if (nextWork) addWork(following, nextWork, focus.some(item => item.id === nextWork.id)
-        ? 'AIが注目したWork · TODAYの次候補' : 'TODAYの次候補');
-      else addText(following, 'p', '次のWork候補はありません。');
-      addSlot(following);
+        ? 'AIが注目したWork · 優先候補（Calendarの実行予定ではありません）'
+        : 'TODAYの優先順位候補（Calendarの実行予定ではありません）');
+      else addText(following, 'p', '次のWork優先候補はありません。');
       const tomorrow = card('明日へ持ち越すこと', 'tomorrow');
       const night = latest.get('night_review');
       const carried = night?.judgment === 'CARRY_FORWARD_REVIEW'
@@ -203,12 +208,12 @@
   async function appendAiJudgments(host, page, current, snapshot = null, brief = null) {
     if (!aiEngineApi || !aiFeaturesByPage[page] || !current()) return;
     const section = document.createElement('section');
-    section.className = 'kp-card';
+    section.className = 'kp-card kai-ai-judgments';
     const heading = document.createElement('h2');
-    heading.textContent = 'AI提案（確認用）';
+    heading.textContent = 'AI判断';
     section.appendChild(heading);
     const note = document.createElement('p');
-    note.textContent = '提案は確認用です。予定や記録の確定は行いません。';
+    note.textContent = '判断の根拠は必要なときだけ展開。予定やWorkは自動変更しません。';
     section.appendChild(note);
     try {
       const view = await aiEngineApi();
@@ -227,7 +232,8 @@
         section.appendChild(empty);
       }
       for (const row of rows) {
-        const item = document.createElement('p');
+        const item = document.createElement('details');
+        item.className = 'kai-ai-judgment';
         const target = page === 'today' && row.status === 'review_pending'
           ? await workForEvidence(row.evidence, snapshot) : null;
         if (!current()) return;
@@ -237,8 +243,19 @@
         const time = Number.isFinite(Date.parse(row.as_of))
           ? `（${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
             hour: '2-digit', minute: '2-digit' }).format(new Date(row.as_of))}時点）` : '';
-        item.textContent = `${aiFeatureLabels[row.feature]}${time}: ${aiJudgmentLabels[row.judgment] || '確認してください'}`
-          + (action ? ` — ${action}` : '');
+        const summary = document.createElement('summary');
+        summary.textContent = `${aiFeatureLabels[row.feature]}${time}: ${aiJudgmentLabels[row.judgment] || '確認してください'}`;
+        item.appendChild(summary);
+        if (action) {
+          const detail = document.createElement('p');
+          detail.textContent = `対象Work: ${action}`;
+          item.appendChild(detail);
+        }
+        if (typeof row.reason === 'string' && row.reason.trim()) {
+          const reason = document.createElement('p');
+          reason.textContent = `判断の要約: ${Array.from(row.reason.trim()).slice(0, 160).join('')}`;
+          item.appendChild(reason);
+        }
         section.appendChild(item);
       }
     } catch (_) {
@@ -288,19 +305,31 @@
     section.className = 'kp-card kai-observation';
     section.dataset.aiObservationFeature = 'check_in';
     const title = document.createElement('h2'); title.textContent = '今日の進み具合';
+    const review = document.createElement('details');
+    review.className = 'kai-observation-review';
+    const reviewSummary = document.createElement('summary');
+    reviewSummary.textContent = '状態変更が必要な項目だけ確認する';
+    review.appendChild(reviewSummary);
     const guidance = document.createElement('p');
-    guidance.textContent = '変わった項目だけ選んでください。変わりなければ操作は不要です。';
-    section.append(title, guidance);
+    guidance.textContent = '項目ごとに開いて、状態が変わったものだけ記録してください。未操作のWorkは変更されません。';
+    review.appendChild(guidance);
+    section.append(title, review);
     if (!aiObservationApi || snapshot?.status !== 'CURRENT'
         || !sameJstDay(snapshot.generated_at)
         || ['work', 'today'].some(key => snapshot.sources?.[key]?.status !== 'current')) {
       const unavailable = document.createElement('p');
       unavailable.textContent = '現在のやることを確認できないため、記録は使えません。画面を更新してください。';
-      section.appendChild(unavailable); host.prepend(section); return;
+      review.appendChild(unavailable);
+      const overview = host.querySelector('[data-today-overview]');
+      if (overview) overview.after(section); else host.append(section);
+      return;
     }
     if (!work.length) {
       const empty = document.createElement('p'); empty.textContent = 'いま操作が必要な項目はありません。';
-      section.appendChild(empty); host.prepend(section); return;
+      review.appendChild(empty);
+      const overview = host.querySelector('[data-today-overview]');
+      if (overview) overview.after(section); else host.append(section);
+      return;
     }
     const note = document.createElement('textarea'); note.maxLength = 300;
     note.rows = 2; note.placeholder = '補足があれば入力（任意）';
@@ -355,8 +384,8 @@
       }
     }
     for (const item of work) {
-      const row = document.createElement('div'); row.className = 'kai-observation-work';
-      const name = document.createElement('strong'); name.textContent = item.title || '名称未設定のWork';
+      const row = document.createElement('details'); row.className = 'kai-observation-work';
+      const name = document.createElement('summary'); name.textContent = item.title || '名称未設定のWork';
       const actions = document.createElement('div'); actions.className = 'kai-observation-actions';
       const output = document.createElement('p'); output.setAttribute('role', 'status');
       output.setAttribute('aria-live', 'polite');
@@ -371,10 +400,11 @@
         buttons.push(button); actions.appendChild(button);
       }
       allButtons.set(item.id, buttons);
-      row.append(name, actions, output); section.appendChild(row);
+      row.append(name, actions, output); review.appendChild(row);
     }
-    section.appendChild(details);
-    host.prepend(section);
+    review.appendChild(details);
+    const overview = host.querySelector('[data-today-overview]');
+    if (overview) overview.after(section); else host.append(section);
     if (Number(jstParts().hour) < 20) return;
     const night = document.createElement('section'); night.className = 'kp-card kai-observation kai-night-review';
     night.dataset.aiObservationFeature = 'night_review';
@@ -383,8 +413,8 @@
     nightText.textContent = '未完了の項目だけ表示しています。明日も続けるものだけ選んでください。';
     night.append(nightTitle, nightText);
     for (const item of work) {
-      const row = document.createElement('div'); row.className = 'kai-observation-work';
-      const name = document.createElement('strong'); name.textContent = item.title || '名称未設定のWork';
+      const row = document.createElement('details'); row.className = 'kai-observation-work';
+      const name = document.createElement('summary'); name.textContent = item.title || '名称未設定のWork';
       const button = document.createElement('button'); button.type = 'button';
       button.className = 'kp-button kai-observation-send'; button.textContent = '明日へ持ち越し';
       button.dataset.progressAction = 'carry_forward';
@@ -396,7 +426,7 @@
       allButtons.get(item.id)?.push(button);
       row.append(name, button, output); night.appendChild(row);
     }
-    section.after(night);
+    host.appendChild(night);
   }
 
 
@@ -406,6 +436,13 @@
       if (key === 'inbox') {
         a.hidden = true;
         a.removeAttribute('aria-current');
+        return;
+      }
+      if (key === 'metrics') {
+        a.hidden = !allowed();
+        a.href = '#kaz-os/v3/metrics';
+        if (key === page) a.setAttribute('aria-current', 'page');
+        else a.removeAttribute('aria-current');
         return;
       }
       a.hidden = false;
