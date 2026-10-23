@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261023-kaz-today-dashboard-v2");
-// Release: v20261023-kaz-today-dashboard-v2
+importScripts("./build.js?v=v20261023-kaz-today-dashboard-v3");
+// Release: v20261023-kaz-today-dashboard-v3
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
