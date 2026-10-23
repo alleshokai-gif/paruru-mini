@@ -217,7 +217,9 @@
             'as_of', 'auto_apply_allowed', 'confidence', 'cost_basis', 'cost_usd',
             'evidence', 'feature', 'input_tokens', 'judgment', 'judgment_id',
             'latency_ms', 'model', 'output_tokens', 'raw_payload_stored',
-            'schema_version', 'status'].sort().join(',')
+            'schema_version', 'status', ...(Object.prototype.hasOwnProperty.call(row, 'reason') ? ['reason'] : [])].sort().join(',')
+          || (Object.prototype.hasOwnProperty.call(row, 'reason')
+            && (typeof row.reason !== 'string' || row.reason.length > 1000))
           || !['review_pending', 'no_advice'].includes(row.status)
           || typeof row.confidence !== 'number' || row.confidence < 0
           || row.confidence > 1 || !Number.isFinite(Date.parse(row.as_of))

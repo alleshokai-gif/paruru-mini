@@ -143,9 +143,14 @@
 .kc-feedback-row:focus-visible{outline:3px solid rgba(44,120,91,.22);outline-offset:2px;border-radius:8px}
 .kc-feedback-row .kp-project-head{margin-bottom:3px}
 
-/* TODAY dashboard: preserve compact cards while keeping six tabs reachable on phones. */
-#kazOsView #kazOsNav{min-width:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
-#kazOsView #kazOsNav a{flex:0 0 auto;min-width:72px;padding:0 8px;white-space:nowrap}
+/* TODAY dashboard: five fixed destinations, with metrics in the heading. */
+#kazOsView .kaz-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+#kazOsView .kaz-heading h1{min-width:0}
+#kazOsView .kaz-metrics-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 48px;width:48px;height:48px;border:1px solid #c9d7cf;border-radius:8px;color:#245e48;text-decoration:none;font-size:23px}
+#kazOsView .kaz-metrics-link:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
+#kazOsView .kaz-metrics-link[aria-current=page]{background:#eaf2ec}
+#kazOsView #kazOsNav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;min-width:0;overflow:visible}
+#kazOsView #kazOsNav a{min-width:0;padding:0 2px;white-space:nowrap;letter-spacing:-.035em}
 #kazOsView #kazOsNav a[hidden]{display:none}
 #kazOsView #kazPersonalContent{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
 #kazOsView #kazPersonalContent [data-today-overview] .kp-project-head>strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow:hidden;text-overflow:ellipsis;overflow-wrap:anywhere}
@@ -161,4 +166,5 @@
 #kazOsView #kazPersonalContent .kai-ai-judgment{border-top:1px solid #dce4df;padding:2px 0}
 #kazOsView #kazPersonalContent .kai-ai-judgment p,
 #kazOsView #kazPersonalContent .kai-action-detail p{margin:5px 0;line-height:1.5;overflow-wrap:anywhere}
-@media(max-width:600px){#kazOsView #kazOsNav{margin-right:-4px;padding-right:4px}#kazOsView #kazPersonalContent .kai-action-brief{padding:12px}}
+@media(max-width:600px){#kazOsView #kazPersonalContent .kai-action-brief{padding:12px}}
+@media(max-width:360px){#kazOsView #kazOsNav a{font-size:10px;letter-spacing:-.06em;padding-inline:0}}

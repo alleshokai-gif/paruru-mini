@@ -517,9 +517,14 @@ async function main() {
     const reader = load(async url => { urls.push(url); return response(200, view); });
     assert.deepEqual(await reader.create({ config }).aiEngine(), view);
     assert.deepEqual(urls, ['https://shadow.example.test/v2/read/ai-engine']);
+    const reasonView = { ...view, judgments: [{ ...row, reason: '次の予定までに終えられる項目から着手する判断です。' }] };
+    assert.deepEqual(await load(async () => response(200, reasonView)).create({ config }).aiEngine(), reasonView,
+      'bounded AI reason summaries must be readable for the TODAY home card');
     for (const bad of [
       { ...row, judgment: 'RECURRENCE_REVIEW' },
       { ...row, raw_text: 'private text' },
+      { ...row, reason: { raw: 'private text' } },
+      { ...row, reason: 'x'.repeat(1001) },
       { ...row, auto_apply_allowed: true },
     ]) {
       const invalid = load(async () => response(200, { ...view, judgments: [bad] }));

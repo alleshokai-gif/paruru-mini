@@ -28,14 +28,21 @@ class Node {
   querySelector(selector) {
     if (selector === '[data-today-overview]')
       return descendants(this).find(node => node.dataset.todayOverview === 'true') || null;
+    if (selector === '.kai-action-brief')
+      return descendants(this).find(node => node.dataset.aiActionBrief === 'true') || null;
+    if (selector === '.kai-observation-review')
+      return descendants(this).find(node => String(node.className).split(' ').includes('kai-observation-review')) || null;
     const feature = /data-ai-observation-feature="([a-z_]+)"/.exec(selector)?.[1];
     if (!feature) return null;
     return descendants(this).find(node => node.dataset.aiObservationFeature === feature) || null;
   }
   querySelectorAll(selector) {
+    if (selector === '.kai-observation-work')
+      return descendants(this).filter(node => String(node.className).split(' ').includes('kai-observation-work'));
     return descendants(this).filter(node => selector === '.kai-observation-send'
       && String(node.className || '').split(' ').includes('kai-observation-send'));
   }
+  scrollIntoView() {}
   setAttribute() {}
   addEventListener(name, handler) { this.listeners[name] = handler; }
 }
@@ -111,25 +118,27 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   if (targeted && targeted !== 'invalid') {
     assert.equal(all.some(node => node.textContent.includes('再計画を確認')), true);
     assert.equal(all.some(node => node.textContent.includes('対象Work: 架空の作業')), true);
+    all.find(node => node.tag === 'button' && node.textContent === 'このWorkの進捗操作を開く').listeners.click();
+    assert.equal(descendants(host).find(node => node.className === 'kai-observation-review').open, true);
+    assert.equal(descendants(host).find(node => node.dataset.workItem === 'work-1').open, true);
   }
-  assert.equal(all.some(node => node.textContent === '今やるWork候補'), true);
-  assert.equal(all.some(node => node.textContent === '次のWork優先候補'), true);
-  assert.equal(all.some(node => node.textContent === '明日へ持ち越すこと'), true);
+  assert.equal(all.some(node => node.textContent === 'PlannerのWork候補（AI判断とは別） · 2件'), true);
   if (targeted && targeted !== 'invalid') {
-    assert.equal(all.some(node => node.textContent.includes('AIが注目したWork')), true);
+    assert.equal(all.some(node => node.textContent.includes('AI判断をWorkの証拠と照合')), true);
     assert.equal(all.some(node => node.textContent.includes('次の行動: 資料を確認する…')), true);
-    assert.equal(all.some(node => node.textContent.includes('実行予定とは別')), true);
-    assert.equal(all.some(node => node.textContent.includes('AIの持ち越し候補')), true);
   }
   if (targeted === 'invalid') {
-    assert.equal(all.some(node => node.textContent.includes('AIが注目したWork')), false);
-    assert.equal(all.some(node => node.textContent.includes('AIの持ち越し候補')), false);
-    assert.equal(all.some(node => node.textContent.includes('根拠が現在のWorkと一致しません')), true);
+    assert.equal(all.some(node => node.textContent.includes('このAI判断を、今日のWork候補に結び付ける証拠は確認できません')), true);
   }
   const buttons = all.filter(node => node.tag === 'button');
   assert.equal(all.some(node => node.textContent === '今日の進み具合'), true);
   assert.equal(all.some(node => node.textContent === '状態変更が必要な項目だけ確認する'), true);
-  assert.equal(all.filter(node => node.tag === 'details').every(node => node.open !== true), true);
+  const openedRows = all.filter(node => node.tag === 'details' && node.open === true);
+  assert.equal(openedRows.length, targeted && targeted !== 'invalid' ? 2 : 0);
+  if (openedRows.length) {
+    assert.equal(openedRows.find(node => node.className === 'kai-observation-review').open, true);
+    assert.equal(openedRows.find(node => node.dataset.workItem === 'work-1').open, true);
+  }
   assert.equal(buttons.filter(node => node.textContent === '完了').length, 2);
   assert.equal(buttons.filter(node => node.textContent === '予定どおり').length, 2);
   assert.equal(buttons.filter(node => node.textContent === '遅れている').length, 2);
@@ -150,10 +159,6 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   assert.match(sent[0].observed_at, /^2026-10-21T\d\d:\d\d:\d\d\+09:00$/);
   assert.equal(sent[0].note, '');
   assert.equal(all.some(node => node.textContent.includes('完了を反映しました')), true);
-  await new Promise(resolve => setTimeout(resolve, 60));
-  const currentNow = descendants(host).find(node => node.dataset.actionSlot === 'now');
-  assert.ok(currentNow);
-  assert.equal(descendants(currentNow).some(node => node.textContent === '架空の作業'), false);
   if (night) {
     assert.equal(Boolean(night.disabled), true);
     night.listeners.click();
