@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const gas = path.resolve(__dirname, '..', 'gas');
-const properties = { PALURU_CALENDAR_API_TOKEN: 'calendar-test-token' };
+const properties = { PALURU_CALENDAR_API_TOKEN: 'calendar-test-token', PALURU_HOME_ID: 'home_test' };
 let calendarCalls = 0;
 
 function parts(date) {
@@ -172,6 +172,31 @@ test('internal API success and GET rejection keep schema', () => {
   const get = parse(context.calendarContextInternal_(body, 'GET', { calendarReadService: service }));
   assert(ok.success && ok.schemaVersion === 'calendar-context-internal-1.0', 'internal success contract wrong');
   assert(!get.success && get.error.code === 'METHOD_NOT_ALLOWED', 'GET was accepted');
+});
+
+test('private Kurobe snapshot uses explicit roster tags and omits event titles', () => {
+  const now = new Date();
+  const date = formatDate(now, 'yyyy-MM-dd');
+  const service = {
+    readNormalizedDay: (requestedDate) => {
+      assert(requestedDate === date, 'snapshot date was not Tokyo today');
+      return [
+        { memberKey: 'father', title: '勤務・機微な詳細', start: new Date(now.getTime() - 7200000), end: new Date(now.getTime() - 3600000), allDay: false },
+        { memberKey: 'family', title: '仕事', start: new Date(now.getTime() - 7200000), end: new Date(now.getTime() - 3600000), allDay: false },
+        { memberKey: 'mother', title: '学校と部活', start: new Date(now.getTime() - 7200000), end: new Date(now.getTime() - 3600000), allDay: false },
+        { memberKey: 'second_son', title: '塾', start: new Date(now.getTime() - 7200000), end: new Date(now.getTime() - 3600000), allDay: true }
+      ];
+    }
+  };
+  const result = parse(context.calendarContextInternal_({
+    action: 'calendarContextInternal', snapshot: true, period: 'today', scope: 'family',
+    internalToken: 'calendar-test-token', actor: { memberUserId: 'father' }
+  }, 'POST', { calendarReadService: service }));
+  assert(result.success && result.schemaVersion === 'kurobe-family-calendar-snapshot-v1', 'snapshot response schema wrong');
+  assert(result.data.date === date && result.data.events.length === 1, 'snapshot filter wrong');
+  assert(result.data.events[0].member_id === 'father' && result.data.events[0].category === 'work', 'snapshot owner/category wrong');
+  assert(!JSON.stringify(result).includes('勤務・機微な詳細'), 'event title leaked into snapshot');
+  assert(!JSON.stringify(result).includes('personLabel'), 'display label leaked into snapshot');
 });
 
 test('weather internal API authenticates first and returns only observed weather data', () => {
