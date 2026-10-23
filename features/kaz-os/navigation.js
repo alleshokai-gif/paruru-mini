@@ -146,17 +146,18 @@
     };
     const timeFit = (parent, item, now) => {
       const estimate = Number(item.estimate_min);
-      if (!Number.isInteger(estimate) || estimate <= 0) return;
+      if (!Number.isInteger(estimate) || estimate <= 0) return false;
       const windows = (snapshot?.today?.kaz_free_windows || []).filter(window => {
         const start = Date.parse(window?.start), end = Date.parse(window?.end);
         return Number.isFinite(start) && Number.isFinite(end) && end > now && end - Math.max(start, now) >= estimate * 60000;
       }).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
       const window = windows[0];
-      if (!window || snapshot?.sources?.calendar?.status !== 'current') return;
+      if (!window || snapshot?.sources?.calendar?.status !== 'current') return false;
       const start = Math.max(Date.parse(window.start), now);
       const clock = value => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
         hour: '2-digit', minute: '2-digit' }).format(new Date(value));
       addText(parent, 'p', `空き時間の目安 ${clock(start)}–${clock(Date.parse(window.end))} · Work見積り${estimate}分（予定への割当なし）`, 'kai-action-fit');
+      return true;
     };
     const openProgressFor = item => {
       const review = host.querySelector('.kai-observation-review');
@@ -250,14 +251,27 @@
           : 'unknown'}`;
         judgmentDetails.appendChild(judgmentTime);
         const judgmentReason = document.createElement('p');
-        judgmentReason.textContent = row.reason?.trim() || 'この判断に理由は記録されていません。';
+        judgmentReason.textContent = row.recommendation?.reason?.trim()
+          || row.reason?.trim() || 'この判断に理由は記録されていません。';
         judgmentDetails.appendChild(judgmentReason);
         section.appendChild(judgmentDetails);
         if (row.judgment === 'NO_ADVICE') {
           addText(section, 'p', 'AIから個別のWork提案は出ていません。', 'kai-action-source');
         } else if (target) {
-          addWork(section, target, `AI判断が参照したWork · ${row.feature === 'daily_planner' ? 'Daily Planner' : 'Check-in'}`, { prominentAction: true });
-          timeFit(section, target, now);
+          const recommendation = row.feature === 'daily_planner' ? row.recommendation : null;
+          if (recommendation?.first_step) {
+            const source = recommendation.action_origin === 'work_record'
+              ? 'Work記録' : 'AI生成（根拠はWork記録）';
+            addText(section, 'p', `最初の一手（${source}）: ${recommendation.first_step}`,
+              'kai-action-first-step');
+          }
+          addWork(section, target, `AI判断が参照したWork · ${row.feature === 'daily_planner' ? 'Daily Planner' : 'Check-in'}`,
+            { prominentAction: !recommendation });
+          const fitShown = timeFit(section, target, now);
+          if (!fitShown && recommendation?.estimate_min !== null && recommendation?.estimate_min !== undefined) {
+            addText(section, 'p', `所要時間の目安: ${recommendation.estimate_min}分（Work見積り）`,
+              'kai-action-fit');
+          }
           if (match.quote) {
             const evidence = document.createElement('details');
             evidence.className = 'kai-action-detail';

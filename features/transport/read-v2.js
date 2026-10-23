@@ -217,9 +217,26 @@
             'as_of', 'auto_apply_allowed', 'confidence', 'cost_basis', 'cost_usd',
             'evidence', 'feature', 'input_tokens', 'judgment', 'judgment_id',
             'latency_ms', 'model', 'output_tokens', 'raw_payload_stored',
-            'schema_version', 'status', ...(Object.prototype.hasOwnProperty.call(row, 'reason') ? ['reason'] : [])].sort().join(',')
+            'schema_version', 'status',
+            ...(Object.prototype.hasOwnProperty.call(row, 'reason') ? ['reason'] : []),
+            ...(Object.prototype.hasOwnProperty.call(row, 'recommendation') ? ['recommendation'] : [])].sort().join(',')
           || (Object.prototype.hasOwnProperty.call(row, 'reason')
             && (typeof row.reason !== 'string' || row.reason.length > 1000))
+          || (Object.prototype.hasOwnProperty.call(row, 'recommendation')
+            && row.recommendation !== null
+            && (!row.recommendation || typeof row.recommendation !== 'object'
+              || Object.keys(row.recommendation).sort().join(',')
+                !== 'action_origin,estimate_min,first_step,reason'
+              || typeof row.recommendation.first_step !== 'string'
+              || row.recommendation.first_step.length > 300
+              || !['work_record', 'ai_generated'].includes(row.recommendation.action_origin)
+              || typeof row.recommendation.reason !== 'string'
+              || row.recommendation.reason.length > 500
+              || (row.recommendation.estimate_min !== null
+                && (!Number.isInteger(row.recommendation.estimate_min)
+                  || row.recommendation.estimate_min < 1
+                  || row.recommendation.estimate_min > 1440))
+              || row.feature !== 'daily_planner'))
           || !['review_pending', 'no_advice'].includes(row.status)
           || typeof row.confidence !== 'number' || row.confidence < 0
           || row.confidence > 1 || !Number.isFinite(Date.parse(row.as_of))
