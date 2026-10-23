@@ -26,7 +26,10 @@ class Node {
   }
   replaceChildren() { this.children = []; }
   querySelector(selector) {
+    if (selector === '[data-today-overview]')
+      return descendants(this).find(node => node.dataset.todayOverview === 'true') || null;
     const feature = /data-ai-observation-feature="([a-z_]+)"/.exec(selector)?.[1];
+    if (!feature) return null;
     return descendants(this).find(node => node.dataset.aiObservationFeature === feature) || null;
   }
   querySelectorAll(selector) {
@@ -105,15 +108,17 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   await new Promise(resolve => setImmediate(resolve));
   if (targeted) await new Promise(resolve => setTimeout(resolve, 60));
   const all = descendants(host);
-  if (targeted && targeted !== 'invalid') assert.equal(all.some(node =>
-    node.textContent.includes('再計画を確認') && node.textContent.includes('資料を確認する')), true);
-  assert.equal(all.some(node => node.textContent === '今やること'), true);
-  assert.equal(all.some(node => node.textContent === '次にやること'), true);
+  if (targeted && targeted !== 'invalid') {
+    assert.equal(all.some(node => node.textContent.includes('再計画を確認')), true);
+    assert.equal(all.some(node => node.textContent.includes('対象Work: 架空の作業')), true);
+  }
+  assert.equal(all.some(node => node.textContent === '今やるWork候補'), true);
+  assert.equal(all.some(node => node.textContent === '次のWork優先候補'), true);
   assert.equal(all.some(node => node.textContent === '明日へ持ち越すこと'), true);
   if (targeted && targeted !== 'invalid') {
     assert.equal(all.some(node => node.textContent.includes('AIが注目したWork')), true);
-    assert.equal(all.some(node => node.textContent.includes('次の行動: 資料を確認する…（全文はWork詳細）')), true);
-    assert.equal(all.some(node => node.textContent.includes('Calendar反映後の空き時間')), true);
+    assert.equal(all.some(node => node.textContent.includes('次の行動: 資料を確認する…')), true);
+    assert.equal(all.some(node => node.textContent.includes('実行予定とは別')), true);
     assert.equal(all.some(node => node.textContent.includes('AIの持ち越し候補')), true);
   }
   if (targeted === 'invalid') {
@@ -123,6 +128,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   }
   const buttons = all.filter(node => node.tag === 'button');
   assert.equal(all.some(node => node.textContent === '今日の進み具合'), true);
+  assert.equal(all.some(node => node.textContent === '状態変更が必要な項目だけ確認する'), true);
+  assert.equal(all.filter(node => node.tag === 'details').every(node => node.open !== true), true);
   assert.equal(buttons.filter(node => node.textContent === '完了').length, 2);
   assert.equal(buttons.filter(node => node.textContent === '予定どおり').length, 2);
   assert.equal(buttons.filter(node => node.textContent === '遅れている').length, 2);
