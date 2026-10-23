@@ -89,7 +89,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   const snapshot = { schema_version: 'kaz-os-dashboard-v3', status: 'CURRENT',
     generated_at: '2026-10-21T12:00:00+09:00',
     sources: Object.fromEntries(['projects', 'work', 'today', 'calendar'].map(name => [name, { status: 'current' }])),
-    work: [{ id: 'work-1', title: '架空の作業', state: 'DOING',
+    work: [{ id: 'work-1', title: '架空の作業', state: 'DOING', estimate_min: 30, priority: 'HIGH',
       next_action: '資料を確認する。残りの説明はWork詳細で確認する' },
       { id: 'work-2', title: '取消済み', state: 'CANCELLED' },
       { id: 'work-3', title: '次の作業', state: 'READY', next_action: '次の資料を用意する' }],
@@ -124,8 +124,11 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   }
   assert.equal(all.some(node => node.textContent === 'PlannerのWork候補（AI判断とは別） · 2件'), true);
   if (targeted && targeted !== 'invalid') {
-    assert.equal(all.some(node => node.textContent.includes('AI判断をWorkの証拠と照合')), true);
-    assert.equal(all.some(node => node.textContent.includes('次の行動: 資料を確認する…')), true);
+    assert.equal(all.some(node => node.textContent.includes('AI判断が参照したWork')), true);
+    assert.equal(all.some(node => node.textContent.includes('最初の一手（Work記録）: 資料を確認する')), true);
+    assert.equal(all.some(node => node.textContent.includes('空き時間の目安')
+      && node.textContent.includes('Work見積り30分（予定への割当なし）')), true);
+    assert.equal(all.some(node => node.textContent === 'AIが参照した根拠（Work記録）'), true);
   }
   if (targeted === 'invalid') {
     assert.equal(all.some(node => node.textContent.includes('このAI判断を、今日のWork候補に結び付ける証拠は確認できません')), true);

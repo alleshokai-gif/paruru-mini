@@ -76,7 +76,7 @@
           source: 'work', text }) !== evidence.source_revision) continue;
         const quote = Array.from(text).slice(evidence.start, evidence.end).join('');
         if (quote && text.split(quote).length === 2
-            && await digestJson(quote) === evidence.quote_hash) return item;
+            && await digestJson(quote) === evidence.quote_hash) return { item, quote };
       }
     }
     return null;
@@ -102,7 +102,7 @@
       parent.appendChild(node);
       return node;
     };
-    const addWork = (parent, item, source) => {
+    const addWork = (parent, item, source, { prominentAction = false } = {}) => {
       const link = document.createElement('a');
       link.className = 'kai-action-link';
       link.href = `#kaz-os/work/${encodeURIComponent(item.id)}`;
@@ -122,16 +122,41 @@
       const excerpt = Array.from(firstSentence).slice(0, 110).join('');
       const shortened = Array.from(firstSentence).length > 110 || firstSentence.length < fullAction.length;
       if (fullAction) {
-        const action = document.createElement('details');
-        action.className = 'kai-action-detail';
-        const summary = document.createElement('summary');
-        summary.textContent = `次の行動: ${excerpt}${shortened ? '…' : ''}`;
-        const body = document.createElement('p'); body.textContent = fullAction;
-        action.append(summary, body); parent.appendChild(action);
+        if (prominentAction) {
+          addText(parent, 'p', `最初の一手（Work記録）: ${excerpt}${shortened ? '…' : ''}`, 'kai-action-first-step');
+          if (shortened) {
+            const action = document.createElement('details');
+            action.className = 'kai-action-detail';
+            const summary = document.createElement('summary'); summary.textContent = 'Workに記録された次の行動';
+            const body = document.createElement('p'); body.textContent = fullAction;
+            action.append(summary, body); parent.appendChild(action);
+          }
+        } else {
+          const action = document.createElement('details');
+          action.className = 'kai-action-detail';
+          const summary = document.createElement('summary');
+          summary.textContent = `次の行動: ${excerpt}${shortened ? '…' : ''}`;
+          const body = document.createElement('p'); body.textContent = fullAction;
+          action.append(summary, body); parent.appendChild(action);
+        }
       } else addText(parent, 'p', '次の行動は未記録です。Workの詳細を確認してください。');
       addText(parent, 'p', source, 'kai-action-source');
       if (progress.get(item.id) === 'delayed')
         addText(parent, 'p', '遅れていると記録済み。次のAI判断を待っています。', 'kai-action-source');
+    };
+    const timeFit = (parent, item, now) => {
+      const estimate = Number(item.estimate_min);
+      if (!Number.isInteger(estimate) || estimate <= 0) return;
+      const windows = (snapshot?.today?.kaz_free_windows || []).filter(window => {
+        const start = Date.parse(window?.start), end = Date.parse(window?.end);
+        return Number.isFinite(start) && Number.isFinite(end) && end > now && end - Math.max(start, now) >= estimate * 60000;
+      }).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+      const window = windows[0];
+      if (!window || snapshot?.sources?.calendar?.status !== 'current') return;
+      const start = Math.max(Date.parse(window.start), now);
+      const clock = value => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
+        hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+      addText(parent, 'p', `空き時間の目安 ${clock(start)}–${clock(Date.parse(window.end))} · Work見積り${estimate}分（予定への割当なし）`, 'kai-action-fit');
     };
     const openProgressFor = item => {
       const review = host.querySelector('.kai-observation-review');
@@ -203,7 +228,8 @@
       if (epoch !== renderEpoch || !current()) return;
       addText(section, 'p', availableTime(now), 'kai-action-availability');
       const row = [...latest.values()].sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of))[0] || null;
-      const target = row ? resolved.get(row.feature) : null;
+      const match = row ? resolved.get(row.feature) : null;
+      const target = match?.item || null;
       if (aiState === 'loading') {
         addText(section, 'p', 'AI Plannerの今日の判断を確認しています…', 'kai-action-source');
       } else if (aiState === 'unavailable') {
@@ -230,7 +256,15 @@
         if (row.judgment === 'NO_ADVICE') {
           addText(section, 'p', 'AIから個別のWork提案は出ていません。', 'kai-action-source');
         } else if (target) {
-          addWork(section, target, `AI判断をWorkの証拠と照合 · ${row.feature === 'daily_planner' ? 'Daily Planner' : 'Check-in'}`);
+          addWork(section, target, `AI判断が参照したWork · ${row.feature === 'daily_planner' ? 'Daily Planner' : 'Check-in'}`, { prominentAction: true });
+          timeFit(section, target, now);
+          if (match.quote) {
+            const evidence = document.createElement('details');
+            evidence.className = 'kai-action-detail';
+            const summary = document.createElement('summary'); summary.textContent = 'AIが参照した根拠（Work記録）';
+            const body = document.createElement('p'); body.textContent = match.quote;
+            evidence.append(summary, body); section.appendChild(evidence);
+          }
           addProgressButton(section, target);
         } else {
           addText(section, 'p', 'このAI判断を、今日のWork候補に結び付ける証拠は確認できません。', 'kp-notice');
@@ -296,7 +330,7 @@
         const item = document.createElement('details');
         item.className = 'kai-ai-judgment';
         const target = page === 'today' && row.status === 'review_pending'
-          ? await workForEvidence(row.evidence, snapshot) : null;
+          ? (await workForEvidence(row.evidence, snapshot))?.item || null : null;
         if (!current()) return;
         const action = target && !['DONE', 'CANCELLED'].includes(target.state)
           ? [target.title, target.next_action].filter(value => typeof value === 'string' && value.trim())
