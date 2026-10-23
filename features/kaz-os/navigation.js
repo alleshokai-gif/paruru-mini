@@ -211,9 +211,22 @@
       } else if (!row) {
         addText(section, 'p', '今日のAI判断はありません。下のWork候補はAI判断とは別の情報です。', 'kai-action-source');
       } else {
-        addText(section, 'p', `AI提案 · ${judgmentText(row)}`, 'kai-action-recommendation');
-        if (row.reason) addText(section, 'p', `理由: ${Array.from(row.reason.trim()).slice(0, 160).join('')}`, 'kai-action-reason');
-        else addText(section, 'p', '推薦理由の詳細はこのAI応答に含まれていません。', 'kai-action-source');
+        addText(section, 'p', `AI Planner · ${judgmentText(row)}`, 'kai-action-recommendation');
+        const judgmentDetails = document.createElement('details');
+        judgmentDetails.className = 'kai-action-details';
+        const judgmentSummary = document.createElement('summary');
+        judgmentSummary.textContent = '判断の理由・日時';
+        judgmentDetails.appendChild(judgmentSummary);
+        const judgmentTime = document.createElement('p');
+        const asOf = Date.parse(row.as_of || '');
+        judgmentTime.textContent = `生成日時: ${Number.isFinite(asOf)
+          ? new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(asOf)) + ' JST'
+          : 'unknown'}`;
+        judgmentDetails.appendChild(judgmentTime);
+        const judgmentReason = document.createElement('p');
+        judgmentReason.textContent = row.reason?.trim() || 'この判断に理由は記録されていません。';
+        judgmentDetails.appendChild(judgmentReason);
+        section.appendChild(judgmentDetails);
         if (row.judgment === 'NO_ADVICE') {
           addText(section, 'p', 'AIから個別のWork提案は出ていません。', 'kai-action-source');
         } else if (target) {
@@ -249,14 +262,19 @@
       if (page === 'today') brief?.unavailable('AI_ENGINE_UNAVAILABLE');
       return;
     }
-    const section = document.createElement('section');
+    const section = document.createElement(page === 'today' ? 'details' : 'section');
     section.className = 'kp-card kai-ai-judgments';
-    const heading = document.createElement('h2');
-    heading.textContent = 'AI判断';
-    section.appendChild(heading);
-    const note = document.createElement('p');
-    note.textContent = '判断の根拠は必要なときだけ展開。予定やWorkは自動変更しません。';
-    section.appendChild(note);
+    let todaySummary = null;
+    if (page === 'today') {
+      todaySummary = document.createElement('summary');
+      todaySummary.textContent = 'ほかのAI判断';
+      section.appendChild(todaySummary);
+    } else {
+      const heading = document.createElement('h2');
+      heading.textContent = 'AI判断';
+      section.appendChild(heading);
+    }
+
     try {
       const view = await aiEngineApi();
       if (!current()) return;
@@ -268,6 +286,7 @@
       }
       const rows = [...latest.values()];
       if (brief) void brief.update(rows, 'ready');
+      if (page === 'today' && rows.length) todaySummary.textContent = `ほかのAI判断 · ${rows.length}件`;
       if (!rows.length) {
         const empty = document.createElement('p');
         empty.textContent = 'いま表示できる提案はありません。';
@@ -303,6 +322,7 @@
     } catch (error) {
       if (!current()) return;
       if (brief) brief.unavailable(error?.code);
+      if (page === 'today') todaySummary.textContent = 'ほかのAI判断 · 取得できません';
       const unavailable = document.createElement('p');
       const code = typeof error?.code === 'string' && /^[A-Z0-9_]{1,80}$/.test(error.code)
         ? `（${error.code}）` : '';
@@ -1094,6 +1114,44 @@
       list.append(row);
     }
     host.append(list);
+    host.append(list);
+    host.querySelector('.development-metrics-return')?.remove();
+    const nodes = Array.from(host.children);
+    const title = nodes[1];
+    const supportingDetails = nodes.slice(3);
+    const dashboard = document.createElement('div');
+    dashboard.className = 'development-metrics-dashboard';
+    const addCard = (label, value, detail) => {
+      const card = document.createElement('section');
+      card.className = 'development-metrics-card';
+      const name = document.createElement('h3'); name.textContent = label;
+      const number = document.createElement('strong'); number.textContent = value;
+      const note = document.createElement('p'); note.textContent = detail;
+      card.append(name, number, note); dashboard.append(card);
+    };
+    const unknown = 'unknown';
+    const sessionCount = totals.sessions ?? unknown;
+    const collectionText = nodes.find(node => node.textContent?.startsWith('最終収集'))?.textContent || '収集状態 unknown';
+    const githubRate = Number.isFinite(totals.github_linked_rate)
+      ? `${Math.round(totals.github_linked_rate * 100)}%` : unknown;
+    const observedTime = totals.observed_span_ms == null ? unknown : `${Math.round(totals.observed_span_ms / 60000)}分`;
+    addCard('Codexセッション', `${sessionCount}件`, `観測時間 ${observedTime} · ${collectionText}`);
+    addCard('成果紐付けセッション', `${totals.github_linked_sessions ?? unknown} / ${sessionCount}`,
+      `紐付け率 ${githubRate} · complete ${outcomes.complete ?? unknown} / incomplete ${outcomes.incomplete ?? unknown} / failed ${outcomes.failed ?? unknown} / unknown ${outcomes.unknown ?? unknown}`);
+    addCard('Codex利用量', `入力 ${totals.input_tokens ?? unknown}`,
+      `出力 ${totals.output_tokens ?? unknown} · cached input ${totals.cached_input_tokens ?? unknown}（入力の内数）`);
+    if (value.schema_version === 'kaz-development-metrics-view-0.4') {
+      const taskOutcomes = totals.task_outcomes || {};
+      addCard('GitHub識別タスク', `${totals.tasks ?? unknown}件`,
+        `complete ${taskOutcomes.complete ?? unknown} / incomplete ${taskOutcomes.incomplete ?? unknown} / failed ${taskOutcomes.failed ?? unknown} / unknown ${taskOutcomes.unknown ?? unknown}`);
+    }
+    const disclosure = document.createElement('details');
+    disclosure.className = 'development-metrics-details';
+    const disclosureTitle = document.createElement('summary');
+    disclosureTitle.textContent = '集計について・詳細データ';
+    disclosure.appendChild(disclosureTitle);
+    supportingDetails.forEach(node => disclosure.appendChild(node));
+    host.replaceChildren(title, dashboard, disclosure);
   }
 
   document.addEventListener('paruru:authenticated', event => {
