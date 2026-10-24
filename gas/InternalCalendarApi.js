@@ -127,7 +127,7 @@ function buildKurobeCalendarSnapshot_(service, now) {
 function classifyKurobeCalendarCategory_(title) {
   const value = String(title || '');
   const patterns = {
-    work: /仕事|勤務|出勤|残業|バイト|職場/,
+    work: /仕事|勤務|出勤|残業|バイト|職場|日比谷|登戸|新橋|田町|薬局|アンコンディション|カプリ/,
     school: /学校|授業|登校|下校|大学|高校|中学|小学校/,
     club: /部活|クラブ|練習|試合/,
     cram: /塾|予備校|補習/
