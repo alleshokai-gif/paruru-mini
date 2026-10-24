@@ -110,7 +110,6 @@ function buildKurobeCalendarSnapshot_(service, now) {
       return result;
     }
     const category = classifyKurobeCalendarCategory_(event.title);
-    if (!category) return result;
     result.push({
       member_id: memberId, category: category,
       // Authenticated internal response only; Snapshot Worker classifies and drops this before GCS.

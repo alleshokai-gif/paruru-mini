@@ -220,9 +220,11 @@ test('private Kurobe snapshot exposes only a sanitized transient title for maste
     internalToken: fixtureToken, actor: { memberUserId: 'father' }
   }, 'POST', { calendarReadService: service }));
   assert(result.success && result.schemaVersion === 'kurobe-family-calendar-snapshot-v1', 'snapshot response schema wrong');
-  assert(result.data.date === date && result.data.events.length === 1, 'snapshot filter wrong');
+  assert(result.data.date === date && result.data.events.length === 2, 'snapshot filter wrong');
   assert(result.data.events[0].member_id === 'father' && result.data.events[0].category === 'work', 'snapshot owner/category wrong');
   assert(result.data.events[0].title === '勤務・機微な詳細', 'normalized title missing for private classification');
+  assert(result.data.events[1].member_id === 'mother' && result.data.events[1].category === null,
+    'ambiguous category must be preserved for the shared private catalog');
   assert(!JSON.stringify(result).includes('personLabel'), 'display label leaked into snapshot');
 });
 
