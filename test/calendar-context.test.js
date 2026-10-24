@@ -185,7 +185,23 @@ test('internal API success and GET rejection keep schema', () => {
   assert(!get.success && get.error.code === 'METHOD_NOT_ALLOWED', 'GET was accepted');
 });
 
-test('private Kurobe snapshot uses explicit roster tags and omits event titles', () => {
+test('Kurobe snapshot returns only a sanitized transient title for private classification', () => {
+  const start = new Date('2026-10-24T09:00:00+09:00');
+  const end = new Date('2026-10-24T10:00:00+09:00');
+  const result = context.buildKurobeCalendarSnapshot_({
+    readNormalizedDay: () => [{
+      memberKey: 'father', title: '薬局', allDay: false, start, end,
+      description: 'must not be serialized', rawEventId: 'private-event-id'
+    }]
+  }, new Date('2026-10-24T08:00:00+09:00'));
+  const eventResult = result.data.events[0];
+  assert(eventResult.title === '薬局', 'sanitized normalized title missing for authenticated worker');
+  assert(eventResult.category === 'work', 'legacy category compatibility was lost');
+  const serialized = JSON.stringify(result);
+  assert(!serialized.includes('description') && !serialized.includes('private-event-id'), 'private Calendar fields leaked');
+});
+
+test('private Kurobe snapshot exposes only a sanitized transient title for master lookup', () => {
   const now = new Date();
   const date = formatDate(now, 'yyyy-MM-dd');
   const service = {
@@ -206,7 +222,7 @@ test('private Kurobe snapshot uses explicit roster tags and omits event titles',
   assert(result.success && result.schemaVersion === 'kurobe-family-calendar-snapshot-v1', 'snapshot response schema wrong');
   assert(result.data.date === date && result.data.events.length === 1, 'snapshot filter wrong');
   assert(result.data.events[0].member_id === 'father' && result.data.events[0].category === 'work', 'snapshot owner/category wrong');
-  assert(!JSON.stringify(result).includes('勤務・機微な詳細'), 'event title leaked into snapshot');
+  assert(result.data.events[0].title === '勤務・機微な詳細', 'normalized title missing for private classification');
   assert(!JSON.stringify(result).includes('personLabel'), 'display label leaked into snapshot');
 });
 
@@ -257,3 +273,5 @@ for (const item of tests) {
   catch (error) { failures += 1; console.error('FAIL ' + item.name + ': ' + error.message); }
 }
 if (failures) process.exit(1); else console.log('PASS all ' + tests.length + ' tests');
+
+
