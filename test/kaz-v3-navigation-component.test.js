@@ -32,8 +32,10 @@ async function main() {
     location: { hash: '#kaz-os/v3' },
     document: { hidden: false, getElementById: id => elements[id] || null,
       createElement: tag => ({ tag, textContent: '', className: '', children: [], dataset: {}, open: false,
-        appendChild(node) { this.children.push(node); },
-        append(...nodes) { this.children.push(...nodes); },
+        appendChild(node) { this.children.push(node); aiSections.push(node); },
+        append(...nodes) { this.children.push(...nodes); aiSections.push(...nodes); },
+        prepend(node) { this.children.unshift(node); aiSections.push(node); },
+        querySelector() { return null; }, querySelectorAll() { return []; },
         addEventListener() {}, setAttribute() {},
         replaceChildren(...nodes) { this.children = nodes; },
         after(node) { aiSections.push(node); } }),
@@ -69,17 +71,15 @@ async function main() {
   emit('kaz-os:opened', { waitUntil: promise => pending.push(promise) });
   await Promise.all(pending);
   assert.equal(nav.hidden, false);
-  assert.equal(calls.v2, 0);
+  assert.equal(calls.v2, 2, 'TODAY loads the separate planning projection on each open');
   assert.equal(calls.inbox, 0);
   assert.equal(calls.dashboard, 2); // Authentication render plus opened render.
   assert.equal(rendered.at(-1).selection.page, 'today');
   assert.equal(typeof rendered.at(-1).options.answerApi, 'function');
   assert(aiSections.some(section => section.className === 'kp-card kai-action-brief'
     && JSON.stringify(section).includes('今、何をする？')));
-  assert.deepEqual(rendered.at(-1).data.today, {
-    ...pair.dashboard.component_data.today.today,
-    confirmations: pair.dashboard.today.confirmations,
-  });
+  assert.deepEqual(rendered.at(-1).data, pair.dashboard.component_data.today,
+    'TODAY uses the existing deterministic daily-plan projection rather than re-deriving it in the UI');
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.dataset.kazPage),
     ['today', 'work', 'projects', 'capa', 'context']);
   for (const page of ['work', 'projects', 'capa', 'context']) {
@@ -97,7 +97,8 @@ async function main() {
     await Promise.all(normalReads);
     assert.equal(rendered.at(-1).selection.page, page);
   }
-  assert.deepEqual(rendered.at(-5).data.today.confirmations, pair.dashboard.today.confirmations);
+  assert.equal(rendered.at(-5).data.schema_version, pair.dashboard.component_data.today.schema_version,
+    'normal TODAY route keeps the daily planning contract after navigation');
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.dataset.kazPage),
     ['today', 'work', 'projects', 'capa', 'context']);
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.href),
