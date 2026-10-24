@@ -180,16 +180,16 @@ function createHarness(options = {}) {
   drawer.emitHashChange();
   await drawer.settle();
   assert.equal(drawer.context.location.hash, '#kaz-os/today');
-  assert.deepEqual(drawer.calls(), { dashboard: 1, today: 0 },
-    'one drawer navigation must make one Snapshot read and no v2 read');
+  assert.deepEqual(drawer.calls(), { dashboard: 1, today: 1 },
+    'TODAY reads both the current dashboard evidence and the existing daily planning projection');
 
   const homeEntry = createHarness();
   homeEntry.authenticate();
   homeEntry.clickTargetCapture();
   homeEntry.emitHashChange();
   await homeEntry.settle();
-  assert.deepEqual(homeEntry.calls(), { dashboard: 1, today: 0 },
-    'Kaz home entry must open TODAY through one Snapshot read');
+  assert.deepEqual(homeEntry.calls(), { dashboard: 1, today: 1 },
+    'Kaz home entry must open TODAY through the dashboard and daily planning projection');
 
   const internalRoute = createHarness();
   internalRoute.authenticate();
@@ -197,8 +197,8 @@ function createHarness(options = {}) {
   internalRoute.context.location.hash = '#kaz-os/today';
   internalRoute.emitHashChange();
   await internalRoute.settle();
-  assert.deepEqual(internalRoute.calls(), { dashboard: 1, today: 0 },
-    'internal Kaz hash navigation must make one Snapshot read');
+  assert.deepEqual(internalRoute.calls(), { dashboard: 1, today: 1 },
+    'internal Kaz hash navigation must read the dashboard and daily planning projection');
 
   const recoveredPayload = {
     schema_version: 'kaz-today-plan-v1',

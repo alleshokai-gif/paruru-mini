@@ -54,7 +54,10 @@ const transport = fs.readFileSync(path.join(__dirname, '..', 'features/transport
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 assert.match(navigation, /KazV3ComponentData\.dashboard/);
 assert.match(navigation, /KazV3ComponentData\.inbox/);
-assert.match(navigation, /KazPersonalView\.render\(host, selection, data, Date\.now\(\), options\)/);
+assert.match(navigation, /KazPersonalView\.render\(plannerHost, selection, data, Date\.now\(\), options\)/,
+  'TODAY may render the existing daily planner projection in its dedicated plan host');
+assert.match(navigation, /dailyPlan\?\.schema_version === 'kaz-today-plan-v2'/,
+  'TODAY only substitutes a validated existing Dynamic Daily Planning v2 response');
 assert.match(navigation, /selection\.page === 'today' \? \{[\s\S]*answerApi:/,
   'V3 TODAY must receive the shared Human Answer API');
 const personalSource = fs.readFileSync(path.join(__dirname, '..', 'features/kaz-os/personal.js'), 'utf8');

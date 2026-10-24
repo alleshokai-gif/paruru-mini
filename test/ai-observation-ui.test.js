@@ -74,6 +74,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   const source = fs.readFileSync(path.join(__dirname, '../features/kaz-os/navigation.js'), 'utf8');
   vm.runInNewContext(source, sandbox);
   const sent = [];
+  let planningReads = 0;
   const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const evidence = id => {
     const text = id === 'work-1' ? '架空の作業 · DOING · 資料を確認する。残りの説明はWork詳細で確認する'
@@ -99,6 +100,14 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   handlers['paruru:authenticated']({ detail: {
     context: { role: 'admin', allowedViews: ['kaz-os'] },
     kazOsV3DashboardApi: async () => snapshot,
+    kazOsTodayApi: async () => {
+      planningReads += 1;
+      return { schema_version: 'kaz-today-plan-v2', origin: 'real_operational_sources',
+        mode: 'read_only', fixture_only: false, sources: { work_items: { status: 'ok' } },
+        today: { now: { kind: 'items', items: [] }, next: { kind: 'items', items: [] },
+          scheduled: [], waiting: [], not_fit_today: [], availability: [],
+          writes: { notion: 0, calendar: 0, context: 0 } } };
+    },
     kazOsAiEngineApi: slowShadow ? () => new Promise(() => {})
       : async () => ({ judgments: targeted ? [{ feature: 'check_in',
         judgment: 'REPLAN_REVIEW', status: 'review_pending', as_of: '2026-10-21T18:00:00+09:00',
@@ -175,6 +184,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   assert.match(sent[0].observed_at, /^2026-10-21T\d\d:\d\d:\d\d\+09:00$/);
   assert.equal(sent[0].note, '');
   assert.equal(all.some(node => node.textContent.includes('完了を反映しました')), true);
+  assert.equal(planningReads, 2, 'TODAY plan is read once on entry and again after progress is saved');
+  assert.equal(all.some(node => node.textContent.includes('今日の計画を読み直しました')), true);
   if (night) {
     assert.equal(Boolean(night.disabled), true);
     night.listeners.click();

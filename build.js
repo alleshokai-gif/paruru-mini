@@ -1,2 +1,2 @@
 // Kaz OS next action guidance release.
-globalThis.BUILD_ID = "v20261023-kaz-os-v1-final";
+globalThis.BUILD_ID = "v20261024-kaz-os-dynamic-planning-v1";

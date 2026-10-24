@@ -82,7 +82,7 @@
     return null;
   }
 
-  function createTodayActionBrief(host, snapshot, current) {
+  function createTodayActionBrief(host, snapshot, current, controlsHost = host) {
     const section = document.createElement('section');
     section.className = 'kp-card kai-action-brief';
     section.dataset.aiActionBrief = 'true';
@@ -142,7 +142,9 @@
       } else addText(parent, 'p', '次の行動は未記録です。Workの詳細を確認してください。');
       addText(parent, 'p', source, 'kai-action-source');
       if (progress.get(item.id) === 'delayed')
-        addText(parent, 'p', '遅れていると記録済み。次のAI判断を待っています。', 'kai-action-source');
+        addText(parent, 'p', '遅れを記録済み。次の提案更新に反映します。', 'kai-action-source');
+      else if (progress.get(item.id) === 'on_track')
+        addText(parent, 'p', '予定どおりと記録済み。次の提案更新に反映します。', 'kai-action-source');
     };
     const timeFit = (parent, item, now) => {
       const estimate = Number(item.estimate_min);
@@ -160,8 +162,8 @@
       return true;
     };
     const openProgressFor = item => {
-      const review = host.querySelector('.kai-observation-review');
-      const section = host.querySelector('[data-ai-observation-feature="check_in"]');
+      const review = controlsHost.querySelector('.kai-observation-review');
+      const section = controlsHost.querySelector('[data-ai-observation-feature="check_in"]');
       const row = section && [...section.querySelectorAll('.kai-observation-work')]
         .find(candidate => candidate.dataset.workItem === item.id);
       if (!review || !row) return;
@@ -230,7 +232,7 @@
       addText(section, 'p', availableTime(now), 'kai-action-availability');
       const row = [...latest.values()].sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of))[0] || null;
       const match = row ? resolved.get(row.feature) : null;
-      const target = match?.item || null;
+      const target = match?.item && !progress.has(match.item.id) ? match.item : null;
       if (aiState === 'loading') {
         addText(section, 'p', 'AI Plannerの今日の判断を確認しています…', 'kai-action-source');
       } else if (aiState === 'unavailable') {
@@ -280,6 +282,8 @@
             evidence.append(summary, body); section.appendChild(evidence);
           }
           addProgressButton(section, target);
+        } else if (match?.item && progress.has(match.item.id)) {
+          addText(section, 'p', '進み具合を記録しました。直前の行動提案は記録前の内容です。次の提案更新まで候補を表示します。', 'kai-action-source');
         } else {
           addText(section, 'p', 'このAI判断を、今日のWork候補に結び付ける証拠は確認できません。', 'kp-notice');
         }
@@ -463,21 +467,23 @@
         const receipt = await aiObservationApi({ feature, work_id: item.id, action,
           observed_at: observedAtJst(), note: feature === 'check_in' ? note.value.trim() : '' });
         if (!current()) return;
+        let refreshed = null;
         if (receipt.work_updated === true) {
           output.textContent = action === 'done'
             ? '完了を反映しました。' : '明日へ持ち越しました。';
           if (receipt.snapshot_refresh === 'unknown' || receipt.snapshot_refresh === 'not_configured')
             output.textContent += ' 一覧の更新は確認中です。';
           completed.add(item.id);
-          if (action === 'done') item.state = 'DONE';
           (allButtons.get(item.id) || []).forEach(button => { button.disabled = true; });
-          onProgress?.(item.id, action);
+          refreshed = await onProgress?.(item.id, action);
         } else {
           output.textContent = receipt.status === 'already_saved'
             ? '同じ選択は記録済みです。' : `${label}を記録しました。`;
           buttons.forEach(button => { button.disabled = button.dataset.progressAction === action; });
-          onProgress?.(item.id, action);
+          refreshed = await onProgress?.(item.id, action);
         }
+        if (refreshed === true) output.textContent += ' 今日の計画を読み直しました。';
+        else if (refreshed === false) output.textContent += ' 最新計画の再読込は未確認です。画面を更新して確認してください。';
       } catch (error) {
         if (!current()) return;
         if (['AUTHENTICATION_REQUIRED', 'AUTH_ENVELOPE_TIMEOUT'].includes(error?.code)) {
@@ -919,24 +925,59 @@
           renderDevelopmentMetrics(host, metrics);
           return;
         }
-        const snapshot = await (selection.page === 'inbox' ? v3InboxApi() : v3DashboardApi());
+        const [snapshotResult, planResult] = await Promise.allSettled([
+          selection.page === 'inbox' ? v3InboxApi() : v3DashboardApi(),
+          selection.page === 'today' && typeof todayApi === 'function' ? todayApi() : Promise.resolve(null),
+        ]);
+        if (snapshotResult.status !== 'fulfilled') throw snapshotResult.reason;
+        const snapshot = snapshotResult.value;
+        const dailyPlan = planResult.status === 'fulfilled' ? planResult.value : null;
         if (!current()) return;
         const data = selection.page === 'inbox'
           ? globalThis.KazV3ComponentData.inbox(snapshot)
-          : globalThis.KazV3ComponentData.dashboard(snapshot, selection.page);
+          : selection.page === 'today' && dailyPlan?.schema_version === 'kaz-today-plan-v2'
+            ? dailyPlan : globalThis.KazV3ComponentData.dashboard(snapshot, selection.page);
         const options = selection.page === 'inbox' ? {
           answerApi: controlledInbox(data) ? inboxAnswerApi : null,
           projectsApi: async () => globalThis.KazV3ComponentData.dashboard(await v3DashboardApi(), 'projects'),
         } : selection.page === 'today' ? {
           answerApi: typeof inboxAnswerApi === 'function' ? inboxAnswerApi : null,
         } : {};
-        globalThis.KazPersonalView.render(host, selection, data, Date.now(), options);
+        let plannerHost = host;
+        let briefHost = host;
+        let actionHost = host;
+        if (selection.page === 'today' && dailyPlan?.schema_version === 'kaz-today-plan-v2') {
+          host.replaceChildren();
+          briefHost = document.createElement('div');
+          briefHost.dataset.todayBrief = 'true';
+          plannerHost = document.createElement('div');
+          plannerHost.dataset.dailyPlanning = 'v2';
+          actionHost = document.createElement('div');
+          actionHost.dataset.todayActions = 'true';
+          host.append(briefHost, plannerHost, actionHost);
+        }
+        globalThis.KazPersonalView.render(plannerHost, selection, data, Date.now(), options);
+        if (selection.page === 'today' && dailyPlan?.schema_version !== 'kaz-today-plan-v2') {
+          const notice = document.createElement('p');
+          notice.className = 'kp-notice';
+          notice.textContent = '今日の時間枠付き計画を更新できません。表示中のWork順は確認済みの範囲で見ています。';
+          host.prepend(notice);
+        }
         let brief = null;
         if (selection.page === 'today') {
-          appendAiObservationControls(host, snapshot, current, (id, action) => brief?.onProgress(id, action));
-          brief = createTodayActionBrief(host, snapshot, current);
+          brief = createTodayActionBrief(briefHost, snapshot, current, actionHost);
+          appendAiObservationControls(actionHost, snapshot, current, async (id, action) => {
+            brief?.onProgress(id, action);
+            if (typeof todayApi !== 'function') return false;
+            try {
+              const refreshedPlan = await todayApi();
+              if (!current() || refreshedPlan?.schema_version !== 'kaz-today-plan-v2') return false;
+              globalThis.KazPersonalView.render(plannerHost, selection, refreshedPlan, Date.now(), options);
+              return true;
+            } catch (_) { return false; }
+          });
         }
-        void appendAiJudgments(host, selection.page, current, snapshot, brief);
+        void appendAiJudgments(actionHost, selection.page, current, snapshot, brief);
       } catch (_) {
         if (!current()) return;
         if (selection.page === 'metrics') {
