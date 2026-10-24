@@ -113,6 +113,8 @@ function buildKurobeCalendarSnapshot_(service, now) {
     if (!category) return result;
     result.push({
       member_id: memberId, category: category,
+      // Authenticated internal response only; Snapshot Worker classifies and drops this before GCS.
+      title: String(event.title || '').slice(0, 512),
       start_ms: start.getTime(), end_ms: end.getTime()
     });
     return result;
