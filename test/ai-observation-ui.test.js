@@ -50,7 +50,8 @@ function descendants(node) {
   return [node, ...node.children.flatMap(descendants)];
 }
 
-async function run(hourJst, slowShadow = false, claimed = false, targeted = false) {
+async function run(hourJst, slowShadow = false, claimed = false, targeted = false,
+  actionChoice = '完了', planCalendarStatus = 'ok') {
   const handlers = {};
   const host = new Node();
   const view = new Node();
@@ -74,7 +75,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   const source = fs.readFileSync(path.join(__dirname, '../features/kaz-os/navigation.js'), 'utf8');
   vm.runInNewContext(source, sandbox);
   const sent = [];
-  let planningReads = 0;
+  let planningReads = 0, dashboardReads = 0;
   const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const evidence = id => {
     const text = id === 'work-1' ? '架空の作業 · DOING · 資料を確認する。残りの説明はWork詳細で確認する'
@@ -99,13 +100,17 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
         end: '2026-10-21T23:00:00+09:00' }] } };
   handlers['paruru:authenticated']({ detail: {
     context: { role: 'admin', allowedViews: ['kaz-os'] },
-    kazOsV3DashboardApi: async () => snapshot,
+    kazOsV3DashboardApi: async () => { dashboardReads++; return snapshot; },
     kazOsTodayApi: async () => {
       planningReads += 1;
       return { schema_version: 'kaz-today-plan-v2', origin: 'real_operational_sources',
-        mode: 'read_only', fixture_only: false, sources: { work_items: { status: 'ok' } },
+        mode: 'read_only', fixture_only: false, sources: { work_items: { status: 'ok' },
+          calendar: { status: planCalendarStatus, complete: true,
+          valid_until: '2026-10-21T23:59:59+09:00' } },
         today: { now: { kind: 'items', items: [] }, next: { kind: 'items', items: [] },
           scheduled: [], waiting: [], not_fit_today: [], availability: [],
+          calendar_free_windows: [{ start: '2026-10-21T22:00:00+09:00',
+            end: '2026-10-21T23:00:00+09:00', duration_min: 60 }],
           writes: { notion: 0, calendar: 0, context: 0 } } };
     },
     kazOsAiEngineApi: slowShadow ? () => new Promise(() => {})
@@ -122,7 +127,9 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
         : claimed ? [{ feature: 'check_in', judgment: 'NEEDS_INPUT', status: 'no_advice' }] : [] }),
     kazOsAiObservationApi: async payload => { sent.push(payload); return {
       schema_version: 'kaz-ai-engine-progress-receipt-v1', status: 'saved',
-      work_updated: ['done', 'carry_forward'].includes(payload.action), provider_calls: 0 }; },
+      feature: payload.feature, action: payload.action,
+      work_updated: ['done', 'carry_forward'].includes(payload.action), provider_calls: 0,
+      raw_payload_stored: false }; },
   } });
   await new Promise(resolve => setImmediate(resolve));
   if (targeted) await new Promise(resolve => setTimeout(resolve, 60));
@@ -148,6 +155,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
       assert.equal(all.some(node => node.textContent.includes('最初の一手（Work記録）: 資料を確認する')), true);
       assert.equal(all.some(node => node.textContent.includes('空き時間の目安')
         && node.textContent.includes('Work見積り30分（予定への割当なし）')), true);
+    assert.equal(all.some(node => node.textContent.includes('次の確認済み空き時間 22:00–23:00')), true);
     }
     assert.equal(all.some(node => node.textContent === 'AIが参照した根拠（Work記録）'), true);
   }
@@ -165,8 +173,9 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
       === (targeted === 'generated' ? 'work-3' : 'work-1')).open, true);
   }
   assert.equal(buttons.filter(node => node.textContent === '完了').length, 2);
-  assert.equal(buttons.filter(node => node.textContent === '予定どおり').length, 2);
-  assert.equal(buttons.filter(node => node.textContent === '遅れている').length, 2);
+  assert.equal(buttons.filter(node => node.textContent === '継続中').length, 2);
+  assert.equal(buttons.filter(node => node.textContent === '延期').length, 2);
+  assert.equal(buttons.filter(node => node.textContent === 'ブロック').length, 2);
   assert.equal(all.some(node => node.textContent === '対象Workを選択'), false);
   assert.equal(all.some(node => node.tag === 'textarea' && node.required), false);
   const night = buttons.find(node => node.textContent === '明日へ持ち越し');
@@ -175,17 +184,24 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     assert.equal(Boolean(buttons.find(node => node.textContent === '完了').disabled), false);
     assert.equal(Boolean(night?.disabled), false);
   }
-  buttons.find(node => node.textContent === '完了').listeners.click();
+  buttons.find(node => node.textContent === actionChoice).listeners.click();
   await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setTimeout(resolve, 60));
   assert.equal(sent.length, 1);
   assert.equal(sent[0].feature, 'check_in');
   assert.equal(sent[0].work_id, 'work-1');
-  assert.equal(sent[0].action, 'done');
+  assert.equal(sent[0].action, ({ '完了': 'done', '継続中': 'on_track', '延期': 'delayed', 'ブロック': 'blocked' })[actionChoice]);
   assert.match(sent[0].observed_at, /^2026-10-21T\d\d:\d\d:\d\d\+09:00$/);
   assert.equal(sent[0].note, '');
-  assert.equal(all.some(node => node.textContent.includes('完了を反映しました')), true);
+  assert.equal(all.some(node => node.textContent.includes(actionChoice === '完了'
+    ? '完了を反映しました' : `${actionChoice}を記録しました`)), true);
   assert.equal(planningReads, 2, 'TODAY plan is read once on entry and again after progress is saved');
+  assert.equal(dashboardReads, 2, 'Work and TODAY candidate sources are read back after progress is saved');
   assert.equal(all.some(node => node.textContent.includes('今日の計画を読み直しました')), true);
+  if (targeted !== 'generated')
+    assert.equal(descendants(host).some(node => node.textContent.includes('次に取り組む候補（確認済みのWork順）')), true);
+  if (planCalendarStatus !== 'ok')
+    assert.equal(descendants(host).some(node => node.textContent.includes('利用できる時間は未確認です。')), true);
   if (night) {
     assert.equal(Boolean(night.disabled), true);
     night.listeners.click();
@@ -194,7 +210,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   }
 }
 
-Promise.all([run(18), run(21), run(18, true), run(21, false, true),
+Promise.all([run(18), run(21), run(18, false, false, false, 'ブロック'),
+  run(18, false, false, false, '延期', 'failed'), run(18, true), run(21, false, true),
   run(18, false, false, true), run(21, false, false, true),
   run(21, false, false, 'invalid'), run(18, false, false, 'generated')]).then(() => {
   process.stdout.write('PASS progress actions after AI claim and explicit Work readback receipt\n');
