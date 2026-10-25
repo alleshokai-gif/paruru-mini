@@ -188,11 +188,15 @@ function sanitizeKazOsTodayV2_(data) {
     if (planStart !== null && (!Number.isFinite(Date.parse(planStart)) || !Number.isFinite(Date.parse(planEnd)) || Date.parse(planEnd) <= Date.parse(planStart))) fail();
     const placement=w.placement == null ? null : enumeration(w.placement,placements);
     const preference=w.planning_preference == null ? null : enumeration(w.planning_preference,preferences);
+    const planningDomain=w.planning_domain == null ? null : enumeration(w.planning_domain,['company','personal']);
+    const planningReason=w.planning_reason == null ? null : enumeration(w.planning_reason,
+      ['WORKING_HOURS_UNAVAILABLE','PLANNING_DOMAIN_UNCLASSIFIED']);
     const waitingReason=nullable(w.waiting_reason,80);
     return {id:id,work_id:str(w.work_id,80),title:str(w.title),state:state,project_id:projectId,project_name:str(w.project_name),
       priority:priority,estimate_min:estimate,deadline:dateValue(w.deadline),scheduled:dateValue(w.scheduled),
       action_type:actionType,next_action:str(w.next_action),blocker:str(w.blocker),source:sourceName,source_revision:str(w.source_revision,80),
-      planning_preference:preference,plan_start:planStart,plan_end:planEnd,placement:placement,waiting_reason:waitingReason};
+      planning_preference:preference,planning_domain:planningDomain,planning_reason:planningReason,
+      plan_start:planStart,plan_end:planEnd,placement:placement,waiting_reason:waitingReason};
   };
   const freeWindow = function(v) {
     if (!v || typeof v !== 'object' || typeof v.start !== 'string' || typeof v.end !== 'string') fail();
@@ -251,6 +255,7 @@ function sanitizeKazOsTodayV2_(data) {
   const scheduled=array(data.today && data.today.scheduled,100,item);
   const waiting=array(data.today && data.today.waiting,100,item);
   const notFit=array(data.today && data.today.not_fit_today,100,item);
+  const unassigned=array(data.today && (data.today.unassigned || []),100,item);
   const availability=array(data.today && data.today.availability,64,function(v){
     if (!v || typeof v.start !== 'string' || typeof v.end !== 'string') fail();
     const start=Date.parse(v.start),end=Date.parse(v.end);
@@ -276,6 +281,7 @@ function sanitizeKazOsTodayV2_(data) {
     sources:{work_items:workSource,calendar:calendarSource,work_busy:{status:workBusyStatus}},
     today:{now:now,next:next,scheduled:scheduled,waiting:waiting,waiting_count:count(data.today.waiting_count),
       not_fit_today:notFit,not_fit_today_count:count(data.today.not_fit_today_count),
+      unassigned:unassigned,
       availability:availability,company_free_windows:companyWindows,calendar_free_windows:calendarWindows,
       calendar_state:{classification_revision_current:state.classification_revision_current,
         unknown_count:count(state.unknown_count),known_none_count:count(state.known_none_count),unknown:unknown},
