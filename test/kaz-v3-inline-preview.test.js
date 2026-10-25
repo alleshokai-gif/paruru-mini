@@ -32,10 +32,11 @@ for (const [key, legacy] of [
 assert.deepEqual(inbox.inbox_items, inbox.component_data.inbox_items);
 assert.deepEqual(dashboard.today.confirmations, inbox.inbox_items);
 
-const projected = componentData.dashboard(dashboard, 'today');
+const projected = componentData.dashboard(dashboard, 'today', Date.parse(dashboard.generated_at));
 assert.deepEqual(projected.today, {
   ...views.today.today,
   confirmations: dashboard.today.confirmations,
+  unassigned: dashboard.today.unassigned || [],
 });
 assert.equal(personal.health(projected.sources.work_items, now), 'ok');
 assert.equal(personal.health(projected.sources.work_items, now + 2 * 60 * 60 * 1000), 'ok',

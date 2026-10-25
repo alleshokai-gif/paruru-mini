@@ -6,15 +6,34 @@ const { create } = require('./fixtures/kaz-v3-component-parity');
 
 async function main() {
   const pair = create();
+  pair.dashboard.today.company_free_windows = [{
+    start: '2026-10-07T09:00:00+09:00', end: '2026-10-07T10:00:00+09:00',
+    duration_min: 60, suggestions: [{ id: 'fixture-company-work', title: '会社Work',
+      estimate_min: 30, planning_domain: 'company' }],
+  }];
+  pair.dashboard.today.scheduled = [
+    { id: 'fixture-company-work', work_id: 'FX-COMPANY', planning_domain: 'company',
+      plan_start: '2026-10-07T09:00:00+09:00', plan_end: '2026-10-07T10:00:00+09:00' },
+    { id: 'fixture-personal-work', work_id: 'FX-PERSONAL', planning_domain: 'personal',
+      plan_start: '2026-10-07T10:00:00+09:00', plan_end: '2026-10-07T11:00:00+09:00' },
+  ];
   pair.dashboard.today.unassigned = [{
     id: 'fixture-unassigned-company-work', title: 'Fixture company work', work_id: 'FX-COMPANY',
     planning_domain: 'company', planning_reason: 'WORKING_HOURS_UNAVAILABLE',
   }];
-  const projectedToday = componentData.dashboard(pair.dashboard, 'today').today;
-  assert.equal(projectedToday.company_free_windows.length, 0,
-    'the display boundary must not synthesize company hours');
+  const projectedToday = componentData.dashboard(pair.dashboard, 'today',
+    Date.parse('2026-10-07T09:30:00+09:00')).today;
+  assert.deepEqual(projectedToday.company_free_windows, pair.dashboard.today.company_free_windows,
+    'company windows come from the validated snapshot rather than being erased by the UI');
   assert.deepEqual(projectedToday.unassigned, pair.dashboard.today.unassigned,
     'Work that has no compatible authoritative time lane remains visible as unassigned');
+  assert.equal(projectedToday.now.items[0].planning_domain, 'company',
+    'NOW uses the task active in the current company lane');
+  assert.equal(projectedToday.next.items[0].planning_domain, 'personal',
+    'NEXT follows the next planned lane instead of replaying the stale snapshot selection');
+  const later = componentData.dashboard(pair.dashboard, 'today',
+    Date.parse('2026-10-07T10:30:00+09:00')).today;
+  assert.equal(later.now.items[0].planning_domain, 'personal');
   const listeners = new Map();
   const rendered = [];
   const aiSections = [];

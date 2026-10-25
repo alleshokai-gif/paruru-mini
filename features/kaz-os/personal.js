@@ -298,7 +298,7 @@
         overview.dataset.todayOverview = 'true';
         add('p', '既存Calendarと個人作業時間の設定を重ねた候補です。会社の作業時間とは分けて表示します。 · JST', 'kp-muted', overview);
         renderFreeWindows('🏢 会社の空き時間', t.company_free_windows,
-          '会社の勤務時間が設定されていないため、会社の空き時間は表示していません。', overview, false, true);
+          '確認済みの会社の空き時間はありません。', overview, false, true);
         const currentWindows = (t.kaz_free_windows || []).filter(window =>
           Number.isFinite(stamp(window.start)) && Number.isFinite(stamp(window.end))
           && stamp(window.end) > now && stamp(window.start) < stamp(window.end));
@@ -313,7 +313,9 @@
           const unassigned = fold('時間帯を確認できないWork', overview);
           t.unassigned.slice(0, 20).forEach(item => {
             const reason = item.planning_reason === 'WORKING_HOURS_UNAVAILABLE'
-              ? '会社の勤務時間が未設定です。' : 'ProjectのAreaが未分類です。';
+              ? '会社の勤務時間が未設定です。'
+              : item.planning_reason === 'COMPANY_BUSY_UNCONFIRMED'
+                ? '会社のBUSY予定を確認できません.' : 'ProjectのAreaが未分類です.';
             add('p', `${item.title || item.work_id} · ${reason}`, 'kp-muted', unassigned);
           });
         }
@@ -360,7 +362,7 @@
       } else if (v2) {
         add('p', '確認済みの予定と、設定済みの作業可能時間を重ねて表示 · JST', 'kp-muted', head);
         renderFreeWindows('🏢 会社の空き時間', t.company_free_windows,
-          '会社の勤務時間が設定されていないため、会社の空き時間は表示していません。');
+          '確認済みの会社の空き時間はありません。');
         renderFreeWindows('🏠 家庭・個人の作業候補時間', t.calendar_free_windows,
           t.calendar_state?.unknown?.some(value => value.reason === 'TIME_UNRESOLVED')
             ? '時刻不明の予定があるため空き枠を確定できません。'
@@ -370,6 +372,8 @@
           (t.unassigned || []).slice(0, 20).forEach(item => {
             const reason = item.planning_reason === 'WORKING_HOURS_UNAVAILABLE'
               ? '会社の勤務時間が未設定です。'
+              : item.planning_reason === 'COMPANY_BUSY_UNCONFIRMED'
+                ? '会社のBUSY予定を確認できません。'
               : 'ProjectのAreaが未分類です。';
             const row = document.createElement('p');
             row.textContent = `${item.title || item.work_id} · ${reason}`;

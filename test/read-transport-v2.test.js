@@ -456,9 +456,8 @@ async function main() {
       .create({ config }).dashboardV3(), withWindow);
     const pseudoCompanyFree = { ...withWindow, today: { ...withWindow.today,
       company_free_windows: [validWindow] } };
-    await assert.rejects(load(async () => response(200, pseudoCompanyFree))
-      .create({ config }).dashboardV3(),
-    error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+    assert.deepEqual(await load(async () => response(200, pseudoCompanyFree))
+      .create({ config }).dashboardV3(), pseudoCompanyFree);
     for (const broken of [
       { ...validWindow, suggestions: undefined },
       { ...validWindow, suggestions: [{ title: '資料確認', estimate_min: 45 }] },

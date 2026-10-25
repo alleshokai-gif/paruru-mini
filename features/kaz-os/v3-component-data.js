@@ -8,22 +8,47 @@
 
   const source = (old, current) => ({ ...old, snapshot_status: current?.status || 'failed' });
 
-  function dashboard(snapshot, page) {
+  function dashboard(snapshot, page, observedAt) {
     if (snapshot?.schema_version !== 'kaz-os-dashboard-v3'
         || !snapshot.component_data || !['today', 'work', 'projects', 'capa'].includes(page)
         || !snapshot.component_data[page]) throw Error('KAZ_V3_COMPONENT_DATA_UNAVAILABLE');
     let view = snapshot.component_data[page];
     const sources = { ...view.sources };
     if (page === 'today') {
+      if (!Number.isFinite(observedAt)) {
+        observedAt = Date.parse(snapshot.generated_at);
+        if (!Number.isFinite(observedAt)) observedAt = Date.now();
+      }
+      const scheduled = Array.isArray(snapshot.today?.scheduled) ? snapshot.today.scheduled : [];
+      const timedSchedule = scheduled.filter(item => Number.isFinite(Date.parse(item?.plan_start))
+        && Number.isFinite(Date.parse(item?.plan_end))
+        && Date.parse(item.plan_start) < Date.parse(item.plan_end));
+      const active = timedSchedule.filter(item => Number.isFinite(Date.parse(item?.plan_start))
+        && Number.isFinite(Date.parse(item?.plan_end))
+        && Date.parse(item.plan_start) <= observedAt && observedAt < Date.parse(item.plan_end))
+        .sort((a, b) => Date.parse(a.plan_start) - Date.parse(b.plan_start));
+      const upcoming = timedSchedule.filter(item => Number.isFinite(Date.parse(item?.plan_start))
+        && Number.isFinite(Date.parse(item?.plan_end)) && Date.parse(item.plan_start) > observedAt)
+        .sort((a, b) => Date.parse(a.plan_start) - Date.parse(b.plan_start)).slice(0, 2);
+      const now = timedSchedule.length
+        ? { kind: active.length ? 'single' : 'none', items: active.length ? [active[0]] : [],
+          basis: ['snapshot_schedule', 'current_time'] }
+        : view.today.now;
+      const next = timedSchedule.length
+        ? { kind: upcoming.length === 0 ? 'none' : upcoming.length === 1 ? 'single' : 'multiple',
+          items: upcoming, basis: ['snapshot_schedule', 'future_by_start', 'maximum_two'] }
+        : view.today.next;
       view = {
         ...view,
         schema_version: 'kaz-os-dashboard-v3-component',
         today: {
           ...view.today,
+          now,
+          next,
           kaz_free_windows: snapshot.today.kaz_free_windows,
           confirmations: snapshot.today.confirmations || [],
           unassigned: snapshot.today.unassigned || [],
-          company_free_windows: [],
+          company_free_windows: snapshot.today.company_free_windows,
           calendar_free_windows: snapshot.today.personal_free_windows,
         },
       };
