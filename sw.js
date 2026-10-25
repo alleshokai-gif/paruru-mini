@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261024-kaz-os-dynamic-planning-v1");
-// Release: v20261024-kaz-os-dynamic-planning-v1
+importScripts("./build.js?v=v20261025-kaz-os-dynamic-planning-loop-v1");
+// Release: v20261025-kaz-os-dynamic-planning-loop-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

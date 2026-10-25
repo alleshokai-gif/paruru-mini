@@ -130,10 +130,12 @@ async function main() {
     assert.deepEqual(calls[0].body, payload);
     const progressCalls = [];
     const progressHarness = load(async (url, options) => {
-      progressCalls.push(JSON.parse(options.body));
+      const request = JSON.parse(options.body);
+      progressCalls.push(request);
       return response(200, { schema_version: 'kaz-ai-engine-progress-receipt-v1',
-        feature: 'check_in', action: 'done', status: 'saved',
-        work_updated: true, provider_calls: 0, raw_payload_stored: false });
+        feature: request.feature, action: request.action, status: 'saved',
+        work_updated: ['done', 'carry_forward'].includes(request.action),
+        provider_calls: 0, raw_payload_stored: false });
     });
     const progressClient = progressHarness.create({ config: { mode: 'DIRECT_V2',
       baseUrl: 'https://reader.example.test', v3BaseUrl: 'https://v3.example.test',
@@ -141,6 +143,9 @@ async function main() {
     const progress = { ...payload, action: 'done', note: '' };
     assert.equal((await progressClient.aiObservation(progress)).work_updated, true);
     assert.deepEqual(progressCalls, [progress]);
+    const blocked = { ...payload, action: 'blocked', note: '' };
+    assert.equal((await progressClient.aiObservation(blocked)).work_updated, false);
+    assert.deepEqual(progressCalls, [progress, blocked]);
     let attempts = 0;
     const unknown = load(async () => { attempts++; throw Error('network unavailable'); });
     const unknownClient = unknown.create({ config: { mode: 'DIRECT_V2',

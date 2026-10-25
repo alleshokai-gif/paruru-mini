@@ -460,7 +460,7 @@
       if (!payload || !['check_in', 'night_review'].includes(payload.feature)
           || typeof payload.work_id !== 'string' || typeof payload.observed_at !== 'string'
           || typeof payload.note !== 'string' || payload.note.length > (progress ? 300 : 400)
-          || progress && !({ check_in: ['on_track', 'delayed', 'done'],
+          || progress && !({ check_in: ['on_track', 'delayed', 'blocked', 'done'],
             night_review: ['carry_forward'] }[payload.feature] || []).includes(payload.action)
           || !progress && !payload.note.trim()) throw codedError_('AI_OBSERVATION_INVALID');
       const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');

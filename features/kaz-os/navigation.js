@@ -3,7 +3,7 @@
   'use strict';
   const byId = id => document.getElementById(id);
   let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, developmentMetricsApi = null, inboxAnswerApi = null, aiEngineApi = null, aiObservationApi = null;
-  let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0;
+  let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0, todayClockTimer = null;
   let lastKazRoute = '#kaz-os/today';
   let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, contextEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
@@ -82,18 +82,20 @@
     return null;
   }
 
-  function createTodayActionBrief(host, snapshot, current, controlsHost = host) {
+  function createTodayActionBrief(host, snapshot, plan, current, controlsHost = host) {
     const section = document.createElement('section');
     section.className = 'kp-card kai-action-brief';
     section.dataset.aiActionBrief = 'true';
     host.prepend(section);
     let rows = [], renderEpoch = 0, aiState = 'loading', aiError = '';
+    let dashboard = snapshot, dailyPlan = plan;
     const progress = new Map();
-    const activeWork = new Map((snapshot.work || []).filter(item => item
+    const activeWorkFor = value => new Map((value?.work || []).filter(item => item
       && typeof item.id === 'string' && !['DONE', 'CANCELLED'].includes(item.state))
       .map(item => [item.id, item]));
-    const lane = name => (snapshot.today?.[name] || []).map(item => activeWork.get(item?.id))
-      .filter((item, index, all) => item && !['done', 'carry_forward'].includes(progress.get(item.id))
+    let activeWork = activeWorkFor(snapshot);
+    const lane = name => (dashboard.today?.[name] || []).map(item => activeWork.get(item?.id))
+      .filter((item, index, all) => item && !['done', 'carry_forward', 'delayed', 'blocked'].includes(progress.get(item.id))
         && all.findIndex(other => other?.id === item.id) === index);
     const addText = (parent, tag, value, className = '') => {
       const node = document.createElement(tag);
@@ -142,19 +144,34 @@
       } else addText(parent, 'p', '次の行動は未記録です。Workの詳細を確認してください。');
       addText(parent, 'p', source, 'kai-action-source');
       if (progress.get(item.id) === 'delayed')
-        addText(parent, 'p', '遅れを記録済み。次の提案更新に反映します。', 'kai-action-source');
+        addText(parent, 'p', '延期を記録済み。次の提案更新に反映します。', 'kai-action-source');
+      else if (progress.get(item.id) === 'blocked')
+        addText(parent, 'p', 'ブロックを記録済み。次の提案更新に反映します。', 'kai-action-source');
       else if (progress.get(item.id) === 'on_track')
-        addText(parent, 'p', '予定どおりと記録済み。次の提案更新に反映します。', 'kai-action-source');
+        addText(parent, 'p', '継続中と記録済み。次の提案更新に反映します。', 'kai-action-source');
+    };
+    const calendarWindows = now => {
+      const calendar = dailyPlan?.sources?.calendar;
+      const hasPlan = dailyPlan?.schema_version === 'kaz-today-plan-v2';
+      const planValid = hasPlan
+        && calendar?.status === 'ok' && calendar?.complete === true
+        && (calendar.valid_until == null || Date.parse(calendar.valid_until) > now)
+        && Array.isArray(dailyPlan.today?.calendar_free_windows);
+      const dashboardValid = !hasPlan && dashboard?.sources?.calendar?.status === 'current';
+      const windows = planValid ? dailyPlan.today.calendar_free_windows
+        : dashboardValid ? dashboard.today?.kaz_free_windows || [] : [];
+      return { confirmed: planValid || dashboardValid, windows };
     };
     const timeFit = (parent, item, now) => {
       const estimate = Number(item.estimate_min);
       if (!Number.isInteger(estimate) || estimate <= 0) return false;
-      const windows = (snapshot?.today?.kaz_free_windows || []).filter(window => {
+      const availability = calendarWindows(now);
+      const windows = availability.windows.filter(window => {
         const start = Date.parse(window?.start), end = Date.parse(window?.end);
         return Number.isFinite(start) && Number.isFinite(end) && end > now && end - Math.max(start, now) >= estimate * 60000;
       }).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
       const window = windows[0];
-      if (!window || snapshot?.sources?.calendar?.status !== 'current') return false;
+      if (!window || !availability.confirmed) return false;
       const start = Math.max(Date.parse(window.start), now);
       const clock = value => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
         hour: '2-digit', minute: '2-digit' }).format(new Date(value));
@@ -177,12 +194,12 @@
       button.addEventListener('click', () => openProgressFor(item));
     };
     const availableTime = now => {
-      const source = snapshot?.sources?.calendar;
-      const windows = (snapshot?.today?.kaz_free_windows || []).filter(window => {
+      const availability = calendarWindows(now);
+      const windows = availability.windows.filter(window => {
         const start = Date.parse(window?.start), end = Date.parse(window?.end);
         return Number.isFinite(start) && Number.isFinite(end) && end > now && start < end;
       }).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
-      if (source?.status !== 'current') return '利用できる時間は未確認です。';
+      if (!availability.confirmed) return '利用できる時間は未確認です。';
       const window = windows[0];
       if (!window) return '今日の確認済み空き時間はありません。';
       const start = Math.max(Date.parse(window.start), now), end = Date.parse(window.end);
@@ -205,9 +222,9 @@
       aiError = errorCode;
       const epoch = ++renderEpoch;
       const now = Date.now();
-      const valid = snapshot?.status === 'CURRENT' && sameJstDay(snapshot.generated_at)
+      const valid = dashboard?.status === 'CURRENT' && sameJstDay(dashboard.generated_at)
         && ['work', 'today', 'calendar'].every(key => {
-          const source = snapshot.sources?.[key];
+          const source = dashboard.sources?.[key];
           return source?.status === 'current'
             && (source.valid_until == null || Date.parse(source.valid_until) > now);
         });
@@ -226,13 +243,15 @@
       }
       const resolved = new Map();
       for (const [feature, row] of latest) {
-        if (row.status === 'review_pending') resolved.set(feature, await workForEvidence(row.evidence, snapshot));
+        if (row.status === 'review_pending') resolved.set(feature, await workForEvidence(row.evidence, dashboard));
       }
       if (epoch !== renderEpoch || !current()) return;
       addText(section, 'p', availableTime(now), 'kai-action-availability');
       const row = [...latest.values()].sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of))[0] || null;
       const match = row ? resolved.get(row.feature) : null;
       const target = match?.item && !progress.has(match.item.id) ? match.item : null;
+      const nextCandidate = [...new Map([...lane('now'), ...lane('next'), ...lane('scheduled')]
+        .map(item => [item.id, item])).values()][0] || null;
       if (aiState === 'loading') {
         addText(section, 'p', 'AI Plannerの今日の判断を確認しています…', 'kai-action-source');
       } else if (aiState === 'unavailable') {
@@ -283,10 +302,16 @@
           }
           addProgressButton(section, target);
         } else if (match?.item && progress.has(match.item.id)) {
-          addText(section, 'p', '進み具合を記録しました。直前の行動提案は記録前の内容です。次の提案更新まで候補を表示します。', 'kai-action-source');
+          addText(section, 'p', '進み具合を記録しました。次は確認済みのWork順から選び直しています。', 'kai-action-source');
         } else {
           addText(section, 'p', 'このAI判断を、今日のWork候補に結び付ける証拠は確認できません。', 'kp-notice');
         }
+      }
+      if (!target && nextCandidate) {
+        addText(section, 'h3', '次に取り組む候補（確認済みのWork順）', 'kai-action-next-heading');
+        addWork(section, nextCandidate, '決定的Plannerの候補 · 新しいAI判断ではありません', { prominentAction: true });
+        timeFit(section, nextCandidate, now);
+        addProgressButton(section, nextCandidate);
       }
       const candidates = [...new Map([...lane('now'), ...lane('next')].map(item => [item.id, item])).values()];
       const fallback = document.createElement('details');
@@ -299,7 +324,14 @@
       section.appendChild(fallback);
     }
     void update([], 'loading');
-    return { update, onProgress(itemId, action) {
+    return { update, refreshSources(nextDashboard, nextPlan) {
+      if (nextDashboard?.schema_version === 'kaz-os-dashboard-v3') {
+        dashboard = nextDashboard;
+        activeWork = activeWorkFor(nextDashboard);
+      }
+      if (nextPlan?.schema_version === 'kaz-today-plan-v2') dailyPlan = nextPlan;
+      void update(rows, aiState, aiError);
+    }, onProgress(itemId, action) {
       progress.set(itemId, action);
       void update(rows, aiState, aiError);
     }, unavailable(error) {
@@ -514,7 +546,8 @@
       const output = document.createElement('p'); output.setAttribute('role', 'status');
       output.setAttribute('aria-live', 'polite');
       const buttons = [];
-      for (const [action, label] of [['on_track', '予定どおり'], ['delayed', '遅れている'], ['done', '完了']]) {
+      for (const [action, label] of [['on_track', '継続中'], ['delayed', '延期'],
+        ['blocked', 'ブロック'], ['done', '完了']]) {
         const button = document.createElement('button'); button.type = 'button';
         button.textContent = label; button.className = 'kp-button kai-observation-send';
         button.dataset.progressAction = action;
@@ -589,6 +622,8 @@
     clearTimeout(capaExpiry);
     clearTimeout(todayExpiry);
     clearTimeout(inboxExpiry);
+    clearTimeout(todayClockTimer);
+    todayClockTimer = null;
     projectExpiry = null;
     workExpiry = null;
     capaExpiry = null;
@@ -930,8 +965,8 @@
           selection.page === 'today' && typeof todayApi === 'function' ? todayApi() : Promise.resolve(null),
         ]);
         if (snapshotResult.status !== 'fulfilled') throw snapshotResult.reason;
-        const snapshot = snapshotResult.value;
-        const dailyPlan = planResult.status === 'fulfilled' ? planResult.value : null;
+        let snapshot = snapshotResult.value;
+        let dailyPlan = planResult.status === 'fulfilled' ? planResult.value : null;
         if (!current()) return;
         const data = selection.page === 'inbox'
           ? globalThis.KazV3ComponentData.inbox(snapshot)
@@ -965,17 +1000,45 @@
         }
         let brief = null;
         if (selection.page === 'today') {
-          brief = createTodayActionBrief(briefHost, snapshot, current, actionHost);
+          brief = createTodayActionBrief(briefHost, snapshot, dailyPlan, current, actionHost);
           appendAiObservationControls(actionHost, snapshot, current, async (id, action) => {
             brief?.onProgress(id, action);
-            if (typeof todayApi !== 'function') return false;
-            try {
-              const refreshedPlan = await todayApi();
-              if (!current() || refreshedPlan?.schema_version !== 'kaz-today-plan-v2') return false;
-              globalThis.KazPersonalView.render(plannerHost, selection, refreshedPlan, Date.now(), options);
-              return true;
-            } catch (_) { return false; }
+            const [freshSnapshot, refreshedPlan] = await Promise.allSettled([
+              typeof v3DashboardApi === 'function' ? v3DashboardApi() : Promise.reject(Error('DASHBOARD_UNAVAILABLE')),
+              typeof todayApi === 'function' ? todayApi() : Promise.reject(Error('TODAY_UNAVAILABLE')),
+            ]);
+            if (!current()) return false;
+            if (freshSnapshot.status === 'fulfilled'
+                && freshSnapshot.value?.schema_version === 'kaz-os-dashboard-v3') snapshot = freshSnapshot.value;
+            if (refreshedPlan.status === 'fulfilled'
+                && refreshedPlan.value?.schema_version === 'kaz-today-plan-v2') dailyPlan = refreshedPlan.value;
+            brief?.refreshSources(snapshot, dailyPlan);
+            if (dailyPlan?.schema_version === 'kaz-today-plan-v2')
+              globalThis.KazPersonalView.render(plannerHost, selection, dailyPlan, Date.now(), options);
+            return freshSnapshot.status === 'fulfilled'
+              && refreshedPlan.status === 'fulfilled'
+              && snapshot?.schema_version === 'kaz-os-dashboard-v3'
+              && dailyPlan?.schema_version === 'kaz-today-plan-v2';
           });
+          const updateClock = () => {
+            if (!current()) return;
+            const todayJst = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo',
+              year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+            const expiredSource = [dailyPlan?.sources?.work_items, dailyPlan?.sources?.calendar,
+              snapshot?.sources?.work, snapshot?.sources?.today, snapshot?.sources?.calendar]
+              .some(source => Number.isFinite(Date.parse(source?.valid_until))
+                && Date.parse(source.valid_until) <= Date.now());
+            if (dailyPlan?.planning_date && dailyPlan.planning_date !== todayJst || expiredSource) {
+              void render();
+              return;
+            }
+            globalThis.KazPersonalView.render(plannerHost, selection, dailyPlan, Date.now(), options);
+            brief?.update();
+            todayClockTimer = setTimeout(updateClock, 60000);
+            todayClockTimer?.unref?.();
+          };
+          todayClockTimer = setTimeout(updateClock, 60000);
+          todayClockTimer?.unref?.();
         }
         void appendAiJudgments(actionHost, selection.page, current, snapshot, brief);
       } catch (_) {
