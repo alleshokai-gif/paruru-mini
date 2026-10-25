@@ -6,6 +6,15 @@ const { create } = require('./fixtures/kaz-v3-component-parity');
 
 async function main() {
   const pair = create();
+  pair.dashboard.today.unassigned = [{
+    id: 'fixture-unassigned-company-work', title: 'Fixture company work', work_id: 'FX-COMPANY',
+    planning_domain: 'company', planning_reason: 'WORKING_HOURS_UNAVAILABLE',
+  }];
+  const projectedToday = componentData.dashboard(pair.dashboard, 'today').today;
+  assert.equal(projectedToday.company_free_windows.length, 0,
+    'the display boundary must not synthesize company hours');
+  assert.deepEqual(projectedToday.unassigned, pair.dashboard.today.unassigned,
+    'Work that has no compatible authoritative time lane remains visible as unassigned');
   const listeners = new Map();
   const rendered = [];
   const aiSections = [];
