@@ -22,6 +22,7 @@
           ...view.today,
           kaz_free_windows: snapshot.today.kaz_free_windows,
           confirmations: snapshot.today.confirmations || [],
+          unassigned: snapshot.today.unassigned || [],
           company_free_windows: [],
           calendar_free_windows: snapshot.today.personal_free_windows,
         },
