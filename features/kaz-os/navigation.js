@@ -579,6 +579,32 @@
       const payload = savedPayload || { feature, work_id: item.id, action,
         observed_at: observedAtJst(), note: feature === 'check_in' ? note.value.trim() : '' };
       buttons.forEach(button => { button.disabled = true; });
+      output.textContent = '前回の記録状態を確認しています…';
+      if (!aiProgressStatusApi) {
+        output.textContent = '保存状態を確認できないため、送信していません。画面を更新してから確認してください。';
+        return;
+      }
+      try {
+        const status = await aiProgressStatusApi({ feature: payload.feature,
+          work_id: payload.work_id, action: payload.action, observed_at: payload.observed_at });
+        if (!current()) return;
+        if (status.status === 'saved') {
+          await confirmSaved(item, action, label, output, buttons, {
+            status: 'already_saved', work_updated: status.work_updated
+          });
+          return;
+        }
+        if (status.status !== 'not_recorded') {
+          output.textContent = '保存状態を確定できないため、送信していません。後で状態を再確認してください。';
+          addStatusCheck(feature, item, action, label, output, buttons, payload);
+          return;
+        }
+      } catch (_) {
+        if (!current()) return;
+        output.textContent = '保存状態を確認できないため、送信していません。通信が戻った後に状態を再確認してください。';
+        addStatusCheck(feature, item, action, label, output, buttons, payload);
+        return;
+      }
       output.textContent = '記録しています…';
       try {
         const receipt = await aiObservationApi(payload);
@@ -1619,3 +1645,4 @@
     else if (allowed() && active()) render();
   });
 })();
+
