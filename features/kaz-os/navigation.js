@@ -162,6 +162,23 @@
         : dashboardValid ? dashboard.today?.kaz_free_windows || [] : [];
       return { confirmed: planValid || dashboardValid, windows };
     };
+    const companyWindows = now => {
+      const planValid = dailyPlan?.schema_version === 'kaz-today-plan-v2'
+        && dailyPlan.sources?.calendar?.status === 'ok'
+        && dailyPlan.sources?.calendar?.complete === true
+        && dailyPlan.sources?.work_busy?.status === 'ok'
+        && !(dailyPlan.today?.limitations || []).includes('company_work_hours_unconfigured')
+        && (dailyPlan.sources.calendar.valid_until == null
+          || Date.parse(dailyPlan.sources.calendar.valid_until) > now)
+        && Array.isArray(dailyPlan.today?.company_free_windows);
+      const dashboardValid = dailyPlan?.schema_version !== 'kaz-today-plan-v2'
+        && dashboard?.sources?.calendar?.status === 'current'
+        && dashboard?.sources?.work_busy?.status === 'current'
+        && Array.isArray(dashboard.today?.company_free_windows);
+      return { confirmed: planValid || dashboardValid,
+        windows: planValid ? dailyPlan.today.company_free_windows
+          : dashboardValid ? dashboard.today.company_free_windows : [] };
+    };
     const planningDomain = item => {
       const area = (dashboard?.projects || []).find(project => project?.id === item?.project_id)?.area;
       if (area === 'WORK') return 'company';
@@ -170,27 +187,29 @@
     };
     const timeFit = (parent, item, now) => {
       const domain = planningDomain(item);
-      if (domain === 'company') {
-        addText(parent, 'p', '会社Workですが、勤務時間の設定がないため実行可能な時刻は未確認です。', 'kai-action-fit');
-        return false;
-      }
-      if (domain !== 'personal') {
+      if (domain !== 'company' && domain !== 'personal') {
         addText(parent, 'p', 'ProjectのAreaが未分類のため、実行できる時間帯を割り当てていません。', 'kai-action-fit');
         return false;
       }
       const estimate = Number(item.estimate_min);
       if (!Number.isInteger(estimate) || estimate <= 0) return false;
-      const availability = calendarWindows(now);
+      const availability = domain === 'company' ? companyWindows(now) : calendarWindows(now);
+      if (!availability.confirmed) {
+        addText(parent, 'p', domain === 'company'
+          ? '会社の勤務時間またはBUSY予定を確認できないため、実行枠は未確認です。'
+          : '家庭・個人の空き時間を確認できません。', 'kai-action-fit');
+        return false;
+      }
       const windows = availability.windows.filter(window => {
         const start = Date.parse(window?.start), end = Date.parse(window?.end);
         return Number.isFinite(start) && Number.isFinite(end) && end > now && end - Math.max(start, now) >= estimate * 60000;
       }).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
       const window = windows[0];
-      if (!window || !availability.confirmed) return false;
+      if (!window) return false;
       const start = Math.max(Date.parse(window.start), now);
       const clock = value => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo',
         hour: '2-digit', minute: '2-digit' }).format(new Date(value));
-      addText(parent, 'p', `空き時間の目安 ${clock(start)}–${clock(Date.parse(window.end))} · Work見積り${estimate}分（予定への割当なし）`, 'kai-action-fit');
+      addText(parent, 'p', `${domain === 'company' ? '会社' : '家庭・個人'}の空き時間の目安 ${clock(start)}–${clock(Date.parse(window.end))} · Work見積り${estimate}分（予定への割当なし）`, 'kai-action-fit');
       return true;
     };
     const openProgressFor = item => {
@@ -1008,7 +1027,7 @@
         const data = selection.page === 'inbox'
           ? globalThis.KazV3ComponentData.inbox(snapshot)
           : selection.page === 'today' && dailyPlan?.schema_version === 'kaz-today-plan-v2'
-            ? dailyPlan : globalThis.KazV3ComponentData.dashboard(snapshot, selection.page);
+            ? dailyPlan : globalThis.KazV3ComponentData.dashboard(snapshot, selection.page, Date.now());
         const options = selection.page === 'inbox' ? {
           answerApi: controlledInbox(data) ? inboxAnswerApi : null,
           projectsApi: async () => globalThis.KazV3ComponentData.dashboard(await v3DashboardApi(), 'projects'),

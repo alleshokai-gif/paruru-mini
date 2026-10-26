@@ -277,7 +277,6 @@
           || today.confirmations.length > 30
           || today.confirmations.some(item => !item || !humanKinds.has(item.kind)
             || item.decision_status !== 'pending')
-          || today.company_free_windows.length !== 0
           || ['kaz_free_windows', 'company_free_windows', 'personal_free_windows'].some(key =>
             today[key].some(window => !window
               || typeof window.start !== 'string' || !Number.isFinite(Date.parse(window.start))
