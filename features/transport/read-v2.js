@@ -382,10 +382,12 @@
         const startedAt = Date.now();
         let controller = null;
         let timer = null;
+        let stage = 'AUTHENTICATION';
         try {
           const auth = await getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs);
           const token = String(auth && auth.provider === 'firebase' && auth.idToken || '');
           if (!token) throw codedError_('AUTHENTICATION_REQUIRED', { transportClassification: 'business' });
+          stage = 'HTTP_REQUEST';
           controller = new AbortController();
           timer = setTimeout(function() { controller.abort(); }, timeoutMs);
           const baseUrl = route.key === 'dashboardV3' || route.key === 'inboxV3' || route.key === 'developmentMetrics'
@@ -401,6 +403,7 @@
             },
             signal: controller.signal
           });
+          stage = 'HTTP_RESPONSE';
           const timings = parseTiming_(response.headers && response.headers.get('Server-Timing'));
           if (!response.ok) {
             let code = response.status === 401 ? 'AUTHENTICATION_REQUIRED'
@@ -412,9 +415,12 @@
             throw codedError_(code, { httpStatus: response.status, transportClassification: 'http' });
           }
           let value;
+          stage = 'JSON_PARSE';
           try { value = await response.json(); }
           catch (cause) { throw codedError_('DIRECT_READ_RESPONSE_INVALID', { httpStatus: response.status, cause, transportClassification: 'parse' }); }
+          stage = 'CONTRACT_VALIDATION';
           value = validator(value);
+          stage = 'COMPLETE';
           if (diagnostics && diagnostics.record) diagnostics.record(diagnostic, {
             attempt: attempt + 1,
             elapsedMs: Date.now() - startedAt,
@@ -438,7 +444,7 @@
             elapsedMs: Date.now() - startedAt,
             classification: diagnostics.classifyError ? diagnostics.classifyError(lastError) : 'unknown',
             httpStatus: Number.isFinite(lastError.httpStatus) ? lastError.httpStatus : null,
-            backendStage: 'DIRECT_RESPONSE',
+            backendStage: `DIRECT_${stage}`,
             transportType: MODES.DIRECT_V2,
             outcome: shouldRetry ? 'retry' : 'unresolved',
             errorCode: lastError.code || null
