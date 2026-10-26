@@ -25,7 +25,12 @@ class Node {
     this.parent.children.splice(this.parent.children.indexOf(this), 0, item);
   }
   replaceChildren() { this.children = []; }
+  remove() { if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1); }
   querySelector(selector) {
+    if (selector === '[data-progress-status-check]')
+      return descendants(this).find(node => node.dataset.progressStatusCheck === 'true') || null;
+    if (selector === '[data-progress-explicit-retry]')
+      return descendants(this).find(node => node.dataset.progressExplicitRetry === 'true') || null;
     if (selector === '[data-today-overview]')
       return descendants(this).find(node => node.dataset.todayOverview === 'true') || null;
     if (selector === '.kai-action-brief')
@@ -51,7 +56,7 @@ function descendants(node) {
 }
 
 async function run(hourJst, slowShadow = false, claimed = false, targeted = false,
-  actionChoice = '完了', planCalendarStatus = 'ok') {
+  actionChoice = '完了', planCalendarStatus = 'ok', recovery = null) {
   const handlers = {};
   const host = new Node();
   const view = new Node();
@@ -129,11 +134,18 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
         judgment: 'CARRY_FORWARD_REVIEW', status: 'review_pending', as_of: '2026-10-21T21:00:00+09:00',
         evidence: selectedEvidence('work-3') }]
         : claimed ? [{ feature: 'check_in', judgment: 'NEEDS_INPUT', status: 'no_advice' }] : [] }),
-    kazOsAiObservationApi: async payload => { sent.push(payload); return {
-      schema_version: 'kaz-ai-engine-progress-receipt-v1', status: 'saved',
-      feature: payload.feature, action: payload.action,
-      work_updated: ['done', 'carry_forward'].includes(payload.action), provider_calls: 0,
-      raw_payload_stored: false }; },
+    kazOsAiObservationApi: async payload => {
+      sent.push(payload);
+      if (recovery && sent.length === 1) { const error = Error('uncertain'); error.code = 'AI_PROGRESS_RESULT_UNKNOWN'; throw error; }
+      return { schema_version: 'kaz-ai-engine-progress-receipt-v1', status: 'saved',
+        feature: payload.feature, action: payload.action,
+        work_updated: ['done', 'carry_forward'].includes(payload.action), provider_calls: 0,
+        raw_payload_stored: false };
+    },
+    kazOsAiProgressStatusApi: async payload => {
+      assert.deepEqual(Object.keys(payload).sort(), ['action', 'feature', 'observed_at', 'work_id']);
+      return { status: recovery === 'not_recorded' ? 'not_recorded' : 'unknown', work_updated: false };
+    },
   } });
   await new Promise(resolve => setImmediate(resolve));
   if (targeted) await new Promise(resolve => setTimeout(resolve, 60));
@@ -201,14 +213,41 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   buttons.find(node => node.textContent === actionChoice).listeners.click();
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setTimeout(resolve, 60));
+  if (recovery) {
+    assert.equal(sent.length, 1, 'uncertain operation is never retried automatically');
+    const statusCheck = descendants(host).find(node => node.dataset.progressStatusCheck === 'true');
+    assert.ok(statusCheck, 'a read-only status check is offered');
+    if (recovery === 'not_recorded') {
+      assert.ok(descendants(host).some(node => node.textContent.includes('この操作は保存されていません')));
+      const retry = descendants(host).find(node => node.dataset.progressExplicitRetry === 'true');
+      assert.ok(retry, 'retry appears only after not_recorded confirmation');
+      retry.listeners.click();
+      await new Promise(resolve => setImmediate(resolve));
+      await new Promise(resolve => setTimeout(resolve, 60));
+      assert.equal(sent.length, 2, 'same payload is sent again only after explicit tap');
+      assert.deepEqual(sent[0], sent[1], 'explicit retry preserves the original action payload');
+      assert.equal(planningReads, 2);
+    } else {
+      assert.ok(descendants(host).some(node => node.textContent.includes('保存状態をまだ確定できません')));
+      assert.equal(descendants(host).some(node => node.dataset.progressExplicitRetry === 'true'), false);
+      statusCheck.listeners.click();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(sent.length, 1, 'unknown status permits read-only checks but no resend');
+      assert.ok(buttons.find(node => node.textContent === actionChoice).disabled);
+    }
+    return;
+  }
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].feature, 'check_in');
+  assert.equal(sent[0].feature, actionChoice === '明日へ持ち越し' ? 'night_review' : 'check_in');
   assert.equal(sent[0].work_id, 'work-1');
-  assert.equal(sent[0].action, ({ '完了': 'done', '継続中': 'on_track', '延期': 'delayed', 'ブロック': 'blocked' })[actionChoice]);
+  assert.equal(sent[0].action, ({ '完了': 'done', '継続中': 'on_track', '延期': 'delayed',
+    'ブロック': 'blocked', '明日へ持ち越し': 'carry_forward' })[actionChoice]);
   assert.match(sent[0].observed_at, /^2026-10-21T\d\d:\d\d:\d\d\+09:00$/);
   assert.equal(sent[0].note, '');
-  assert.equal(all.some(node => node.textContent.includes(actionChoice === '完了'
-    ? '完了を反映しました' : `${actionChoice}を記録しました`)), true);
+  assert.equal(all.some(node => node.textContent.includes(
+    ['完了', '明日へ持ち越し'].includes(actionChoice)
+      ? actionChoice === '完了' ? '完了を反映しました' : '明日へ持ち越しました'
+      : `${actionChoice}を記録しました`)), true);
   assert.equal(planningReads, 2, 'TODAY plan is read once on entry and again after progress is saved');
   assert.equal(dashboardReads, 2, 'Work and TODAY candidate sources are read back after progress is saved');
   assert.equal(all.some(node => node.textContent.includes('今日の計画を読み直しました')), true);
@@ -225,9 +264,12 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
 }
 
 Promise.all([run(18), run(21), run(18, false, false, false, 'ブロック'),
+  run(18, false, false, false, '継続中'),
   run(18, false, false, false, '延期', 'failed'), run(18, true), run(21, false, true),
+  run(21, false, false, false, '明日へ持ち越し'),
   run(18, false, false, true), run(21, false, false, true),
   run(21, false, false, 'invalid'), run(18, false, false, 'generated'),
-  run(18, false, false, 'company')]).then(() => {
+  run(18, false, false, 'company'), run(18, false, false, false, '完了', 'ok', 'not_recorded'),
+  run(18, false, false, false, '完了', 'ok', 'unknown')]).then(() => {
   process.stdout.write('PASS progress actions after AI claim and explicit Work readback receipt\n');
 }).catch(error => { process.stderr.write(String(error.stack || error) + '\n'); process.exitCode = 1; });

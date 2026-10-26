@@ -112,22 +112,8 @@ function load(fetchImpl, records = []) {
 
 async function main() {
   {
-    const calls = [];
-    const harness = load(async (url, options) => {
-      calls.push({ url, method: options.method, body: JSON.parse(options.body) });
-      return response(200, { schema_version: 'kaz-ai-engine-observation-receipt-v1',
-        feature: 'check_in', status: 'queued', provider_calls: 0, raw_payload_stored: false });
-    });
-    const client = harness.create({ config: { mode: 'DIRECT_V2',
-      baseUrl: 'https://reader.example.test', v3BaseUrl: 'https://v3.example.test',
-      routeModes: { aiObservation: 'DIRECT_V2' } } });
-    const payload = { feature: 'check_in', work_id: 'work-1',
-      observed_at: '2026-10-21T18:00:00+09:00', note: '本人の観測' };
-    assert.equal((await client.aiObservation(payload)).status, 'queued');
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].method, 'POST');
-    assert.equal(calls[0].url, 'https://v3.example.test/v2/ai-engine/observations');
-    assert.deepEqual(calls[0].body, payload);
+    const payload = { feature: 'check_in', work_id: 'work-1', action: 'done',
+      observed_at: '2026-10-21T18:00:00+09:00', note: '' };
     const progressCalls = [];
     const progressHarness = load(async (url, options) => {
       const request = JSON.parse(options.body);
@@ -146,13 +132,28 @@ async function main() {
     const blocked = { ...payload, action: 'blocked', note: '' };
     assert.equal((await progressClient.aiObservation(blocked)).work_updated, false);
     assert.deepEqual(progressCalls, [progress, blocked]);
+    const statusCalls = [];
+    const statusClient = load(async (url, options) => {
+      statusCalls.push({ url, body: JSON.parse(options.body) });
+      return response(200, { schema_version: 'kaz-ai-engine-work-progress-status-v1',
+        feature: payload.feature, action: payload.action, status: 'not_recorded',
+        work_updated: false, provider_calls: 0, raw_payload_stored: false });
+    }).create({ config: { mode: 'DIRECT_V2',
+      baseUrl: 'https://reader.example.test', v3BaseUrl: 'https://v3.example.test',
+      routeModes: { aiObservation: 'DIRECT_V2' } } });
+    const statusPayload = { feature: payload.feature, work_id: payload.work_id,
+      action: payload.action, observed_at: payload.observed_at };
+    const status = await statusClient.aiProgressStatus(statusPayload);
+    assert.equal(status.status, 'not_recorded');
+    assert.equal(statusCalls[0].url, 'https://v3.example.test/v2/ai-engine/progress/status');
+    assert.deepEqual(statusCalls[0].body, statusPayload);
     let attempts = 0;
     const unknown = load(async () => { attempts++; throw Error('network unavailable'); });
     const unknownClient = unknown.create({ config: { mode: 'DIRECT_V2',
       baseUrl: 'https://reader.example.test',
       routeModes: { aiObservation: 'DIRECT_V2' } } });
     await assert.rejects(unknownClient.aiObservation(payload),
-      error => error.code === 'AI_OBSERVATION_RESULT_UNKNOWN');
+      error => error.code === 'AI_PROGRESS_RESULT_UNKNOWN');
     assert.equal(attempts, 1, 'uncertain write must not retry');
   }
   {

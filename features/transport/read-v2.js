@@ -12,7 +12,8 @@
     developmentMetrics: Object.freeze({ key: 'developmentMetrics', path: '/v3/development-metrics', action: 'kazOs.developmentMetrics.get' }),
     context: Object.freeze({ key: 'context', path: '/v2/read/context', action: 'kazOs.context.get' }),
     aiEngine: Object.freeze({ key: 'aiEngine', path: '/v2/read/ai-engine', action: 'kazOs.aiEngine.get' }),
-    aiObservation: Object.freeze({ key: 'aiObservation', path: '/v2/ai-engine/observations', action: 'kazOs.aiObservation.submit' })
+    aiObservation: Object.freeze({ key: 'aiObservation', path: '/v2/ai-engine/progress', action: 'kazOs.progress.submit' }),
+    aiProgressStatus: Object.freeze({ key: 'aiObservation', path: '/v2/ai-engine/progress/status', action: 'kazOs.progress.status' })
   });
 
   function codedError_(code, details) {
@@ -461,13 +462,12 @@
     async function submitObservation_(payload) {
       if (config.mode !== MODES.DIRECT_V2 || config.routeModes.aiObservation !== MODES.DIRECT_V2)
         throw codedError_('AI_OBSERVATION_NOT_SELECTED');
-      const progress = payload && Object.hasOwn(payload, 'action');
       if (!payload || !['check_in', 'night_review'].includes(payload.feature)
           || typeof payload.work_id !== 'string' || typeof payload.observed_at !== 'string'
-          || typeof payload.note !== 'string' || payload.note.length > (progress ? 300 : 400)
-          || progress && !({ check_in: ['on_track', 'delayed', 'blocked', 'done'],
-            night_review: ['carry_forward'] }[payload.feature] || []).includes(payload.action)
-          || !progress && !payload.note.trim()) throw codedError_('AI_OBSERVATION_INVALID');
+          || typeof payload.note !== 'string' || payload.note.length > 300
+          || !({ check_in: ['on_track', 'delayed', 'blocked', 'done'],
+            night_review: ['carry_forward'] }[payload.feature] || []).includes(payload.action))
+        throw codedError_('AI_PROGRESS_INVALID');
       const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');
       if (!requestId) throw codedError_('DIRECT_READ_REQUEST_ID_UNAVAILABLE');
       const auth = await getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs);
@@ -484,7 +484,7 @@
           body: JSON.stringify(payload), signal: controller.signal
         });
         if (!response.ok) {
-          let code = 'AI_OBSERVATION_UNAVAILABLE';
+          let code = 'AI_PROGRESS_UNAVAILABLE';
           try {
             const body = await response.clone().json();
             if (/^[A-Z0-9_]{1,80}$/.test(String(body?.error?.code || ''))) code = body.error.code;
@@ -492,25 +492,66 @@
           throw codedError_(code, { httpStatus: response.status });
         }
         const value = await response.json();
-        if (progress) {
-          if (!value || value.schema_version !== 'kaz-ai-engine-progress-receipt-v1'
+        if (!value || value.schema_version !== 'kaz-ai-engine-progress-receipt-v1'
               || value.feature !== payload.feature || value.action !== payload.action
               || !['saved', 'already_saved'].includes(value.status)
               || value.work_updated !== ['done', 'carry_forward'].includes(payload.action)
               || value.provider_calls !== 0
               || value.raw_payload_stored !== false)
             throw codedError_('AI_PROGRESS_RECEIPT_INVALID');
-          return value;
-        }
-        if (!value || value.schema_version !== 'kaz-ai-engine-observation-receipt-v1'
-            || value.feature !== payload.feature
-            || !['queued', 'already_queued', 'execution_unknown'].includes(value.status)
-            || value.provider_calls !== 0 || value.raw_payload_stored !== false)
-          throw codedError_('AI_OBSERVATION_RECEIPT_INVALID');
         return value;
       } catch (error) {
         if (error?.code) throw error;
-        throw codedError_('AI_OBSERVATION_RESULT_UNKNOWN');
+        throw codedError_('AI_PROGRESS_RESULT_UNKNOWN');
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function progressStatus_(payload) {
+      if (config.mode !== MODES.DIRECT_V2 || config.routeModes.aiObservation !== MODES.DIRECT_V2)
+        throw codedError_('AI_OBSERVATION_NOT_SELECTED');
+      if (!payload || !['check_in', 'night_review'].includes(payload.feature)
+          || typeof payload.work_id !== 'string' || typeof payload.observed_at !== 'string'
+          || Object.keys(payload).some(key => !['feature', 'work_id', 'observed_at', 'action'].includes(key))
+          || !({ check_in: ['on_track', 'delayed', 'blocked', 'done'],
+            night_review: ['carry_forward'] }[payload.feature] || []).includes(payload.action))
+        throw codedError_('AI_PROGRESS_STATUS_INVALID');
+      const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');
+      if (!requestId) throw codedError_('DIRECT_READ_REQUEST_ID_UNAVAILABLE');
+      const auth = await getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs);
+      const token = String(auth && auth.provider === 'firebase' && auth.idToken || '');
+      if (!token) throw codedError_('AUTHENTICATION_REQUIRED');
+      const controller = new AbortController();
+      const timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+      try {
+        const response = await fetchImpl(config.v3BaseUrl + ROUTES.aiProgressStatus.path, {
+          method: 'POST', cache: 'no-store', redirect: 'error',
+          headers: { Authorization: 'Bearer ' + token,
+            'X-Paluru-Request-Id': requestId, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feature: payload.feature, work_id: payload.work_id,
+            action: payload.action, observed_at: payload.observed_at }), signal: controller.signal
+        });
+        if (!response.ok) {
+          let code = 'AI_PROGRESS_STATUS_UNAVAILABLE';
+          try {
+            const body = await response.clone().json();
+            if (/^[A-Z0-9_]{1,80}$/.test(String(body?.error?.code || ''))) code = body.error.code;
+          } catch (_) {}
+          throw codedError_(code, { httpStatus: response.status });
+        }
+        const value = await response.json();
+        if (!value || value.schema_version !== 'kaz-ai-engine-work-progress-status-v1'
+            || value.feature !== payload.feature || value.action !== payload.action
+            || !['saved', 'not_recorded', 'unknown'].includes(value.status)
+            || value.work_updated !== (value.status === 'saved'
+              && ['done', 'carry_forward'].includes(payload.action))
+            || value.provider_calls !== 0 || value.raw_payload_stored !== false)
+          throw codedError_('AI_PROGRESS_STATUS_RECEIPT_INVALID');
+        return value;
+      } catch (error) {
+        if (error?.code) throw error;
+        throw codedError_('AI_PROGRESS_STATUS_UNAVAILABLE');
       } finally {
         clearTimeout(timer);
       }
@@ -529,7 +570,8 @@
       developmentMetrics: function() { return read_(ROUTES.developmentMetrics, validateDevelopmentMetrics_); },
       context: function() { return read_(ROUTES.context, validateContext_); },
       aiEngine: function() { return read_(ROUTES.aiEngine, validateAiEngine_); },
-      aiObservation: submitObservation_
+      aiObservation: submitObservation_,
+      aiProgressStatus: progressStatus_
     });
   }
 
