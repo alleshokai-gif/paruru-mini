@@ -56,7 +56,8 @@ function descendants(node) {
 }
 
 async function run(hourJst, slowShadow = false, claimed = false, targeted = false,
-  actionChoice = '継続中', planCalendarStatus = 'ok', recovery = null, sourcePicker = false) {
+  actionChoice = '継続中', planCalendarStatus = 'ok', recovery = null,
+  sourcePicker = false, emptyPlan = false) {
   const handlers = {};
   const host = new Node();
   const view = new Node();
@@ -104,7 +105,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
       { id: 'work-3', title: '次の作業', state: 'READY', project_id: targeted === 'company' ? 'project-company' : 'project-personal',
         next_action: '次の資料を用意する' },
       { id: 'work-4', title: '計画対象外の確認作業', state: 'HUMAN_REVIEW', project_id: 'project-personal' }],
-    today: { now: [{ id: 'work-1' }], next: [{ id: 'work-2' }, { id: 'work-3' }],
+    today: { now: emptyPlan ? [] : [{ id: 'work-1' }],
+      next: emptyPlan ? [] : [{ id: 'work-2' }, { id: 'work-3' }],
       scheduled: [], kaz_free_windows: [{ start: '2026-10-21T22:00:00+09:00',
         end: '2026-10-21T23:00:00+09:00' }] } };
   handlers['paruru:authenticated']({ detail: {
@@ -167,7 +169,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     assert.equal(descendants(host).find(node => node.dataset.workItem
       === (targeted === 'generated' || targeted === 'company' ? 'work-3' : 'work-1')).open, true);
   }
-  assert.equal(all.some(node => node.textContent === 'PlannerのWork候補（AI判断とは別） · 2件'), true);
+  assert.equal(all.some(node => node.textContent === `PlannerのWork候補（AI判断とは別） · ${emptyPlan ? 0 : 2}件`), true);
   if (targeted && targeted !== 'invalid') {
     if (targeted === true)
       assert.equal(all.some(node => node.textContent.includes('AI Plannerの対象はNOW候補と一致しています。')), true);
@@ -198,11 +200,11 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
       === (targeted === 'generated' || targeted === 'company' ? 'work-3' : 'work-1')).open, true);
   }
   assert.equal(buttons.filter(node => node.textContent === '完了').length,
-    actionChoice === '完了' ? 1 : 0,
+    !emptyPlan && actionChoice === '完了' ? 1 : 0,
     'canonical completion is shown only for ACCEPTANCE Work');
-  assert.equal(buttons.filter(node => node.textContent === '継続中').length, 2);
-  assert.equal(buttons.filter(node => node.textContent === '延期').length, 2);
-  assert.equal(buttons.filter(node => node.textContent === 'ブロック').length, 2);
+  assert.equal(buttons.filter(node => node.textContent === '継続中').length, emptyPlan ? 0 : 2);
+  assert.equal(buttons.filter(node => node.textContent === '延期').length, emptyPlan ? 0 : 2);
+  assert.equal(buttons.filter(node => node.textContent === 'ブロック').length, emptyPlan ? 0 : 2);
   assert.equal(all.some(node => node.textContent === '対象Workを選択'), false);
   assert.equal(all.some(node => node.tag === 'textarea' && node.required), false);
   const night = buttons.find(node => node.textContent === '明日へ持ち越し');
@@ -267,7 +269,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   assert.equal(planningReads, 2, 'TODAY plan is read once on entry and again after progress is saved');
   assert.equal(dashboardReads, 2, 'Work and TODAY candidate sources are read back after progress is saved');
   assert.equal(descendants(host).some(node => node.textContent.includes('今日の計画を読み直しました')), true);
-  if (targeted !== 'generated' && targeted !== 'company')
+  if (!emptyPlan && targeted !== 'generated' && targeted !== 'company')
     assert.equal(descendants(host).some(node => node.textContent.includes('次に取り組む候補（確認済みのWork順）')), true);
   if (planCalendarStatus !== 'ok')
     assert.equal(descendants(host).some(node => node.textContent.includes('利用できる時間は未確認です。')), true);
@@ -287,6 +289,7 @@ Promise.all([run(18), run(21), run(18, false, false, false, 'ブロック'),
   run(21, false, false, 'invalid'), run(18, false, false, 'generated'),
   run(18, false, false, 'company'), run(18, false, false, false, '完了', 'ok', 'not_recorded'),
   run(18, false, false, false, '完了', 'ok', 'unknown'),
-  run(18, false, false, false, '継続中', 'ok', null, true)]).then(() => {
+  run(18, false, false, false, '継続中', 'ok', null, true),
+  run(18, false, false, false, '継続中', 'ok', null, true, true)]).then(() => {
   process.stdout.write('PASS progress actions after AI claim and explicit Work readback receipt\n');
 }).catch(error => { process.stderr.write(String(error.stack || error) + '\n'); process.exitCode = 1; });

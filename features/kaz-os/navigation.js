@@ -555,7 +555,12 @@
       if (overview) overview.after(section); else host.append(section);
       return;
     }
-    if (!work.length) {
+    const recordableStates = new Set(['BACKLOG', 'READY', 'SCHEDULED', 'DOING',
+      'CODEX_RUNNING', 'HUMAN_REVIEW', 'ACCEPTANCE', 'BLOCKED', 'WAITING']);
+    const plannedIds = new Set(work.map(item => item.id));
+    const otherWork = (snapshot.work || []).filter(item => item && typeof item.id === 'string'
+      && recordableStates.has(item.state) && !plannedIds.has(item.id));
+    if (!work.length && !otherWork.length) {
       const empty = document.createElement('p'); empty.textContent = 'いま操作が必要な項目はありません。';
       review.appendChild(empty);
       const overview = host.querySelector('[data-today-overview]');
@@ -569,8 +574,6 @@
     details.append(summary, note);
     const completed = new Set();
     const allButtons = new Map();
-    const recordableStates = new Set(['BACKLOG', 'READY', 'SCHEDULED', 'DOING',
-      'CODEX_RUNNING', 'HUMAN_REVIEW', 'ACCEPTANCE', 'BLOCKED', 'WAITING']);
     async function submit(feature, item, action, label, output, buttons, savedPayload = null) {
       if (completed.has(item.id)) return;
       const payload = savedPayload || { feature, work_id: item.id, action,
@@ -701,9 +704,6 @@
       allButtons.set(item.id, buttons);
       row.append(name, actions, output); review.appendChild(row);
     }
-    const plannedIds = new Set(work.map(item => item.id));
-    const otherWork = (snapshot.work || []).filter(item => item && typeof item.id === 'string'
-      && recordableStates.has(item.state) && !plannedIds.has(item.id));
     if (otherWork.length) {
       const picker = document.createElement('details');
       picker.className = 'kai-observation-source-picker';
