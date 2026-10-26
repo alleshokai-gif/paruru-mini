@@ -6,7 +6,8 @@
   const REQUEST_CLASSES = new Set(['auth_read', 'kaz_read', 'kaz_answer', 'service_worker']);
   const ACTIONS = new Set([
     'auth.config.get', 'auth.session.resolve',
-    'kazOs.projects.get', 'kazOs.work.get', 'kazOs.today.get', 'kazOs.inbox.get', 'kazOs.inbox.answer',
+    'kazOs.projects.get', 'kazOs.work.get', 'kazOs.today.get', 'kazOs.v3.dashboard.get',
+    'kazOs.today.render', 'kazOs.inbox.get', 'kazOs.inbox.answer',
     'service_worker.register', 'service_worker.update', 'service_worker.cache'
   ]);
   const CLASSIFICATIONS = new Set(['none', 'timeout', 'network', 'http', 'parse', 'business', 'cache', 'unknown']);
