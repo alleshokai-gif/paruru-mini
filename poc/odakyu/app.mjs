@@ -1,37 +1,168 @@
-import {BUILD,TYPES,minutes,clock,hypotheses,position,compare} from './core.mjs';
-const $=id=>document.getElementById(id);let model,trains,manifest,loadVersion=0;
-const name=id=>model.stations.find(s=>s.id===id)?.name||id;
-function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
-function option(value,text){const n=el('option',text);n.value=value;return n;}
-function trainLabel(t){return `${clock(t.stops[0].time)} ${name(t.origin)} ${TYPES[t.type]} ${t.destination}行`}
-async function get(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error(`読み込み失敗 (${r.status})`);return r.json();}
-async function load(){const version=++loadVersion;const loaded=await get(`/api/model?snapshot=${encodeURIComponent($('snapshot').value)}`);if(version!==loadVersion)return;model=loaded;trains=hypotheses(model,$('calendar').value);setTrains();render();}
-function setTrains(){const previous=$('train').value;const now=minutes($('time').value);const available=trains.filter(t=>t.stops[0].time>=now-55&&t.stops[0].time<=now+15);$('train').replaceChildren(...available.map(t=>option(t.id,trainLabel(t))));if(available.some(t=>t.id===previous))$('train').value=previous;else{const active=available.find(t=>t.type==='Local'&&position(t,now));if(active)$('train').value=active.id;}}
-function render(){
- const now=minutes($('time').value),selected=trains.find(t=>t.id===$('train').value);$('result').className='';
- if(!selected){$('result').replaceChildren(el('p','この時刻帯に選べる列車がありません。再生時刻を変更してください。'));$('diagram').replaceChildren();$('evidence').replaceChildren();return;}
- const result=compare(trains,selected.id,$('destination').value,now,Number($('buffer').value));
- const best=result.best;const content=[el('p','時刻表の参考比較', 'result-title')];
- if(best&&best.saving>0){content.push(el('div',`発時刻の差 ${best.saving}分`,'big'),el('p',`${name(best.station)}で乗換の候補`),el('p','到着短縮・接続可否は未確定。乗換推奨は出していません。'));}
- else content.push(el('div','先着を確定できません','big'),el('p',best?'目的駅の発時刻では、乗換による改善候補はありません。':'比較に必要な同一便・目的駅の発時刻をつなげられません。'));
- const grid=el('div',undefined,'grid');for(const [label,time]of[['そのまま：目的駅発',result.baselineDeparture],['乗換候補：目的駅発',best?.destinationDeparture]]){const box=el('div',undefined,'metric');box.append(el('small',label),el('strong',clock(time)));grid.append(box);}content.push(grid);
- if(best)content.push(el('p',`乗換 ${best.legs.length}回 / 乗換候補 ${clock(best.connectionTime)}発 ${TYPES[trains.find(t=>t.id===best.trainId).type]} ${trains.find(t=>t.id===best.trainId).destination}行 / 発時刻差 ${best.scheduledGap}分 / 必要余裕 ${best.minimumTransfer}分（設定値）`,'muted'));
- if(best?.legs.length>1)content.push(el('p',best.legs.map(leg=>`${name(leg.station)} ${clock(leg.connectionTime)}発 ${TYPES[trains.find(t=>t.id===leg.trainId).type]}`).join(' → ')));
- $('result').replaceChildren(...content);
- const diagram=$('diagram');diagram.replaceChildren();
- for(const station of model.stations){const beyond=station.index>model.stations.find(x=>x.id==='Noborito').index;const row=el('div',undefined,`station${beyond?' beyond':''}${best?.saving>0&&best.legs.some(leg=>leg.station===station.id)?' transfer':''}`);const label=el('div',station.name,'station-name');const stop=selected.stops.find(s=>s.station===station.id);label.append(el('small',stop?`${clock(stop.time)} 発${beyond?' / 線路構成未取得':''}`:'発時刻の結合なし'));row.append(label,el('div',undefined,'track'),el('div',undefined,'track'));diagram.append(row);}
- let active=trains.map(t=>({t,p:position(t,now)})).filter(x=>x.p);active.sort((a,b)=>a.p.index-b.p.index);
- const occupancy=new Map();
- for(const {t,p}of active){const unassigned=p.from==='Noborito';const fast=!unassigned&&['Express','RapidExpress'].includes(t.type);const marker=el('div',`${t.id===selected.id?'★ 自分 ':''}🚆 ${TYPES[t.type]}\n${t.destination}行`,`${t.type} marker${unassigned?' unassigned':''}${fast?' fast':''}${t.id===selected.id?' selected':''}${Object.values(result.neighbours).includes(t.id)?' near':''}`);marker.style.whiteSpace='pre-line';const key=`${fast}:${Math.floor(p.index)}`;const offset=occupancy.get(key)||0;occupancy.set(key,offset+1);marker.style.top=`${p.index*92+24+offset*27}px`;marker.title=`${trainLabel(t)} / ${name(p.from)}〜${name(p.to)}（補間推定）`;diagram.append(marker);}
- const ev=[el('p',`選択：${trainLabel(selected)}`),el('p','列車ID：未取得。千代田線直通：未確定（代々木上原発の列車も表示。新宿発との未結合だけでは直通と断定しません）。')];const list=el('ul');for(const reason of result.reasons)list.append(el('li',reason));ev.push(list);
- if(selected.unresolved)ev.push(el('p',`結合打切り：${name(selected.unresolved.station)} / ${selected.unresolved.reason} / 候補 ${selected.unresolved.candidates??'不明'}`));
- ev.push(el('p',`前方・後方：${result.neighbours.ahead?'前方候補あり':'前方不明'} / ${result.neighbours.behind?'後方候補あり':'後方不明'}（位置は推定）`));
- if(best?.overtakes.length)ev.push(el('p',best.overtakes.map(o=>`${name(o.from)}〜${name(o.to)}：発時刻の順序逆転（追越し仮説）`).join(' / ')));
- const table=el('table');const head=el('tr');for(const h of ['駅','発時刻','出典更新'])head.append(el('th',h));table.append(head);for(const s of selected.stops){const r=el('tr');for(const cell of[name(s.station),clock(s.time),s.sourceUpdatedAt?.slice(0,10)||'不明'])r.append(el('td',cell));table.append(r);}ev.push(table);$('evidence').replaceChildren(...ev);
- $('source').textContent=`${model.source} / 取得 ${new Date(model.fetchedAt).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})} JST / ${model.departures.length.toLocaleString()}発時刻。保存データの静的再生であり、現在の運行状態ではありません。`;
- $('build').textContent=`Build ${BUILD}`;
+import { BUILD, TYPES, minutes, clock } from './core.mjs';
+import { planNavigation, scheduledPosition, CONNECTION_LABELS } from './navigation.mjs';
+
+const $ = id => document.getElementById(id);
+let model, trips = [], generation = 0;
+const name = id => model.stations.find(s => s.id === id)?.name || id;
+function element(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (className) node.className = className;
+  return node;
 }
-function safe(action){return async()=>{try{await action();}catch(e){$('result').className='error';$('result').replaceChildren(el('p',e.message));$('diagram').replaceChildren();$('evidence').replaceChildren();}};}
-$('snapshot').addEventListener('change',safe(load));$('calendar').addEventListener('change',safe(()=>{trains=hypotheses(model,$('calendar').value);setTrains();render();}));$('time').addEventListener('change',safe(()=>{setTrains();render();}));for(const id of['train','destination','buffer'])$(id).addEventListener('change',safe(render));
-$('example').addEventListener('click',safe(()=>{$('calendar').value='Weekday';$('time').value='08:15';$('destination').value='Noborito';$('buffer').value='3';trains=hypotheses(model,'Weekday');setTrains();const t=trains.find(t=>t.origin==='Shinjuku'&&t.type==='Local'&&t.stops[0].time===minutes('08:09'));if(!t)throw Error('この保存データに比較例はありません');$('train').value=t.id;render();}));
-await safe(async()=>{manifest=await get('/api/snapshots');$('snapshot').replaceChildren(...manifest.map(s=>option(s.id,`${new Date(s.fetchedAt).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})} JST`)));await load();})();
+function option(value, text) { const node = element('option', text); node.value = value; return node; }
+function label(trip) { return `${clock(trip.stops[0].departure)} ${name(trip.origin)} ${TYPES[trip.type]} ${trip.destination}行`; }
+async function get(url) {
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) throw Error(`データを読み込めません (${response.status})`);
+  return response.json();
+}
+async function load() {
+  const version = ++generation;
+  const loaded = await get(`/api/model?snapshot=${encodeURIComponent($('snapshot').value)}`);
+  if (version !== generation) return;
+  model = loaded;
+  if (!Array.isArray(model.trips) || !model.reconstruction) throw Error('列車ID付きデータがありません');
+  setTrains(); render();
+}
+function setTrains() {
+  const previous = $('train').value, now = minutes($('time').value);
+  trips = model.trips.filter(t => t.calendar === $('calendar').value);
+  const visible = trips.filter(t => t.stops[0].departure >= now - 60 && t.stops[0].departure <= now + 30);
+  $('train').replaceChildren(option('', '乗車列車を選択してください'), ...visible.map(t => option(t.id, label(t))));
+  if (visible.some(t => t.id === previous)) $('train').value = previous;
+}
+function connectionNode(leg) {
+  const train = trips.find(t => t.id === leg.trainId);
+  const box = element('div', undefined, `connection ${leg.connection.status}`);
+  box.append(element('strong', leg.connection.label),
+    element('p', `${name(leg.station)} ${clock(leg.departure)}発 ${TYPES[train.type]} ${train.destination}行`),
+    element('p', `時刻表の間隔 ${leg.connection.gapMinutes}分 / 移動の仮レンジ ${Math.ceil(leg.connection.movementSeconds.min / 60)}〜${Math.ceil(leg.connection.movementSeconds.max / 60)}分`, 'muted'));
+  const details = element('details'), summary = element('summary', '接続の根拠');
+  const list = element('ul');
+  for (const reason of leg.connection.reasons) list.append(element('li', reason));
+  list.append(element('li', `分精度による時間差 ${leg.connection.availableSeconds.min}〜${leg.connection.availableSeconds.max}秒。実際の発着秒・乗降時間は未取得`));
+  details.append(summary, list); box.append(details);
+  return box;
+}
+function renderResult(plan) {
+  const nodes = [element('p', '保存定刻ダイヤ・取得区間内の比較', 'result-title')];
+  const recommendation = plan.recommendation;
+  if (plan.status === 'SCHEDULED_ARRIVED') {
+    nodes.push(element('div', '定刻では到着済み', 'big'), element('p', `目的駅 ${clock(plan.baseline.arrival)}着。実際の遅延・現在位置は未取得です。`));
+  } else if (!plan.baseline) {
+    nodes.push(element('div', '目的駅の着時刻がありません', 'big'), element('p', '向ヶ丘遊園着や、この列車の目的駅着は未取得です。発時刻から着時刻を作らず、乗換推奨を保留します。登戸までの比較は目的地を切り替えて確認できます。'));
+  } else if (recommendation.transfers === 0) {
+    nodes.push(element('div', `このまま${name($('destination').value)}へ`, 'big'),
+      element('p', '取得範囲では、接続見込みのある乗換で短縮なし。同着なら乗換なしを優先します。'));
+  } else {
+    nodes.push(element('div', `ダイヤ上 ${recommendation.saving}分早着`, 'big'),
+      element('p', `${name(recommendation.legs[0].station)}で乗換 / ${CONNECTION_LABELS[recommendation.connection]}`),
+      element('p', '番線・移動時間は未確認のため、接続を保証する案内ではありません。'));
+  }
+  const grid = element('div', undefined, 'grid');
+  for (const [title, time] of [['乗り続ける：着', plan.baseline?.arrival], [recommendation?.transfers === 0 ? '乗換なしを優先：着' : '乗換案：着', recommendation?.arrival]]) {
+    const metric = element('div', undefined, 'metric'); metric.append(element('small', title), element('strong', clock(time))); grid.append(metric);
+  }
+  nodes.push(grid);
+  if (plan.bestConditional?.connection === 'tight' && plan.bestConditional.saving > 0) {
+    nodes.push(element('p', `ギリギリの候補は ${clock(plan.bestConditional.arrival)}着 / ${plan.bestConditional.saving}分早着。接続できない可能性があるため別枠にしています。`, 'tight-note'));
+  }
+  $('result').replaceChildren(...nodes);
+  const connections = [];
+  for (const candidate of plan.alternatives.slice(0, 4)) {
+    const card = element('div', undefined, 'candidate');
+    card.append(element('p', `${clock(candidate.arrival)}着 / 乗換${candidate.transfers}回${candidate.saving === null ? '' : candidate.saving > 0 ? ` / ${candidate.saving}分早着` : candidate.saving === 0 ? ' / 同着' : ` / ${Math.abs(candidate.saving)}分遅着`}`));
+    for (const leg of candidate.legs) card.append(connectionNode(leg));
+    connections.push(card);
+  }
+  if (plan.difficult[0]) connections.push(connectionNode(plan.difficult[0]));
+  if (!connections.length) connections.push(element('p', '明示着発による比較候補がありません。'));
+  $('connections').replaceChildren(...connections);
+}
+function renderDiagram(selected, now, plan) {
+  const diagram = $('diagram'); diagram.replaceChildren();
+  for (const station of model.stations) {
+    const stop = selected.stops.find(s => s.station === station.id);
+    const transfer = plan.recommendation?.legs?.some(l => l.station === station.id);
+    const row = element('div', undefined, `station${station.id === 'MukogaokaYuen' ? ' beyond' : ''}${transfer ? ' transfer' : ''}`);
+    const title = element('div', station.name, 'station-name');
+    let text = selected.knownPasses.includes(station.id) ? '通過（通常種別の停車規則）' : 'この駅の着発は未取得';
+    if (stop) text = `${stop.arrival !== null ? clock(stop.arrival) + '着 ' : ''}${stop.departure !== null ? clock(stop.departure) + '発' : ''}`;
+    title.append(element('small', text));
+    if (station.id === $('destination').value && plan.recommendation?.saving > 0) title.append(element('small', `乗換案 ${clock(plan.recommendation.arrival)}着`, 'early-note'));
+    row.append(title, element('div', undefined, 'track'), element('div', undefined, 'track')); diagram.append(row);
+  }
+  const selectedPosition = scheduledPosition(selected, now);
+  const selectedBanner = element('p', `★ 自分：${label(selected)} / ${selectedPosition ? '保存ダイヤによる推定位置' : 'この時刻の位置は未確定'}`, 'selected-banner');
+  diagram.prepend(selectedBanner);
+  const positions = trips.map(trip => ({ trip, point: scheduledPosition(trip, now) })).filter(x => x.point);
+  const ahead = selectedPosition ? positions.filter(x => x.trip.id !== selected.id && x.point.index > selectedPosition.index).sort((a, b) => a.point.index - b.point.index)[0]?.trip.id : null;
+  const behind = selectedPosition ? positions.filter(x => x.trip.id !== selected.id && x.point.index < selectedPosition.index).sort((a, b) => b.point.index - a.point.index)[0]?.trip.id : null;
+  const placed = new Map();
+  for (const { trip, point } of positions) {
+    const fast = ['RapidExpress', 'Express'].includes(trip.type);
+    const key = `${fast}:${Math.floor(point.index)}`, offset = placed.get(key) || 0; placed.set(key, offset + 1);
+    const marker = element('div', `${trip.id === selected.id ? '★ 自分 ' : trip.id === ahead ? '前方 ' : trip.id === behind ? '後方 ' : ''}🚆 ${TYPES[trip.type]}\n${trip.destination}行`,
+      `marker ${trip.type}${fast ? ' fast' : ''}${trip.id === selected.id ? ' selected' : ''}${trip.id === ahead ? ' ahead' : ''}${trip.id === behind ? ' behind' : ''}`);
+    marker.style.whiteSpace = 'pre-line'; marker.style.top = `${selectedBanner.getBoundingClientRect().height + 16 + point.index * 92 + 24 + offset * 27}px`;
+    marker.title = `${label(trip)} / ${name(point.from)}〜${name(point.to)}（保存定刻ダイヤによる推定）`; diagram.append(marker);
+  }
+}
+function renderEvidence(selected, plan) {
+  const nodes = [element('p', `選択：${label(selected)}`), element('p', `提供元便ID：${selected.sourceTrainId}。運転列車番号ではありません。`),
+    element('p', `千代田線から同じ列車で継続：${selected.throughChiyoda === false ? '代々木上原始発の記録あり' : '未確定。直通先IDの対応は未取得'}`),
+    element('p', plan.scope)];
+  const table = element('table'), heading = element('tr');
+  for (const title of ['駅', '着', '発']) heading.append(element('th', title)); table.append(heading);
+  for (const stop of selected.stops) {
+    const row = element('tr'); for (const cell of [name(stop.station), clock(stop.arrival), clock(stop.departure)]) row.append(element('td', cell)); table.append(row);
+  }
+  nodes.push(table);
+  for (const leg of plan.recommendation?.legs || []) for (const reversal of leg.reversals) {
+    nodes.push(element('p', `${name(reversal.from)}〜${name(reversal.to)}：着発順序が逆転（保存ダイヤの先着関係）。追越し地点・番線は未取得。`));
+  }
+  nodes.push(element('p', '同一便は提供元IDでのみ結合。途中駅の欠測を補完しません。独立照合できたのはODPTの発時刻です。着時刻の別資料照合・実際の遅延は未確認。'));
+  $('evidence').replaceChildren(...nodes);
+}
+function render() {
+  const now = minutes($('time').value), selected = trips.find(t => t.id === $('train').value);
+  $('source').textContent = `提供元ID付き ${model.reconstruction.accepted}便（平土休日計）。独立照合：発時刻 ${model.reconstruction.departureChecks}件一致 / 不一致 ${model.reconstruction.departureMismatches}件。元データ確認 ${new Date(model.reconstruction.sourceCheckedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。着時刻の独立照合は未実施。ODPT取得 ${new Date(model.fetchedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。`;
+  $('build').textContent = `Build ${BUILD}`;
+  const departures = model.departures.filter(d => d.calendar === $('calendar').value && d.station === $('destination').value && d.time >= now).sort((a, b) => a.time - b.time).slice(0, 8);
+  $('departures').replaceChildren(...departures.map(d => element('p', `${clock(d.time)}発 ${TYPES[d.type]} ${d.destinationName}行（着時刻ではありません）`)));
+  if (!selected) {
+    $('result').replaceChildren(element('p', '乗車列車を手動選択してください。')); $('diagram').replaceChildren(); $('connections').replaceChildren(); $('evidence').replaceChildren(); return;
+  }
+  if ($('buffer').value === '') throw Error('追加の余裕は0〜10の整数で指定してください');
+  const plan = planNavigation(trips, selected.id, $('destination').value, now, {
+    stationConditions: { YoyogiUehara: $('uehara-condition').value, SeijogakuenMae: $('seijo-condition').value },
+    mobility: $('mobility').value, extraMinutes: Number($('buffer').value)
+  });
+  $('result').className = ''; renderResult(plan); renderDiagram(selected, now, plan); renderEvidence(selected, plan);
+}
+function safe(action) {
+  return async () => { try { await action(); } catch (error) {
+    $('result').className = 'error'; $('result').replaceChildren(element('p', error.message));
+    $('diagram').replaceChildren(); $('connections').replaceChildren(); $('evidence').replaceChildren();
+  } };
+}
+$('snapshot').addEventListener('change', safe(load));
+$('calendar').addEventListener('change', safe(() => { setTrains(); render(); }));
+$('time').addEventListener('change', safe(() => { setTrains(); render(); }));
+for (const id of ['train', 'destination', 'uehara-condition', 'seijo-condition', 'mobility', 'buffer']) $(id).addEventListener('change', safe(render));
+$('example').addEventListener('click', safe(() => {
+  const example = model.example; if (!example) throw Error('この保存データに比較例がありません');
+  const selected = model.trips.find(t => t.id === example.selectedId);
+  $('calendar').value = selected.calendar; $('time').value = clock(example.compareAt); $('destination').value = 'Noborito';
+  // Preserve the user's home/platform and mobility conditions when replaying a train example.
+  setTrains(); const train = trips.find(t => t.id === example.selectedId);
+  if (!train) throw Error('このデータに比較例がありません'); $('train').value = train.id; render();
+}));
+$('now').addEventListener('click', safe(() => {
+  $('time').value = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()); setTrains(); render();
+}));
+await safe(async () => {
+  const snapshots = await get('/api/snapshots');
+  $('snapshot').replaceChildren(...snapshots.map(s => option(s.id, `${new Date(s.fetchedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST`))); await load();
+})();

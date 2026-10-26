@@ -1,7 +1,28 @@
-import {writeFile,rename}from'node:fs/promises';import{latest,DATA_DIR}from'./storage.mjs';import{normalize,hypotheses,compare,minutes}from'./core.mjs';
-const[t,r,s]=await Promise.all(['StationTimetable','Railway','Station'].map(latest));const model=normalize(t.rows,r.rows,s.rows,t.fetchedAt);
-await writeFile(new URL('model.json.tmp',DATA_DIR),JSON.stringify(model));await rename(new URL('model.json.tmp',DATA_DIR),new URL('model.json',DATA_DIR));
-const trains=hypotheses(model,'Weekday'),selected=trains.find(t=>t.origin==='Shinjuku'&&t.type==='Local'&&t.stops[0].time===minutes('08:09'));
-const results={};for(const destination of['Noborito','MukogaokaYuen'])results[destination]=compare(trains,selected.id,destination,minutes('08:15'));
-const summary={departures:model.departures.length,stations:model.stations.length,hypotheses:trains.length,reachesNoborito:trains.filter(t=>t.stops.some(s=>s.station==='Noborito')).length,results};
-await writeFile(new URL('analysis.json',DATA_DIR),JSON.stringify(summary,null,2));console.log(JSON.stringify({departures:summary.departures,stations:summary.stations,hypotheses:summary.hypotheses,comparisons:Object.fromEntries(Object.entries(results).map(([k,v])=>[k,{saving:v.best?.saving,transfers:v.best?.legs.length,departure:v.best?.destinationDeparture}]))}));
+import { readFile, writeFile, rename } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { latest, DATA_DIR } from './storage.mjs';
+import { normalize } from './core.mjs';
+import { reconstructTrips } from './reconstruct.mjs';
+import { planNavigation } from './navigation.mjs';
+
+const [t, r, s] = await Promise.all(['StationTimetable', 'Railway', 'Station'].map(latest));
+const model = normalize(t.rows, r.rows, s.rows, t.fetchedAt);
+const providerBytes = await readFile(new URL('../../bus/release-static/kazu-commute-static.json', import.meta.url));
+const reconstructed = reconstructTrips(JSON.parse(providerBytes), model);
+model.trips = reconstructed.trips;
+model.reconstruction = reconstructed.report;
+model.providerArtifactSha256 = createHash('sha256').update(providerBytes).digest('hex');
+let example = null;
+try {
+  const reference = JSON.parse(await readFile(new URL('navigation-reference.json', DATA_DIR), 'utf8'));
+  if (model.trips.some(t => t.id === reference.selectedId)) example = reference;
+} catch (error) { if (error.code !== 'ENOENT') throw error; }
+const results = example ? Object.fromEntries(['Noborito', 'MukogaokaYuen'].map(destination =>
+  [destination, planNavigation(model.trips, example.selectedId, destination, example.compareAt)])) : null;
+for (const [name, value] of [['model.json', model], ['analysis.json', { report: reconstructed.report, results, exampleAvailable: Boolean(example) }]]) {
+  await writeFile(new URL(name + '.tmp', DATA_DIR), JSON.stringify(value, null, 2));
+  await rename(new URL(name + '.tmp', DATA_DIR), new URL(name, DATA_DIR));
+}
+console.log(JSON.stringify({ departures: model.departures.length, providerTrains: model.trips.length,
+  checkedDepartures: reconstructed.report.departureChecks, rejected: reconstructed.report.rejected,
+  exampleAvailable: Boolean(example), comparisonStatus: results ? Object.fromEntries(Object.entries(results).map(([key, result]) => [key, result.status])) : null }));
