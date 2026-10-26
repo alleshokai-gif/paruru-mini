@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const byId = id => document.getElementById(id);
-  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, developmentMetricsApi = null, inboxAnswerApi = null, aiEngineApi = null, aiObservationApi = null;
+  let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, developmentMetricsApi = null, inboxAnswerApi = null, aiEngineApi = null, aiObservationApi = null, aiProgressStatusApi = null;
   let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0, todayClockTimer = null;
   let lastKazRoute = '#kaz-os/today';
   let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, contextEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
@@ -567,31 +567,16 @@
     details.append(summary, note);
     const completed = new Set();
     const allButtons = new Map();
-    async function submit(feature, item, action, label, output, buttons) {
+    async function submit(feature, item, action, label, output, buttons, savedPayload = null) {
       if (completed.has(item.id)) return;
+      const payload = savedPayload || { feature, work_id: item.id, action,
+        observed_at: observedAtJst(), note: feature === 'check_in' ? note.value.trim() : '' };
       buttons.forEach(button => { button.disabled = true; });
       output.textContent = '記録しています…';
       try {
-        const receipt = await aiObservationApi({ feature, work_id: item.id, action,
-          observed_at: observedAtJst(), note: feature === 'check_in' ? note.value.trim() : '' });
+        const receipt = await aiObservationApi(payload);
         if (!current()) return;
-        let refreshed = null;
-        if (receipt.work_updated === true) {
-          output.textContent = action === 'done'
-            ? '完了を反映しました。' : '明日へ持ち越しました。';
-          if (receipt.snapshot_refresh === 'unknown' || receipt.snapshot_refresh === 'not_configured')
-            output.textContent += ' 一覧の更新は確認中です。';
-          completed.add(item.id);
-          (allButtons.get(item.id) || []).forEach(button => { button.disabled = true; });
-          refreshed = await onProgress?.(item.id, action);
-        } else {
-          output.textContent = receipt.status === 'already_saved'
-            ? '同じ選択は記録済みです。' : `${label}を記録しました。`;
-          buttons.forEach(button => { button.disabled = button.dataset.progressAction === action; });
-          refreshed = await onProgress?.(item.id, action);
-        }
-        if (refreshed === true) output.textContent += ' 今日の計画を読み直しました。';
-        else if (refreshed === false) output.textContent += ' 最新計画の再読込は未確認です。画面を更新して確認してください。';
+        await confirmSaved(item, action, label, output, buttons, receipt);
       } catch (error) {
         if (!current()) return;
         if (['AUTHENTICATION_REQUIRED', 'AUTH_ENVELOPE_TIMEOUT'].includes(error?.code)) {
@@ -606,12 +591,87 @@
         } else if (error?.code === 'AI_PROGRESS_WRITE_CONFIG_INVALID') {
           output.textContent = '更新の準備ができていません。しばらくしてから確認してください。';
           buttons.forEach(button => { button.disabled = false; });
-        } else if (error?.code === 'AI_PROGRESS_STORE_UNAVAILABLE') {
-          output.textContent = '保存できませんでした。接続を確認し、後で操作してください。';
-          buttons.forEach(button => { button.disabled = false; });
         } else {
-          output.textContent = '保存結果を確認できません。重複を避けるため、この画面からは再送信しないでください。';
+          output.textContent = '保存状態を確認しています…';
+          addStatusCheck(feature, item, action, label, output, buttons, payload);
+          await checkStatus(feature, item, action, label, output, buttons, payload);
         }
+      }
+    }
+    async function confirmSaved(item, action, label, output, buttons, receipt) {
+      for (const node of Array.from(output.parentNode?.children || [])) {
+        if (node.dataset?.progressStatusCheck === 'true'
+            || node.dataset?.progressExplicitRetry === 'true') node.remove();
+      }
+      let refreshed = null;
+      if (receipt.work_updated === true) {
+        output.textContent = action === 'done'
+          ? '完了を反映しました。' : '明日へ持ち越しました。';
+        if (receipt.snapshot_refresh === 'unknown' || receipt.snapshot_refresh === 'not_configured')
+          output.textContent += ' 一覧の更新は確認中です。';
+        completed.add(item.id);
+        (allButtons.get(item.id) || []).forEach(button => { button.disabled = true; });
+      } else {
+        output.textContent = receipt.status === 'already_saved'
+          ? '同じ選択は記録済みです。' : `${label}を記録しました。`;
+        buttons.forEach(button => { button.disabled = button.dataset.progressAction === action; });
+      }
+      try { refreshed = await onProgress?.(item.id, action); }
+      catch (_) { refreshed = false; }
+      if (refreshed === true) output.textContent += ' 今日の計画を読み直しました。';
+      else if (refreshed === false) output.textContent += ' 最新計画の再読込は未確認です。画面を更新して確認してください。';
+    }
+    function addStatusCheck(feature, item, action, label, output, buttons, payload) {
+      if (output.querySelector('[data-progress-status-check]')) return;
+      const button = document.createElement('button'); button.type = 'button';
+      button.className = 'kp-button kai-observation-send';
+      button.textContent = '保存状態を確認'; button.dataset.progressStatusCheck = 'true';
+      button.addEventListener('click', () => void checkStatus(
+        feature, item, action, label, output, buttons, payload));
+      output.after(button);
+    }
+    async function checkStatus(feature, item, action, label, output, buttons, payload) {
+      if (!aiProgressStatusApi) {
+        output.textContent = '保存状態を確認できません。通信が戻った後に、もう一度状態を確認してください。';
+        return;
+      }
+      const controls = allButtons.get(item.id) || buttons;
+      controls.forEach(button => { button.disabled = true; });
+      const statusButton = output.parentNode?.querySelector('[data-progress-status-check]');
+      if (statusButton) statusButton.disabled = true;
+      output.textContent = '保存状態を確認しています…';
+      try {
+        const status = await aiProgressStatusApi({ feature, work_id: item.id, action,
+          observed_at: payload.observed_at });
+        if (!current()) return;
+        if (status.status === 'saved') {
+          await confirmSaved(item, action, label, output, buttons, {
+            status: 'already_saved', work_updated: status.work_updated
+          });
+          statusButton?.remove();
+        } else if (status.status === 'not_recorded') {
+          output.textContent = 'この操作は保存されていません。内容を確認してから再送信できます。';
+          controls.forEach(button => { button.disabled = true; });
+          if (!output.parentNode?.querySelector('[data-progress-explicit-retry]')) {
+            const retry = document.createElement('button'); retry.type = 'button';
+            retry.className = 'kp-button kai-observation-send';
+            retry.textContent = `「${label}」を再送信`; retry.dataset.progressExplicitRetry = 'true';
+            retry.addEventListener('click', () => {
+              retry.disabled = true;
+              void submit(feature, item, action, label, output, buttons, payload);
+            });
+            statusButton?.after(retry);
+            if (!statusButton) output.after(retry);
+          }
+          if (statusButton) statusButton.disabled = false;
+        } else {
+          output.textContent = '保存状態をまだ確定できません。重複を避けるため再送信は止めています。後で状態を再確認してください。';
+          if (statusButton) statusButton.disabled = false;
+        }
+      } catch (_) {
+        if (!current()) return;
+        output.textContent = '保存状態を確認できませんでした。重複を避けるため再送信は止めています。通信が戻った後に状態を再確認してください。';
+        if (statusButton) statusButton.disabled = false;
       }
     }
     for (const item of work) {
@@ -1424,6 +1484,7 @@
     developmentMetricsApi = event.detail?.kazOsDevelopmentMetricsApi || null;
     aiEngineApi = event.detail?.kazOsAiEngineApi || null;
     aiObservationApi = event.detail?.kazOsAiObservationApi || null;
+    aiProgressStatusApi = event.detail?.kazOsAiProgressStatusApi || null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
     v3DashboardApi = event.detail?.kazOsV3DashboardApi || null;
     v3InboxApi = event.detail?.kazOsV3InboxApi || null;
@@ -1449,6 +1510,7 @@
     developmentMetricsApi = null;
     aiEngineApi = null;
     aiObservationApi = null;
+    aiProgressStatusApi = null;
     inboxAnswerApi = null;
     v3DashboardApi = null;
     v3InboxApi = null;
