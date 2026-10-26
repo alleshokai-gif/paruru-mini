@@ -57,7 +57,7 @@ function descendants(node) {
 
 async function run(hourJst, slowShadow = false, claimed = false, targeted = false,
   actionChoice = '継続中', planCalendarStatus = 'ok', recovery = null,
-  sourcePicker = false, emptyPlan = false) {
+  sourcePicker = false, emptyPlan = false, initialStatus = 'not_recorded') {
   const handlers = {};
   const host = new Node();
   const view = new Node();
@@ -81,7 +81,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   const source = fs.readFileSync(path.join(__dirname, '../features/kaz-os/navigation.js'), 'utf8');
   vm.runInNewContext(source, sandbox);
   const sent = [];
-  let planningReads = 0, dashboardReads = 0;
+  let planningReads = 0, dashboardReads = 0, statusReads = 0;
   const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const evidence = id => {
     const text = id === 'work-1' ? '架空の作業 · DOING · 資料を確認する。残りの説明はWork詳細で確認する'
@@ -147,6 +147,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     },
     kazOsAiProgressStatusApi: async payload => {
       assert.deepEqual(Object.keys(payload).sort(), ['action', 'feature', 'observed_at', 'work_id']);
+      statusReads++;
+      if (statusReads === 1) return { status: initialStatus, work_updated: false };
       return { status: recovery === 'not_recorded' ? 'not_recorded' : 'unknown', work_updated: false };
     },
   } });
@@ -231,6 +233,19 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   (selectedActionButton || buttons.find(node => node.textContent === actionChoice)).listeners.click();
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setTimeout(resolve, 60));
+  if (initialStatus === 'unknown') {
+    assert.equal(sent.length, 0, 'unknown preflight status never sends the progress mutation');
+    assert.equal(statusReads, 1);
+    assert.ok(descendants(host).some(node => node.textContent.includes('送信していません')));
+    return;
+  }
+  if (initialStatus === 'saved') {
+    assert.equal(sent.length, 0, 'a saved operation is refreshed without another POST');
+    assert.equal(statusReads, 1);
+    assert.ok(descendants(host).some(node => node.textContent.includes('同じ選択は記録済みです')));
+    assert.equal(planningReads, 2);
+    return;
+  }
   if (recovery) {
     assert.equal(sent.length, 1, 'uncertain operation is never retried automatically');
     const statusCheck = descendants(host).find(node => node.dataset.progressStatusCheck === 'true');
@@ -256,6 +271,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     return;
   }
   assert.equal(sent.length, 1);
+  assert.equal(statusReads, 1, 'status is read before every progress mutation');
   assert.equal(sent[0].feature, actionChoice === '明日へ持ち越し' ? 'night_review' : 'check_in');
   assert.equal(sent[0].work_id, sourcePicker ? 'work-4' : 'work-1');
   assert.equal(sent[0].action, ({ '完了': 'done', '継続中': 'on_track', '延期': 'delayed',
@@ -290,6 +306,9 @@ Promise.all([run(18), run(21), run(18, false, false, false, 'ブロック'),
   run(18, false, false, 'company'), run(18, false, false, false, '完了', 'ok', 'not_recorded'),
   run(18, false, false, false, '完了', 'ok', 'unknown'),
   run(18, false, false, false, '継続中', 'ok', null, true),
-  run(18, false, false, false, '継続中', 'ok', null, true, true)]).then(() => {
+  run(18, false, false, false, '継続中', 'ok', null, true, true),
+  run(18, false, false, false, '継続中', 'ok', null, false, false, 'saved'),
+  run(18, false, false, false, '継続中', 'ok', null, false, false, 'unknown')]).then(() => {
   process.stdout.write('PASS progress actions after AI claim and explicit Work readback receipt\n');
 }).catch(error => { process.stderr.write(String(error.stack || error) + '\n'); process.exitCode = 1; });
+
