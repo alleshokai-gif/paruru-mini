@@ -45,6 +45,26 @@
     NO_ADVICE: '追加提案なし', NEEDS_INPUT: '必要なときだけ進み具合を選択',
   });
 
+  function recordTodayDiagnostic(stage, outcome, classification = 'none', errorCode = null) {
+    try {
+      const diagnostics = globalThis.PALURUTransportDiagnostics;
+      if (!diagnostics?.start || !diagnostics?.record) return;
+      const context = diagnostics.start('kaz_read', 'kazOs.today.render');
+      diagnostics.record(context, { attempt: 1, elapsedMs: 0, classification,
+        backendStage: stage, outcome, errorCode, transportType: null });
+    } catch (_) { /* Diagnostics must not affect TODAY rendering. */ }
+  }
+
+  function todaySafeError(error) {
+    const known = new Set(['AUTHENTICATION_REQUIRED', 'FORBIDDEN', 'DIRECT_READ_FAILED',
+      'DIRECT_READ_RESPONSE_INVALID', 'TODAY_CONTRACT_INVALID', 'DIRECT_READ_CONFIG_INVALID']);
+    if (known.has(error?.code)) return error.code;
+    if (error?.name === 'TypeError') return 'TODAY_RENDER_TYPE_ERROR';
+    if (error?.name === 'ReferenceError') return 'TODAY_RENDER_REFERENCE_ERROR';
+    if (error?.name === 'SyntaxError') return 'TODAY_RENDER_SYNTAX_ERROR';
+    return 'TODAY_RENDER_FAILED';
+  }
+
   async function digestJson(value) {
     const bytes = new globalThis.TextEncoder().encode(JSON.stringify(value));
     return [...new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes))]
@@ -848,7 +868,9 @@
     try {
       const data = await todayApi();
       if (!current()) return;
+      recordTodayDiagnostic('TODAY_RENDER', 'progress');
       globalThis.KazPersonalView.render(host, selection, data);
+      recordTodayDiagnostic('TODAY_RENDER_COMPLETE', 'success');
       const workUntil = Date.parse(data?.sources?.work_items?.valid_until);
       const calendarUntil = Date.parse(data?.sources?.calendar?.valid_until);
       const until = [workUntil, calendarUntil].filter(Number.isFinite).sort((a,b)=>a-b)[0];
@@ -860,6 +882,8 @@
     } catch (error) {
       if (!current()) return;
       const status = error?.code === 'KAZ_NOT_CONNECTED' ? 'not_connected' : 'failed';
+      recordTodayDiagnostic('TODAY_READ_OR_RENDER_FAILED', 'unresolved',
+        error?.transportClassification || (error?.httpStatus ? 'http' : 'unknown'), todaySafeError(error));
       globalThis.KazPersonalView.render(host, selection, {
         schema_version: 'kaz-today-plan-v1',
         origin: 'real_operational_sources',
@@ -1001,6 +1025,7 @@
       const host = byId('kazPersonalContent');
       if (!host) return;
       host.textContent = `${pageLabel}を確認中…`;
+      let todayFailureStage = 'DASHBOARD_READ';
       try {
         if (selection.page === 'context') {
           const data = await contextApi();
@@ -1020,10 +1045,30 @@
           selection.page === 'inbox' ? v3InboxApi() : v3DashboardApi(),
           selection.page === 'today' && typeof todayApi === 'function' ? todayApi() : Promise.resolve(null),
         ]);
-        if (snapshotResult.status !== 'fulfilled') throw snapshotResult.reason;
+        const validTodayPlan = selection.page === 'today' && planResult.status === 'fulfilled'
+          && planResult.value?.schema_version === 'kaz-today-plan-v2' && planResult.value?.today;
+        if (snapshotResult.status !== 'fulfilled' && validTodayPlan) {
+          host.replaceChildren();
+          const notice = document.createElement('p');
+          notice.className = 'kp-notice';
+          notice.setAttribute('role', 'status');
+          notice.textContent = 'NOW・NEXTと会社／家庭の計画を表示中。進捗情報を取得できないため、進捗操作は一時的に利用できません。';
+          const planHost = document.createElement('div');
+          planHost.dataset.dailyPlanning = 'v2-partial';
+          host.append(notice, planHost);
+          todayFailureStage = 'TODAY_RENDER';
+          globalThis.KazPersonalView.render(planHost, selection, planResult.value);
+          recordTodayDiagnostic('TODAY_PLAN_PARTIAL_DISPLAY', 'success', 'none', 'DASHBOARD_SNAPSHOT_UNAVAILABLE');
+          return;
+        }
+        if (snapshotResult.status !== 'fulfilled') {
+          todayFailureStage = 'DASHBOARD_READ_FAILED';
+          throw snapshotResult.reason;
+        }
         let snapshot = snapshotResult.value;
         let dailyPlan = planResult.status === 'fulfilled' ? planResult.value : null;
         if (!current()) return;
+        todayFailureStage = 'COMPONENT_CONTRACT';
         const data = selection.page === 'inbox'
           ? globalThis.KazV3ComponentData.inbox(snapshot)
           : selection.page === 'today' && dailyPlan?.schema_version === 'kaz-today-plan-v2'
@@ -1047,7 +1092,9 @@
           actionHost.dataset.todayActions = 'true';
           host.append(briefHost, plannerHost, actionHost);
         }
+        todayFailureStage = 'TODAY_RENDER';
         globalThis.KazPersonalView.render(plannerHost, selection, data, Date.now(), options);
+        if (selection.page === 'today') recordTodayDiagnostic('TODAY_RENDER_COMPLETE', 'success');
         if (selection.page === 'today' && dailyPlan?.schema_version !== 'kaz-today-plan-v2') {
           const notice = document.createElement('p');
           notice.className = 'kp-notice';
@@ -1097,7 +1144,7 @@
           todayClockTimer?.unref?.();
         }
         void appendAiJudgments(actionHost, selection.page, current, snapshot, brief);
-      } catch (_) {
+      } catch (error) {
         if (!current()) return;
         if (selection.page === 'metrics') {
           host.replaceChildren();
@@ -1107,6 +1154,8 @@
           host.append(unavailable);
           return;
         }
+        if (selection.page === 'today') recordTodayDiagnostic(todayFailureStage,
+          'unresolved', error?.transportClassification || (error?.httpStatus ? 'http' : 'unknown'), todaySafeError(error));
         const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];
         globalThis.KazPersonalView.render(host, selection, { sources: { [sourceName]: { status: 'failed' } } });
       }

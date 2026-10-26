@@ -440,6 +440,8 @@ async function main() {
     const invalid = load(async () => response(200, { ...dashboard, today: null }));
     await assert.rejects(invalid.create({ config }).dashboardV3(),
       error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+    assert.equal(invalid.records.at(-1).values.backendStage, 'DIRECT_CONTRACT_VALIDATION',
+      'safe transport diagnostics must distinguish schema validation failure from network/auth failure');
     const missingConfirmations = { ...dashboard, today: { ...dashboard.today } };
     delete missingConfirmations.today.confirmations;
     await assert.rejects(load(async () => response(200, missingConfirmations))

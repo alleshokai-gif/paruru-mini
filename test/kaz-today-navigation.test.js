@@ -48,7 +48,11 @@ function createHarness(options = {}) {
     setAttribute() {},
     removeAttribute() {},
   }));
-  const content = { textContent: '', replaceChildren() {} };
+  const makeElement = tag => ({ tagName: tag, children: [], dataset: {}, classList: { add() {} },
+    setAttribute() {}, append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); }, prepend(...items) { this.children.unshift(...items); },
+    replaceChildren(...items) { this.children = [...items]; } });
+  const content = makeElement('div');
+  content.textContent = '';
   const elements = {
     kazOsView: {
       classList: { contains: name => name === 'is-active' && active },
@@ -71,6 +75,7 @@ function createHarness(options = {}) {
     document: {
       hidden: false,
       getElementById: id => elements[id] || null,
+      createElement: makeElement,
       querySelectorAll(selector) {
         if (selector === '#kazOsNav a') return anchors;
         if (selector === '[data-target-view="kaz-os"]') return [targetButton];
@@ -117,6 +122,10 @@ function createHarness(options = {}) {
       },
       render(host, selection, data) { rendered.push({ host, selection, data }); },
     },
+    PALURUTransportDiagnostics: {
+      start: (requestClass, action) => ({ requestClass, action }),
+      record: (_diagnostic, entry) => diagnosticRecords.push({ ...entry }),
+    },
   };
 
   vm.createContext(context);
@@ -144,6 +153,7 @@ function createHarness(options = {}) {
       },
       kazOsV3DashboardApi: async () => {
         dashboardCalls++;
+        if (typeof options.dashboardApi === 'function') return options.dashboardApi();
         return { component_data: { today: { sources: {}, today: {} } } };
       },
     },
@@ -190,6 +200,29 @@ function createHarness(options = {}) {
   await homeEntry.settle();
   assert.deepEqual(homeEntry.calls(), { dashboard: 1, today: 1 },
     'Kaz home entry must open TODAY through the dashboard and daily planning projection');
+
+  const planOnly = {
+    schema_version: 'kaz-today-plan-v2', origin: 'real_operational_sources',
+    mode: 'read_only', fixture_only: false,
+    sources: { work_items: { status: 'ok', complete: true }, calendar: { status: 'ok', complete: true } },
+    today: { now: { kind: 'single', items: [{ id: 'confirmed-now' }], basis: ['fixture'] },
+      next: { kind: 'none', items: [], basis: [] }, company_free_windows: [], calendar_free_windows: [] },
+  };
+  const dashboardUnavailable = createHarness({ todayApi: async () => planOnly,
+    dashboardApi: async () => { throw Object.assign(new Error('redacted'), { code: 'DIRECT_READ_FAILED' }); } });
+  dashboardUnavailable.authenticate();
+  dashboardUnavailable.setActive(true);
+  dashboardUnavailable.context.location.hash = '#kaz-os/today';
+  dashboardUnavailable.emitHashChange();
+  await dashboardUnavailable.settle();
+  assert.deepEqual(dashboardUnavailable.calls(), { dashboard: 1, today: 1 });
+  assert.equal(dashboardUnavailable.rendered.at(-1).data.schema_version, 'kaz-today-plan-v2',
+    'a healthy company/home planning response remains visible when the independent dashboard snapshot fails');
+  assert.equal(dashboardUnavailable.rendered.at(-1).data.today.now.items[0].id, 'confirmed-now');
+  assert(dashboardUnavailable.context.document.getElementById('kazPersonalContent').children[0].textContent
+    .includes('進捗情報を取得できない'), 'the unavailable progress-data portion must be stated explicitly');
+  assert(dashboardUnavailable.diagnosticRecords.some(item => item.backendStage === 'TODAY_PLAN_PARTIAL_DISPLAY'
+    && item.outcome === 'success' && item.errorCode === 'DASHBOARD_SNAPSHOT_UNAVAILABLE'));
 
   const internalRoute = createHarness();
   internalRoute.authenticate();
