@@ -497,8 +497,10 @@
   }
 
   function observationCandidates(snapshot) {
+    const recordableStates = new Set(['BACKLOG', 'READY', 'SCHEDULED', 'DOING',
+      'CODEX_RUNNING', 'HUMAN_REVIEW', 'ACCEPTANCE', 'BLOCKED', 'WAITING']);
     const work = new Map((snapshot.work || []).filter(item => item && typeof item.id === 'string'
-      && !['DONE', 'CANCELLED'].includes(item.state)).map(item => [item.id, item]));
+      && recordableStates.has(item.state)).map(item => [item.id, item]));
     const seen = new Set();
     return ['now', 'next', 'scheduled'].flatMap(lane => snapshot.today?.[lane] || [])
       .map(row => work.get(row?.id)).filter(item => {
@@ -567,6 +569,8 @@
     details.append(summary, note);
     const completed = new Set();
     const allButtons = new Map();
+    const recordableStates = new Set(['BACKLOG', 'READY', 'SCHEDULED', 'DOING',
+      'CODEX_RUNNING', 'HUMAN_REVIEW', 'ACCEPTANCE', 'BLOCKED', 'WAITING']);
     async function submit(feature, item, action, label, output, buttons, savedPayload = null) {
       if (completed.has(item.id)) return;
       const payload = savedPayload || { feature, work_id: item.id, action,
@@ -682,8 +686,10 @@
       const output = document.createElement('p'); output.setAttribute('role', 'status');
       output.setAttribute('aria-live', 'polite');
       const buttons = [];
-      for (const [action, label] of [['on_track', '継続中'], ['delayed', '延期'],
-        ['blocked', 'ブロック'], ['done', '完了']]) {
+      const actionsForItem = [['on_track', '継続中'], ['delayed', '延期'],
+        ['blocked', 'ブロック']];
+      if (item.state === 'ACCEPTANCE') actionsForItem.push(['done', '完了']);
+      for (const [action, label] of actionsForItem) {
         const button = document.createElement('button'); button.type = 'button';
         button.textContent = label; button.className = 'kp-button kai-observation-send';
         button.dataset.progressAction = action;
@@ -695,6 +701,55 @@
       allButtons.set(item.id, buttons);
       row.append(name, actions, output); review.appendChild(row);
     }
+    const plannedIds = new Set(work.map(item => item.id));
+    const otherWork = (snapshot.work || []).filter(item => item && typeof item.id === 'string'
+      && recordableStates.has(item.state) && !plannedIds.has(item.id));
+    if (otherWork.length) {
+      const picker = document.createElement('details');
+      picker.className = 'kai-observation-source-picker';
+      const pickerSummary = document.createElement('summary');
+      pickerSummary.textContent = 'ほかのWorkの進み具合を記録';
+      const pickerHelp = document.createElement('p');
+      pickerHelp.textContent = 'NOWや今日の計画に選ばれていないWorkも、正本にある未完了項目なら進捗だけ記録できます。状態そのものは変わりません。';
+      const field = document.createElement('label'); field.className = 'kai-observation-field';
+      field.textContent = 'Workを選択';
+      const select = document.createElement('select'); select.setAttribute('aria-label', 'Workを選択');
+      const placeholder = document.createElement('option'); placeholder.value = '';
+      placeholder.textContent = '進捗を記録するWorkを選ぶ'; select.appendChild(placeholder);
+      for (const item of otherWork) {
+        const option = document.createElement('option'); option.value = item.id;
+        option.textContent = `${item.title || '名称未設定のWork'} · ${item.state}`;
+        select.appendChild(option);
+      }
+      field.appendChild(select);
+      const selectedHost = document.createElement('div');
+      selectedHost.className = 'kai-observation-selected-work';
+      select.addEventListener('change', () => {
+        selectedHost.replaceChildren();
+        const item = otherWork.find(candidate => candidate.id === select.value);
+        if (!item) return;
+        const row = document.createElement('div'); row.className = 'kai-observation-work';
+        row.dataset.workItem = item.id;
+        const name = document.createElement('strong'); name.textContent = item.title || '名称未設定のWork';
+        const actions = document.createElement('div'); actions.className = 'kai-observation-actions';
+        const output = document.createElement('p'); output.setAttribute('role', 'status');
+        output.setAttribute('aria-live', 'polite');
+        const buttons = [];
+        for (const [action, label] of [['on_track', '継続中'], ['delayed', '延期'], ['blocked', 'ブロック']]) {
+          const button = document.createElement('button'); button.type = 'button';
+          button.textContent = label; button.className = 'kp-button kai-observation-send';
+          button.dataset.progressAction = action;
+          button.setAttribute('aria-label', `${item.title || '名称未設定のWork'}: ${label}`);
+          button.addEventListener('click', () => void submit('check_in', item,
+            action, label, output, buttons));
+          buttons.push(button); actions.appendChild(button);
+        }
+        allButtons.set(item.id, buttons);
+        row.append(name, actions, output); selectedHost.appendChild(row);
+      });
+      picker.append(pickerSummary, pickerHelp, field, selectedHost);
+      review.appendChild(picker);
+    }
     review.appendChild(details);
     const overview = host.querySelector('[data-today-overview]');
     if (overview) overview.after(section); else host.append(section);
@@ -705,7 +760,7 @@
     const nightText = document.createElement('p');
     nightText.textContent = '未完了の項目だけ表示しています。明日も続けるものだけ選んでください。';
     night.append(nightTitle, nightText);
-    for (const item of work) {
+    for (const item of work.filter(candidate => ['READY', 'SCHEDULED', 'DOING', 'BLOCKED', 'WAITING'].includes(candidate.state))) {
       const row = document.createElement('details'); row.className = 'kai-observation-work';
       const name = document.createElement('summary'); name.textContent = item.title || '名称未設定のWork';
       const button = document.createElement('button'); button.type = 'button';
