@@ -55,3 +55,22 @@ ODPT取得は既存`probe.mjs`と`bus/rail/challenge-client.js`を再利用す�
 任意のローカル `data/arrival-audit.json` があれば、保存Staticと別に公式画面で観察した既存着時刻の一致を検証する（新しい時刻を取り込む処理ではない）。現在の記録は平日3件一致・不一致0。同じ提供元の別取得経路であり、別提供者の資料照合ではない。未配置なら未実施、不正な記録はエラー、不一致便は案内対象外とする。元記録・個別便ID・時刻はGitへ追加しない。`verification.test.mjs` の実データ試験にはこのignored記録が必要。
 
 遊園着がない直接原因は既存Staticビルダーの保存区間制限。公式画面には着時刻があるが、追加の複製・加工の利用許諾は未確認のためアプリDBへ追加していない。現在の完成範囲は登戸への部分静的比較。日常利用する遊園版・新宿同一便追跡は未完成。
+
+## Phase 4：機能とデータを分離
+
+- 使用データで「保存実データ」「デモ」「追加データ」を明示選択。失敗時に別モードへ切り替えない。
+- `dataset.mjs` は列車・停車/通過・分単位着発・カレンダー・同一列車継続リンクを検証。`navigation.mjs` は提供元への通信や区間名に依存せず計算する。
+- デモは実時刻・実便IDを含まない16区間レコード。新宿発→上原→登戸→遊園の最大2回乗換、直通境界と種別変更を試せる。実運行案内には使用しない。
+- `continuation: { station, nextTripId, evidence: 'explicit_same_train' }` が明示され、同一カレンダー・同じ境界駅・単調な着発を満たす場合だけ乗換0回で継続。不明な直通は結合しない。提供元便IDと運転列車番号は別フィールド。
+- `reconstructTrips(artifact, model, { segments })` で明示区間設定を受け取れる。既存3区間は既定値として互換維持。BUSの取得ビルダー・本番コードは変更していない。
+- 上部に選択列車・目的地・判断・着時刻・短縮・接続確実性を表示。列車選択後は判断へスクロール。前後列車・位置図・乗換駅・根拠は詳細を開く。
+
+### 追加データの入力契約
+
+許諾済みファイルをローカル `data/additional-dataset.json` に配置し「追加データ」を選択する。配置・契約は今回実施していない。`schemaVersion:1`, `kind:'additional'`, 固有の`id`, `timezone:'Asia/Tokyo'`, `stations:[{id,name,index}]`, `trips`, `rights` が必要。各tripは`id, calendar, type, destination, origin, identityBasis:'explicit_trip'または'provider_id', knownPasses:[], stops:[{station,index,arrival,departure,stop,platform}]`。時刻は営業日開始から単調になる整数分（0〜2879）、不明はnull、通過行はstop:falseで着発null。推測便結合は禁止。
+
+`rights` は`status:'confirmed', useScope:'local-only', evidenceRef:'許諾確認記録への参照', validUntil:'期限を表すISO日時'`。この記録は利用者が確認した許諾条件の申告であり、プログラムが許諾を発行するものではない。期限切れ・記録不足・時刻矛盾・ID重複・循環リンクはエラー。証拠参照自体は画面APIへ返さない。`title`, `serviceDates`, `coverage`, `example:{selectedId,compareAt}` は表示用の任意項目。追加データも自動でDaily Readyにはしない。元データ・許諾文面・認証をGitに追加しない。
+
+デモの純粋機能試験は実データなしで実行可能：`node --test poc/odakyu/dataset.test.mjs poc/odakyu/reconstruct.test.mjs`。ローカルserverは実データ未配置でもデモのAPIを利用可能（画面で明示選択が必要）。
+
+利用条件、申請先、未送信の問い合わせ文面は[DATA-ACCESS.md](DATA-ACCESS.md)。Function Complete・Data Coverage・Daily Readyは独立して評価する。特に既存Staticの存在は恒久利用の許諾証明にならない。

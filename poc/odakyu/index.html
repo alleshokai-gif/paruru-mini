@@ -11,13 +11,16 @@
     <p class="eyebrow">PALURU · LOCAL NAVIGATION</p>
     <h1>小田急 乗換ナビ</h1>
     <p>新宿・代々木上原方面 → 登戸・向ヶ丘遊園</p>
-    <span class="badge">保存定刻ダイヤ / 位置は推定</span>
+    <span id="timing-badge" class="badge">データ未選択 / 実測情報なし</span>
   </header>
-  <section class="notice">
+  <section class="data-choice"><label for="dataset">使用データ</label><select id="dataset"></select><p id="mode-banner" role="status"></p></section>
+  <section id="result" aria-live="polite"><p>乗車列車を手動選択してください。</p></section>
+  <details class="coverage-details"><summary>実データの収録範囲・利用条件</summary><section class="notice">
     <strong>比較できるのは、明示された着発がある区間</strong>
     <p>便IDで結んだ代々木上原・成城学園前・登戸の着発を使用します。遊園着・新宿からの同一便・直通元・番線は未取得。全線での最適乗換を保証しません。</p>
   </section>
   <section class="notice"><strong>着時刻の照合範囲</strong><p id="verification"></p><p>遊園着は元データの保存対象外。公式画面には表示がありますが、追加利用の許諾は未確認のためDBへ取り込んでいません。新宿・千代田線からの乗車は、上原以降の列車を確認して選んでください。時間が近いだけで同一便とは扱いません。</p><a href="https://www.odakyu.jp" target="_blank" rel="noreferrer">小田急電鉄（公式案内を別画面で確認）</a></section>
+  </details>
   <section class="controls">
     <label for="snapshot">保存データ</label><select id="snapshot"></select>
     <div class="pair">
@@ -25,28 +28,28 @@
       <div><label for="time">比較時刻（JST）</label><input id="time" type="time" value="08:15" required></div>
     </div>
     <label for="destination">目的地</label><select id="destination"><option value="Noborito">登戸</option><option value="MukogaokaYuen">向ヶ丘遊園</option></select>
-    <label for="train">乗車列車を手動選択（代々木上原発時刻）</label><select id="train"></select>
+    <label for="train">乗車列車を手動選択（始発・境界の時刻）</label><select id="train"></select>
     <p class="muted">位置から乗車列車を断定しません。祝日は自動判定せず、対象のダイヤを選択してください。</p>
     <details>
       <summary>ホーム・歩行条件を調整</summary>
       <p class="muted">番線データは未取得。ホーム条件は現地で確認した場合に選択してください。移動時間は未実測のレンジです。</p>
       <label for="uehara-condition">代々木上原の移動</label><select id="uehara-condition" class="condition"><option value="unknown">番線・経路不明</option><option value="same_platform">同じホームと確認</option><option value="change_level">別ホーム・階段等を移動</option><option value="elevator">エレベーター経由</option></select>
       <label for="seijo-condition">成城学園前の移動</label><select id="seijo-condition" class="condition"><option value="unknown">番線・経路不明</option><option value="same_platform">同じホームと確認</option><option value="change_level">別ホーム・階段等を移動</option><option value="elevator">エレベーター経由</option></select>
+      <label for="noborito-condition">登戸の移動</label><select id="noborito-condition" class="condition"><option value="unknown">番線・経路不明</option><option value="same_platform">同じホームと確認</option><option value="change_level">別ホーム・階段等を移動</option><option value="elevator">エレベーター経由</option></select>
       <label for="mobility">歩行条件</label><select id="mobility"><option value="normal">通常</option><option value="slow">ゆっくり・荷物あり</option><option value="step_free">バリアフリー経路が必要</option></select>
       <label for="buffer">追加の余裕（分）</label><input id="buffer" type="number" min="0" max="10" step="1" value="0">
     </details>
     <button id="example" type="button" disabled>実ダイヤの比較例を再生</button>
     <button id="now" type="button" class="secondary">比較時刻をいま（JST）にする</button>
   </section>
-  <section id="result" aria-live="polite"><p>乗車列車を手動選択してください。</p></section>
-  <section id="connections-section"><h2>接続候補</h2><div id="connections"></div></section>
+  <section id="connections-section"><details><summary>乗換駅・接続候補を確認</summary><div id="connections"></div></details></section>
   <section>
-    <h2>縦型列車位置図</h2>
+    <details><summary>前後列車・縦型位置図を確認</summary>
     <p class="muted">明示着発のある駅間を定刻ダイヤで補間した位置です。実測ではありません。表示していない途中駅の停車・通過、実際の番線・転線は補完しません。</p>
     <div class="legend"><span class="Local">● 各停</span><span class="SemiExpress">● 準急</span><span class="Express">● 急行</span><span class="RapidExpress">● 快速急行</span></div>
     <div class="legend"><span class="ahead-label">前方</span><span class="behind-label">後方</span><span>★ 自分</span></div>
     <div class="lanes"><span>駅</span><span>緩行線の概略</span><span>急行線の概略</span></div>
-    <div id="diagram"></div>
+    <div id="diagram"></div></details>
   </section>
   <section><details><summary>判断理由・着発時刻・出典を確認</summary><div id="evidence"></div></details></section>
   <section><details><summary>駅別発時刻を確認（着時刻ではありません）</summary><div id="departures"></div></details></section>

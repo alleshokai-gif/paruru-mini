@@ -4,6 +4,7 @@ export const MOVEMENT = Object.freeze({
   unknown: [60, 300], same_platform: [30, 120], change_level: [150, 420], elevator: [180, 600]
 });
 const EXCHANGE = new Set(['YoyogiUehara', 'ShimoKitazawa', 'Kyodo', 'SeijogakuenMae', 'Noborito']);
+const identified = t => ['provider_id', 'explicit_trip'].includes(t.identityBasis);
 const minute = value => Number.isInteger(value) && value >= 0 && value < 2880;
 
 export function assessConnection({ station, arrival, departure, now, condition = 'unknown', mobility = 'normal', extraMinutes = 0 }) {
@@ -48,7 +49,7 @@ export function scheduledPosition(trip, now) {
 
 export function arrivalOrderReversals(a, b) {
   const common = a.stops.map(s => ({ a: s, b: b.stops.find(t => t.station === s.station) }))
-    .filter(x => x.b && minute(x.a.arrival ?? x.a.departure) && minute(x.b.arrival ?? x.b.departure));
+    .filter(x => x.b && x.a.stop === true && x.b.stop === true && minute(x.a.arrival ?? x.a.departure) && minute(x.b.arrival ?? x.b.departure));
   const result = [];
   for (let i = 1; i < common.length; i++) {
     const before = common[i - 1], after = common[i];
@@ -61,6 +62,30 @@ export function arrivalOrderReversals(a, b) {
   return result;
 }
 
+// Continuity is accepted only from an explicit same-train link, never time proximity.
+function continuationOf(train, pool) {
+  const link = train.continuation;
+  if (!link || link.evidence !== 'explicit_same_train' || train.boundary?.identity === 'unknown') return null;
+  const next = pool.find(t => t.id === link.nextTripId), end = train.stops.at(-1), begin = next?.stops[0];
+  if (!next || next.calendar !== train.calendar || next.id === train.id || !end?.stop || !begin?.stop
+      || end.station !== link.station || begin.station !== link.station
+      || !minute(end.arrival) || !minute(begin.departure) || begin.departure < end.arrival) return null;
+  return { next, station: link.station, index: begin.index, departure: begin.departure,
+    fromTrainId: train.id, trainId: next.id, evidence: link.evidence };
+}
+function rideFacts(selected, destination, pool) {
+  const seen = new Set(), continuations = []; let train = selected, destinationPassed = false;
+  while (train && !seen.has(train.id)) {
+    seen.add(train.id);
+    if (train.knownPasses?.includes(destination) || train.stops.some(s => s.station === destination && s.stop === false)) destinationPassed = true;
+    const end = train.stops.find(s => s.stop === true && s.station === destination && minute(s.arrival));
+    if (end) return { arrival: end.arrival, continuations, destinationPassed: false };
+    const link = continuationOf(train, pool); if (!link) break;
+    continuations.push({ ...link, next: undefined }); train = link.next;
+  }
+  return { arrival: null, continuations, destinationPassed };
+}
+
 export function planNavigation(trips, selectedId, destination, now, options = {}) {
   if (!['Noborito', 'MukogaokaYuen'].includes(destination) || !minute(now)) throw Error('NAVIGATION_INPUT_INVALID');
   const extra = options.extraMinutes ?? 0;
@@ -68,10 +93,11 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
       || !['normal', 'slow', 'step_free'].includes(options.mobility || 'normal')
       || Object.values(options.stationConditions || {}).some(value => !MOVEMENT[value])) throw Error('MOVEMENT_INPUT_INVALID');
   const selected = trips.find(t => t.id === selectedId);
-  if (!selected || selected.identityBasis !== 'provider_id') throw Error('PROVIDER_TRAIN_REQUIRED');
-  const pool = trips.filter(t => t.calendar === selected.calendar && t.identityBasis === 'provider_id');
-  const destinationPassed = selected.knownPasses?.includes(destination) || selected.stops.some(s => s.station === destination && s.stop === false);
-  const baseline = selected.stops.find(s => s.stop === true && s.station === destination && minute(s.arrival));
+  if (!selected || !identified(selected)) throw Error('PROVIDER_TRAIN_REQUIRED');
+  const pool = trips.filter(t => t.calendar === selected.calendar && identified(t) && t.datasetId === selected.datasetId && t.dataKind === selected.dataKind);
+  const ride = rideFacts(selected, destination, pool);
+  const destinationPassed = ride.destinationPassed;
+  const baseline = minute(ride.arrival) ? ride : null;
   if (baseline && baseline.arrival < now) return { status: 'SCHEDULED_ARRIVED', baseline: { arrival: baseline.arrival, transfers: 0 }, recommendation: null, alternatives: [], difficult: [], scope: '定刻ダイヤ上の到着済み。実際の遅延・位置は未取得' };
   const target = pool.flatMap(t => t.stops).find(s => s.stop === true && s.station === destination);
   const alternatives = [], assessments = [];
@@ -82,11 +108,15 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
     if (!stations.has(stop.station)) stations.set(stop.station, []);
     stations.get(stop.station).push({ train, stop });
   }
-  function visit(train, boardedIndex, earliest, legs, visited) {
+  function visit(train, boardedIndex, earliest, legs, visited, continuations = []) {
     const end = train.stops.find(s => s.stop === true && s.station === destination && minute(s.arrival) && s.arrival >= earliest && s.arrival <= horizon);
-    if (end && legs.length) alternatives.push({ id: legs.map(l => l.trainId).join('>'), arrival: end.arrival,
-      transfers: legs.length, legs, connection: legs.some(l => l.connection.status === 'tight') ? 'tight' : 'likely',
+    if (end && (legs.length || continuations.length)) alternatives.push({ id: legs.map(l => l.trainId).join('>'), arrival: end.arrival,
+      transfers: legs.length, legs, continuations, connection: legs.some(l => l.connection.status === 'tight') ? 'tight' : 'likely',
       saving: baseline ? baseline.arrival - end.arrival : null, guaranteed: false });
+    const link = continuationOf(train, pool);
+    if (link && !visited.has(link.next.id) && link.departure <= horizon) {
+      visit(link.next, link.index - 1, Math.max(earliest, link.departure), legs, new Set([...visited, link.next.id]), [...continuations, { ...link, next: undefined }]);
+    }
     if (legs.length === maxTransfers || !target) return;
     for (const stop of train.stops) {
       if (stop.stop !== true || stop.index <= boardedIndex || stop.index >= target.index || !EXCHANGE.has(stop.station)) continue;
@@ -110,21 +140,21 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
           departure: next.stop.departure, alightTime: arrival, timingBasis, connection,
           reversals: arrivalOrderReversals(train, next.train) };
         if (connection.status === 'difficult') { assessments.push(leg); continue; }
-        visit(next.train, stop.index, next.stop.departure, [...legs, leg], new Set([...visited, next.train.id]));
+        visit(next.train, stop.index, next.stop.departure, [...legs, leg], new Set([...visited, next.train.id]), continuations);
       }
     }
   }
   visit(selected, -1, now, [], new Set([selected.id]));
-  alternatives.sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers);
-  const stay = baseline ? { id: 'stay', arrival: baseline.arrival, transfers: 0, legs: [], connection: 'none', saving: 0 } : null;
-  const eligible = [...alternatives.filter(a => a.connection === 'likely'), ...(stay ? [stay] : [])]
-    .sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers);
+  alternatives.sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers || Number(a.connection === 'tight') - Number(b.connection === 'tight'));
+  const stay = baseline ? { id: 'stay', arrival: baseline.arrival, transfers: 0, legs: [], continuations: baseline.continuations, connection: 'none', saving: 0 } : null;
+  const eligible = [...(stay ? [stay] : []), ...alternatives.filter(a => a.connection === 'likely')]
+    .sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers || Number(a.connection === 'tight') - Number(b.connection === 'tight'));
   const recommendation = baseline ? eligible[0] || stay : destinationPassed ? eligible[0] || null : null;
   return { status: baseline ? 'PARTIAL_STATIC_ARRIVAL_COMPARISON' : destinationPassed ? 'TRANSFER_REQUIRED' : 'ARRIVAL_UNAVAILABLE',
-    destinationPassed: Boolean(destinationPassed),
+    destinationPassed: Boolean(destinationPassed), rideContinuations: ride.continuations,
     baseline: stay, recommendation, alternatives: alternatives.slice(0, 8), difficult: assessments.slice(0, 4),
     bestConditional: alternatives[0] || null, maxTransfers, guaranteed: false,
     missing: ['全駅の着発・運転列車番号・直通継続ID・番線・実測移動時間',
-      '向ヶ丘遊園着時刻・新宿からの同一便照合', '着時刻の独立した資料との照合・リアルタイム遅延'],
-    scope: '提供元便IDと明示着発がある区間内。全線・全乗換駅での最適性を保証しない' };
+      'データセットの未収録駅・便、着時刻の独立した資料との照合・リアルタイム遅延'],
+    scope: '明示された列車ID・同一列車リンク・着発がある範囲内。全線・全乗換駅での最適性を保証しない' };
 }

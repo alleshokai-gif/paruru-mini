@@ -10,7 +10,8 @@ const CALENDARS = Object.freeze({ weekday: 'Weekday', weekend: 'SaturdayHoliday'
 
 // Reuse accepted, provider-ID keyed static legs. Never infer identity from similar times.
 // The provider code is NOT a railway operating train number or an ODPT Train ID.
-export function reconstructTrips(artifact, model) {
+export function reconstructTrips(artifact, model, { segments = SEGMENTS } = {}) {
+  if (!segments || Object.values(segments).some(pair => !Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1])) throw Error('SEGMENT_CONFIG_INVALID');
   if (artifact?.sample !== false || artifact.timezone !== 'Asia/Tokyo'
       || !Array.isArray(artifact.legs) || !Number.isFinite(Date.parse(artifact.sourceCheckedAt))) {
     throw Error('PROVIDER_ARTIFACT_INVALID');
@@ -24,7 +25,7 @@ export function reconstructTrips(artifact, model) {
     departureIndex.get(key).push(event);
   }
   const groups = new Map();
-  for (const leg of artifact.legs.filter(l => Object.hasOwn(SEGMENTS, l.segment))) {
+  for (const leg of artifact.legs.filter(l => Object.hasOwn(segments, l.segment))) {
     if (!leg.trainId || !CALENDARS[leg.calendarType] || !TYPE_CODES[leg.trainType]
         || leg.source !== 'Odakyu official train detail' || leg.stationTimeSource !== 'arrival') {
       throw Error('PROVIDER_LEG_INVALID');
@@ -50,7 +51,7 @@ export function reconstructTrips(artifact, model) {
       if (sourceSegments.has(leg.segment)) reasons.push('DUPLICATE_PROVIDER_SEGMENT');
       sourceSegments.add(leg.segment);
       if (leg.trainType !== first.trainType || leg.destination !== first.destination) reasons.push('PROVIDER_ID_CONFLICT');
-      const [from, to] = SEGMENTS[leg.segment];
+      const [from, to] = segments[leg.segment];
       const departure = minutes(leg.departure), arrival = minutes(leg.stationTime);
       if (arrival <= departure || arrival - departure > 120) reasons.push('NON_MONOTONIC_PROVIDER_TIME');
       const key = departureKey({ calendar, station: from, type, destinationName: leg.destination, time: departure });
@@ -74,7 +75,7 @@ export function reconstructTrips(artifact, model) {
     trips.push({ id: `provider:${id}`, sourceTrainId: first.trainId, trainNumber: null,
       calendar, type, destination: first.destination, origin: anchor.station,
       throughChiyoda: sourceEvent?.isOrigin ? false : 'unknown', stops: ordered,
-      knownPasses: type === 'RapidExpress' ? ['SeijogakuenMae', 'MukogaokaYuen'] : [],
+      knownPasses: type === 'RapidExpress' ? ['SeijogakuenMae', 'MukogaokaYuen'].filter(id => stations.has(id)) : [],
       identityBasis: 'provider_id', confidence: 'provider_static', coverage: 'explicit_stops_only',
       checkedAt: artifact.sourceCheckedAt, sourceServiceDate: artifact.sourceDates?.[first.calendarType] ?? null,
       source: '既存通勤Static / 小田急個別列車詳細',
@@ -86,5 +87,5 @@ export function reconstructTrips(artifact, model) {
     departureAmbiguities: ambiguous, operatingTrainNumbers: 0, independentArrivalChecks: 0,
     explicitArrivalStations: [...new Set(trips.flatMap(t => t.stops.filter(s => s.arrival !== null).map(s => s.station)))],
     sourceCheckedAt: artifact.sourceCheckedAt, sourceDates: artifact.sourceDates,
-    coverage: '代々木上原・成城学園前・登戸の明示された着発のみ。全駅通しダイヤではない', rejectedTrains: rejected } };
+    coverage: [...new Set(trips.flatMap(t => t.stops.map(s => stations.get(s.station).name || s.station)))].join('・') + 'の明示された着発のみ。全駅通しダイヤではない', rejectedTrains: rejected } };
 }
