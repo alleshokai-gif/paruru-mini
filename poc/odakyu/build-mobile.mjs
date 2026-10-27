@@ -5,7 +5,7 @@ import { listSnapshots } from './storage.mjs';
 import { loadModel } from './model.mjs';
 
 const root = new URL('./', import.meta.url);
-export function renderMobile({ html, css, core, navigation, app, real, additional, demo, snapshot, createdAt }) {
+export function renderMobile({ html, css, core, navigation, app, real, additional, demo, sevenDemo, snapshot, createdAt }) {
   if ((!real && !additional) || real && (real.dataset?.kind !== 'real' || !Array.isArray(real.trips)
       || !Number.isFinite(Date.parse(real.fetchedAt))) || demo?.dataset?.kind !== 'demo'
       || !Number.isFinite(Date.parse(createdAt))) throw Error('MOBILE_MODEL_INVALID');
@@ -14,6 +14,7 @@ export function renderMobile({ html, css, core, navigation, app, real, additiona
       || additional.dataset.rights.useScope !== 'local-only'
       || !Number.isFinite(Date.parse(additional.dataset.rights.validUntil))
       || Date.parse(additional.dataset.rights.validUntil) <= Date.parse(createdAt))) throw Error('MOBILE_ADDITIONAL_INVALID');
+  if (sevenDemo && sevenDemo.dataset?.kind !== 'demo') throw Error('MOBILE_DEMO_INVALID');
   const strip = source => source.replace(/^import[^\n]*\n/gm, '').replace(/^export /gm, '');
   const module = `const { BUILD, TYPES, minutes, clock } = (() => {\n${strip(core)}\nreturn { BUILD, TYPES, minutes, clock };\n})();\n`
     + `const { planNavigation, scheduledPosition, CONNECTION_LABELS } = (() => {\n${strip(navigation)}\nreturn { planNavigation, scheduledPosition, CONNECTION_LABELS };\n})();\n${strip(app)}`;
@@ -22,8 +23,9 @@ export function renderMobile({ html, css, core, navigation, app, real, additiona
     defaultDataset: additional ? 'additional' : 'real',
     datasets: [{ id: 'real', title: '本人用・保存実データ（部分収録）', available: Boolean(real) },
       { id: 'demo', title: 'デモ：架空ダイヤ・実運行案内不可', available: true },
+      { id: 'demo-seven', title: 'デモ：接続5分・到着差7分（人工）', available: Boolean(sevenDemo) },
       { id: 'additional', title: additional?.dataset.title || 'この保存版に追加データなし', available: Boolean(additional) }],
-    snapshots: real ? [{ id: snapshot, fetchedAt: real.fetchedAt }] : [], models: { ...(real ? { real } : {}), ...(additional ? { additional } : {}), demo } };
+    snapshots: real ? [{ id: snapshot, fetchedAt: real.fetchedAt }] : [], models: { ...(real ? { real } : {}), ...(additional ? { additional } : {}), ...(sevenDemo ? { 'demo-seven': sevenDemo } : {}), demo } };
   const json = JSON.stringify(record).replaceAll('<', '\\u003c').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
   const csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'";
   if (!html.includes('<script type="module" src="/app.mjs"></script>') || !html.includes('<link rel="stylesheet" href="/style.css">')) throw Error('MOBILE_TEMPLATE_INVALID');
@@ -40,8 +42,8 @@ async function main() {
   const snapshot = mode === 'real' ? (await listSnapshots())[0] : null;
   if (mode === 'real' && !snapshot) throw Error('MOBILE_SNAPSHOT_MISSING');
   const [html, css, core, navigation, app] = await Promise.all(['index.html', 'style.css', 'core.mjs', 'navigation.mjs', 'app.mjs'].map(name => readFile(new URL(name, root), 'utf8')));
-  const selected = await loadModel(snapshot, mode), demo = await loadModel(null, 'demo');
-  const result = renderMobile({ html, css, core, navigation, app, [mode]: selected, demo, snapshot, createdAt: new Date().toISOString() });
+  const selected = await loadModel(snapshot, mode), demo = await loadModel(null, 'demo'), sevenDemo = await loadModel(null, 'demo-seven');
+  const result = renderMobile({ html, css, core, navigation, app, [mode]: selected, demo, sevenDemo, snapshot, createdAt: new Date().toISOString() });
   const target = new URL('./data/mobile.html', root), temp = new URL('./data/mobile.html.tmp', root);
   await writeFile(temp, result, 'utf8'); await rename(temp, target);
   if (await readFile(target, 'utf8') !== result) throw Error('MOBILE_READBACK_FAILED');

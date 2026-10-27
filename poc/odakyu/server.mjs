@@ -38,6 +38,7 @@ const server = createServer(async (request, response) => {
       response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify([
         { id: 'real', title: real ? '保存実データ（部分収録）' : '保存実データ（未配置）', available: real },
         { id: 'demo', title: 'デモ：架空ダイヤ・実運行案内不可', available: true },
+        { id: 'demo-seven', title: 'デモ：接続5分・到着差7分（人工）', available: true },
         { id: 'additional', title: additional ? '追加データ（読込時に利用条件を検証）' : '追加データ（未配置）', available: additional }
       ])); return;
     }
@@ -47,7 +48,7 @@ const server = createServer(async (request, response) => {
     }
     if (url.pathname === '/api/model') {
       const mode = url.searchParams.get('dataset') || 'real';
-      if (!['real', 'demo', 'additional'].includes(mode)) { response.writeHead(400).end('DATASET_INVALID'); return; }
+      if (!['real', 'demo', 'demo-seven', 'additional'].includes(mode)) { response.writeHead(400).end('DATASET_INVALID'); return; }
       if (mode !== 'real') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(await loadModel(null, mode))); return; }
       const names = await listSnapshots(), id = url.searchParams.get('snapshot') || names[0];
       if (!names.includes(id)) { response.writeHead(400).end('SNAPSHOT_INVALID'); return; }

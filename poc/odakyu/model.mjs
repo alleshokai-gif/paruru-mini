@@ -3,11 +3,13 @@ import { normalize } from './core.mjs';
 import { readSnapshot, latest } from './storage.mjs';
 import { reconstructTrips } from './reconstruct.mjs';
 import { verifyRecordedChecks } from './verification.mjs';
-import { demoModel } from './demo.mjs';
+import { demoModel, connectionDemoModel } from './demo.mjs';
+import { matchTCode, REVIEW_SCOPE } from './tcode.mjs';
 import { datasetModel } from './dataset.mjs';
 const root = new URL('./', import.meta.url);
 export async function loadModel(snapshot, mode = 'real') {
   if (mode === 'demo') return demoModel();
+  if (mode === 'demo-seven') return connectionDemoModel();
   if (mode === 'additional') {
     const supplied = JSON.parse(await readFile(new URL('./data/additional-dataset.json', root), 'utf8'));
     if (supplied.kind !== 'additional') throw Error('ADDITIONAL_KIND_INVALID');
@@ -26,6 +28,8 @@ export async function loadModel(snapshot, mode = 'real') {
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   model.arrivalVerification = verifyRecordedChecks(model.trips, audit);
   model.trips = model.trips.filter(t => !model.arrivalVerification.quarantinedIds.includes(t.id));
+  model.tCodeReferences = REVIEW_SCOPE.codes.map(tCode => matchTCode(model.trips,
+    { tCode, serviceDate: REVIEW_SCOPE.serviceDate, calendar: REVIEW_SCOPE.calendar, revision: provider.sourceCheckedAt }));
   try {
     const reference = JSON.parse(await readFile(new URL('./data/navigation-reference.json', root), 'utf8'));
     model.example = model.trips.some(t => t.id === reference.selectedId) && Number.isInteger(reference.compareAt)

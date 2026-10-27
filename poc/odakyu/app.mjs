@@ -17,7 +17,7 @@ function label(trip) { return `${trip.serviceName ? trip.serviceName + ' / ' : '
 let offlineData;
 const offlineMode = document.body.dataset.offline === 'true';
 function offlineExpired(kind) {
-  if (kind === 'demo') return false;
+  if (kind === 'demo' || offlineData.models[kind]?.dataset.kind === 'demo') return false;
   const end = kind === 'real' ? offlineData.realUseEndsAt : offlineData.models[kind]?.dataset.rights?.validUntil;
   return !Number.isFinite(Date.parse(end)) || Date.now() >= Date.parse(end);
 }
@@ -50,7 +50,8 @@ async function load() {
   model = undefined;
   $('source').textContent = '保存データを読み込み中…';
   $('result').replaceChildren(element('p', '保存データを読み込み中…'));
-  for (const id of ['diagram', 'connections', 'evidence']) $(id).replaceChildren();
+  for (const id of ['diagram', 'connections', 'evidence', 'official-links']) $(id).replaceChildren();
+  $('official-reference').hidden = true;
   if (!$('dataset').value) { $('mode-banner').textContent = '使用データ未選択'; $('source').textContent = ''; $('result').replaceChildren(element('p', '使用データを選択してください。')); return; }
   let loaded;
   try { loaded = await get(`/api/model?snapshot=${encodeURIComponent($('snapshot').value)}&dataset=${encodeURIComponent($('dataset').value)}`); }
@@ -182,6 +183,15 @@ function render() {
   if (offlineMode && offlineExpired(model.dataset.kind)) throw Error('保存データの利用期限が終了しました。利用を終了してください');
   $('result').className = '';
   const now = minutes($('time').value), selected = trips.find(t => t.id === $('train').value);
+  $('official-reference').hidden = model.dataset.kind !== 'real' || !selected;
+  $('official-links').replaceChildren();
+  if (model.dataset.kind === 'real' && selected) {
+    const ref = model.tCodeReferences?.find(r => r.tripId === selected.id && r.status === 'unique_reference');
+    const link = element('a', ref?.url ? 'この便の公式列車詳細を別画面で確認' : '小田急公式で時刻表を確認');
+    link.href = ref?.url || 'https://www.odakyu.jp'; link.target = '_blank'; link.rel = 'noreferrer'; link.className = 'download-link';
+    $('official-links').append(link);
+    if (ref) $('official-links').append(element('p', `参照照合：${ref.tCode} / ${ref.serviceDate} / ${ref.calendar}。保存版の対象日 ${ref.sourceServiceDate}、確認日時 ${new Date(ref.revision).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。${ref.sameServiceDate ? '同じ対象日でも取得版を区別します。' : '日付が違うため同日の実ダイヤとして自動統合しません。'}tCodeは運転列車番号・永続IDではありません。`));
+  }
   if (model.dataset.kind === 'real') {
     $('source').textContent = `提供元ID付き ${model.reconstruction.accepted}便（平土休日計）。独立照合：発時刻 ${model.reconstruction.departureChecks}件一致 / 不一致 ${model.reconstruction.departureMismatches}件。元データ確認 ${new Date(model.reconstruction.sourceCheckedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。着時刻の別取得経路照合 ${model.arrivalVerification?.matched || 0}件一致 / 不一致 ${model.arrivalVerification?.mismatched || 0}件（同じ提供元の公式画面、別提供者の資料照合は未実施）。ODPT取得 ${new Date(model.fetchedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。`;
     $('verification').textContent = model.arrivalVerification?.status === 'not_checked' ? '着時刻の別取得経路による照合記録がありません。' : `公式画面での再取得照合：${model.arrivalVerification?.matched || 0}件一致、${model.arrivalVerification?.mismatched || 0}件不一致。確認日 ${model.arrivalVerification?.checkedAt ? new Date(model.arrivalVerification.checkedAt).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '未確認'}。対象は平日の個別例であり、全便・土休日・改正後の有効性を保証しません。不一致の便は案内対象から外します。`;

@@ -1,4 +1,4 @@
-export const BUILD = 'odakyu-navi-20261027-v6';
+export const BUILD = 'odakyu-navi-20261027-v10';
 export const TYPES = Object.freeze({Local:'各駅停車',SemiExpress:'準急',Express:'急行',RapidExpress:'快速急行'});
 export const POLICY = Object.freeze({serviceDayBoundary:180,maxHopMinutes:18,localMaxHopMinutes:10,minTransferMinutes:3,shimoKitazawaTransferMinutes:6});
 export const tail = value => String(value ?? '').split(/[.:]/).at(-1);

@@ -21,3 +21,14 @@ export function demoModel() {
     rights:{status:'synthetic'},stations:STATIONS,trips:[...base,...weekends],coverage:'新宿・上原・成城・登戸・遊園の人工ダイヤ。実運行に使わない',
     example:{selectedId:'demo:Weekday:local',compareAt:549,destination:'MukogaokaYuen'}});
 }
+
+// Synthetic relative timing exercise. No real tCodes, service dates or real clock times.
+export function connectionDemoModel() {
+  const trips = [
+    make('five-minute-local','Local',[stop('Shinjuku',null,718),stop('YoyogiUehara',725,726),stop('SeijogakuenMae',742,743),stop('Noborito',750,751),stop('MukogaokaYuen',752,null)]),
+    make('five-minute-express','Express',[stop('Shinjuku',null,723),stop('YoyogiUehara',729,730),stop('SeijogakuenMae',740,740),stop('Noborito',744,744),stop('MukogaokaYuen',745,null)])
+  ];
+  return datasetModel({schemaVersion:1,id:'synthetic-five-minute-connection',kind:'demo',title:'デモ：接続5分・到着差7分（人工）',timezone:'Asia/Tokyo',
+    rights:{status:'synthetic'},stations:STATIONS,trips,coverage:'相対条件だけを再現した人工ダイヤ。公式列車の案内結果ではありません',
+    example:{selectedId:'demo:Weekday:five-minute-local',compareAt:725,destination:'MukogaokaYuen'}});
+}
