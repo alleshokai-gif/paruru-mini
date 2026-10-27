@@ -17,6 +17,7 @@
     <strong>比較できるのは、明示された着発がある区間</strong>
     <p>便IDで結んだ代々木上原・成城学園前・登戸の着発を使用します。遊園着・新宿からの同一便・直通元・番線は未取得。全線での最適乗換を保証しません。</p>
   </section>
+  <section class="notice"><strong>着時刻の照合範囲</strong><p id="verification"></p><p>遊園着は元データの保存対象外。公式画面には表示がありますが、追加利用の許諾は未確認のためDBへ取り込んでいません。新宿・千代田線からの乗車は、上原以降の列車を確認して選んでください。時間が近いだけで同一便とは扱いません。</p><a href="https://www.odakyu.jp" target="_blank" rel="noreferrer">小田急電鉄（公式案内を別画面で確認）</a></section>
   <section class="controls">
     <label for="snapshot">保存データ</label><select id="snapshot"></select>
     <div class="pair">
@@ -34,7 +35,7 @@
       <label for="mobility">歩行条件</label><select id="mobility"><option value="normal">通常</option><option value="slow">ゆっくり・荷物あり</option><option value="step_free">バリアフリー経路が必要</option></select>
       <label for="buffer">追加の余裕（分）</label><input id="buffer" type="number" min="0" max="10" step="1" value="0">
     </details>
-    <button id="example" type="button">実ダイヤの比較例を再生</button>
+    <button id="example" type="button" disabled>実ダイヤの比較例を再生</button>
     <button id="now" type="button" class="secondary">比較時刻をいま（JST）にする</button>
   </section>
   <section id="result" aria-live="polite"><p>乗車列車を手動選択してください。</p></section>

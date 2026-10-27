@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { latest, DATA_DIR } from './storage.mjs';
 import { normalize } from './core.mjs';
 import { reconstructTrips } from './reconstruct.mjs';
+import { verifyRecordedChecks } from './verification.mjs';
 import { planNavigation } from './navigation.mjs';
 
 const [t, r, s] = await Promise.all(['StationTimetable', 'Railway', 'Station'].map(latest));
@@ -11,6 +12,11 @@ const providerBytes = await readFile(new URL('../../bus/release-static/kazu-comm
 const reconstructed = reconstructTrips(JSON.parse(providerBytes), model);
 model.trips = reconstructed.trips;
 model.reconstruction = reconstructed.report;
+let audit = null;
+try { audit = JSON.parse(await readFile(new URL('./data/arrival-audit.json', import.meta.url), 'utf8')); }
+catch (error) { if (error.code !== 'ENOENT') throw error; }
+model.arrivalVerification = verifyRecordedChecks(model.trips, audit);
+model.trips = model.trips.filter(t => !model.arrivalVerification.quarantinedIds.includes(t.id));
 model.providerArtifactSha256 = createHash('sha256').update(providerBytes).digest('hex');
 let example = null;
 try {

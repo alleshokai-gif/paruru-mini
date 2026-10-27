@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { normalize } from './core.mjs';
 import { listSnapshots, readSnapshot, latest } from './storage.mjs';
 import { reconstructTrips } from './reconstruct.mjs';
+import { verifyRecordedChecks } from './verification.mjs';
 
 const root = new URL('./', import.meta.url);
 const port = Number(process.env.ODAKYU_POC_PORT || 8767);
@@ -18,6 +19,11 @@ async function loadModel(snapshot) {
   const reconstructed = reconstructTrips(provider, model);
   model.trips = reconstructed.trips;
   model.reconstruction = reconstructed.report;
+  let audit = null;
+  try { audit = JSON.parse(await readFile(new URL('./data/arrival-audit.json', import.meta.url), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  model.arrivalVerification = verifyRecordedChecks(model.trips, audit);
+  model.trips = model.trips.filter(t => !model.arrivalVerification.quarantinedIds.includes(t.id));
   try {
     const reference = JSON.parse(await readFile(new URL('./data/navigation-reference.json', root), 'utf8'));
     model.example = model.trips.some(t => t.id === reference.selectedId) && Number.isInteger(reference.compareAt)

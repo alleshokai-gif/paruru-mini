@@ -19,11 +19,17 @@ async function get(url) {
 }
 async function load() {
   const version = ++generation;
+  $('example').disabled = true; $('train').disabled = true;
+  model = undefined;
+  $('source').textContent = '保存データを読み込み中…';
+  $('result').replaceChildren(element('p', '保存データを読み込み中…'));
+  for (const id of ['diagram', 'connections', 'evidence']) $(id).replaceChildren();
   const loaded = await get(`/api/model?snapshot=${encodeURIComponent($('snapshot').value)}`);
   if (version !== generation) return;
   model = loaded;
   if (!Array.isArray(model.trips) || !model.reconstruction) throw Error('列車ID付きデータがありません');
   setTrains(); render();
+  $('example').disabled = !model.example; $('train').disabled = false;
 }
 function setTrains() {
   const previous = $('train').value, now = minutes($('time').value);
@@ -50,6 +56,10 @@ function renderResult(plan) {
   const recommendation = plan.recommendation;
   if (plan.status === 'SCHEDULED_ARRIVED') {
     nodes.push(element('div', '定刻では到着済み', 'big'), element('p', `目的駅 ${clock(plan.baseline.arrival)}着。実際の遅延・現在位置は未取得です。`));
+  } else if (plan.status === 'TRANSFER_REQUIRED') {
+    nodes.push(element('div', 'この列車は目的駅を通過します', 'big'));
+    if (recommendation) nodes.push(element('p', `${name(recommendation.legs[0].station)}で乗換する案は ${clock(recommendation.arrival)}着。乗り続ける案は到着不可のため短縮分は算出しません。`));
+    else nodes.push(element('p', '取得範囲に接続見込みのある到着経路がありません。途中で停車列車への乗換が必要ですが、未取得の着発を補って推奨しません。'));
   } else if (!plan.baseline) {
     nodes.push(element('div', '目的駅の着時刻がありません', 'big'), element('p', '向ヶ丘遊園着や、この列車の目的駅着は未取得です。発時刻から着時刻を作らず、乗換推奨を保留します。登戸までの比較は目的地を切り替えて確認できます。'));
   } else if (recommendation.transfers === 0) {
@@ -62,7 +72,7 @@ function renderResult(plan) {
   }
   const grid = element('div', undefined, 'grid');
   for (const [title, time] of [['乗り続ける：着', plan.baseline?.arrival], [recommendation?.transfers === 0 ? '乗換なしを優先：着' : '乗換案：着', recommendation?.arrival]]) {
-    const metric = element('div', undefined, 'metric'); metric.append(element('small', title), element('strong', clock(time))); grid.append(metric);
+    const metric = element('div', undefined, 'metric'); metric.append(element('small', title), element('strong', title === '乗り続ける：着' && plan.destinationPassed ? '通過' : clock(time))); grid.append(metric);
   }
   nodes.push(grid);
   if (plan.bestConditional?.connection === 'tight' && plan.bestConditional.saving > 0) {
@@ -126,9 +136,11 @@ function renderEvidence(selected, plan) {
   $('evidence').replaceChildren(...nodes);
 }
 function render() {
+  if (!model) return;
   const now = minutes($('time').value), selected = trips.find(t => t.id === $('train').value);
-  $('source').textContent = `提供元ID付き ${model.reconstruction.accepted}便（平土休日計）。独立照合：発時刻 ${model.reconstruction.departureChecks}件一致 / 不一致 ${model.reconstruction.departureMismatches}件。元データ確認 ${new Date(model.reconstruction.sourceCheckedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。着時刻の独立照合は未実施。ODPT取得 ${new Date(model.fetchedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。`;
+  $('source').textContent = `提供元ID付き ${model.reconstruction.accepted}便（平土休日計）。独立照合：発時刻 ${model.reconstruction.departureChecks}件一致 / 不一致 ${model.reconstruction.departureMismatches}件。元データ確認 ${new Date(model.reconstruction.sourceCheckedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。着時刻の別取得経路照合 ${model.arrivalVerification?.matched || 0}件一致 / 不一致 ${model.arrivalVerification?.mismatched || 0}件（同じ提供元の公式画面、別提供者の資料照合は未実施）。ODPT取得 ${new Date(model.fetchedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。`;
   $('build').textContent = `Build ${BUILD}`;
+  $('verification').textContent = model.arrivalVerification?.status === 'not_checked' ? '着時刻の別取得経路による照合記録がありません。' : `公式画面での再取得照合：${model.arrivalVerification?.matched || 0}件一致、${model.arrivalVerification?.mismatched || 0}件不一致。確認日 ${model.arrivalVerification?.checkedAt ? new Date(model.arrivalVerification.checkedAt).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '未確認'}。対象は平日の個別例であり、全便・土休日・改正後の有効性を保証しません。不一致の便は案内対象から外します。`;
   const departures = model.departures.filter(d => d.calendar === $('calendar').value && d.station === $('destination').value && d.time >= now).sort((a, b) => a.time - b.time).slice(0, 8);
   $('departures').replaceChildren(...departures.map(d => element('p', `${clock(d.time)}発 ${TYPES[d.type]} ${d.destinationName}行（着時刻ではありません）`)));
   if (!selected) {
@@ -152,6 +164,7 @@ $('calendar').addEventListener('change', safe(() => { setTrains(); render(); }))
 $('time').addEventListener('change', safe(() => { setTrains(); render(); }));
 for (const id of ['train', 'destination', 'uehara-condition', 'seijo-condition', 'mobility', 'buffer']) $(id).addEventListener('change', safe(render));
 $('example').addEventListener('click', safe(() => {
+  if (!model) throw Error('データ読込が完了していません');
   const example = model.example; if (!example) throw Error('この保存データに比較例がありません');
   const selected = model.trips.find(t => t.id === example.selectedId);
   $('calendar').value = selected.calendar; $('time').value = clock(example.compareAt); $('destination').value = 'Noborito';

@@ -112,3 +112,19 @@ test('遊園通過の快速急行から登戸で乗換する2回経路は明示�
   assert.equal(result.recommendation.transfers, 2); assert.equal(result.recommendation.arrival, 630);
   assert.equal(result.recommendation.legs[1].station, 'Noborito');
 });
+
+test('目的駅通過便には途中乗換の到着案を示し、架空の短縮分を付けない', () => {
+  const a = { ...trip('rapid', [stop('YoyogiUehara', 4, null, 600), stop('Noborito', 17, 620, null)], 'RapidExpress'), knownPasses: ['MukogaokaYuen'] };
+  const b = trip('local', [stop('Noborito', 17, null, 627), stop('MukogaokaYuen', 18, 630, null)]);
+  const plan = planNavigation([a, b], 'rapid', 'MukogaokaYuen', 599);
+  assert.equal(plan.status, 'TRANSFER_REQUIRED'); assert.equal(plan.baseline, null);
+  assert.equal(plan.recommendation.arrival, 630); assert.equal(plan.recommendation.saving, null);
+  assert.equal(plan.recommendation.legs[0].station, 'Noborito');
+});
+test('単に着時刻未取得の列車は、通過確定や短縮ありへ変換しない', () => {
+  const a = trip('unknown', [stop('YoyogiUehara', 4, null, 600), stop('Noborito', 17, 620, null)]);
+  const b = trip('local', [stop('Noborito', 17, null, 627), stop('MukogaokaYuen', 18, 630, null)]);
+  const plan = planNavigation([a, b], 'unknown', 'MukogaokaYuen', 599);
+  assert.equal(plan.status, 'ARRIVAL_UNAVAILABLE'); assert.equal(plan.recommendation, null);
+  assert.equal(plan.alternatives[0].arrival, 630); assert.equal(plan.alternatives[0].saving, null);
+});

@@ -70,6 +70,7 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   const selected = trips.find(t => t.id === selectedId);
   if (!selected || selected.identityBasis !== 'provider_id') throw Error('PROVIDER_TRAIN_REQUIRED');
   const pool = trips.filter(t => t.calendar === selected.calendar && t.identityBasis === 'provider_id');
+  const destinationPassed = selected.knownPasses?.includes(destination) || selected.stops.some(s => s.station === destination && s.stop === false);
   const baseline = selected.stops.find(s => s.stop === true && s.station === destination && minute(s.arrival));
   if (baseline && baseline.arrival < now) return { status: 'SCHEDULED_ARRIVED', baseline: { arrival: baseline.arrival, transfers: 0 }, recommendation: null, alternatives: [], difficult: [], scope: '定刻ダイヤ上の到着済み。実際の遅延・位置は未取得' };
   const target = pool.flatMap(t => t.stops).find(s => s.stop === true && s.station === destination);
@@ -118,8 +119,9 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   const stay = baseline ? { id: 'stay', arrival: baseline.arrival, transfers: 0, legs: [], connection: 'none', saving: 0 } : null;
   const eligible = [...alternatives.filter(a => a.connection === 'likely'), ...(stay ? [stay] : [])]
     .sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers);
-  const recommendation = baseline ? eligible[0] || stay : null;
-  return { status: baseline ? 'PARTIAL_STATIC_ARRIVAL_COMPARISON' : 'ARRIVAL_UNAVAILABLE',
+  const recommendation = baseline ? eligible[0] || stay : destinationPassed ? eligible[0] || null : null;
+  return { status: baseline ? 'PARTIAL_STATIC_ARRIVAL_COMPARISON' : destinationPassed ? 'TRANSFER_REQUIRED' : 'ARRIVAL_UNAVAILABLE',
+    destinationPassed: Boolean(destinationPassed),
     baseline: stay, recommendation, alternatives: alternatives.slice(0, 8), difficult: assessments.slice(0, 4),
     bestConditional: alternatives[0] || null, maxTransfers, guaranteed: false,
     missing: ['全駅の着発・運転列車番号・直通継続ID・番線・実測移動時間',
