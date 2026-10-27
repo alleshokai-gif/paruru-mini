@@ -24,3 +24,22 @@ test('不正モデルと未知のテンプレートを成功した保存版へ�
  const input=base();input.real.dataset.kind='demo';assert.throws(()=>renderMobile(input));
  assert.throws(()=>renderMobile({...base(),html:'invalid'}));
 });
+
+// Contract-only synthetic record: never stored as an actual additional dataset.
+const additionalFixture = () => ({dataset:{kind:'additional',title:'人工の契約試験用',rights:{status:'confirmed',useScope:'local-only',validUntil:'2027-06-01T00:00:00Z'}},trips:[{id:'test-only'}]});
+const record = html => JSON.parse(html.match(/<script id="offline-data" type="application\/json">([\s\S]*?)<\/script>/)[1]);
+test('追加データだけを保存でき、ODPTモデルやsnapshotへ依存せず混在しない',()=>{
+ const input={...base(),real:undefined,additional:additionalFixture(),snapshot:undefined};
+ const data=record(renderMobile(input));assert.equal(data.defaultDataset,'additional');
+ assert.equal(data.models.real,undefined);assert.deepEqual(data.snapshots,[]);
+ assert.equal(data.datasets.find(d=>d.id==='real').available,false);
+ assert.equal(data.models.additional.dataset.title,'人工の契約試験用');
+ assert.equal(data.models.additional.dataset.rights.validUntil,'2027-06-01T00:00:00Z');
+});
+test('追加データの利用期限はODPT期限から独立し、期限切れ・未確認・空データを拒否',()=>{
+ const input={...base(),real:undefined,additional:additionalFixture(),createdAt:'2027-04-01T00:00:00Z'};
+ assert.equal(record(renderMobile(input)).defaultDataset,'additional');
+ for(const edit of [d=>d.dataset.rights.status='unknown',d=>d.dataset.rights.useScope='public',d=>d.dataset.rights.validUntil='invalid',d=>d.dataset.rights.validUntil='2027-04-01T00:00:00Z',d=>d.trips=[]]){
+  const changed=structuredClone(input);edit(changed.additional);assert.throws(()=>renderMobile(changed),/ADDITIONAL/);
+ }
+});

@@ -16,6 +16,11 @@ const anchorTime = trip => trip.stops[0].departure ?? trip.stops[0].arrival;
 function label(trip) { return `${trip.serviceName ? trip.serviceName + ' / ' : ''}${clock(anchorTime(trip))} ${name(trip.origin)} ${TYPES[trip.type]} ${trip.destination}行`; }
 let offlineData;
 const offlineMode = document.body.dataset.offline === 'true';
+function offlineExpired(kind) {
+  if (kind === 'demo') return false;
+  const end = kind === 'real' ? offlineData.realUseEndsAt : offlineData.models[kind]?.dataset.rights?.validUntil;
+  return !Number.isFinite(Date.parse(end)) || Date.now() >= Date.parse(end);
+}
 async function get(url) {
   if (offlineMode) {
     if (!offlineData) {
@@ -24,12 +29,12 @@ async function get(url) {
       if (offlineData.format !== 'odakyu-private-offline-v1') throw Error('端末内保存データの形式が違います');
     }
     const parsed = new URL(url, 'https://offline.invalid');
-    if (parsed.pathname === '/api/datasets') return offlineData.datasets.map(d => Date.now() >= Date.parse(offlineData.realUseEndsAt) && d.id === 'real' ? { ...d, available: false, title: '実データはODPT利用期限終了', unavailableReason: 'ODPT利用期限が終了しました。実データの利用を終了し、保存ファイルを削除してください。デモは明示選択できます。' } : d);
+    if (parsed.pathname === '/api/datasets') return offlineData.datasets.map(d => d.available && offlineExpired(d.id) ? { ...d, available: false, title: `${d.title}（利用期限終了）`, unavailableReason: '保存データの利用期限が終了しました。利用を終了してください。デモは明示選択できます。' } : d);
     if (parsed.pathname === '/api/snapshots') return offlineData.snapshots;
     if (parsed.pathname === '/api/model') {
       const kind = parsed.searchParams.get('dataset');
-      if (kind === 'real' && Date.now() >= Date.parse(offlineData.realUseEndsAt)) throw Error('ODPT利用期限が終了しました');
       if (!Object.hasOwn(offlineData.models, kind)) throw Error('この保存版には選択したデータがありません');
+      if (offlineExpired(kind)) throw Error('保存データの利用期限が終了しました');
       return offlineData.models[kind];
     }
     throw Error('端末内保存版では利用できない操作です');
@@ -174,7 +179,7 @@ function renderEvidence(selected, plan) {
 }
 function render() {
   if (!model) return;
-  if (offlineMode && model.dataset.kind === 'real' && Date.now() >= Date.parse(offlineData.realUseEndsAt)) throw Error('ODPT利用期限が終了しました。実データの利用を終了してください');
+  if (offlineMode && offlineExpired(model.dataset.kind)) throw Error('保存データの利用期限が終了しました。利用を終了してください');
   $('result').className = '';
   const now = minutes($('time').value), selected = trips.find(t => t.id === $('train').value);
   if (model.dataset.kind === 'real') {
@@ -230,11 +235,12 @@ await safe(async () => {
   if (offlineMode) { $('mobile-export').hidden = true; $('offline-notice').hidden = false; }
   const datasets = await get('/api/datasets');
   $('dataset').replaceChildren(option('', '使用データを選択してください'), ...datasets.map(d => { const node = option(d.id, d.title); node.disabled = !d.available; return node; }));
-  if (!datasets.find(d => d.id === 'real')?.available) {
+  const initialDataset = offlineMode ? offlineData.defaultDataset || 'real' : 'real';
+  if (!datasets.find(d => d.id === initialDataset)?.available) {
     $('source').textContent = '保存実データは未配置';
-    $('result').replaceChildren(element('p', datasets.find(d => d.id === 'real')?.unavailableReason || '保存実データは未配置です。使用データからデモを明示的に選ぶと機能を確認できます。')); return;
+    $('result').replaceChildren(element('p', datasets.find(d => d.id === initialDataset)?.unavailableReason || '保存実データは未配置です。使用データから利用可能なデータを明示的に選択してください。')); return;
   }
-  $('dataset').value = 'real';
+  $('dataset').value = initialDataset;
   const snapshots = await get('/api/snapshots');
   $('snapshot').replaceChildren(...snapshots.map(s => option(s.id, `${new Date(s.fetchedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST`))); await load();
 })();
