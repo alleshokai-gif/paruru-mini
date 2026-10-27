@@ -14,9 +14,17 @@
     <span id="timing-badge" class="badge">データ未選択 / 実測情報なし</span>
   </header>
   <p id="offline-notice" class="notice" hidden>端末内の保存版：サーバー・リアルタイム情報へ接続しません。ダイヤの基準日を確認してください。本人用PoC。既存Staticの継続利用条件は確認中です。再配布・公開はしないでください。</p>
-  <p><a id="mobile-export" class="download-link" href="/mobile.html" download="odakyu-private-mobile.html">スマホ用の保存HTMLをダウンロード</a></p>
+  <details><summary>スマホで開く・保存する</summary><p>本人のPCとスマホを同じ信頼できるWi-Fiへ接続し、PCで <code>poc/odakyu/start-phone.ps1 -PhoneIp スマホのIPv4</code> を実行。表示されたURLをスマホのChromeで開いてください。PC起動中・同じLAN内のみ利用可能です。localhostはPC自身を指すためスマホからは開けません。</p><p>接続できない場合はファイアウォールを無効にせず、PC版を使用してください。Android実機は未確認です。</p><a id="mobile-export" class="download-link" href="/mobile.html" download="odakyu-private-mobile.html">本人用の保存HTML（端末によって実行不可）</a></details>
   <section class="data-choice"><label for="dataset">使用データ</label><select id="dataset"></select><p id="mode-banner" role="status"></p></section>
+  <section class="ride-controls" aria-label="乗車列車と目的地">
+    <label for="destination">目的地</label><select id="destination"><option value="Noborito">登戸</option><option value="MukogaokaYuen">向ヶ丘遊園</option></select>
+    <label for="quick-train">公式詳細を確認した5便から選ぶ（平日・参照用）</label><select id="quick-train" disabled><option value="">列車を選択してください</option></select>
+    <p class="muted">5便から選ぶと平日・上原発時刻の比較に切り替わります。公式詳細は2026年10月27日の参照です。</p>
+    <label for="train">乗車列車を手動選択（始発・境界の時刻）</label><select id="train"></select>
+    <p class="muted">保存された定刻ダイヤの比較です。当日の運行・遅延を示しません。列車は位置から自動判定しません。</p>
+  </section>
   <section id="result" aria-live="polite"><p>乗車列車を手動選択してください。</p></section>
+  <button id="retry" class="secondary" type="button" hidden>選択中の保存データを再読込</button>
   <section id="official-reference" class="notice" hidden><strong>公式で確認した事実と計算結果は別です</strong><p>着発が不足する区間は、下の公式案内で確認してください。リンク先の情報を自動取得・保存せず、ここでの推奨に補完していません。</p><div id="official-links"></div></section>
   <details class="coverage-details"><summary>実データの収録範囲・利用条件</summary><section class="notice">
     <strong>比較できるのは、明示された着発がある区間</strong>
@@ -30,12 +38,11 @@
       <div><label for="calendar">ダイヤ</label><select id="calendar"><option value="Weekday">平日</option><option value="SaturdayHoliday">土休日</option></select></div>
       <div><label for="time">比較時刻（JST）</label><input id="time" type="time" value="08:15" required></div>
     </div>
-    <label for="destination">目的地</label><select id="destination"><option value="Noborito">登戸</option><option value="MukogaokaYuen">向ヶ丘遊園</option></select>
-    <label for="train">乗車列車を手動選択（始発・境界の時刻）</label><select id="train"></select>
     <p class="muted">位置から乗車列車を断定しません。祝日は自動判定せず、対象のダイヤを選択してください。</p>
     <details>
       <summary>ホーム・歩行条件を調整</summary>
       <p class="muted">番線データは未取得。ホーム条件は現地で確認した場合に選択してください。移動時間は未実測のレンジです。</p>
+      <p><a href="https://www.odakyu.jp/station/yoyogi_uehara/homeview/" target="_blank" rel="noreferrer">代々木上原の公式ホーム図で移動経路を確認</a></p><p class="muted">公式図では下りの1・2番線は同じ島式ホームです。当該列車の使用番線・当日の変更・移動時間は未確認のため、自動で同ホーム条件にはしません。</p>
       <label for="uehara-condition">代々木上原の移動</label><select id="uehara-condition" class="condition"><option value="unknown">番線・経路不明</option><option value="same_platform">同じホームと確認</option><option value="change_level">別ホーム・階段等を移動</option><option value="elevator">エレベーター経由</option></select>
       <label for="seijo-condition">成城学園前の移動</label><select id="seijo-condition" class="condition"><option value="unknown">番線・経路不明</option><option value="same_platform">同じホームと確認</option><option value="change_level">別ホーム・階段等を移動</option><option value="elevator">エレベーター経由</option></select>
       <label for="noborito-condition">登戸の移動</label><select id="noborito-condition" class="condition"><option value="unknown">番線・経路不明</option><option value="same_platform">同じホームと確認</option><option value="change_level">別ホーム・階段等を移動</option><option value="elevator">エレベーター経由</option></select>

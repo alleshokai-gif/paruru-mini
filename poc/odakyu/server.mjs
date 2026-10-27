@@ -3,8 +3,9 @@ import { readFile, access } from 'node:fs/promises';
 import { listSnapshots, readSnapshot } from './storage.mjs';
 
 import { loadModel } from './model.mjs';
+import { networkConfig } from './network.mjs';
 const root = new URL('./', import.meta.url);
-const port = Number(process.env.ODAKYU_POC_PORT || 8767);
+const network = networkConfig(), { host, port } = network;
 const assets = new Map([
   ['/', ['index.html', 'text/html']], ['/style.css', ['style.css', 'text/css']],
   ['/app.mjs', ['app.mjs', 'text/javascript']], ['/core.mjs', ['core.mjs', 'text/javascript']],
@@ -15,7 +16,8 @@ const server = createServer(async (request, response) => {
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'");
   try {
-    if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(request.headers.host)) { response.writeHead(403).end(); return; }
+    if (!network.permits(request.headers.host, request.socket.remoteAddress)) { response.writeHead(403).end(); return; }
+    response.setHeader('Referrer-Policy', 'no-referrer');
     if (request.method !== 'GET') { response.writeHead(405).end(); return; }
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/favicon.ico') { response.writeHead(204).end(); return; }
@@ -59,4 +61,4 @@ const server = createServer(async (request, response) => {
     response.writeHead(503).end('LOCAL_DATA_UNAVAILABLE');
   }
 });
-server.listen(port, '127.0.0.1', () => console.log(`ODAKYU_POC_READY http://127.0.0.1:${port}`));
+server.listen(port, host, () => console.log(`ODAKYU_POC_READY http://${host}:${port}${host === '127.0.0.1' ? ' (PC only)' : ' (指定した本人端末のみ・同じ私用LAN内限定)'}`));

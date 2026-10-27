@@ -39,18 +39,22 @@ async function get(url) {
     }
     throw Error('端末内保存版では利用できない操作です');
   }
-  const response = await fetch(url, { cache: 'no-store' });
+  let response;
+  try { response = await fetch(url, { cache: 'no-store' }); }
+  catch { throw Error('PCのサーバーに接続できません。起動状態と接続先を確認し、再読込してください'); }
   if (!response.ok) throw Error(`データを読み込めません (${response.status})`);
   return response.json();
 }
 async function load() {
   const version = ++generation;
   $('example').disabled = true; $('train').disabled = true;
+  $('quick-train').disabled = true; $('retry').hidden = true;
   $('mode-banner').textContent = '選択したデータを読み込み中…';
   model = undefined;
   $('source').textContent = '保存データを読み込み中…';
   $('result').replaceChildren(element('p', '保存データを読み込み中…'));
-  for (const id of ['diagram', 'connections', 'evidence', 'official-links']) $(id).replaceChildren();
+  for (const id of ['diagram', 'connections', 'evidence', 'official-links', 'departures']) $(id).replaceChildren();
+  $('timing-badge').textContent = '読込中 / 最新運行情報なし';
   $('official-reference').hidden = true;
   if (!$('dataset').value) { $('mode-banner').textContent = '使用データ未選択'; $('source').textContent = ''; $('result').replaceChildren(element('p', '使用データを選択してください。')); return; }
   let loaded;
@@ -59,6 +63,9 @@ async function load() {
   if (version !== generation) return;
   if (!Array.isArray(loaded.trips) || !loaded.reconstruction || !loaded.dataset) throw Error('列車単位データがありません');
   model = loaded;
+  const references = (model.tCodeReferences || []).filter(r => r.status === 'unique_reference');
+  $('quick-train').replaceChildren(option('', '確認済みの列車を選択'), ...references.map(r => { const t = model.trips.find(t => t.id === r.tripId); return option(t.id, `${clock(anchorTime(t))} ${TYPES[t.type]} ${t.destination}行 / ${r.tCode}`); }));
+  $('quick-train').disabled = references.length === 0;
   $('snapshot').disabled = model.dataset.kind !== 'real';
   $('example').textContent = model.dataset.kind === 'demo' ? 'デモの比較例を再生' : '実ダイヤの比較例を再生';
   setTrains(); render();
@@ -68,7 +75,7 @@ function setTrains() {
   if (!model) return;
   const previous = $('train').value, now = minutes($('time').value);
   trips = model.trips.filter(t => t.calendar === $('calendar').value);
-  const visible = trips.filter(t => anchorTime(t) >= now - 60 && anchorTime(t) <= now + 30);
+  const visible = trips.filter(t => t.id === previous || (anchorTime(t) >= now - 60 && anchorTime(t) <= now + 30));
   $('train').replaceChildren(option('', '乗車列車を選択してください'), ...visible.map(t => option(t.id, label(t))));
   if (visible.some(t => t.id === previous)) $('train').value = previous;
 }
@@ -88,6 +95,7 @@ function connectionNode(leg) {
 function renderResult(plan, selected) {
   const nodes = [element('p', model.dataset.kind === 'demo' ? 'デモ・架空ダイヤ（実運行案内不可）' : '保存定刻ダイヤ・取得区間内の比較', 'result-title'), element('p', `${label(selected)} → ${name($('destination').value)}`, 'riding-summary')];
   const recommendation = plan.recommendation;
+  nodes.push(element('p', `比較時刻 ${$('time').value} JST / 保存ダイヤによる計算・当日運行は未確認`, 'muted'));
   if (plan.status === 'SCHEDULED_ARRIVED') {
     nodes.push(element('div', '定刻では到着済み', 'big'), element('p', `目的駅 ${clock(plan.baseline.arrival)}着。実際の遅延・現在位置は未取得です。`));
   } else if (plan.status === 'TRANSFER_REQUIRED') {
@@ -95,7 +103,7 @@ function renderResult(plan, selected) {
     if (recommendation) nodes.push(element('p', `${recommendation.legs.map(l => name(l.station)).join('・')}で乗換する案は ${clock(recommendation.arrival)}着。乗り続ける案は到着不可のため短縮分は算出しません。`));
     else nodes.push(element('p', '取得範囲に接続見込みのある到着経路がありません。途中で停車列車への乗換が必要ですが、未取得の着発を補って推奨しません。'));
   } else if (!plan.baseline) {
-    nodes.push(element('div', '目的駅の着時刻がありません', 'big'), element('p', 'この列車の目的駅着、または同一列車の継続情報が不足しています。発時刻から着時刻を作らず、短縮時間の推奨を保留します。着時刻が明示された別の候補は下の詳細で確認できます。'));
+    nodes.push(element('div', '乗換判断は保留・公式で確認', 'big'), element('p', '目的駅の着時刻が未収録のため、短縮時間は未判定です。直下の公式詳細で選択便と候補便を確認してください。'));
   } else if (recommendation.transfers === 0) {
     nodes.push(element('div', `このまま${name($('destination').value)}へ`, 'big'),
       element('p', '取得範囲では、接続見込みのある乗換で短縮なし。同着なら乗換なしを優先します。'));
@@ -183,6 +191,7 @@ function render() {
   if (offlineMode && offlineExpired(model.dataset.kind)) throw Error('保存データの利用期限が終了しました。利用を終了してください');
   $('result').className = '';
   const now = minutes($('time').value), selected = trips.find(t => t.id === $('train').value);
+  $('quick-train').value = model.tCodeReferences?.some(r => r.tripId === selected?.id && r.status === 'unique_reference') ? selected.id : '';
   $('official-reference').hidden = model.dataset.kind !== 'real' || !selected;
   $('official-links').replaceChildren();
   if (model.dataset.kind === 'real' && selected) {
@@ -190,6 +199,10 @@ function render() {
     const link = element('a', ref?.url ? 'この便の公式列車詳細を別画面で確認' : '小田急公式で時刻表を確認');
     link.href = ref?.url || 'https://www.odakyu.jp'; link.target = '_blank'; link.rel = 'noreferrer'; link.className = 'download-link';
     $('official-links').append(link);
+    const partner = ref?.tCode === '81ff0057' ? model.tCodeReferences.find(r => r.tCode === '81ff0058' && r.status === 'unique_reference') : null;
+    if (partner?.url) {
+      const other = element('a', '比較相手：急行の公式列車詳細'); other.href = partner.url; other.target = '_blank'; other.rel = 'noreferrer'; other.className = 'download-link'; $('official-links').append(other);
+    }
     if (ref) $('official-links').append(element('p', `参照照合：${ref.tCode} / ${ref.serviceDate} / ${ref.calendar}。保存版の対象日 ${ref.sourceServiceDate}、確認日時 ${new Date(ref.revision).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST。${ref.sameServiceDate ? '同じ対象日でも取得版を区別します。' : '日付が違うため同日の実ダイヤとして自動統合しません。'}tCodeは運転列車番号・永続IDではありません。`));
   }
   if (model.dataset.kind === 'real') {
@@ -199,7 +212,7 @@ function render() {
   const demo = model.dataset.kind === 'demo';
   document.body.classList.toggle('demo-mode', demo);
   $('timing-badge').textContent = demo ? 'デモ / 架空ダイヤ・位置は推定' : '保存定刻ダイヤ / 位置は推定';
-  $('mode-banner').textContent = demo ? 'デモ：すべて架空の時刻・列車です。実際の乗換には使えません。' : `${model.dataset.title} / Daily Ready：未達`;
+  $('mode-banner').textContent = demo ? 'デモ：すべて架空の時刻・列車です。実際の乗換には使えません。' : `${model.dataset.title} / Daily Ready：未達${model.dataset.kind === 'real' ? ` / 保存対象日 ${[...new Set(model.trips.map(t => t.sourceServiceDate))].join('・')}。当日のダイヤは未確認` : ''}`;
   if (model.dataset.kind !== 'real') {
     $('source').textContent = `${model.dataset.title} / ${model.dataset.coverage} / ${model.trips.length}列車区間レコード / データ対象日 ${model.dataset.serviceDates.join('・') || (demo ? 'デモのため適用日なし' : '対象日未指定')} / 実測位置なし`;
     $('verification').textContent = demo ? 'デモダイヤは実際の鉄道時刻表とは照合しません。実便対応件数には含めません。' : '追加データはローカルの利用条件確認記録に基づき読込。独立した着時刻照合は別途必要です。';
@@ -220,10 +233,20 @@ function safe(action) {
   return async () => { try { await action(); } catch (error) {
     $('result').className = 'error'; $('result').replaceChildren(element('p', error.message));
     $('diagram').replaceChildren(); $('connections').replaceChildren(); $('evidence').replaceChildren();
+    $('official-links').replaceChildren(); $('official-reference').hidden = true; $('departures').replaceChildren();
+    $('timing-badge').textContent = '表示エラー / 最新情報として利用不可';
+    $('retry').hidden = !model && !$('dataset').value;
+    if (!model) { trips = []; $('train').disabled = true; $('quick-train').disabled = true; $('source').textContent = '保存データを読み込めませんでした'; $('mode-banner').textContent = '読込失敗：以前の結果は表示しません。入力は保持しています'; }
   } };
 }
 $('snapshot').addEventListener('change', safe(load));
 $('dataset').addEventListener('change', safe(load));
+$('retry').addEventListener('click', safe(load));
+$('quick-train').addEventListener('change', safe(() => {
+  const selected = model?.trips.find(t => t.id === $('quick-train').value); if (!selected) return;
+  $('calendar').value = selected.calendar; $('time').value = clock(anchorTime(selected));
+  $('train').value = ''; setTrains(); $('train').value = selected.id; render(); $('result').scrollIntoView({ block: 'start' });
+}));
 $('diagram').closest('details').addEventListener('toggle', safe(() => { if ($('diagram').closest('details').open) render(); }));
 window.addEventListener('resize', safe(render));
 $('calendar').addEventListener('change', safe(() => { setTrains(); render(); }));
