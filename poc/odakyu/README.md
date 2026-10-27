@@ -74,3 +74,13 @@ ODPT取得は既存`probe.mjs`と`bus/rail/challenge-client.js`を再利用す�
 デモの純粋機能試験は実データなしで実行可能：`node --test poc/odakyu/dataset.test.mjs poc/odakyu/reconstruct.test.mjs`。ローカルserverは実データ未配置でもデモのAPIを利用可能（画面で明示選択が必要）。
 
 利用条件、申請先、未送信の問い合わせ文面は[DATA-ACCESS.md](DATA-ACCESS.md)。Function Complete・Data Coverage・Daily Readyは独立して評価する。特に既存Staticの存在は恒久利用の許諾証明にならない。
+
+## Phase 5：更新取得と本人用保存HTML
+
+正規ODPTを1回ずつ再取得し、駅時刻表276件・路線3件・駅72件を保存/再読込。対象7,221発時刻を維持。列車位置・列車単位時刻表、別の通常APIの列車位置、運行情報はHTTP 200・0件。対象方向の遊園着・新宿同一便を追加できていない。既存Rail Staticの遊園着140件は玉川学園前→登戸の上り用のため混ぜない。
+
+本人用の単一HTMLを作成する：`node poc/odakyu/build-mobile.mjs`。保存先はignored `data/mobile.html`。通常画面の「スマホ用の保存HTMLをダウンロード」から同じ本人の管理下で保存できる。外部公開・第三者再配布はしない。既存Staticの継続利用許諾を新たに得た意味ではない。
+
+HTMLは画面・既存エンジン・実695便・人工デモを同梱し、CSPで接続を禁止する。保存版はPCのlocalhostへ問い合わせず、基準日が古いダイヤはそのまま古い情報として表示する。新しいデータへ更新した場合は保存HTMLを作り直す。ODPT期限終了時は実データ計算を停止する。ファイルの終了・削除は本人が管理する。
+
+スマホへの保存・開き方は端末のHTML取扱方法に依存する。Android実機と生成HTMLの直接実行は未確認。file URLによる自動ブラウザ検証は安全ポリシーで拒否されたため、他のブラウザ経路で回避しない。構文・埋込みデータ・接続禁止設定・HTTPダウンロードを確認した範囲と、実機での単体動作を分けて扱う。

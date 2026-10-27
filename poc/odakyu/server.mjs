@@ -1,12 +1,8 @@
 import { createServer } from 'node:http';
 import { readFile, access } from 'node:fs/promises';
-import { normalize } from './core.mjs';
-import { listSnapshots, readSnapshot, latest } from './storage.mjs';
-import { reconstructTrips } from './reconstruct.mjs';
-import { verifyRecordedChecks } from './verification.mjs';
-import { demoModel } from './demo.mjs';
-import { datasetModel } from './dataset.mjs';
+import { listSnapshots, readSnapshot } from './storage.mjs';
 
+import { loadModel } from './model.mjs';
 const root = new URL('./', import.meta.url);
 const port = Number(process.env.ODAKYU_POC_PORT || 8767);
 const assets = new Map([
@@ -14,36 +10,6 @@ const assets = new Map([
   ['/app.mjs', ['app.mjs', 'text/javascript']], ['/core.mjs', ['core.mjs', 'text/javascript']],
   ['/navigation.mjs', ['navigation.mjs', 'text/javascript']]
 ]);
-async function loadModel(snapshot, mode = 'real') {
-  if (mode === 'demo') return demoModel();
-  if (mode === 'additional') {
-    const supplied = JSON.parse(await readFile(new URL('./data/additional-dataset.json', root), 'utf8'));
-    if (supplied.kind !== 'additional') throw Error('ADDITIONAL_KIND_INVALID');
-    return datasetModel(supplied);
-  }
-  const [source, rail, stations] = await Promise.all([readSnapshot(snapshot), latest('Railway'), latest('Station')]);
-  const model = normalize(source.rows, rail.rows, stations.rows, source.fetchedAt);
-  const provider = JSON.parse(await readFile(new URL('../../bus/release-static/kazu-commute-static.json', root), 'utf8'));
-  const reconstructed = reconstructTrips(provider, model);
-  model.trips = reconstructed.trips.map(t => ({ ...t, datasetId: 'saved-static', dataKind: 'real' }));
-  model.dataset = { id: 'saved-static', kind: 'real', title: '保存実データ（部分収録）', dailyReady: false,
-    rights: { status: 'ODPT限定条件・既存Static追加利用未確認' }, serviceDates: Object.values(reconstructed.report.sourceDates || {}), coverage: reconstructed.report.coverage };
-  model.reconstruction = reconstructed.report;
-  let audit = null;
-  try { audit = JSON.parse(await readFile(new URL('./data/arrival-audit.json', import.meta.url), 'utf8')); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; }
-  model.arrivalVerification = verifyRecordedChecks(model.trips, audit);
-  model.trips = model.trips.filter(t => !model.arrivalVerification.quarantinedIds.includes(t.id));
-  try {
-    const reference = JSON.parse(await readFile(new URL('./data/navigation-reference.json', root), 'utf8'));
-    model.example = model.trips.some(t => t.id === reference.selectedId) && Number.isInteger(reference.compareAt)
-      ? { selectedId: reference.selectedId, compareAt: reference.compareAt } : null;
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-    model.example = null; // Only the optional replay button is unavailable; train selection remains explicit.
-  }
-  return model;
-}
 const server = createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -57,6 +23,12 @@ const server = createServer(async (request, response) => {
     if (asset) {
       response.setHeader('Content-Type', `${asset[1]}; charset=utf-8`);
       response.end(await readFile(new URL(asset[0], root))); return;
+    }
+    if (url.pathname === '/mobile.html') {
+      response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      response.setHeader('Content-Disposition', 'attachment; filename="odakyu-private-mobile.html"');
+      response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+      response.end(await readFile(new URL('./data/mobile.html', root))); return;
     }
     if (url.pathname === '/api/datasets') {
       let additional = false, real = false;

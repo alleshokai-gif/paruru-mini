@@ -7,7 +7,8 @@ const demo=await(await request('/api/model?dataset=demo',200)).json();assert.equ
 if(!datasets.find(d=>d.id==='additional').available)await request('/api/model?dataset=additional',503);
 await request('/api/model?dataset=unknown',400);
 for(const path of['/','/app.mjs','/core.mjs','/navigation.mjs','/style.css'])await request(path,200);
-for(const path of['/data/model.json','/probe.mjs','/storage.mjs','/reconstruct.mjs','/data/navigation-reference.json','/data/arrival-audit.json','/verification.mjs','/dataset.mjs','/demo.mjs','/data/additional-dataset.json','/bus/release-static/kazu-commute-static.json','/.dev.vars','/bus/.dev.vars'])await request(path,404);
+for(const path of['/data/model.json','/probe.mjs','/storage.mjs','/reconstruct.mjs','/data/navigation-reference.json','/data/arrival-audit.json','/verification.mjs','/dataset.mjs','/demo.mjs','/data/additional-dataset.json','/model.mjs','/build-mobile.mjs','/bus/release-static/kazu-commute-static.json','/.dev.vars','/bus/.dev.vars'])await request(path,404);
 await request('/api/model?snapshot=..%2F..%2Fbus%2F.dev.vars',400);
 await request('/',405,{method:'POST'});
+const mobile=await request('/mobile.html',200);assert.ok(mobile.headers.get('content-disposition').includes('attachment'));assert.ok(mobile.headers.get('content-security-policy').includes("connect-src 'none'"));const mobileHtml=await mobile.text();assert.ok(mobileHtml.includes('data-offline="true"'));assert.ok(!/<script[^>]+src=/.test(mobileHtml));
 const result={status:'PASS',checks,snapshots:snapshots.length,rawDataExposed:false,cacheControl:'no-store',checkedAt:new Date().toISOString()};await writeFile(new URL('./data/http-qa.json',import.meta.url),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
