@@ -4,16 +4,8 @@ import { stationLayout } from './route-layout.mjs';
 
 const TARGETS = ['Noborito', 'MukogaokaYuen'];
 const MAJOR = ['YoyogiUehara', 'ShimoKitazawa', 'Kyodo', 'SeijogakuenMae', ...TARGETS];
-// Route structure only, checked against saved Metro ODPT station sequences and
-// Tokyo Metro's 2026-03-14 passenger regulations, station-distance appendix.
-// These labels introduce no train, arrival time or cross-operator identity.
-const CHIYODA_APPROACH = Object.freeze([
-  { id:'Otemachi', name:'大手町' },
-  { id:'Kasumigaseki', name:'霞ケ関' },
-  { id:'OmoteSando', name:'表参道' },
-  { id:'YoyogiKoen', name:'代々木公園' }
-]);
-const APPROACH_HEIGHT = 198;
+// A compact route junction, never a cross-operator train identity or position.
+const APPROACH_HEIGHT = 64;
 const departure = t => t.stops[0].departure ?? t.stops[0].arrival;
 const type = t => t.type === 'Local' ? '各停' : TYPES[t.type];
 const arrival = (t, id) => t.stops.find(s => s.station === id && s.stop)?.arrival;
@@ -33,33 +25,20 @@ function svgElement(tag, attributes, parent) {
   parent?.append(n); return n;
 }
 
-function drawApproaches(map, model, layout, top, width, junctionX) {
+function drawApproaches(map, layout, top, width, junctionX) {
   const ue = layout.rows.find(r => r.station.id === 'YoyogiUehara');
-  const shinjuku = layout.rows.find(r => r.station.id === 'Shinjuku');
-  const leftX = 28, rightX = width - 24, mergeY = ue.center - 24, bendY = mergeY - 40;
+  const leftX = junctionX - 32, rightX = junctionX + 32;
+  const startY = top + 26, bendY = startY + 12, mergeY = ue.center - 24;
   const svg = svgElement('svg', { class:'m-route-structure', viewBox:`0 0 ${width} ${layout.height}`, 'aria-hidden':'true' }, map);
   svg.style.height = `${layout.height}px`;
-  svgElement('path', { class:'m-inbound-line m-shinjuku', d:`M ${leftX} ${shinjuku.center} V ${bendY} Q ${leftX} ${mergeY} ${junctionX} ${mergeY}` }, svg);
-  svgElement('path', { class:'m-inbound-line m-chiyoda', d:`M ${rightX} ${shinjuku.center} V ${bendY} Q ${rightX} ${mergeY} ${junctionX} ${mergeY}` }, svg);
+  svgElement('path', { class:'m-inbound-line m-shinjuku', d:`M ${leftX} ${startY} V ${bendY} L ${junctionX} ${mergeY}` }, svg);
+  svgElement('path', { class:'m-inbound-line m-chiyoda', d:`M ${rightX} ${startY} V ${bendY} L ${junctionX} ${mergeY}` }, svg);
   svgElement('path', { class:'m-corridor-line', d:`M ${junctionX} ${mergeY} V ${layout.rows.at(-1).center}` }, svg);
   for (const row of layout.rows.filter(r => r.major && r.station.index >= ue.station.index)) {
     svgElement('circle', { class:'m-corridor-node', cx:junctionX, cy:row.center, r:row === ue ? 6 : 4 }, svg);
   }
-  const title = (text, cls, x) => at(el('strong', text, `m-inbound-title ${cls}`, map), top + 12, x);
-  title('新宿方面', 'm-shinjuku-label', 8);
-  title('千代田線方面', 'm-chiyoda-label', width - 144);
-  const origin = at(el('strong', '新宿', 'm-inbound-station', map), shinjuku.center - 11, leftX + 16);
-  origin.dataset.branchStation = 'Shinjuku';
-  svgElement('circle', { class:'m-inbound-node m-shinjuku', cx:leftX, cy:shinjuku.center, r:4 }, svg);
-  const minor = model.stations.filter(s => s.index > shinjuku.station.index && s.index < ue.station.index);
-  const compressed = at(el('span', `${minor[0].name} …\n${minor.at(-1).name}`, 'm-inbound-minor', map), top + 100, leftX + 16);
-  compressed.title = minor.map(s => s.name).join(' → ');
-  CHIYODA_APPROACH.forEach((station, i) => {
-    const center = shinjuku.center + i * 33;
-    const label = at(el('span', station.name, 'm-inbound-station m-metro-station', map), center - 11, width - 144);
-    label.dataset.branchStation = `TokyoMetro.Chiyoda.${station.id}`;
-    svgElement('circle', { class:'m-inbound-node m-chiyoda', cx:rightX, cy:center, r:4 }, svg);
-  });
+  at(el('strong', '新宿', 'm-inbound-title m-shinjuku-label', map), top, leftX - 24);
+  at(el('strong', '千代田線', 'm-inbound-title m-chiyoda-label', map), top, rightX + 14);
 }
 
 // A departure-order neighbor is never labelled as a known physical position.
@@ -118,13 +97,13 @@ export function renderRouteMap({ root, model, pool, selected, now, plans, onSele
   const ueIndex = ordered.find(s => s.id === 'YoyogiUehara').index;
   const upstreamCount = ordered.filter(s => s.index < ueIndex).length;
   const layout = stationLayout(model.stations, majors, transferStations, compact, approachTop, (s, { major, transfer }) =>
-    s.index < ueIndex ? { height:s.id === 'Shinjuku' ? APPROACH_HEIGHT - (upstreamCount - 1) * 10 : 10, centerOffset:s.id === 'Shinjuku' ? 54 : 5 }
+    s.index < ueIndex ? { height:s.id === 'Shinjuku' ? APPROACH_HEIGHT - (upstreamCount - 1) * 10 : 10, centerOffset:s.id === 'Shinjuku' ? 18 : 5 }
       : { height:transfer ? 156 : TARGETS.includes(s.id) ? 148 : major ? 88 : 38 / runSizes.get(s.id), centerOffset:major ? 32 : undefined });
   const map = el('div', undefined, 'm-map'); map.style.height = `${layout.height + 12}px`;
   map.setAttribute('aria-label', '電車を直接選択する縦型路線図');
   const labelWidth = compact ? 100 : 150, laneWidth = (root.clientWidth - labelWidth) / Math.max(slots.length, 1);
   const x = i => labelWidth + laneWidth * (i + .5);
-  drawApproaches(map, model, layout, approachTop, root.clientWidth, labelWidth + 8);
+  drawApproaches(map, layout, approachTop, root.clientWidth, labelWidth + 8);
   if (unknown) at(el('span', '位置未取得', 'm-dock-label', map), 28, 8);
   for (const item of layout.rows) {
     const { station:s, top, height, center, major } = item;
