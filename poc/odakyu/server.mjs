@@ -10,6 +10,7 @@ const assets = new Map([
   ['/', ['route.html', 'text/html']], ['/diagnostics', ['index.html', 'text/html']],
   ['/route.mjs', ['route.mjs', 'text/javascript']], ['/route.css', ['route.css', 'text/css']], ['/style.css', ['style.css', 'text/css']],
   ['/route-layout.mjs', ['route-layout.mjs', 'text/javascript']],
+  ['/mobile-route.mjs', ['mobile-route.mjs', 'text/javascript']], ['/mobile-route.css', ['mobile-route.css', 'text/css']],
   ['/app.mjs', ['app.mjs', 'text/javascript']], ['/core.mjs', ['core.mjs', 'text/javascript']],
   ['/navigation.mjs', ['navigation.mjs', 'text/javascript']]
 ]);

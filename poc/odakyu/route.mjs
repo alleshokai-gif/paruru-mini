@@ -1,6 +1,7 @@
 import { TYPES, clock, minutes } from './core.mjs';
 import { planNavigation, scheduledPosition, arrivalOrderReversals } from './navigation.mjs';
 import { stationLayout } from './route-layout.mjs';
+import { renderMobileRoute } from './mobile-route.mjs';
 const $ = id => document.getElementById(id), TOP = 145;
 const destinations = ['Noborito','MukogaokaYuen'];
 let WIDTH = 118;
@@ -15,6 +16,10 @@ function render() {
   if (!model) return;
   const selected = pool.find(t => t.id === selectedId);
   const plans = selected ? destinations.map(d => ({ destination:d, ...planNavigation(pool,selected.id,d,now) })) : [];
+  if (window.innerWidth <= 600) {
+    renderMobileRoute({ root:$('rail'), model, pool, selected, now, plans, onSelect:choose });
+    return;
+  }
   const compact = window.innerWidth <= 600, LEFT = compact ? 84 : 160;
   const candidates = plans.map(candidateFor).filter(Boolean);
   const important = new Set([selectedId, ...candidates.flatMap(p => p.legs.map(l=>l.trainId))].filter(Boolean));
