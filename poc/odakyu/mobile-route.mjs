@@ -10,6 +10,7 @@ const departure = t => t.stops[0].departure ?? t.stops[0].arrival;
 const type = t => t.type === 'Local' ? '各停' : TYPES[t.type];
 const arrival = (t, id) => t.stops.find(s => s.station === id && s.stop)?.arrival;
 const order = (a, b) => departure(a) - departure(b) || a.id.localeCompare(b.id);
+const MARKER = Object.freeze({ height:48, glyphHalf:13, eventOffset:49, infoHeight:40 });
 function el(tag, text, cls, parent) {
   const n = document.createElement(tag);
   if (text !== undefined) n.textContent = text;
@@ -41,6 +42,23 @@ function drawApproaches(map, layout, top, width, junctionX) {
   at(el('strong', '千代田線', 'm-inbound-title m-chiyoda-label', map), top, rightX + 14);
 }
 
+// Position resolution is separate from interaction/placement. A missing position
+// stays a published departure event; no time-based extrapolation or observation.
+export function trainMarker(train, now, layout) {
+  const point = scheduledPosition(train, now);
+  if (point) return { kind:'scheduled', observed:false, point, top:layout.y(point.index) - MARKER.glyphHalf };
+  const origin = layout.rows.find(r => r.station.id === train.stops[0].station);
+  return { kind:'departure', observed:false, point:null, top:origin.top + MARKER.eventOffset };
+}
+
+function freeInfoTop(preferred, blocked, layout) {
+  const candidates = [preferred, preferred - MARKER.height - MARKER.infoHeight,
+    ...layout.rows.map(r => r.top + 50), ...blocked.map(b => b.bottom + 6)];
+  return candidates.filter(top => top >= 0 && top + MARKER.infoHeight <= layout.height
+    && blocked.every(b => top + MARKER.infoHeight <= b.top || top >= b.bottom))
+    .sort((a, b) => Math.abs(a - preferred) - Math.abs(b - preferred))[0] ?? layout.height;
+}
+
 // A departure-order neighbor is never labelled as a known physical position.
 export function mobileNeighbors(pool, selected, now) {
   const point = scheduledPosition(selected, now);
@@ -62,7 +80,7 @@ export function mobileNeighbors(pool, selected, now) {
 export function renderRouteMap({ root, model, pool, selected, now, plans, onSelect, compact }) {
   const name = id => model.stations.find(s => s.id === id)?.name || id;
   const legs = new Map();
-  for (const plan of plans.filter(p => p.recommendation?.transfers && p.recommendation.connection === 'likely' && (p.baseline || p.destinationPassed))) {
+  for (const plan of plans.filter(p => p.recommendation?.transfers && p.recommendation.saving > 0 && p.recommendation.connection === 'likely')) {
     for (const leg of plan.recommendation.legs) {
       const key = `${leg.fromTrainId}:${leg.trainId}:${leg.station}`;
       if (!legs.has(key)) legs.set(key, { leg, plan });
@@ -92,25 +110,29 @@ export function renderRouteMap({ root, model, pool, selected, now, plans, onSele
     if (s && !majors.has(s.id)) run.push(s);
     else if (run.length) { runs.push(run); for (const item of run) runSizes.set(item.id, run.length); run = []; }
   }
-  const unknown = slots.some(t => t && !scheduledPosition(t, now));
-  const approachTop = unknown ? 126 : 14;
+  const eventStations = new Set(slots.filter(t => t && !scheduledPosition(t, now)).map(t => t.stops[0].station));
+  const selectedEventStation = selected && !scheduledPosition(selected, now) ? selected.stops[0].station : null;
+  const approachTop = 14;
   const ueIndex = ordered.find(s => s.id === 'YoyogiUehara').index;
   const upstreamCount = ordered.filter(s => s.index < ueIndex).length;
-  const layout = stationLayout(model.stations, majors, transferStations, compact, approachTop, (s, { major, transfer }) =>
-    s.index < ueIndex ? { height:s.id === 'Shinjuku' ? APPROACH_HEIGHT - (upstreamCount - 1) * 10 : 10, centerOffset:s.id === 'Shinjuku' ? 18 : 5 }
-      : { height:transfer ? 156 : TARGETS.includes(s.id) ? 148 : major ? 88 : 38 / runSizes.get(s.id), centerOffset:major ? 32 : undefined });
+  const layout = stationLayout(model.stations, majors, transferStations, compact, approachTop, (s, { major, transfer }) => {
+    if (s.index < ueIndex) return { height:s.id === 'Shinjuku' ? APPROACH_HEIGHT - (upstreamCount - 1) * 10 : 10, centerOffset:s.id === 'Shinjuku' ? 18 : 5 };
+    let height = transfer ? 156 : TARGETS.includes(s.id) ? 148 : major ? 88 : 38 / runSizes.get(s.id);
+    if (eventStations.has(s.id)) height = Math.max(height, transfer ? 224 : selectedEventStation === s.id ? 152 : 112);
+    return { height, centerOffset:major ? 32 : undefined };
+  });
   const map = el('div', undefined, 'm-map'); map.style.height = `${layout.height + 12}px`;
   map.setAttribute('aria-label', '電車を直接選択する縦型路線図');
   const labelWidth = compact ? 100 : 150, laneWidth = (root.clientWidth - labelWidth) / Math.max(slots.length, 1);
   const x = i => labelWidth + laneWidth * (i + .5);
   drawApproaches(map, layout, approachTop, root.clientWidth, labelWidth + 8);
-  if (unknown) at(el('span', '位置未取得', 'm-dock-label', map), 28, 8);
   for (const item of layout.rows) {
     const { station:s, top, height, center, major } = item;
     const row = at(el('div', undefined, `m-row${s.index < ueIndex ? ' m-approach-row' : ''}${major ? ' m-major' : ' m-minor'}${TARGETS.includes(s.id) ? ' m-target' : ''}`, map), top);
     row.dataset.station = s.id; row.style.height = `${height}px`;
     if (major) at(el('strong', s.name, 'm-station', row), center - top - 11, 8);
     else row.setAttribute('aria-label', s.name);
+    if (eventStations.has(s.id)) at(el('small', '発時刻', 'm-event-label', row), MARKER.eventOffset + 8, 8);
   }
   for (const group of runs) {
     if (group[0].index < ueIndex) continue; // Already labelled on the Shinjuku branch.
@@ -118,13 +140,15 @@ export function renderRouteMap({ root, model, pool, selected, now, plans, onSele
     const text = group.length === 1 ? group[0].name : `${group[0].name} … ${group.at(-1).name}`;
     at(el('span', text, 'm-compressed', map), first.top + 8, 8).title = group.map(s => s.name).join(' → ');
   }
-  const positions = new Map(), selectedPoint = selected && scheduledPosition(selected, now);
+  const markers = new Map(slots.filter(Boolean).map(train => [train.id, trainMarker(train, now, layout)]));
+  const selectedPoint = markers.get(selected?.id)?.point;
   slots.forEach((train, i) => {
     if (!train) return;
-    const own = train.id === selected?.id, target = partnerIds.includes(train.id), point = scheduledPosition(train, now);
+    const marker = markers.get(train.id), point = marker.point;
+    const own = train.id === selected?.id, target = partnerIds.includes(train.id);
     const role = own ? '選択' : target ? '乗換先' : selectedPoint && point ? (point.index > selectedPoint.index ? '前方' : '後方') : '列車';
     const lane = at(el('div', undefined, `m-lane ${train.type}${own ? ' m-own' : ''}${target ? ' m-partner' : ''}`, map), 0, x(i));
-    lane.dataset.train = train.id; positions.set(train.id, x(i));
+    lane.dataset.train = train.id;
     const indices = train.stops.filter(s => s.stop).map(s => s.index);
     if (indices.length) {
       const line = at(el('div', undefined, 'm-track', lane), layout.y(Math.min(...indices)));
@@ -134,14 +158,13 @@ export function renderRouteMap({ root, model, pool, selected, now, plans, onSele
     for (const id of train.knownPasses.filter(id => !train.stops.some(s => s.station === id && s.stop))) {
       const s = ordered.find(s => s.id === id); if (s) at(el('span', '×', 'm-pass', lane), layout.y(s.index)).title = `${s.name} 通過`;
     }
-    const icon = at(el('button', undefined, 'm-train', lane), point ? layout.y(point.index) - 24 : 0);
+    const icon = at(el('button', undefined, `m-train${marker.kind === 'departure' ? ' m-event' : ''}`, lane), marker.top);
     icon.type = 'button'; icon.onclick = () => onSelect(train.id); icon.setAttribute('aria-pressed', String(own));
     icon.setAttribute('aria-label', `${clock(departure(train))} ${type(train)} ${train.destination}行を選択`);
-    icon.title = `${role} / ${point ? '定刻推定' : '位置未取得'}`;
+    icon.dataset.positionKind = marker.kind; icon.dataset.observed = String(marker.observed);
+    icon.title = `${role} / ${point ? '定刻推定' : '発時刻マーク・現在位置未取得'}`;
     el('span', '🚆', 'm-icon', icon);
-    el('strong', `${own ? '★ ' : target ? '↔ ' : ''}${clock(departure(train))}`, undefined, icon);
-    el('span', type(train), undefined, icon);
-    el('span', `${train.destination}行`, 'm-destination', icon);
+    el('strong', `${own ? '★' : target ? '↔' : ''}${clock(departure(train))}${marker.kind === 'departure' ? '発' : ''}`, undefined, icon);
     for (const d of TARGETS) {
       const time = arrival(train, d), s = ordered.find(s => s.id === d), p = plans.find(p => p.destination === d);
       const cell = at(el('span', Number.isInteger(time) ? clock(time) : train.knownPasses.includes(d) ? '通過' : '未取得', `m-arrival${Number.isInteger(time) ? '' : ' m-missing'}`, lane), layout.y(s.index) + 13);
@@ -160,12 +183,29 @@ export function renderRouteMap({ root, model, pool, selected, now, plans, onSele
   for (const { leg, plan } of legs.values()) {
     const from = pool.find(t => t.id === leg.fromTrainId), to = pool.find(t => t.id === leg.trainId);
     const row = layout.rows.find(r => r.station.id === leg.station);
-    const note = at(el('div', undefined, 'm-transfer', map), row.top + 64, 104);
+    const note = at(el('div', undefined, 'm-transfer', map), row.top + (eventStations.has(leg.station) ? 152 : 64), 104);
     note.dataset.from = from.id; note.dataset.to = to.id; note.dataset.station = leg.station;
     el('strong', `↔ ${type(from)} → ${type(to)}`, undefined, note);
     el('span', `${clock(leg.departure)}発 · ${name(plan.destination)} ${clock(plan.recommendation.arrival)}着${plan.recommendation.saving > 0 ? ` −${plan.recommendation.saving}分` : ''}`, undefined, note);
     el('small', '接続見込み・未保証', undefined, note);
-    for (const [id, text] of [[from.id, '元'], [to.id, '先']]) if (positions.has(id)) at(el('span', text, `m-connect ${text === '先' ? 'm-to' : ''}`, map), row.center - 13, positions.get(id) - 13);
+  }
+  if (selected) {
+    const marker = markers.get(selected.id);
+    const blocked = [...markers.values()].map(m => ({ top:m.top - 4, bottom:m.top + MARKER.height + 4 }));
+    for (const row of layout.rows.filter(r => r.major)) blocked.push({ top:row.center - 10, bottom:row.center + 10 });
+    for (const row of layout.rows.filter(r => TARGETS.includes(r.station.id))) blocked.push({ top:row.center + 10, bottom:row.top + row.height });
+    for (const { leg } of legs.values()) {
+      const row = layout.rows.find(r => r.station.id === leg.station), top = row.top + (eventStations.has(leg.station) ? 152 : 64);
+      blocked.push({ top:top - 4, bottom:top + 68 });
+    }
+    const row = selectedEventStation && layout.rows.find(r => r.station.id === selectedEventStation);
+    const top = row ? row.top + 104 : freeInfoTop(marker.top + MARKER.height + 6, blocked, layout);
+    const info = at(el('div', undefined, 'm-train-info', map), top, labelWidth + 4);
+    info.setAttribute('role', 'status'); info.dataset.train = selected.id;
+    el('strong', `${type(selected)} ${selected.destination}行${marker.kind === 'departure' ? ' · 位置未取得' : ''}`, undefined, info);
+    const time = id => Number.isInteger(arrival(selected, id)) ? clock(arrival(selected, id)) : selected.knownPasses.includes(id) ? '通過' : '未取得';
+    el('span', `登戸 ${time('Noborito')} / 遊園 ${time('MukogaokaYuen')}`, undefined, info);
+    map.style.height = `${Math.max(layout.height + 12, top + MARKER.infoHeight + 12)}px`;
   }
   if (selected) {
     const reversals = slots.filter(t => t && t.id !== selected.id).flatMap(other => arrivalOrderReversals(selected, other));
