@@ -1,56 +1,20 @@
-/* One fixed schematic; train count never changes the rail count. */
-:root { scroll-behavior:auto; }
-body { margin:0; background:#0b1420; }
-header, main, footer { max-width:390px; margin:auto; padding:8px 12px; }
-.heading { gap:8px; }
-h1 { font-size:20px; line-height:1.2; }
-h1 span { display:block; margin:4px 0 0; font-size:11px; }
-.clock { gap:4px; }
-.clock button { width:48px; height:48px; border-radius:6px; }
-.clock input { width:86px; height:48px; font-size:16px; }
-.legend, #hint { display:none; }
-main { padding-top:0; }
-#rail { border:0; border-radius:0; background:none; overflow:visible; min-height:250px; }
-.b-board { position:relative; width:100%; color:#e7edf4; isolation:isolate; }
-.b-wiring { position:absolute; inset:0; width:100%; height:100%; z-index:-1; }
-.b-rail { fill:none; stroke:#8da5b6; stroke-width:3; stroke-linejoin:bevel; }
-.b-approach { position:absolute; font-size:14px; white-space:nowrap; color:#9cc7ea; }
-.b-metro { color:#8acbb6; stroke:#70bba3; }
-.b-up { stroke:#405064; stroke-width:2; }
-.b-platform { fill:#354455; stroke:#6a7e90; stroke-width:1; }
-.b-stop { fill:#0b1420; stroke:#a2b2c0; stroke-width:1; }
-.b-platform-number { position:absolute; font-size:11px; line-height:16px; color:#d0dce6; }
-.b-station { position:absolute; left:0; right:0; height:24px; border-bottom:1px solid #263442; }
-.b-station strong { font-size:16px; line-height:24px; padding-right:8px; background:#0b1420; }
-.b-target { border-color:#456d67; }
-.b-target strong { color:#b6ead4; font-size:18px; }
-.b-gap, .b-track-label, .b-up-label, .b-unassigned-label, .b-single-label, .b-level-label { position:absolute; font-size:11px; color:#94a7b9; white-space:nowrap; background:#0b1420; }
-.b-track-label { font-size:13px; color:#d0dce6; }
-.b-unassigned-label { border-bottom:1px dashed #63778a; padding-bottom:3px; }
-.b-up-label { font-size:10px; color:#687d91; }
-.b-train { position:absolute; width:58px; height:64px; padding:0; border:0; background:transparent; cursor:pointer; touch-action:manipulation; z-index:6; text-align:center; }
-.b-glyph { display:block; width:30px; height:28px; margin:0 auto 1px; font:24px/28px system-ui; background:#0b1420; border-bottom:1px dashed currentColor; }
-.b-train strong { display:block; font-size:14px; line-height:18px; font-weight:500; white-space:nowrap; }
-.b-train small { display:block; font-size:12px; line-height:16px; white-space:nowrap; }
-.b-selected { color:#b6f3d9; }
-.b-selected .b-glyph { outline:2px solid #a0e8c8; border-radius:3px; }
-.b-partner { color:#f1c0e6; }
-.b-partner .b-glyph { outline:2px solid #dba3d0; border-radius:3px; }
-.b-train:focus-visible, .b-official:focus-visible { outline:3px solid white; outline-offset:2px; }
-.b-selected-info { position:absolute; width:204px; z-index:4; font-size:14px; line-height:20px; background:#0b1420; pointer-events:none; }
-.b-selected-info strong, .b-selected-info small, .b-selected-info span { display:block; }
-.b-selected-info strong { font-size:15px; color:#b6f3d9; }
-.b-selected-info small { font-size:11px; color:#93a7b9; }
-.b-transfer { position:absolute; width:204px; font-size:14px; line-height:20px; z-index:4; background:#0b1420; pointer-events:none; }
-.b-transfer strong { display:block; font-size:15px; color:#f1c0e6; }
-.b-transfer span { display:block; }
-.b-transfer small { display:block; font-size:11px; color:#93a7b9; }
-.b-result { position:absolute; width:204px; background:#0b1420; line-height:26px; z-index:4; }
-.b-result span, .b-result strong, .b-result small { display:block; }
-.b-result .b-stay { font-size:16px; color:#b6f3d9; }
-.b-faster { font-size:19px; color:#f1c0e6; }
-.b-verdict { color:#b6f3d9; font-size:15px; }
-.b-result small, .b-missing { font-size:12px; color:#93a7b9; }
-.b-official { display:inline-flex; align-items:center; min-height:48px; color:#b8d9f4; font-size:14px; }
-.b-reversal { color:#c3b4d8!important; }
-footer { text-align:right; font-size:11px; }
+:root {color-scheme:dark;scroll-behavior:auto;}
+* {box-sizing:border-box;}
+body {margin:0;background:#17202a;color:#e2e9ee;font:16px/1.4 system-ui,'Yu Gothic',sans-serif;}
+header,main {max-width:390px;margin:0 auto;padding:8px 12px;}
+header {padding-bottom:0;}
+h1 {margin:0;font-size:19px;font-weight:650;}
+h1 span {margin-left:8px;font-size:12px;font-weight:400;color:#9cabb8;}
+main {padding-top:0;}
+#rail {width:100%;}
+.w-board {display:block;width:100%;height:auto;overflow:visible;}
+.w-rail {fill:none;stroke:#c2cbd2;stroke-width:1.8;stroke-linejoin:bevel;stroke-linecap:butt;}
+.w-siding {stroke:#a4b3c0;}
+.w-metro {stroke:#54c7a0;}
+.w-bridge-gap {fill:none;stroke:#17202a;stroke-width:6;stroke-linejoin:bevel;}
+.w-grade {stroke-dasharray:4 3;}
+.w-platform {fill:#55616a;stroke:none;}
+.w-buffer {fill:none;stroke:#d7dfe5;stroke-width:2.4;}
+.w-station {font-size:16px;font-weight:650;fill:#e2e9ee;}
+.w-metro-label {font-size:13px;fill:#71d8b4;}
+.w-depot-label {font-size:12px;fill:#a9b8c5;}
