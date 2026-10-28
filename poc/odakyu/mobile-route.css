@@ -1,66 +1,56 @@
-/* One diagram at both widths; no selection forms, cards or auxiliary panels. */
+/* One fixed schematic; train count never changes the rail count. */
 :root { scroll-behavior:auto; }
-body { margin:0; background:#101b2a; }
-header { padding:10px 28px; }
-h1 span { font-size:12px; }
-.clock button { width:48px; height:48px; }
-.clock input { height:48px; font-size:16px; }
+body { margin:0; background:#0b1420; }
+header, main, footer { max-width:390px; margin:auto; padding:8px 12px; }
+.heading { gap:8px; }
+h1 { font-size:20px; line-height:1.2; }
+h1 span { display:block; margin:4px 0 0; font-size:11px; }
+.clock { gap:4px; }
+.clock button { width:48px; height:48px; border-radius:6px; }
+.clock input { width:86px; height:48px; font-size:16px; }
 .legend, #hint { display:none; }
-#rail { overflow:visible; border:0; background:none; min-height:250px; }
-.m-map { position:relative; width:100%; isolation:isolate; color:#eaf1f8; }
-.m-map * { box-sizing:border-box; }
-.m-route-structure { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:-1; }
-.m-inbound-line { fill:none; stroke-width:3; }
-.m-shinjuku { stroke:#77b8ec; }
-.m-chiyoda { stroke:#65cfaf; }
-.m-corridor-line { fill:none; stroke:#7e9baf; stroke-width:2; opacity:.6; }
-.m-corridor-node { fill:#101b2a; stroke:#b4cddd; stroke-width:2; }
-.m-inbound-title { position:absolute; font-size:15px; line-height:22px; }
-.m-shinjuku-label { color:#9acef6; }
-.m-chiyoda-label { color:#83e2c4; }
-.m-approach-row { border-top:0!important; }
-.m-row { position:absolute; left:0; right:0; border-top:1px solid #33435b; }
-.m-minor { border-color:transparent; }
-.m-target { border-color:#608e82; background:#19323566; }
-.m-station { position:absolute; width:140px; font-size:16px; line-height:22px; color:#d2dfec; }
-.m-target .m-station { font-size:18px; color:#c6fae3; }
-.m-compressed, .m-dock-label { position:absolute; font-size:11px; color:#90a3ba; max-width:96px; line-height:14px; }
-.m-lane { position:absolute; width:0; color:#b9c8db; }
-.m-track { position:absolute; left:-1px; width:2px; background:#71869e; opacity:.35; }
-.m-stop, .m-pass { position:absolute; left:-8px; width:16px; text-align:center; transform:translateY(-50%); font-size:16px; }
-.m-train { position:absolute; left:-30px; width:60px; height:48px; padding:0; background:transparent; border:0; border-radius:0; color:inherit; font:13px/18px system-ui; text-align:center; cursor:pointer; z-index:6; touch-action:manipulation; }
-.m-icon { display:block; width:26px; height:26px; margin:0 auto; font-size:22px; line-height:26px; background:#101b2a; border-radius:3px; }
-.m-train strong { display:block; font-size:13px; font-weight:500; white-space:nowrap; }
-.m-event .m-icon { border-bottom:1px dashed currentColor; }
-.m-event-label { position:absolute; color:#90a3ba; font-size:12px; }
-.m-train-info { position:absolute; right:8px; font-size:14px; line-height:20px; color:#b9f9da; pointer-events:none; z-index:5; }
-.m-train-info strong, .m-train-info>span { display:block; font-size:14px; }
-.m-own .m-train { color:#b9f9da; }
-.m-own .m-icon { outline:2px solid #9bf1d1; }
-.m-partner .m-train { color:#ffcbf2; }
-.m-partner .m-icon { outline:2px solid #efb5e1; }
-.m-train:focus-visible, .m-official:focus-visible { outline:3px solid #fff; outline-offset:3px; }
-.m-arrival { position:absolute; left:-39px; width:78px; text-align:center; font-size:20px; font-weight:700; line-height:25px; color:#dce8f5; background:#162b31; }
-.m-arrival small { display:block; font-size:12px; line-height:17px; font-weight:400; }
-.m-own .m-arrival { color:#b9f9da; }
-.m-partner .m-arrival { color:#ffcbf2; }
-.m-arrival.m-missing { font-size:14px; font-weight:400; color:#a5b4c6; }
-.m-verdict { display:block; font-size:13px; line-height:19px; }
-.m-official { display:inline-flex; min-height:44px; align-items:center; color:#c6e4ff; font-size:14px; text-decoration:underline; }
-.m-transfer { position:absolute; right:8px; line-height:1.5; z-index:8; pointer-events:none; }
-.m-transfer strong { display:block; font-size:16px; color:#efc2e7; }
-.m-transfer>span { display:block; font-size:14px; color:#dce9f4; }
-.m-transfer small { display:block; font-size:12px; color:#a5b8c9; }
-.m-reversal { position:absolute; max-width:96px; font-size:11px; color:#b8a9d4; }
-@media (max-width:600px) {
-  header { padding:8px 12px; }
-  .heading { gap:8px; align-items:center; }
-  h1 { font-size:20px; line-height:1.2; }
-  h1 span { display:block; margin:4px 0 0; }
-  .clock { gap:4px; }
-  .clock input { width:86px; }
-  main { padding:0 12px; }
-  .m-station { width:96px; font-size:15px; }
-  .m-target .m-station { font-size:16px; }
-  footer { padding:12px; }
-}
+main { padding-top:0; }
+#rail { border:0; border-radius:0; background:none; overflow:visible; min-height:250px; }
+.b-board { position:relative; width:100%; color:#e7edf4; isolation:isolate; }
+.b-wiring { position:absolute; inset:0; width:100%; height:100%; z-index:-1; }
+.b-rail { fill:none; stroke:#8da5b6; stroke-width:3; stroke-linejoin:bevel; }
+.b-approach { position:absolute; font-size:14px; white-space:nowrap; color:#9cc7ea; }
+.b-metro { color:#8acbb6; stroke:#70bba3; }
+.b-up { stroke:#405064; stroke-width:2; }
+.b-platform { fill:#354455; stroke:#6a7e90; stroke-width:1; }
+.b-stop { fill:#0b1420; stroke:#a2b2c0; stroke-width:1; }
+.b-platform-number { position:absolute; font-size:11px; line-height:16px; color:#d0dce6; }
+.b-station { position:absolute; left:0; right:0; height:24px; border-bottom:1px solid #263442; }
+.b-station strong { font-size:16px; line-height:24px; padding-right:8px; background:#0b1420; }
+.b-target { border-color:#456d67; }
+.b-target strong { color:#b6ead4; font-size:18px; }
+.b-gap, .b-track-label, .b-up-label, .b-unassigned-label, .b-single-label, .b-level-label { position:absolute; font-size:11px; color:#94a7b9; white-space:nowrap; background:#0b1420; }
+.b-track-label { font-size:13px; color:#d0dce6; }
+.b-unassigned-label { border-bottom:1px dashed #63778a; padding-bottom:3px; }
+.b-up-label { font-size:10px; color:#687d91; }
+.b-train { position:absolute; width:58px; height:64px; padding:0; border:0; background:transparent; cursor:pointer; touch-action:manipulation; z-index:6; text-align:center; }
+.b-glyph { display:block; width:30px; height:28px; margin:0 auto 1px; font:24px/28px system-ui; background:#0b1420; border-bottom:1px dashed currentColor; }
+.b-train strong { display:block; font-size:14px; line-height:18px; font-weight:500; white-space:nowrap; }
+.b-train small { display:block; font-size:12px; line-height:16px; white-space:nowrap; }
+.b-selected { color:#b6f3d9; }
+.b-selected .b-glyph { outline:2px solid #a0e8c8; border-radius:3px; }
+.b-partner { color:#f1c0e6; }
+.b-partner .b-glyph { outline:2px solid #dba3d0; border-radius:3px; }
+.b-train:focus-visible, .b-official:focus-visible { outline:3px solid white; outline-offset:2px; }
+.b-selected-info { position:absolute; width:204px; z-index:4; font-size:14px; line-height:20px; background:#0b1420; pointer-events:none; }
+.b-selected-info strong, .b-selected-info small, .b-selected-info span { display:block; }
+.b-selected-info strong { font-size:15px; color:#b6f3d9; }
+.b-selected-info small { font-size:11px; color:#93a7b9; }
+.b-transfer { position:absolute; width:204px; font-size:14px; line-height:20px; z-index:4; background:#0b1420; pointer-events:none; }
+.b-transfer strong { display:block; font-size:15px; color:#f1c0e6; }
+.b-transfer span { display:block; }
+.b-transfer small { display:block; font-size:11px; color:#93a7b9; }
+.b-result { position:absolute; width:204px; background:#0b1420; line-height:26px; z-index:4; }
+.b-result span, .b-result strong, .b-result small { display:block; }
+.b-result .b-stay { font-size:16px; color:#b6f3d9; }
+.b-faster { font-size:19px; color:#f1c0e6; }
+.b-verdict { color:#b6f3d9; font-size:15px; }
+.b-result small, .b-missing { font-size:12px; color:#93a7b9; }
+.b-official { display:inline-flex; align-items:center; min-height:48px; color:#b8d9f4; font-size:14px; }
+.b-reversal { color:#c3b4d8!important; }
+footer { text-align:right; font-size:11px; }

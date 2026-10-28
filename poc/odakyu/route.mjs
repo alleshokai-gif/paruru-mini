@@ -8,7 +8,7 @@ function render() {
   if (!model) return;
   const selected = pool.find(t => t.id === selectedId);
   const plans = selected ? destinations.map(destination => ({ destination, ...planNavigation(pool, selected.id, destination, now) })) : [];
-  renderRouteMap({ root:$('rail'), model, pool, selected, now, plans, compact:window.innerWidth <= 600,
+  renderRouteMap({ root:$('rail'), model, pool, selected, now, plans,
     onSelect:id => { selectedId = id; render(); } });
 }
 function showError(error) {
@@ -33,6 +33,6 @@ try {
   if (model.dataset?.kind !== 'real' || !Array.isArray(model.trips) || !model.trips.length) throw Error('REAL_DATA_REQUIRED');
   pool = model.trips.filter(t => t.calendar === 'Weekday');
   const caption = document.querySelector('h1 span');
-  caption.textContent = '保存・定刻推定'; caption.title = [...new Set(pool.map(t => t.sourceServiceDate))].join('・');
+  caption.textContent = '配線略図・保存定刻'; caption.title = [...new Set(pool.map(t => t.sourceServiceDate))].join('・');
   render();
 } catch (error) { showError(error); }
