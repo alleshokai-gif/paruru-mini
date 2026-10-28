@@ -9,6 +9,7 @@ const network = networkConfig(), { host, port } = network;
 const assets = new Map([
   ['/', ['route.html', 'text/html']], ['/diagnostics', ['index.html', 'text/html']],
   ['/route.mjs', ['route.mjs', 'text/javascript']], ['/route.css', ['route.css', 'text/css']], ['/style.css', ['style.css', 'text/css']],
+  ['/route-layout.mjs', ['route-layout.mjs', 'text/javascript']],
   ['/app.mjs', ['app.mjs', 'text/javascript']], ['/core.mjs', ['core.mjs', 'text/javascript']],
   ['/navigation.mjs', ['navigation.mjs', 'text/javascript']]
 ]);
