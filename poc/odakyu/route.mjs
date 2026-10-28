@@ -52,15 +52,37 @@ function render() {
   });
   for (const p of plans) {
     const candidate=candidateFor(p);
-    if (!candidate || (!p.baseline && !p.destinationPassed)) continue;
+    // Only an actual engine recommendation gets a transfer mark. Conditional
+    // alternatives remain visible as trains, without suggesting a transfer.
+    if (!candidate || candidate !== p.recommendation || candidate.connection !== 'likely'
+        || (!p.baseline && !p.destinationPassed)) continue;
     let from=selectedId;
-    for(const leg of candidate.legs){ const a=columns.get(from),b=columns.get(leg.trainId),s=station(leg.station); if(!a||!b) continue;
-      const tight=candidate.connection==='tight', yy=y(s.index), left=Math.min(a.x,b.x)+WIDTH/2, span=Math.abs(a.x-b.x);
-      const arrow=place(node('div',undefined,`arrow${b.x<a.x?' reverse':''}${tight?' tight':''}`,board),yy,left); arrow.style.width=`${span}px`;
-      const message=compact?`${station(p.destination).name} ${clock(candidate.arrival)}${candidate.saving>0?` · ${candidate.saving}分早着`:''}`:`${s.name}で乗換 → ${station(p.destination).name} ${clock(candidate.arrival)}${candidate.saving>0?`（${candidate.saving}分早い）`:''}`;
-      const bubbleLeft=compact?LEFT:Math.max(LEFT,Math.min(a.x,b.x));
-      const bubble=place(node('div',message,`bubble${tight?' tight':''}`,board),yy+12,bubbleLeft);bubble.style.maxWidth=`${LEFT+visible.length*WIDTH-bubbleLeft}px`;node('small',compact?(tight?'ここで乗換・接続ギリギリ':'ここで乗換・接続見込み'):(tight?'接続ギリギリ・間に合わない可能性':'接続見込み・番線未確認'),undefined,bubble); rows.get(s.id)?.classList.add('transfer');
-      const destCell=b.column.querySelectorAll('.arrival')[destinations.indexOf(p.destination)]; if(leg===candidate.legs.at(-1)&&destCell){destCell.classList.add('earlier');node('small','乗換案',undefined,destCell);} from=leg.trainId;
+    for(const leg of candidate.legs){
+      const a=columns.get(from),b=columns.get(leg.trainId),s=station(leg.station);
+      if(!a||!b) continue;
+      const source=pool.find(t=>t.id===from),target=pool.find(t=>t.id===leg.trainId);
+      for(const [entry,role,text] of [[a,'transfer-from','乗換元'],[b,'transfer-to','乗換先']]){
+        entry.column.classList.add(role);
+        const host=entry.column.querySelector('.train') || entry.column.querySelector('.train-name');
+        let badge=host.querySelector('.role-tag');
+        if(!badge) badge=node('span',text,'role-tag',host);
+        if(entry.column.classList.contains('transfer-from')&&entry.column.classList.contains('transfer-to')) badge.textContent='中継';
+      }
+      const row=layout.rows.find(r=>r.station.id===s.id),cardLeft=compact?LEFT:Math.max(LEFT,Math.min(a.x,b.x));
+      const card=place(node('div',undefined,'transfer-card',board),row.top+4,cardLeft);
+      card.dataset.station=s.id;card.dataset.from=from;card.dataset.to=leg.trainId;
+      card.style.width=`${Math.min(compact?260:470,LEFT+visible.length*WIDTH-cardLeft-8)}px`;
+      const head=node('div',undefined,'transfer-head',card);
+      node('span','↔','connection-mark',head);
+      const type=t=>t.type==='Local'?'各停':TYPES[t.type];
+      node('strong',`${s.name} · ${type(source)} → ${type(target)}`,undefined,head);
+      node('div',`${clock(leg.departure)}発 ${target.destination}行 → ${station(p.destination).name} ${clock(candidate.arrival)}着`,'transfer-detail',card);
+      node('div',`${candidate.saving>0?`${candidate.saving}分早着 · `:''}接続見込み（未保証）`,'transfer-benefit',card);
+      for(const [entry,text,role] of [[a,'元','from'],[b,'先','to']]) place(node('span',text,`connection-point ${role}`,board),y(s.index)-8,entry.x+WIDTH/2-8);
+      rows.get(s.id)?.classList.add('transfer');
+      const destCell=b.column.querySelectorAll('.arrival')[destinations.indexOf(p.destination)];
+      if(leg===candidate.legs.at(-1)&&destCell){destCell.classList.add('earlier');node('small','乗換案',undefined,destCell);}
+      from=leg.trainId;
     }
   }
   for(const {other,reversal:r} of reversals){
