@@ -1,72 +1,55 @@
-/* A separate phone composition: one selected train, two comparison slots. */
+/* One diagram at both widths; no selection forms, cards or auxiliary panels. */
+:root { scroll-behavior:auto; }
+body { margin:0; background:#101b2a; }
+header { padding:10px 28px; }
+h1 span { font-size:12px; }
+.clock button { width:48px; height:48px; }
+.clock input { height:48px; font-size:16px; }
+.legend, #hint { display:none; }
+#rail { overflow:visible; border:0; background:none; min-height:250px; }
+.m-map { position:relative; width:100%; isolation:isolate; color:#eaf1f8; }
+.m-map * { box-sizing:border-box; }
+.m-row { position:absolute; left:0; right:0; border-top:1px solid #33435b; }
+.m-minor { border-color:transparent; }
+.m-target { border-color:#608e82; background:#19323566; }
+.m-station { position:absolute; width:140px; font-size:16px; line-height:22px; color:#d2dfec; }
+.m-target .m-station { font-size:18px; color:#c6fae3; }
+.m-compressed, .m-dock-label { position:absolute; font-size:11px; color:#90a3ba; max-width:96px; line-height:14px; }
+.m-lane { position:absolute; width:0; color:#b9c8db; }
+.m-track { position:absolute; left:-1px; width:2px; background:#71869e; opacity:.35; }
+.m-stop, .m-pass { position:absolute; left:-8px; width:16px; text-align:center; transform:translateY(-50%); font-size:16px; }
+.m-train { position:absolute; left:-39px; width:78px; min-height:48px; padding:0; background:transparent; border:0; border-radius:0; color:inherit; font:14px/19px system-ui; text-align:center; cursor:pointer; z-index:4; }
+.m-icon { display:block; width:46px; height:44px; margin:0 auto 3px; font-size:30px; line-height:44px; background:#101b2a; border-radius:50%; }
+.m-train strong, .m-train>span:not(.m-icon) { display:block; }
+.m-train .m-destination { font-size:12px; line-height:18px; }
+.m-own .m-train { color:#b9f9da; }
+.m-own .m-icon { outline:3px solid #9bf1d1; }
+.m-partner .m-train { color:#ffcbf2; }
+.m-partner .m-icon { outline:3px solid #efb5e1; }
+.m-train:focus-visible, .m-official:focus-visible { outline:3px solid #fff; outline-offset:3px; }
+.m-arrival { position:absolute; left:-39px; width:78px; text-align:center; font-size:20px; font-weight:700; line-height:25px; color:#dce8f5; background:#162b31; }
+.m-arrival small { display:block; font-size:12px; line-height:17px; font-weight:400; }
+.m-own .m-arrival { color:#b9f9da; }
+.m-partner .m-arrival { color:#ffcbf2; }
+.m-arrival.m-missing { font-size:14px; font-weight:400; color:#a5b4c6; }
+.m-verdict { display:block; font-size:13px; line-height:19px; }
+.m-official { display:inline-flex; min-height:44px; align-items:center; color:#c6e4ff; font-size:14px; text-decoration:underline; }
+.m-transfer { position:absolute; right:8px; line-height:1.5; z-index:8; pointer-events:none; }
+.m-transfer strong { display:block; font-size:16px; color:#efc2e7; }
+.m-transfer>span { display:block; font-size:14px; color:#dce9f4; }
+.m-transfer small { display:block; font-size:12px; color:#a5b8c9; }
+.m-connect { position:absolute; width:26px; height:26px; border-radius:50%; background:#9bf1d1; color:#163d31; text-align:center; font-size:13px; font-weight:700; line-height:26px; z-index:7; }
+.m-connect.m-to { background:#efb5e1; color:#40223e; }
+.m-reversal { position:absolute; max-width:96px; font-size:11px; color:#b8a9d4; }
 @media (max-width:600px) {
-  :root { font-size:16px; scroll-behavior:auto; }
-  body { margin:0; background:#101b2a; }
-  header { padding:10px 12px; }
-  .heading { align-items:center; gap:8px; }
+  header { padding:8px 12px; }
+  .heading { gap:8px; align-items:center; }
   h1 { font-size:20px; line-height:1.2; }
-  h1 span { font-size:12px; margin-top:4px; }
-  .clock button { width:48px; height:48px; }
-  .clock input { height:48px; width:86px; font-size:16px; }
-  .legend, #hint { display:none; }
+  h1 span { display:block; margin:4px 0 0; }
+  .clock { gap:4px; }
+  .clock input { width:86px; }
   main { padding:0 12px; }
-  #rail { overflow:visible; border:0; background:none; min-height:250px; }
-  .m-route { width:100%; color:#eaf1f8; font-size:16px; }
-  .m-route * { box-sizing:border-box; }
-  .m-route button { cursor:pointer; font:inherit; }
-  .m-route button:focus-visible, .m-route a:focus-visible { outline:3px solid #fff; outline-offset:3px; }
-  .m-route button:disabled { cursor:default; opacity:.4; }
-  .m-pick-title { font-size:22px; margin:24px 0 8px; }
-  .m-muted { font-size:14px; color:#b2c2d4; }
-  .m-pick-list { display:grid; gap:12px; padding:12px 0; }
-  .m-pick { min-height:64px; border:1px solid #465770; border-radius:12px; background:#1b2b41; text-align:left; padding:12px; font-weight:650!important; }
-  .m-selector { position:sticky; top:0; z-index:20; background:#101b2af5; padding:5px 0 8px; border-bottom:1px solid #35445b; }
-  .m-current { padding:10px 12px; background:#20483f; border:2px solid #9bf1d1; border-radius:12px; color:#ecfff7; }
-  .m-eyebrow { display:block; font-size:13px; color:#a9f4d6; margin-bottom:4px; }
-  .m-current strong { display:block; font-size:19px; line-height:1.45; }
-  .m-location { display:block; font-size:12px; color:#b9d2c9; margin-top:3px; }
-  .m-neighbors { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
-  .m-neighbor { min-height:80px; padding:7px 10px; border:1px solid #475973; border-radius:10px; background:#1c2c42; color:#d5e3f0; text-align:left; line-height:1.4; }
-  .m-neighbor span { display:block; font-size:13px; }
-  .m-neighbor strong { display:block; font-size:16px; color:#fff; }
-  .m-order-note { margin:6px 2px 0; color:#9cacc1; font-size:12px; }
-  .m-map { position:relative; width:100%; margin-top:10px; isolation:isolate; }
-  .m-row { position:absolute; left:0; right:0; border-top:1px solid #33435b; }
-  .m-minor { border-color:transparent; }
-  .m-target { background:#193235; border-color:#547e75; border-radius:10px; }
-  .m-station { position:absolute; width:100px; font-size:15px; line-height:22px; color:#d2dfec; }
-  .m-target .m-station { font-size:16px; color:#c6fae3; }
-  .m-compressed { position:absolute; font-size:11px; color:#90a3ba; max-width:100px; line-height:13px; }
-  .m-lane { position:absolute; width:0; color:#b9c8db; }
-  .m-lane-head { position:absolute; top:0; left:-39px; width:78px; min-height:67px; border:1px solid #44536c; border-radius:10px; padding:4px 0; background:#1c2c40; color:inherit; line-height:1.35; }
-  .m-lane-head span, .m-lane-head strong { display:block; font-size:14px; }
-  .m-lane-head .m-role { font-size:11px; color:#c6d6e7; }
-  .m-own .m-lane-head { color:#d8ffed; border:2px solid #9bf1d1; background:#22483e; }
-  .m-partner .m-lane-head { color:#ffddf8; border:2px solid #efb5e1; background:#49304d; }
-  .m-track { position:absolute; left:-1px; width:2px; background:#71869e; opacity:.35; }
-  .m-stop, .m-pass { position:absolute; left:-8px; width:16px; text-align:center; transform:translateY(-50%); font-size:16px; }
-  .m-train { position:absolute; left:-25px; width:50px; height:48px; padding:0; background:#233249; border:1px dashed #a2b5ce; border-radius:12px; font-size:30px!important; z-index:4; line-height:40px; }
-  .m-own .m-train { outline:3px solid #9bf1d1; background:#22483e; }
-  .m-partner .m-train { outline:3px solid #efb5e1; background:#49304d; }
-  .m-undocked { position:absolute; top:44px; left:-10px; width:70px; color:#a6b8cc; font-size:11px; line-height:16px; }
-  .m-arrival { position:absolute; left:-39px; width:78px; text-align:center; font-size:20px; font-weight:700; line-height:25px; color:#dce8f5; background:#193235; border-radius:6px; }
-  .m-arrival small { display:block; font-size:12px; line-height:17px; font-weight:400; }
-  .m-own .m-arrival { color:#b9f9da; }
-  .m-partner .m-arrival { color:#ffcbf2; }
-  .m-arrival.m-missing { font-size:14px; font-weight:400; color:#a5b4c6; }
-  .m-transfer { position:absolute; right:8px; padding:9px 11px; border:1px solid #91abae; border-radius:10px; background:#203443; z-index:8; line-height:1.5; font-size:15px; }
-  .m-transfer strong { font-size:16px; color:#ecfff7; }
-  .m-transfer b { color:#ffd4f3; display:block; }
-  .m-transfer small { font-size:12px; display:block; color:#c0cbd7; }
-  .m-connect { position:absolute; width:26px; height:26px; border-radius:50%; background:#9bf1d1; color:#163d31; text-align:center; font-size:13px; font-weight:700; line-height:26px; z-index:7; }
-  .m-connect.m-to { background:#efb5e1; color:#40223e; }
-  .m-result { position:absolute; right:8px; font-size:14px; line-height:1.4; color:#d1ece2; }
-  .m-result strong { display:block; font-size:16px; }
-  .m-official { display:inline-flex; min-height:44px; align-items:center; color:#c6e4ff; font-size:15px; text-decoration:underline; }
-  .m-result .m-official { margin-left:7px; }
-  .m-evidence { border:1px solid #455773; border-radius:10px; padding:0 12px; margin-top:8px; }
-  .m-evidence summary { min-height:48px; padding:13px 0; font-size:15px; cursor:pointer; }
-  .m-evidence p { font-size:14px; line-height:1.6; color:#bbcadb; }
-  .m-footnote { white-space:pre-line; font-size:12px; line-height:1.6; color:#9cacc1; }
-  footer { padding:16px 12px; }
+  .m-station { width:96px; font-size:15px; }
+  .m-target .m-station { font-size:16px; }
+  footer { padding:12px; }
 }
