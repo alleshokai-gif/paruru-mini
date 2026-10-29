@@ -2,6 +2,7 @@ import {TYPES,clock} from './core.mjs';
 import {scheduledPosition} from './navigation.mjs';
 import {DOWNBOARD as B,DOWN_STATIONS,DOWN_SWITCHES,downRails,trainMarker,visibleTrains,layoutMarkers,inferredTrack,railX} from './downbound-board.mjs';
 const targets=['Noborito','MukogaokaYuen'];
+const TRAIN_CROWD_PX=28;
 const departure=t=>t.stops[0].departure??t.stops[0].arrival;
 const type=t=>t.type==='Local'?'各停':TYPES[t.type];
 const shortType=t=>t.type==='RapidExpress'?'快急':type(t);
@@ -73,25 +74,29 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     }
   }
   const partnerIds=[...new Set([...legs.values()].map(({leg})=>leg.trainId))];
-  const trains=visibleTrains(pool,selected,now,[...new Set([candidate?.id,...partnerIds].filter(Boolean))]);
+  const trains=visibleTrains(pool,now,model.stations);
   const markers=layoutMarkers(trains.map(t=>trainMarker(t,now,model.stations)).filter(Boolean));
   if(!markers.length)at(el('small','定刻位置なし','d-load-status',map),B.uehara+70,8);
   for(const marker of markers) {
     const train=marker.train,own=selected?.id===train.id,comparison=candidate?.id===train.id,partner=partnerIds.includes(train.id);
     const canTransfer=!selected||own||eligibleCandidateIds.has(train.id);
     const button=at(el('button',undefined,`d-train ${train.type} d-track-${marker.track.id}${own?' d-selected':''}${comparison?' d-candidate':''}${partner?' d-partner':''}`,map),marker.displayY-24,marker.x-26);
-    button.type='button';button.disabled=!canTransfer;button.onclick=event=>{
+    button.type='button';button.setAttribute('aria-disabled',String(!canTransfer));button.onclick=event=>{
       // Keep every schedule anchor fixed. A tap cycles genuinely crowded
       // glyphs; otherwise the nearest visible glyph wins. Keyboard activates
       // the focused train directly.
-      if(event.detail===0){onSelect(train.id);return;}
-      const near=[...map.querySelectorAll('.d-train:not(:disabled)')].map(node=>{
+      if(event.detail===0){if(canTransfer)onSelect(train.id);return;}
+      const near=[...map.querySelectorAll('.d-train')].map(node=>{
         const rect=node.querySelector('.d-glyph').getBoundingClientRect();
-        return {id:node.dataset.train,distance:Math.hypot(event.clientX-rect.x-rect.width/2,event.clientY-rect.y-rect.height/2)};
+        return {id:node.dataset.train,eligible:node.getAttribute('aria-disabled')!=='true',distance:Math.hypot(event.clientX-rect.x-rect.width/2,event.clientY-rect.y-rect.height/2)};
       }).sort((a,b)=>a.distance-b.distance||a.id.localeCompare(b.id));
-      const group=near.filter(n=>n.distance<=near[0].distance+12);
-      const current=group.findIndex(n=>n.id===(candidate?.id||selected?.id));
-      onSelect(group[(current+1)%group.length].id);
+      const group=near.filter(n=>n.distance<=near[0].distance+TRAIN_CROWD_PX&&n.eligible);
+      if(!group.length)return;
+      // Retain the last hit through rider deselection. Repeated taps can select
+      // every overlapping train without shifting any of their schedule anchors.
+      const current=group.findIndex(n=>n.id===root.dataset.lastTappedTrain);
+      const id=group[(current+1)%group.length].id;
+      root.dataset.lastTappedTrain=id;onSelect(id);
     };button.dataset.train=train.id;
     button.dataset.track=marker.track.id;button.dataset.trackConfidence=marker.track.confidence;button.dataset.observed='false';button.dataset.positionKind=marker.kind;
     button.dataset.onTrack=String(marker.track.id!=='uehara-unassigned');
@@ -107,14 +112,14 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     button.title=`${action} / ${state}${marker.kind.includes('interpolation')?'・公開着発間の概略':''} / ${marker.track.id==='uehara-unassigned'?'使用線路・上原番線は未確認':'使用線路は経路・区間標準からの低確度推定'}`;
     el('span','🚆','d-glyph',button);
     if(own||comparison||partner)el('b',own?'乗車 ×':comparison?'候補':'乗換先','d-role-badge',button);
-    el('small',marker.track.id==='uehara-unassigned'?'線路?':marker.kind==='scheduled_dwell'?'停':marker.kind==='scheduled_departure'?'発':marker.kind==='scheduled_arrival'?'着':'~','d-event-flag',button);
-    const crowd=markers.filter(m=>Math.abs(m.x-marker.x)<28&&Math.abs(m.y-marker.y)<28).length;
+    if(own||comparison)el('small',marker.track.id==='uehara-unassigned'?'線路?':marker.kind==='scheduled_dwell'?'停':marker.kind==='scheduled_departure'?'発':marker.kind==='scheduled_arrival'?'着':'~','d-event-flag',button);
+    const crowd=markers.filter(m=>Math.abs(m.x-marker.x)<TRAIN_CROWD_PX&&Math.abs(m.y-marker.y)<TRAIN_CROWD_PX).length;
     if(crowd>1)el('small',String(crowd),'d-stack-count',button);
     const captionTop=marker.displayY+27,captionBottom=captionTop+32;
     const clear=markers.every(m=>m===marker||Math.abs(m.x-marker.x)>=56||captionBottom<m.displayY-14||captionTop>m.displayY+14)
       &&DOWN_SWITCHES.every(s=>captionBottom<s.fromY||captionTop>s.toY)
       &&DOWN_STATIONS.every(s=>captionBottom<s.y-22||captionTop>s.y+22);
-    if(clear) {
+    if(clear&&(own||comparison)) {
       const caption=el('span',undefined,'d-train-caption',button);
       el('strong',shortType(train),undefined,caption);
       el('small',`${clock(departure(train))}発`,undefined,caption);

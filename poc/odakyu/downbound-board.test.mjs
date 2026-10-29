@@ -32,7 +32,7 @@ test('渡り線は添付配線の下り2線間だけに限定し、上り・検�
 });
 test('既存実便5分比較を維持し、未来の便を線路上へ架空配置しない',()=>{
   const plan=planNavigation(pool,selected.id,'Noborito',ref.compareAt);assert.equal(plan.recommendation.saving,5);
-  const partners=plan.recommendation.legs.map(l=>l.trainId),trains=visibleTrains(pool,selected,ref.compareAt,partners);
+  const partners=plan.recommendation.legs.map(l=>l.trainId),trains=visibleTrains(pool,ref.compareAt,model.stations);
   assert.ok(!trains.some(t=>t.id===partners[0]));assert.equal(trainMarker(selected,ref.compareAt,model.stations),null);
   const marker=trainMarker(selected,departure(selected),model.stations);
   assert.equal(marker.observed,false);assert.equal(marker.track.confidence,'unknown');
@@ -77,10 +77,22 @@ test('準急・通勤準急・不明転線・範囲外は線路未確定、位�
   assert.equal(inferredTrack(selected,{index:10},1450).id,null);
   assert.equal(inferredTrack(selected,{index:10},500).id,'local');
 });
-test('既存平日便の前後切替と複数時点で、表示配置不能や架空の実測へ変換しない',()=>{
-  for(const t of pool)for(const now of [ref.compareAt,Math.max(0,departure(t)-1),departure(t)+1]) {
-    const markers=layoutMarkers(visibleTrains(pool,t,now).map(train=>trainMarker(train,now,model.stations)).filter(Boolean));
-    assert.ok(markers.length<=3);assert.ok(markers.every(m=>!m.observed&&(m.track.confidence==='low'||m.track.id==='uehara-unassigned')&&Number.isFinite(m.displayY)));
+test('朝夕の表示は乗換候補と独立した全在線推定便で、3便制限や架空配置がない',()=>{
+  for(const now of [495,497,504,512,514,1020,1050,1080,1110]) {
+    const expected=pool.map(train=>trainMarker(train,now,model.stations)).filter(Boolean);
+    const markers=layoutMarkers(visibleTrains(pool,now,model.stations).map(train=>trainMarker(train,now,model.stations)));
+    assert.deepEqual(markers.map(m=>m.train.id).sort(),expected.map(m=>m.train.id).sort());
+    assert.ok(markers.length>3);
+    for(const track of ['local','express'])assert.ok(markers.some(m=>m.track.id===track));
+    for(const m of markers){
+      assert.equal(m.observed,false);assert.equal(m.displayY,m.y);assert.equal(m.displaced,false);
+      assert.ok(m.track.confidence==='low'||m.track.id==='uehara-unassigned');
+      assert.equal(m.x,railX(m.track.id,m.y));
+    }
+    for(const track of ['local','express']){
+      const same=markers.filter(m=>m.track.id===track);
+      for(let i=1;i<same.length;i++)assert.ok(same[i-1].point.index<=same[i].point.index);
+    }
   }
 });
 

@@ -161,27 +161,11 @@ export function trainMarker(train,now,stations) {
     positionConfidence:point.kind.includes('interpolation')?'coarse':'minute_schedule',
     identityBasis:train.identityBasis,identityConfidence:train.confidence??'unknown'};
 }
-export function visibleTrains(pool,selected,now,partnerIds=[]) {
-  const active=t=>{
-    const p=t&&scheduledPoint(t,now);return p&&inferredTrack(t,p,now).id;
-  };
-  if(!selected) {
-    const all=pool.filter(active),incoming=all.filter(t=>t.approach).sort((a,b)=>a.stops.at(-1).arrival-b.stops.at(-1).arrival)[0];
-    return [...new Map([incoming,...all.sort((a,b)=>Math.abs(dep(a)-now)-Math.abs(dep(b)-now)||order(a,b))].filter(Boolean).map(t=>[t.id,t])).values()].slice(0,3).sort(order);
-  }
-  const point=scheduledPoint(selected,now);
-  const queue=pool.filter(t=>t.stops[0].station===selected.stops[0].station).sort(order),i=queue.findIndex(t=>t.id===selected.id);
-  let before=queue[i-1],after=queue[i+1];
-  if(point) {
-    const others=pool.filter(t=>t.id!==selected.id&&active(t)).map(train=>({train,p:scheduledPoint(train,now)}));
-    const near=side=>others.filter(t=>side*(t.p.index-point.index)>0).sort((a,b)=>Math.abs(a.p.index-point.index)-Math.abs(b.p.index-point.index)||order(a.train,b.train))[0]?.train;
-    before=near(1)||before;after=near(-1)||after;
-  }
-  const partner=partnerIds.map(id=>pool.find(t=>t.id===id)).filter(Boolean);
-  // Future transfer partners remain in the station annotation, not on a rail.
-  const nearest=pool.filter(t=>active(t)&&t.id!==selected.id).sort((a,b)=>Math.abs(dep(a)-dep(selected))-Math.abs(dep(b)-dep(selected))||order(a,b));
-  const list=[selected,...partner.filter(active),...[before,after].filter(active),...nearest].filter(Boolean);
-  return [...new Map(list.map(t=>[t.id,t])).values()].slice(0,3).sort(order);
+export function visibleTrains(pool,now,stations) {
+  // The operating board is the complete current schedule, not a transfer
+  // shortlist. The marker's existing position/track evidence gates visibility;
+  // selection must neither hide active trains nor park future partners here.
+  return pool.filter(train=>trainMarker(train,now,stations)).sort(order);
 }
 // Keep the actual schedule anchor, including during dwell. Crowded glyphs are
 // cycled by tapping; spacing must never move a stopped train or reverse order.

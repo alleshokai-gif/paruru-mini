@@ -30,7 +30,7 @@ main {padding-top:0;}
 .d-single-label {position:absolute;font-size:11px;color:#9ab2c4;}
 .d-load-status {position:absolute;color:#d5bd98;font-size:14px;}
 .d-train {position:absolute;width:52px;height:48px;border:0;padding:0;background:transparent;color:#dceaf6;cursor:pointer;touch-action:manipulation;z-index:5;}
-.d-train:disabled {opacity:.45;cursor:default;}
+.d-train[aria-disabled="true"] {cursor:default;}
 .d-glyph {position:absolute;top:11px;left:13px;width:26px;height:26px;font:22px/26px system-ui;text-align:center;background:#0e1b28;border:1px dashed currentColor;border-radius:3px;}
 .d-train-caption {position:absolute;top:51px;left:0;width:52px;text-align:center;font-size:13px;line-height:16px;background:#0e1b28;pointer-events:none;}
 .d-event-flag {position:absolute;top:17px;font-size:10px;line-height:14px;pointer-events:none;}.d-track-express .d-event-flag {right:46px;}.d-track-local .d-event-flag {left:46px;}
