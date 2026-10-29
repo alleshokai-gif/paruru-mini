@@ -88,5 +88,12 @@ test('下北沢は急行・緩行の異なる地下階ホームで乗換候補�
   assert.ok(B.uehara<shimokita.y&&shimokita.y<B.kyodo);
   assert.ok(section(shimokita.y).length===2);
   assert.ok(!DOWN_SWITCHES.some(s=>s.station==='ShimoKitazawa')); // 駅内の階移動は渡り線ではない
-  assert.ok(planNavigation(pool,selected.id,'Noborito',ref.compareAt));
+  // The compact platform fits between the existing crossover groups.
+  assert.ok(shimokita.y-12>Math.max(...DOWN_SWITCHES.filter(s=>s.station==='YoyogiUehara').map(s=>s.toY)));
+  assert.ok(shimokita.y+12<Math.min(...DOWN_SWITCHES.filter(s=>s.station==='Kyodo').map(s=>s.fromY)));
+  const plan=planNavigation(pool,selected.id,'Noborito',departure(selected));
+  assert.equal(plan.recommendation.saving,5);
+  assert.equal(plan.recommendation.legs[0].station,'YoyogiUehara');
+  assert.ok(!selected.stops.some(s=>s.station==='ShimoKitazawa'));
+  assert.equal(planNavigation(pool,selected.id,'MukogaokaYuen',departure(selected)).recommendation,null);
 });

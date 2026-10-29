@@ -3,7 +3,7 @@ import {scheduledPosition} from './navigation.mjs';
 // Geometry is fixed. Schedule position, identity and segment track confidence
 // are independent; none of these presentation estimates enter the route engine.
 export const DOWNBOARD=Object.freeze({width:351,height:1048,expressX:178,localX:250,singleX:214,
-  uehara:150,shimokitazawa:226,kyodo:350,seijo:500,noborito:650,yuen:900,mergeStart:750,mergeEnd:795,splitStart:835,splitEnd:870,rejoinStart:935,rejoinEnd:975});
+  uehara:150,shimokitazawa:243,kyodo:350,seijo:500,noborito:650,yuen:900,mergeStart:750,mergeEnd:795,splitStart:835,splitEnd:870,rejoinStart:935,rejoinEnd:975});
 export const DOWN_STATIONS=Object.freeze([
   {id:'YoyogiUehara',name:'代々木上原',y:DOWNBOARD.uehara},
   {id:'ShimoKitazawa',name:'下北沢',y:DOWNBOARD.shimokitazawa},
