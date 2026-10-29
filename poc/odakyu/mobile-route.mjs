@@ -44,7 +44,7 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
   at(el('small','緩行線','d-track-label',map),B.uehara-46,B.localX-20);
   at(el('small','下り1線','d-single-label',map),B.mergeEnd+12,B.singleX+14);
   if(!model||!pool.length) {
-    at(el('span',error?'読込失敗':'読込中','d-load-status',map),B.uehara+70,8);
+    at(el('span',error?'読込失敗':model?'該当ダイヤ未取得':'読込中','d-load-status',map),B.uehara+70,8);
     root.replaceChildren(map);return;
   }
   const legs=new Map();
@@ -59,6 +59,7 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
     .sort((a,b)=>Math.abs(departure(a)-departure(selected))-Math.abs(departure(b)-departure(selected))).map(t=>t.id):[];
   const trains=visibleTrains(pool,selected,now,[...new Set([...partnerIds,...reversalIds])]);
   const markers=layoutMarkers(trains.map(t=>trainMarker(t,now,model.stations)).filter(Boolean));
+  if(!markers.length)at(el('small','定刻位置なし','d-load-status',map),B.uehara+70,8);
   for(const marker of markers) {
     const train=marker.train,own=selected?.id===train.id,partner=partnerIds.includes(train.id);
     const button=at(el('button',undefined,`d-train ${train.type} d-track-${marker.track.id}${own?' d-selected':''}${partner?' d-partner':''}`,map),marker.displayY-24,marker.x-26);
@@ -79,11 +80,13 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
     button.dataset.positionConfidence=marker.positionConfidence;button.dataset.identityConfidence=marker.identityConfidence;button.dataset.identityBasis=marker.identityBasis;
     button.dataset.trackBasis=marker.track.basis;
     button.dataset.anchorY=String(marker.y);button.dataset.displayY=String(marker.displayY);
+    button.dataset.positionFrom=marker.point.from;button.dataset.positionTo=marker.point.to;
     button.setAttribute('aria-pressed',String(own));
     button.setAttribute('aria-label',`${clock(departure(train))} ${type(train)} ${train.destination}行を選択`);
-    button.title=`${marker.kind==='scheduled_dwell'?'定刻停車':marker.kind==='schedule_interpolation'?'区間内の概略推定・途中停車時刻未収録':'定刻着発'} / 使用線路は区間標準からの低確度推定`;
+    const state=marker.kind==='scheduled_dwell'?'定刻停車':marker.kind==='scheduled_departure'?'定刻発車':marker.kind==='scheduled_arrival'?'定刻到着':'定刻概略~';
+    button.title=`${state}${marker.kind==='schedule_interpolation'?'・途中停車時刻未収録':''} / 使用線路は区間標準からの低確度推定`;
     el('span','🚆','d-glyph',button);
-    el('small',marker.kind==='scheduled_dwell'?'停':'~','d-event-flag',button);
+    el('small',marker.kind==='scheduled_dwell'?'停':marker.kind==='scheduled_departure'?'発':marker.kind==='scheduled_arrival'?'着':'~','d-event-flag',button);
     const crowd=markers.filter(m=>Math.abs(m.x-marker.x)<28&&Math.abs(m.y-marker.y)<28).length;
     if(crowd>1)el('small',String(crowd),'d-stack-count',button);
     const captionTop=marker.displayY+27,captionBottom=captionTop+32;
@@ -116,7 +119,9 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
       const y=noteY((marker?.displayY??B.uehara)+20,60,blocked);
       const info=at(el('div',undefined,'d-selected-info',map),y,8);info.setAttribute('role','status');
       el('strong',`${type(selected)} ${selected.destination}行`,undefined,info);
-      el('small',`${clock(departure(selected))}発 · ${!marker?scheduledPosition(selected,now)?'線路未確定':'位置未取得':marker.kind==='scheduled_dwell'?'定刻停車':'定刻概略~'}`,undefined,info);
+      const lastArrival=selected.stops.at(-1)?.arrival;
+      const state=!marker?scheduledPosition(selected,now)?'線路未確定':Number.isInteger(lastArrival)&&lastArrival<now?'収録区間外':'位置未取得':marker.kind==='scheduled_dwell'?'定刻停車':marker.kind==='scheduled_departure'?'定刻発車':marker.kind==='scheduled_arrival'?'定刻到着':'定刻概略~';
+      el('small',`${clock(departure(selected))}発 · ${state}`,undefined,info);
       const a=arrival(selected,'Noborito');el('span',`登戸 ${Number.isInteger(a)?clock(a)+'着':'未取得'}`,undefined,info);
     }
   }
@@ -124,18 +129,19 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
     const row=DOWN_STATIONS.find(s=>s.id===id),plan=plans.find(p=>p.destination===id);
     if(!selected){at(el('small','列車をタップ','d-target-note',map),row.y+31,8);continue;}
     const recommendation=plan?.recommendation;
+    const arrived=plan?.status==='SCHEDULED_ARRIVED';
     const faster=recommendation?.transfers>0&&recommendation.saving>0&&recommendation.connection==='likely';
     const stationPoint={index:model.stations.find(s=>s.id===id).index};
     const baseline=arrival(selected,id),track=inferredTrack(selected,stationPoint,baseline).id;
     const own=at(el('div',undefined,'d-arrival d-own-arrival',map),row.y+31,railX(track,row.y)-35);own.dataset.destination=id;
     el('strong',Number.isInteger(baseline)?clock(baseline):selected.knownPasses.includes(id)?'通過':'未取得',undefined,own);
-    el('small',Number.isInteger(baseline)?recommendation?.transfers===0?'そのまま':'乗り続ける':null,undefined,own);
+    el('small',Number.isInteger(baseline)?arrived?'定刻着済':recommendation?.transfers===0?'そのまま':'乗り続ける':null,undefined,own);
     if(faster) {
       const final=pool.find(t=>t.id===recommendation.legs.at(-1).trainId),targetTrack=inferredTrack(final,stationPoint,recommendation.arrival).id;
       const top=row.y+31+(targetTrack===track?32:0);
       const target=at(el('div',undefined,'d-arrival d-faster-arrival',map),top,railX(targetTrack,row.y)-35);target.dataset.destination=id;
       el('strong',clock(recommendation.arrival),undefined,target);el('small',`−${recommendation.saving}分 先着`,undefined,target);
-    } else if(Number.isInteger(baseline)) {
+    } else if(Number.isInteger(baseline)&&!arrived) {
       // A train can arrive sooner without being reachable from the rider's
       // current stop. Keep arrival comparison distinct from a transfer offer.
       const earlier=trains.filter(t=>t.id!==selected.id&&Number.isInteger(arrival(t,id))&&arrival(t,id)<baseline)

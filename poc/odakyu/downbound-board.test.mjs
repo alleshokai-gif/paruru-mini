@@ -42,12 +42,14 @@ test('実便は1分送りで移動し、成城の既知停車中は固定、着�
   assert.ok(b.y>a.y);
   const stop=selected.stops.find(s=>s.arrival!==null&&s.departure>s.arrival);
   assert.ok(stop);let y;
-  for(let now=stop.arrival;now<=stop.departure;now++){
+  for(let now=stop.arrival;now<stop.departure;now++){
     const m=trainMarker(selected,now,model.stations);assert.equal(m.kind,'scheduled_dwell');
     if(y!==undefined)assert.equal(m.y,y);y=m.y;
   }
+  assert.equal(trainMarker(selected,stop.departure,model.stations).y,y);
+  assert.equal(trainMarker(selected,stop.departure,model.stations).kind,'scheduled_departure');
   assert.ok(trainMarker(selected,stop.departure+1,model.stations).y>y);
-  const end=selected.stops.at(-1);assert.equal(trainMarker(selected,end.arrival,model.stations).kind,'scheduled_event');
+  const end=selected.stops.at(-1);assert.equal(trainMarker(selected,end.arrival,model.stations).kind,'scheduled_arrival');
   assert.equal(trainMarker(selected,end.arrival+1,model.stations),null);
   const incomplete={...selected,stops:selected.stops.map(s=>({...s,arrival:null}))};
   assert.equal(trainMarker(incomplete,departure(selected)+1,model.stations),null);

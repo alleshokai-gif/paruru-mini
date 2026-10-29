@@ -91,11 +91,15 @@ export function scheduledY(index,stations) {
 }
 function scheduledPoint(train,now) {
   let point=scheduledPosition(train,now);
+  // At the published departure minute the anchor is still the station, but
+  // dwell has ended. Do not keep showing a stopped train after its departure.
+  const departing=train.stops.find(s=>s.stop&&s.departure===now);
+  if(departing)return {index:departing.index,from:departing.station,to:departing.station,kind:'scheduled_departure',observed:false};
   // An exact published departure/arrival is a schedule event. Never park a
   // future train at its origin, or extrapolate past a final arrival with no dep.
   if(point?.kind!=='scheduled_dwell') {
-    const stop=train.stops.find(s=>s.stop&&(s.arrival===now||s.departure===now));
-    if(stop)point={index:stop.index,from:stop.station,to:stop.station,kind:'scheduled_event',observed:false};
+    const stop=train.stops.find(s=>s.stop&&s.arrival===now);
+    if(stop)point={index:stop.index,from:stop.station,to:stop.station,kind:'scheduled_arrival',observed:false};
   }
   return point;
 }

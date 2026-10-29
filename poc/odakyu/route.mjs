@@ -1,13 +1,16 @@
-import {clock,minutes} from './core.mjs';
+import {clock,minutes,POLICY} from './core.mjs';
 import {planNavigation} from './navigation.mjs';
 import {renderRouteMap} from './mobile-route.mjs';
+import {japanServiceTime} from './simulation-time.mjs';
 const root=document.getElementById('rail'),time=document.getElementById('time');
 const play=document.getElementById('play'),advance=document.getElementById('advance');
-const PLAY_MS_PER_MINUTE=2000,SERVICE_END=27*60-1;
+const PLAY_MS_PER_MINUTE=2000,SERVICE_END=24*60+POLICY.serviceDayBoundary-1;
 let timer=null;
-let model,pool=[],selectedId=null,now=minutes(time.value),error=false,timeEdited=false,timeValid=true;
+const initial=japanServiceTime(new Date());
+time.value=clock(initial.minute);
+let model,pool=[],selectedId=null,now=initial.minute,error=false,timeEdited=false,timeValid=true;
 function render() {
-  play.disabled=advance.disabled=!model||!timeValid||now>=SERVICE_END;
+  play.disabled=advance.disabled=!model||!pool.length||!timeValid||now>=SERVICE_END;
   if(!timeValid){root.replaceChildren();root.textContent='時刻未入力';return;}
   const selected=pool.find(t=>t.id===selectedId);
   const plans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now)})):[];
@@ -29,7 +32,7 @@ play.onclick=()=>{
 };
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
 window.addEventListener('pagehide',pause);
-time.onchange=()=>{
+time.oninput=time.onchange=()=>{
   pause();
   timeEdited=true;
   try{const value=minutes(time.value);if(!Number.isInteger(value))throw Error('TIME_INVALID');now=value;timeValid=true;render();}
@@ -41,15 +44,17 @@ try {
   if(!response.ok)throw Error(`HTTP_${response.status}`);
   const incoming=await response.json();
   if(incoming.dataset?.kind!=='real'||!Array.isArray(incoming.trips)||!incoming.trips.length)throw Error('REAL_DATA_REQUIRED');
-  model=incoming;pool=model.trips.filter(t=>t.calendar==='Weekday');
-  // Reuse the existing real-data replay selection; never infer the user's train.
-  selectedId=pool.some(t=>t.id===model.example?.selectedId)?model.example.selectedId:null;
-  if(!timeEdited&&Number.isInteger(model.example?.compareAt)){
-    const first=pool.find(t=>t.id===selectedId)?.stops[0];
-    // Begin at the saved example's actual departure event, never put a future
-    // train on a track merely to make the selection visible.
-    now=Math.max(model.example.compareAt,first?.departure??model.example.compareAt);time.value=clock(now);
-  }
-  document.getElementById('quality').title=[...new Set(pool.map(t=>t.sourceServiceDate))].join('・');
+  model=incoming;
+  const current=japanServiceTime(new Date(),model.calendarCoverage);
+  pool=model.trips.filter(t=>current.calendar&&t.calendar===current.calendar);
+  // Show active saved trains at the Japanese clock time; only a tap identifies
+  // the rider's selection. Loading must never overwrite an edited time.
+  if(!timeEdited){now=current.minute;time.value=clock(now);}
+  const dates=[...new Set(pool.map(t=>t.sourceServiceDate).filter(Boolean))];
+  const quality=document.getElementById('quality');
+  const label=current.calendar==='Weekday'?'平日':'土休日';
+  quality.textContent=current.calendar?`${dates.length===1?dates[0].slice(5).replace('-','/')+'保存':'保存'} ${label}~・線路推定`:'暦未対応';
+  quality.title=`表示営業日 ${current.serviceDate} / 保存対象日 ${dates.join('・')||'未取得'} / 現行ダイヤへの適用未確認・実運行ではない`;
+  root.dataset.serviceDate=current.serviceDate;root.dataset.calendar=current.calendar||'unknown';
   render();
 } catch(e) {model=undefined;pool=[];selectedId=null;error=true;console.error(e.message);render();}
