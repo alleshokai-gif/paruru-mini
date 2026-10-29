@@ -24,7 +24,7 @@ function noteY(preferred,height,blocked) {
   return choices.filter(y=>y>=100&&y+height<B.height&&blocked.every(b=>y+height<=b.top||y>=b.bottom))
     .sort((a,b)=>Math.abs(a-preferred)-Math.abs(b-preferred))[0]??B.height-height;
 }
-export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=[],onSelect,error}) {
+export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=[],eligibleCandidateIds=new Set(),onSelect,error}) {
   const map=el('div',undefined,'d-board');map.style.height=`${B.height}px`;
   const scale=Math.min(1,root.clientWidth/B.width);
   map.style.transform=`scale(${scale})`;root.style.height=`${B.height*scale}px`;
@@ -74,8 +74,9 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
   if(!markers.length)at(el('small','定刻位置なし','d-load-status',map),B.uehara+70,8);
   for(const marker of markers) {
     const train=marker.train,own=selected?.id===train.id,comparison=candidate?.id===train.id,partner=partnerIds.includes(train.id);
+    const canTransfer=!selected||own||eligibleCandidateIds.has(train.id);
     const button=at(el('button',undefined,`d-train ${train.type} d-track-${marker.track.id}${own?' d-selected':''}${comparison?' d-candidate':''}${partner?' d-partner':''}`,map),marker.displayY-24,marker.x-26);
-    button.type='button';button.onclick=event=>{
+    button.type='button';button.disabled=!canTransfer;button.onclick=event=>{
       // Keep every schedule anchor fixed. A tap cycles genuinely crowded
       // glyphs; otherwise the nearest visible glyph wins. Keyboard activates
       // the focused train directly.
@@ -95,7 +96,7 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     button.dataset.positionFrom=marker.point.from;button.dataset.positionTo=marker.point.to;
     button.dataset.selectionRole=own?'rider':comparison?'candidate':partner?'recommended':'none';
     button.setAttribute('aria-pressed',String(own||comparison));
-    const action=own?'乗車中・タップで解除':comparison?'乗換候補・再タップで乗車に変更':selected?'乗換候補にする':'乗車列車にする';
+    const action=own?'乗車中・タップで解除':comparison?'乗換候補・再タップで乗車に変更':selected?(canTransfer?'乗換できる候補として選ぶ':'この便には乗換不可'):'乗車列車にする';
     button.setAttribute('aria-label',`${clock(departure(train))} ${type(train)} ${train.destination}行・${action}`);
     const state=marker.kind==='scheduled_dwell'?'定刻停車':marker.kind==='scheduled_departure'?'定刻発車':marker.kind==='scheduled_arrival'?'定刻到着':'定刻概略~';
     button.title=`${action} / ${state}${marker.kind==='schedule_interpolation'?'・途中停車時刻未収録':''} / 使用線路は区間標準からの低確度推定`;
