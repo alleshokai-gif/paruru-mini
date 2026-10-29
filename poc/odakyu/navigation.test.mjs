@@ -69,6 +69,50 @@ test('候補を限定しても実便5分短縮を維持し、接続できない�
   assert.equal(unconnected.recommendation.arrival,normal.baseline.arrival);
   assert.throws(()=>planNavigation(real.trips,actualLocal.id,'Noborito',reference.compareAt,{candidateId:actualLocal.id}),/CANDIDATE_INVALID/);
 });
+
+test('保存実便の候補は接続見込みと短縮の両方が必要。先行・ギリギリ・遅着便を除外する',()=>{
+  const now=actualLocal.stops[0].departure;
+  const plan=planNavigation(real.trips,actualLocal.id,'Noborito',now);
+  assert.ok(plan.eligibleCandidateIds.includes(plan.recommendation.legs[0].trainId));
+  assert.equal(plan.recommendation.saving,5);
+  const earlier=real.trips.filter(t=>t.calendar===actualLocal.calendar&&t.type==='RapidExpress'
+    &&t.stops[0].departure<now).at(-1);
+  assert.ok(earlier);assert.ok(!plan.eligibleCandidateIds.includes(earlier.id));
+  const tight=plan.alternatives.find(a=>a.connection==='tight'&&a.saving>5&&a.transfers===1);
+  const slower=plan.alternatives.find(a=>a.connection==='likely'&&a.saving<0&&a.transfers===1);
+  assert.ok(tight);assert.ok(slower);
+  assert.ok(!plan.eligibleCandidateIds.includes(tight.legs[0].trainId));
+  assert.ok(!plan.eligibleCandidateIds.includes(slower.legs[0].trainId));
+  for(const candidateId of plan.eligibleCandidateIds) {
+    const focused=planNavigation(real.trips,actualLocal.id,'Noborito',now,{candidateId});
+    assert.ok(focused.recommendation.saving>0);
+    assert.ok(focused.recommendation.legs.every(l=>l.connection.status==='likely'));
+  }
+});
+
+test('保存実便の別の有効候補は、現在の候補で絞った表示結果から作らない',()=>{
+  const plans=real.trips.filter(t=>t.calendar==='Weekday'&&t.type==='Local').map(t=>({train:t,
+    plan:planNavigation(real.trips,t.id,'Noborito',t.stops[0].departure)}));
+  const {train,plan}=plans.find(p=>p.plan.eligibleCandidateIds.length>1);
+  const [first,second]=plan.eligibleCandidateIds;
+  const focused=planNavigation(real.trips,train.id,'Noborito',train.stops[0].departure,{candidateId:first});
+  assert.ok(focused.eligibleCandidateIds.includes(first));
+  assert.ok(plan.eligibleCandidateIds.includes(second));
+  assert.ok(planNavigation(real.trips,train.id,'Noborito',train.stops[0].departure,{candidateId:second}).recommendation.saving>0);
+});
+
+test('保存実便の成城着発に基づき、短縮しない接続と着時刻未取得を候補にしない',()=>{
+  const stop=actualLocal.stops.find(s=>s.station==='SeijogakuenMae');
+  const stay=planNavigation(real.trips,actualLocal.id,'Noborito',stop.arrival);
+  assert.equal(stay.recommendation.transfers,0);
+  assert.equal(stay.recommendation.arrival,reference.baselineArrival);
+  assert.deepEqual(stay.eligibleCandidateIds,[]);
+  assert.ok(stay.alternatives.some(a=>a.legs.some(l=>l.station===stop.station&&l.alightTime===stop.arrival&&l.timingBasis==='arrival')));
+  const yuen=planNavigation(real.trips,actualLocal.id,'MukogaokaYuen',actualLocal.stops[0].departure);
+  assert.equal(yuen.status,'ARRIVAL_UNAVAILABLE');assert.deepEqual(yuen.eligibleCandidateIds,[]);
+  assert.ok(!actualLocal.stops.some(s=>s.station==='ShimoKitazawa'));
+  assert.ok(!stay.alternatives.some(a=>a.legs.some(l=>l.station==='ShimoKitazawa')));
+});
 test('0分接続は通常・別ホーム・バリアフリーでも自動成功や失敗にしない', () => {
   for (const condition of ['unknown', 'same_platform', 'change_level', 'elevator']) {
     const result = assessConnection({ station: 'SeijogakuenMae', arrival: 600, departure: 600, now: 599, condition });
@@ -79,7 +123,9 @@ test('0分接続は通常・別ホーム・バリアフリーでも自動成功�
 test('発車済み・余裕のある接続・階移動のギリギリを分類する', () => {
   assert.equal(assessConnection({ station: 'YoyogiUehara', arrival: 600, departure: 600, now: 601 }).status, 'difficult');
   assert.equal(assessConnection({ station: 'YoyogiUehara', arrival: 600, departure: 607, now: 599 }).status, 'likely');
-  assert.equal(assessConnection({ station: 'ShimoKitazawa', arrival: 600, departure: 604, now: 599 }).status, 'tight');
+  const shimo=assessConnection({ station: 'ShimoKitazawa', arrival: 600, departure: 604, now: 599 });
+  assert.equal(shimo.status,'tight');assert.deepEqual(shimo.movementSeconds,{min:150,max:480});
+  assert.equal(shimo.guaranteed,false);
 });
 test('同着なら乗換なしを優先し、より遅い便を推奨しない', () => {
   const a = trip('a', [stop('YoyogiUehara', 4, null, 600), stop('Noborito', 17, 630, null)]);

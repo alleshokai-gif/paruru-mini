@@ -14,9 +14,13 @@ function render() {
   play.disabled=advance.disabled=!model||!pool.length||!timeValid||now>=SERVICE_END;
   if(!timeValid){root.replaceChildren();root.textContent='時刻未入力';return;}
   const selected=pool.find(t=>t.id===selectedId);
+  const availablePlans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now)})):[];
+  const eligibleCandidateIds=new Set(availablePlans.flatMap(p=>p.eligibleCandidateIds));
+  if(candidateId&&!eligibleCandidateIds.has(candidateId))candidateId=null;
   const candidate=pool.find(t=>t.id===candidateId);
-  const plans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now,candidate?{candidateId:candidate.id}:{})})):[];
-  renderRouteMap({root,model,pool,selected,candidate,now,plans,error,onSelect:id=>{
+  const plans=candidate?availablePlans.map(p=>({destination:p.destination,...planNavigation(pool,selected.id,p.destination,now,{candidateId:candidate.id})})):availablePlans;
+  renderRouteMap({root,model,pool,selected,candidate,now,plans,error,eligibleCandidateIds,onSelect:id=>{
+    if(selectedId && id!==selectedId && !eligibleCandidateIds.has(id)) return;
     ({selectedId,candidateId}=tapTrain({selectedId,candidateId},id));render();
   }});
 }

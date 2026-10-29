@@ -24,7 +24,7 @@ function noteY(preferred,height,blocked) {
   return choices.filter(y=>y>=100&&y+height<B.height&&blocked.every(b=>y+height<=b.top||y>=b.bottom))
     .sort((a,b)=>Math.abs(a-preferred)-Math.abs(b-preferred))[0]??B.height-height;
 }
-export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=[],onSelect,error}) {
+export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=[],eligibleCandidateIds=new Set(),onSelect,error}) {
   const map=el('div',undefined,'d-board');map.style.height=`${B.height}px`;
   const scale=Math.min(1,root.clientWidth/B.width);
   map.style.transform=`scale(${scale})`;root.style.height=`${B.height*scale}px`;
@@ -74,13 +74,14 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
   if(!markers.length)at(el('small','定刻位置なし','d-load-status',map),B.uehara+70,8);
   for(const marker of markers) {
     const train=marker.train,own=selected?.id===train.id,comparison=candidate?.id===train.id,partner=partnerIds.includes(train.id);
+    const canTransfer=!selected||own||eligibleCandidateIds.has(train.id);
     const button=at(el('button',undefined,`d-train ${train.type} d-track-${marker.track.id}${own?' d-selected':''}${comparison?' d-candidate':''}${partner?' d-partner':''}`,map),marker.displayY-24,marker.x-26);
-    button.type='button';button.onclick=event=>{
+    button.type='button';button.disabled=!canTransfer;button.onclick=event=>{
       // Keep every schedule anchor fixed. A tap cycles genuinely crowded
       // glyphs; otherwise the nearest visible glyph wins. Keyboard activates
       // the focused train directly.
       if(event.detail===0){onSelect(train.id);return;}
-      const near=[...map.querySelectorAll('.d-train')].map(node=>{
+      const near=[...map.querySelectorAll('.d-train:not(:disabled)')].map(node=>{
         const rect=node.querySelector('.d-glyph').getBoundingClientRect();
         return {id:node.dataset.train,distance:Math.hypot(event.clientX-rect.x-rect.width/2,event.clientY-rect.y-rect.height/2)};
       }).sort((a,b)=>a.distance-b.distance||a.id.localeCompare(b.id));
@@ -95,7 +96,7 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     button.dataset.positionFrom=marker.point.from;button.dataset.positionTo=marker.point.to;
     button.dataset.selectionRole=own?'rider':comparison?'candidate':partner?'recommended':'none';
     button.setAttribute('aria-pressed',String(own||comparison));
-    const action=own?'乗車中・タップで解除':comparison?'乗換候補・再タップで乗車に変更':selected?'乗換候補にする':'乗車列車にする';
+    const action=own?'乗車中・タップで解除':comparison?'乗換候補・再タップで乗車に変更':selected?(canTransfer?'接続見込みの短縮候補として選ぶ':'推奨対象外（接続・短縮を確認できず）'):'乗車列車にする';
     button.setAttribute('aria-label',`${clock(departure(train))} ${type(train)} ${train.destination}行・${action}`);
     const state=marker.kind==='scheduled_dwell'?'定刻停車':marker.kind==='scheduled_departure'?'定刻発車':marker.kind==='scheduled_arrival'?'定刻到着':'定刻概略~';
     button.title=`${action} / ${state}${marker.kind==='schedule_interpolation'?'・途中停車時刻未収録':''} / 使用線路は区間標準からの低確度推定`;
@@ -121,10 +122,17 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     const to=pool.find(t=>t.id===leg.trainId),from=pool.find(t=>t.id===leg.fromTrainId);
     // A passenger connection mark ON the island, never a long track-following arrow.
     at(el('b',row.id==='ShimoKitazawa'?'↕':'↔','d-connection-mark',map),row.y-10,B.singleX-10);
-    const y=noteY(row.y+20,56,blocked);blocked.push({top:y,bottom:y+56});
+    const y=noteY(row.y+20,60,blocked);blocked.push({top:y,bottom:y+60});
     const note=at(el('div',undefined,'d-transfer',map),y,8);note.dataset.station=leg.station;note.dataset.from=from.id;note.dataset.to=to.id;
     el('small',`${row.name}で`,undefined,note);
-    el('strong',`${shortType(from)} → ${clock(leg.departure)}発 ${shortType(to)}`,undefined,note);
+    // This is a dated departure at the transfer station, not a future train
+    // parked on a track. The existing station annotation is also tappable.
+    const change=el('button',undefined,'d-transfer-train',note);change.type='button';
+    change.dataset.train=to.id;change.setAttribute('aria-pressed',String(candidate?.id===to.id));
+    change.setAttribute('aria-label',`${row.name} ${clock(leg.departure)}発 ${type(to)} ${to.destination}行・乗換候補${candidate?.id===to.id?'・再タップで乗車に変更':'として選ぶ'}`);
+    change.onclick=()=>onSelect(to.id);
+    el('span','🚆','d-transfer-glyph',change);
+    el('strong',`${clock(leg.departure)}発 ${type(to)}へ`,undefined,change);
     note.title=`${to.destination}行へ`;
     const destination=DOWN_STATIONS.find(s=>s.id===plan.destination)?.name;
     el('span',`→ ${destination}${clock(plan.recommendation.arrival)}${plan.recommendation.saving>0?' · '+plan.recommendation.saving+'分早い':''}`,undefined,note);
@@ -142,16 +150,8 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
       el('small',state,undefined,info);
     }
   }
-  if(candidate) {
-    const marker=markers.find(m=>m.train.id===candidate.id),plan=plans.find(p=>p.destination==='Noborito');
-    const result=actionable(plan)?`${plan.recommendation.saving}分早い`:plan?.alternatives?.some(p=>p.connection==='likely')?plan.baseline?'短縮なし':'到着比較未取得':plan?.bestConditional?.connection==='tight'?'接続ギリギリ':'接続未確認';
-    const y=noteY((marker?.displayY??B.uehara)+20,72,blocked);blocked.push({top:y,bottom:y+72});
-    const info=at(el('div',undefined,'d-candidate-info',map),y,8);
-    el('strong',`候補 ${shortType(candidate)}`,undefined,info);
-    el('small',`${clock(departure(candidate))}発 ${candidate.destination}行`,undefined,info);
-    el('small',result,undefined,info);
-    el('small',marker?'再タップで乗車へ':now<departure(candidate)?'表示区間の発車前':'収録区間外',undefined,info);
-  }
+  // The candidate is identified at the actual connection station above. Do not
+  // repeat it near an unrelated station merely to fit another text block.
   for(const id of targets) {
     const row=DOWN_STATIONS.find(s=>s.id===id),plan=plans.find(p=>p.destination===id);
     if(!selected){at(el('small','乗車列車をタップ','d-target-note',map),row.y+31,8);continue;}
@@ -164,7 +164,7 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     const own=at(el('div',undefined,'d-arrival d-own-arrival',map),row.y+31,ownX-35);own.dataset.destination=id;own.dataset.train=selected.id;
     el('strong',Number.isInteger(baseline)?clock(baseline):selected.knownPasses.includes(id)?'通過':'未取得',undefined,own);
     el('small',`乗車 ${shortType(selected)}`,undefined,own);el('small',`${clock(departure(selected))}発`,undefined,own);
-    if(Number.isInteger(baseline)&&!faster)at(el('small',arrived?'定刻着済':'そのまま','d-target-note',map),row.y+35,8);
+    if(Number.isInteger(baseline)&&!faster)at(el('small',arrived?'定刻着済':'そのまま乗車','d-target-note',map),row.y+35,8);
     if(faster) {
       const final=pool.find(t=>t.id===recommendation.legs.at(-1).trainId),targetTrack=inferredTrack(final,stationPoint,recommendation.arrival).id;
       // Arrival labels identify the route, not an observed station platform.
