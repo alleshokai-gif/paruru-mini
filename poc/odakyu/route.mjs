@@ -2,19 +2,23 @@ import {clock,minutes,POLICY} from './core.mjs';
 import {planNavigation} from './navigation.mjs';
 import {renderRouteMap} from './mobile-route.mjs';
 import {japanServiceTime} from './simulation-time.mjs';
+import {tapTrain} from './downbound-board.mjs';
 const root=document.getElementById('rail'),time=document.getElementById('time');
 const play=document.getElementById('play'),advance=document.getElementById('advance');
 const PLAY_MS_PER_MINUTE=2000,SERVICE_END=24*60+POLICY.serviceDayBoundary-1;
 let timer=null;
 const initial=japanServiceTime(new Date());
 time.value=clock(initial.minute);
-let model,pool=[],selectedId=null,now=initial.minute,error=false,timeEdited=false,timeValid=true;
+let model,pool=[],selectedId=null,candidateId=null,now=initial.minute,error=false,timeEdited=false,timeValid=true;
 function render() {
   play.disabled=advance.disabled=!model||!pool.length||!timeValid||now>=SERVICE_END;
   if(!timeValid){root.replaceChildren();root.textContent='時刻未入力';return;}
   const selected=pool.find(t=>t.id===selectedId);
-  const plans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now)})):[];
-  renderRouteMap({root,model,pool,selected,now,plans,error,onSelect:id=>{selectedId=id;render();}});
+  const candidate=pool.find(t=>t.id===candidateId);
+  const plans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now,candidate?{candidateId:candidate.id}:{})})):[];
+  renderRouteMap({root,model,pool,selected,candidate,now,plans,error,onSelect:id=>{
+    ({selectedId,candidateId}=tapTrain({selectedId,candidateId},id));render();
+  }});
 }
 render();
 function pause() {if(timer!==null)clearInterval(timer);timer=null;play.textContent='▶';play.setAttribute('aria-pressed','false');play.setAttribute('aria-label','定刻再生');}
@@ -57,4 +61,4 @@ try {
   quality.title=`表示営業日 ${current.serviceDate} / 保存対象日 ${dates.join('・')||'未取得'} / 現行ダイヤへの適用未確認・実運行ではない`;
   root.dataset.serviceDate=current.serviceDate;root.dataset.calendar=current.calendar||'unknown';
   render();
-} catch(e) {model=undefined;pool=[];selectedId=null;error=true;console.error(e.message);render();}
+} catch(e) {model=undefined;pool=[];selectedId=candidateId=null;error=true;console.error(e.message);render();}

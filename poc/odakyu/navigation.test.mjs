@@ -55,6 +55,20 @@ test('同じホームと確認した場合は急行の接続評価が変わる�
   assert.equal(plan.recommendation.arrival, reference.conditionalArrival); assert.equal(plan.recommendation.saving, 7);
   assert.equal(plan.recommendation.legs[0].connection.guaranteed, false);
 });
+
+test('候補を限定しても実便5分短縮を維持し、接続できない先着便を別の推奨へすり替えない',()=>{
+  const normal=planNavigation(real.trips,actualLocal.id,'Noborito',actualLocal.stops[0].departure);
+  const candidateId=normal.recommendation.legs[0].trainId;
+  const matched=planNavigation(real.trips,actualLocal.id,'Noborito',actualLocal.stops[0].departure,{candidateId});
+  assert.equal(matched.recommendation.saving,5);
+  assert.ok(matched.alternatives.every(p=>p.legs.some(l=>l.trainId===candidateId)));
+  const earlier=real.trips.filter(t=>t.calendar===actualLocal.calendar&&t.type==='RapidExpress'
+    &&t.stops[0].departure<actualLocal.stops[0].departure).at(-1);
+  const unconnected=planNavigation(real.trips,actualLocal.id,'Noborito',actualLocal.stops[0].departure,{candidateId:earlier.id});
+  assert.equal(unconnected.alternatives.length,0);assert.equal(unconnected.recommendation.transfers,0);
+  assert.equal(unconnected.recommendation.arrival,normal.baseline.arrival);
+  assert.throws(()=>planNavigation(real.trips,actualLocal.id,'Noborito',reference.compareAt,{candidateId:actualLocal.id}),/CANDIDATE_INVALID/);
+});
 test('0分接続は通常・別ホーム・バリアフリーでも自動成功や失敗にしない', () => {
   for (const condition of ['unknown', 'same_platform', 'change_level', 'elevator']) {
     const result = assessConnection({ station: 'SeijogakuenMae', arrival: 600, departure: 600, now: 599, condition });
@@ -111,6 +125,7 @@ test('遊園通過の快速急行から登戸で乗換する2回経路は明示�
   const result = planNavigation([a, b, c], 'a', 'MukogaokaYuen', 599);
   assert.equal(result.recommendation.transfers, 2); assert.equal(result.recommendation.arrival, 630);
   assert.equal(result.recommendation.legs[1].station, 'Noborito');
+  assert.equal(planNavigation([a,b,c],'a','MukogaokaYuen',599,{candidateId:'b'}).recommendation.transfers,2);
 });
 
 test('目的駅通過便には途中乗換の到着案を示し、架空の短縮分を付けない', () => {

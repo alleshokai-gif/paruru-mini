@@ -95,6 +95,8 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   const selected = trips.find(t => t.id === selectedId);
   if (!selected || !identified(selected)) throw Error('PROVIDER_TRAIN_REQUIRED');
   const pool = trips.filter(t => t.calendar === selected.calendar && identified(t) && t.datasetId === selected.datasetId && t.dataKind === selected.dataKind);
+  const candidateId = options.candidateId;
+  if (candidateId !== undefined && (candidateId === selectedId || !pool.some(t => t.id === candidateId))) throw Error('CANDIDATE_INVALID');
   const ride = rideFacts(selected, destination, pool);
   const destinationPassed = ride.destinationPassed;
   const baseline = minute(ride.arrival) ? ride : null;
@@ -110,7 +112,8 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   }
   function visit(train, boardedIndex, earliest, legs, visited, continuations = []) {
     const end = train.stops.find(s => s.stop === true && s.station === destination && minute(s.arrival) && s.arrival >= earliest && s.arrival <= horizon);
-    if (end && (legs.length || continuations.length)) alternatives.push({ id: legs.map(l => l.trainId).join('>'), arrival: end.arrival,
+    if (end && (legs.length || continuations.length)
+        && (candidateId === undefined || legs.some(l => l.trainId === candidateId) || continuations.some(l => l.trainId === candidateId))) alternatives.push({ id: legs.map(l => l.trainId).join('>'), arrival: end.arrival,
       transfers: legs.length, legs, continuations, connection: legs.some(l => l.connection.status === 'tight') ? 'tight' : 'likely',
       saving: baseline ? baseline.arrival - end.arrival : null, guaranteed: false });
     const link = continuationOf(train, pool);
@@ -152,7 +155,7 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   const recommendation = baseline ? eligible[0] || stay : destinationPassed ? eligible[0] || null : null;
   return { status: baseline ? 'PARTIAL_STATIC_ARRIVAL_COMPARISON' : destinationPassed ? 'TRANSFER_REQUIRED' : 'ARRIVAL_UNAVAILABLE',
     destinationPassed: Boolean(destinationPassed), rideContinuations: ride.continuations,
-    baseline: stay, recommendation, alternatives: alternatives.slice(0, 8), difficult: assessments.slice(0, 4),
+    baseline: stay, recommendation, alternatives: alternatives.slice(0, 8), difficult: assessments.filter(l => candidateId === undefined || l.trainId === candidateId).slice(0, 4),
     bestConditional: alternatives[0] || null, maxTransfers, guaranteed: false,
     missing: ['全駅の着発・運転列車番号・直通継続ID・番線・実測移動時間',
       'データセットの未収録駅・便、着時刻の独立した資料との照合・リアルタイム遅延'],

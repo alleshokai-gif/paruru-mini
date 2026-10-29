@@ -4,11 +4,20 @@ import {loadModel} from './model.mjs';
 import {listSnapshots} from './storage.mjs';
 import {TRACK_PATHS} from './track-board.mjs';
 import {planNavigation} from './navigation.mjs';
-import {DOWNBOARD as B,DOWN_SWITCHES,downRails,inferredTrack,railX,trainMarker,visibleTrains,layoutMarkers} from './downbound-board.mjs';
+import {DOWNBOARD as B,DOWN_SWITCHES,downRails,inferredTrack,railX,trainMarker,visibleTrains,layoutMarkers,tapTrain} from './downbound-board.mjs';
 const model=await loadModel((await listSnapshots())[0]),pool=model.trips.filter(t=>t.calendar==='Weekday');
 const ref=model.example,selected=pool.find(t=>t.id===ref.selectedId);
 const departure=t=>t.stops[0].departure??t.stops[0].arrival;
 function section(y){const xs=[];for(const r of downRails())for(let i=1;i<r.points.length;i++){const [a,b]=[r.points[i-1],r.points[i]];if(y>=a[1]&&y<b[1])xs.push(a[0]+(b[0]-a[0])*(y-a[1])/(b[1]-a[1]));}return [...new Set(xs)];}
+
+test('別便タップは乗車便を保持し、候補再タップで乗車変更、乗車便再タップで解除する',()=>{
+  let state=tapTrain({},'rider');
+  state=tapTrain(state,'candidate');assert.deepEqual(state,{selectedId:'rider',candidateId:'candidate'});
+  state=tapTrain(state,'other');assert.deepEqual(state,{selectedId:'rider',candidateId:'other'});
+  state=tapTrain(state,'other');assert.deepEqual(state,{selectedId:'other',candidateId:null});
+  state=tapTrain(state,'rider');state=tapTrain(state,'other');
+  assert.deepEqual(state,{selectedId:null,candidateId:null});
+});
 
 test('下り基本2線、登戸以西1線、遊園構内だけ2線、先で再合流する',()=>{
   for(const y of [160,240,350,500,650,740])assert.equal(section(y).length,2);

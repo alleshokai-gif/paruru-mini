@@ -30,6 +30,12 @@ export const DOWN_SOURCES=Object.freeze([
 ]);
 const dep=t=>t.stops[0].departure??t.stops[0].arrival;
 const order=(a,b)=>dep(a)-dep(b)||a.id.localeCompare(b.id);
+// A second train is a comparison, never an implicit change of rider.
+export function tapTrain({selectedId=null,candidateId=null},id) {
+  if(id===selectedId)return {selectedId:null,candidateId:null};
+  if(!selectedId||id===candidateId)return {selectedId:id,candidateId:null};
+  return {selectedId,candidateId:id};
+}
 export const TRACK_POLICY=Object.freeze({
   standardSource:'https://www.odakyu.jp/news/o5oaa10000005sd3-att/8732_1784221_.pdf',
   generalSource:'https://www.odakyu.jp/ir/report/o5oaa100000004xv-att/00_all_page.pdf',
