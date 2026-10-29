@@ -24,6 +24,8 @@ main {padding-top:0;}
 .d-target-name {color:#9cf1d5;font-size:18px;}
 .d-approach {position:absolute;font-size:14px;color:#c9dfef;}
 .d-track-label {position:absolute;color:#aac0d2;font-size:12px;}
+.d-floor-label {position:absolute;color:#c4d8e8;font-size:12px;line-height:18px;}
+.d-station-status {position:absolute;color:#9ab2c4;font-size:10px;line-height:14px;}
 .d-single-label {position:absolute;font-size:11px;color:#9ab2c4;}
 .d-load-status {position:absolute;color:#d5bd98;font-size:14px;}
 .d-train {position:absolute;width:52px;height:48px;border:0;padding:0;background:transparent;color:#dceaf6;cursor:pointer;touch-action:manipulation;z-index:5;}
@@ -46,7 +48,7 @@ main {padding-top:0;}
 .d-selected-info strong,.d-selected-info span,.d-selected-info small,.d-candidate-info strong,.d-candidate-info small,.d-transfer strong,.d-transfer span,.d-transfer small {display:block;}
 .d-selected-info strong {color:#baf3db;font-size:14px;}.d-selected-info small {color:#a8bdcd;font-size:11px;}
 .d-candidate-info {line-height:18px;}.d-candidate-info strong {color:#e9c6ff;font-size:13px;}.d-candidate-info small {color:#b4a9c5;font-size:11px;}
-.d-transfer {line-height:17px;}.d-transfer strong {color:#e9c6ff;font-size:13px;white-space:nowrap;}.d-transfer span {font-size:12px;}.d-transfer small {font-size:10px;color:#a8bdcd;}
+.d-transfer {line-height:16px;}.d-transfer strong {color:#e9c6ff;font-size:13px;white-space:nowrap;}.d-transfer span {font-size:12px;}.d-transfer small {font-size:10px;line-height:12px;color:#a8bdcd;}
 .d-connection-mark {position:absolute;font-size:18px;line-height:20px;width:20px;text-align:center;color:#f6c0e2;}
 .d-arrival {position:absolute;width:70px;text-align:center;background:#173d3c;line-height:23px;}
 .d-arrival strong {display:block;font-size:19px;}.d-arrival small {display:block;font-size:12px;line-height:18px;}
