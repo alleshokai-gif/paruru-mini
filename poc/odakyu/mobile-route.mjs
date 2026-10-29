@@ -37,8 +37,18 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
   for(const rail of downRails())svg('path',{d:pathD(rail.points),class:'d-rail','data-track':rail.id},drawing);
   for(const crossing of DOWN_SWITCHES)svg('path',{d:pathD([[railX(crossing.from,crossing.fromY),crossing.fromY],[railX(crossing.to,crossing.toY),crossing.toY]]),class:'d-switch','data-switch':crossing.id,'data-source':crossing.source},drawing);
   for(const row of DOWN_STATIONS) {
-    const platform=svg('rect',{x:B.expressX+16,y:row.y-22,width:B.localX-B.expressX-32,height:44,rx:3,class:'d-platform','data-platform':row.id},drawing);
-    platform.setAttribute('aria-label',`${row.name} 下り島式ホーム`);
+    if(row.id==='ShimoKitazawa') {
+      // Same direction, different underground levels: B2 1番線 / B1 3番線.
+      // These two symbols are NOT a single cross-platform island.
+      for(const [x,floor,number] of [[B.expressX,'B2','1'],[B.localX,'B1','3']]) {
+        const platform=svg('rect',{x:x-9,y:row.y-22,width:18,height:44,rx:3,class:'d-platform','data-platform':row.id,'data-floor':floor},drawing);
+        platform.setAttribute('aria-label',`下北沢 ${floor} 下り${number}番線（通常運用）`);
+      }
+      at(el('small','B2 急行線 ↕ B1 緩行線','d-track-label',map),row.y+25,110);
+    } else {
+      const platform=svg('rect',{x:B.expressX+16,y:row.y-22,width:B.localX-B.expressX-32,height:44,rx:3,class:'d-platform','data-platform':row.id},drawing);
+      platform.setAttribute('aria-label',`${row.name} 下り島式ホーム`);
+    }
     at(el('strong',row.name,`d-station${targets.includes(row.id)?' d-target-name':''}`,map),row.y-13,8).dataset.station=row.id;
   }
   at(el('span','新宿','d-approach',map),6,110);at(el('span','千代田線','d-approach',map),6,270);
@@ -108,7 +118,7 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     const row=DOWN_STATIONS.find(s=>s.id===leg.station);if(!row)continue;
     const to=pool.find(t=>t.id===leg.trainId),from=pool.find(t=>t.id===leg.fromTrainId);
     // A passenger connection mark ON the island, never a long track-following arrow.
-    at(el('b','↔','d-connection-mark',map),row.y-10,B.singleX-10);
+    at(el('b',row.id==='ShimoKitazawa'?'↕':'↔','d-connection-mark',map),row.y-10,B.singleX-10);
     const y=noteY(row.y+28,84,blocked);blocked.push({top:y,bottom:y+84});
     const note=at(el('div',undefined,'d-transfer',map),y,8);note.dataset.station=leg.station;note.dataset.from=from.id;note.dataset.to=to.id;
     el('small',`${row.name}で`,undefined,note);
@@ -116,7 +126,7 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     el('span',`${to.destination}行へ`,undefined,note);
     const destination=DOWN_STATIONS.find(s=>s.id===plan.destination)?.name;
     el('span',`→ ${destination}${clock(plan.recommendation.arrival)}${plan.recommendation.saving>0?' · '+plan.recommendation.saving+'分早い':''}`,undefined,note);
-    el('small','接続見込み・未保証',undefined,note);
+    el('small',row.id==='ShimoKitazawa'?'階移動あり・接続見込み／未保証':'接続見込み・未保証',undefined,note);
   }
   if(selected) {
     const marker=markers.find(m=>m.train.id===selected.id);

@@ -4,7 +4,7 @@ import {loadModel} from './model.mjs';
 import {listSnapshots} from './storage.mjs';
 import {TRACK_PATHS} from './track-board.mjs';
 import {planNavigation} from './navigation.mjs';
-import {DOWNBOARD as B,DOWN_SWITCHES,downRails,inferredTrack,railX,trainMarker,visibleTrains,layoutMarkers,tapTrain} from './downbound-board.mjs';
+import {DOWNBOARD as B,DOWN_STATIONS,DOWN_SWITCHES,downRails,inferredTrack,railX,trainMarker,visibleTrains,layoutMarkers,tapTrain} from './downbound-board.mjs';
 const model=await loadModel((await listSnapshots())[0]),pool=model.trips.filter(t=>t.calendar==='Weekday');
 const ref=model.example,selected=pool.find(t=>t.id===ref.selectedId);
 const departure=t=>t.stops[0].departure??t.stops[0].arrival;
@@ -80,4 +80,13 @@ test('既存平日便の前後切替と複数時点で、表示配置不能や�
     const markers=layoutMarkers(visibleTrains(pool,t,now).map(train=>trainMarker(train,now,model.stations)).filter(Boolean));
     assert.ok(markers.length<=3);assert.ok(markers.every(m=>!m.observed&&m.track.confidence==='low'&&Number.isFinite(m.displayY)));
   }
+});
+
+test('下北沢は急行・緩行の異なる地下階ホームで乗換候補として表示する',()=>{
+  const shimokita=DOWN_STATIONS.find(s=>s.id==='ShimoKitazawa');
+  assert.ok(shimokita);
+  assert.ok(B.uehara<shimokita.y&&shimokita.y<B.kyodo);
+  assert.ok(section(shimokita.y).length===2);
+  assert.ok(!DOWN_SWITCHES.some(s=>s.station==='ShimoKitazawa')); // 駅内の階移動は渡り線ではない
+  assert.ok(planNavigation(pool,selected.id,'Noborito',ref.compareAt));
 });
