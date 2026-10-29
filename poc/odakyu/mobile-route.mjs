@@ -48,10 +48,12 @@ function candidateGroups(comparison,activeRoute){
   g.paths.sort((a,b)=>Number(a.connection==='tight')-Number(b.connection==='tight')||a.transfers-b.transfers||(a.arrivals.Noborito??Infinity)-(b.arrivals.Noborito??Infinity));
   g.route=g.paths.find(r=>r.key===activeRoute?.key)||g.paths[0];
  }
- return [...groups.values()].sort((a,b)=>Number(b.route.key===activeRoute?.key)-Number(a.route.key===activeRoute?.key)||a.route.legs[0].departure-b.route.legs[0].departure);
+ const beneficial=g=>g.paths[0].connection==='likely'&&Object.values(g.paths[0].savings).some(n=>n>0);
+ return [...groups.values()].sort((a,b)=>Number(beneficial(b))-Number(beneficial(a))||a.paths[0].legs[0].departure-b.paths[0].legs[0].departure||a.key.localeCompare(b.key));
 }
 export function renderRouteMap(props){
  const {root,model,pool=[],selected,now,comparison={plans:[],routes:[],candidateIds:new Set()},activeRoute,originChoices=[],busSnapshot,onSelect,error,_heights=new Map(),_ownHeight=OWN_ROW,_measured=false}=props;
+ const restoreScroll=props._scrollTop??window.scrollY;
  const width=Math.max(B.width,root.clientWidth),groups=candidateGroups(comparison,activeRoute);
  const actual=model?layoutMarkers(visibleTrains(pool,now,model.stations).map(t=>trainMarker(t,now,model.stations))):[];
  const ownPoint=actual.find(m=>m.train.id===selected?.id),last=selected?.stops.at(-1);
@@ -72,7 +74,7 @@ export function renderRouteMap(props){
   return rows.at(-1).body+30+(y-B.yuen)*.7;
  }
  const map=el('div',undefined,'d-board');map.style.height=`${height}px`;map.style.width=`${width}px`;root.style.height=`${height}px`;
- map.setAttribute('aria-label','小田急 下り2線の定刻運行盤');
+ map.setAttribute('aria-label','小田急 下り2線の定刻運行盤');map.dataset.busFetchedAt=String(busSnapshot?.fetchedAt??'');
  const draw=svg('svg',{viewBox:`0 0 ${width} ${height}`,class:'d-wiring',role:'img','aria-label':'急行線・緩行線の簡略表示。渡り線と進路は省略。登戸以南は下り1線。'},map);
  const end=sy(B.mergeStart),join=sy(B.mergeEnd);
  for(const x of Object.values(TRACK))svg('path',{d:`M ${x} 42 V ${end}`,class:'d-rail'},draw);
@@ -189,6 +191,7 @@ export function renderRouteMap(props){
  if(!_measured){
   const heights=new Map([...map.querySelectorAll('.b-comparison')].map(box=>[box.dataset.group,Math.max(ROW,box.offsetHeight+40)]));
   const ownHeight=Math.max(OWN_ROW,(map.querySelector('.b-rider')?.offsetHeight||0)+40);
-  if(ownHeight>OWN_ROW||[...heights.values()].some(h=>h>ROW))renderRouteMap({...props,_heights:heights,_ownHeight:ownHeight,_measured:true});
+  if(ownHeight>OWN_ROW||[...heights.values()].some(h=>h>ROW))return renderRouteMap({...props,_heights:heights,_ownHeight:ownHeight,_measured:true,_scrollTop:restoreScroll});
  }
+ if(window.scrollY!==restoreScroll)window.scrollTo({top:restoreScroll,behavior:'instant'});
 }
