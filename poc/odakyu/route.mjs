@@ -6,7 +6,7 @@ const root=document.getElementById('rail'),time=document.getElementById('time');
 const play=document.getElementById('play'),advance=document.getElementById('advance');
 const PLAY_MS_PER_MINUTE=2000,SERVICE_END=24*60+POLICY.serviceDayBoundary-1,BUS_POLL_MS=30000;
 const initial=japanServiceTime(new Date());time.value=clock(initial.minute);
-let timer=null,model,pool=[],selectedId=null,selectedOrigin=null,activeKey=null,now=initial.minute,error=false,timeEdited=false,timeValid=true,busSnapshot=null,busRequest=0;
+let timer=null,model,pool=[],selectedId=null,selectedOrigin=null,activeKey=null,comparisonRequested=false,now=initial.minute,error=false,timeEdited=false,timeValid=true,busSnapshot=null,busRequest=0;
 function render(){
   play.disabled=advance.disabled=!model||!pool.length||!timeValid||now>=SERVICE_END;
   if(!timeValid){root.replaceChildren();root.textContent='時刻未入力';return;}
@@ -20,15 +20,15 @@ function render(){
     activeKey=activeRoute?.key??null;
   }
   root.dataset.routeCount=String(comparison.routes.length);
-  renderRouteMap({root,model,pool,selected,now,comparison,activeRoute,originChoices,busSnapshot,error,onSelect:(id,event={})=>{
-    if(id===selectedId){selectedId=null;selectedOrigin=null;activeKey=null;}
+  renderRouteMap({root,model,pool,selected,now,comparison,activeRoute,comparisonRequested,originChoices,busSnapshot,error,onSelect:(id,event={})=>{
+    if(id===selectedId){selectedId=null;selectedOrigin=null;activeKey=null;comparisonRequested=false;}
     else if(selectedId){
       const paths=pathsForTrain(comparison.routes,id,event,activeRoute);
-      if(!paths.length)return;
-      const i=paths.findIndex(r=>r.key===activeKey);activeKey=paths[(i+1)%paths.length].key;
+      if(!paths.length)return;const wasComparing=comparisonRequested;comparisonRequested=true;
+      const i=wasComparing?paths.findIndex(r=>r.key===activeKey):-1;activeKey=paths[(i+1)%paths.length].key;
     }else{
       const t=pool.find(t=>t.id===id)||originChoices.find(t=>t.id===id);if(!t)return;
-      selectedId=id;selectedOrigin=t.identityBasis==='station_departure'?t:null;activeKey=null;
+      selectedId=id;selectedOrigin=t.identityBasis==='station_departure'?t:null;activeKey=null;comparisonRequested=false;
     }
     render();
   }});

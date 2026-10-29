@@ -40,3 +40,5 @@ h1{margin:0;font-size:20px;line-height:25px}h1 span{font-size:15px;font-weight:7
 .d-official{position:absolute;display:flex;align-items:center;min-height:48px;color:#b9e3fc;font-size:14px}.d-load-status{position:absolute;color:#f4cb93}
 
 .d-stacked .d-train-kind,.d-stacked .d-stack-count{visibility:hidden}
+
+.b-bubble .b-same-bus{color:#c2f5df;font-size:14px;font-weight:700}

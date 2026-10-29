@@ -20,7 +20,7 @@ function trainFace(button){
  const g=el('span',undefined,'d-glyph',button);g.setAttribute('aria-hidden','true');
  for(const cls of ['window','light left','light right','stripe','bumper'])el('i',undefined,cls,g);
 }
-function busLines(box,snapshot,arrivals,onlyYuen=false){
+function busLines(box,snapshot,arrivals,onlyYuen=false,sharedBuses=new Set()){
  const ids=DESTINATIONS.filter(id=>(!onlyYuen||id==='MukogaokaYuen')&&Number.isInteger(arrivals[id]));
  if(!ids.length){el('small','バス 未判定','b-bus',box);return;}
  for(const id of ids){
@@ -28,15 +28,16 @@ function busLines(box,snapshot,arrivals,onlyYuen=false){
   if(!b){el('small',c.status==='stale'?'バス 更新待ち':c.status==='no_connection'?'バス 接続なし':'バス 未取得','b-bus',box);continue;}
   const next=c.options.find(n=>n.tripId!==b.tripId&&n.placeId===b.placeId&&n.fromStopId===b.fromStopId);
   el('small',`${target(id)}バス ${busClock(b.departureAt)} · ${b.departureState==='realtime'?'予測':'定刻'}`,'b-bus',box);
-  el('small',`歩${b.walkMinutes}分~ / ${b.connection==='tight'?'ギリギリ':'待'+b.waitMinutes+'分'}${next?' · 次'+busClock(next.departureAt):''}`,'b-bus-detail',box);
+  const shared=sharedBuses.has(id);
+  el('small',shared?`同じ便 · ${b.connection==='tight'?'ギリギリ':'待'+b.waitMinutes+'分'}（歩${b.walkMinutes}分~）`:`歩${b.walkMinutes}分~ / ${b.connection==='tight'?'ギリギリ':'待'+b.waitMinutes+'分'}${next?' · 次'+busClock(next.departureAt):''}`,`b-bus-detail${shared?' b-same-bus':''}`,box);
+  box.dataset.busSame=String(shared);
   box.dataset.busTrip=b.tripId;box.dataset.busConnection=b.connection;
   box.title+=` / ${b.placeLabel} ${b.routeLabel} ${b.platform||''}。徒歩未実測・接続未保証`;
  }
 }
-// One balloon per candidate train/departure/station, rather than hundreds of
-// duplicates for paths that share that same first connection. All paths remain
-// tappable through the existing controller; an active two-leg path overrides
-// that train's default summary without replacing the other train balloons.
+// Group every path by its identified first connection without discarding it.
+// The normal map prioritizes one departure reference per station; tapping that
+// stack cycles all candidates. Only the explicitly compared path is expanded.
 function candidateGroups(comparison,activeRoute){
  const groups=new Map();
  for(const route of comparison.routes){
@@ -48,13 +49,19 @@ function candidateGroups(comparison,activeRoute){
   g.paths.sort((a,b)=>Number(a.connection==='tight')-Number(b.connection==='tight')||a.transfers-b.transfers||(a.arrivals.Noborito??Infinity)-(b.arrivals.Noborito??Infinity));
   g.route=g.paths.find(r=>r.key===activeRoute?.key)||g.paths[0];
  }
- const beneficial=g=>g.paths[0].connection==='likely'&&Object.values(g.paths[0].savings).some(n=>n>0);
- return [...groups.values()].sort((a,b)=>Number(beneficial(b))-Number(beneficial(a))||a.paths[0].legs[0].departure-b.paths[0].legs[0].departure||a.key.localeCompare(b.key));
+ const priority=g=>g.paths[0].connection!=='likely'?2:Object.values(g.paths[0].savings).some(n=>n>0)?0:1;
+ return [...groups.values()].sort((a,b)=>priority(a)-priority(b)||(a.paths[0].arrivals.Noborito??Infinity)-(b.paths[0].arrivals.Noborito??Infinity)||a.paths[0].legs[0].departure-b.paths[0].legs[0].departure||a.key.localeCompare(b.key));
 }
 export function renderRouteMap(props){
- const {root,model,pool=[],selected,now,comparison={plans:[],routes:[],candidateIds:new Set()},activeRoute,originChoices=[],busSnapshot,onSelect,error,_heights=new Map(),_ownHeight=OWN_ROW,_measured=false}=props;
+ const {root,model,pool=[],selected,now,comparison={plans:[],routes:[],candidateIds:new Set()},activeRoute,comparisonRequested=false,originChoices=[],busSnapshot,onSelect,error,_heights=new Map(),_ownHeight=OWN_ROW,_measured=false}=props;
  const restoreScroll=props._scrollTop??window.scrollY;
  const width=Math.max(B.width,root.clientWidth),groups=candidateGroups(comparison,activeRoute);
+ const sharedBuses=new Set();
+ if(comparisonRequested&&activeRoute)for(const id of DESTINATIONS){
+  const a=busConnections(busSnapshot,id,comparison.plans.find(p=>p.destination===id)?.baseline?.arrival).options[0];
+  const b=busConnections(busSnapshot,id,activeRoute.arrivals[id]).options[0];
+  if(a&&b&&a.tripId===b.tripId&&a.placeId===b.placeId&&a.fromStopId===b.fromStopId&&a.departureAt===b.departureAt)sharedBuses.add(id);
+ }
  const actual=model?layoutMarkers(visibleTrains(pool,now,model.stations).map(t=>trainMarker(t,now,model.stations))):[];
  const ownPoint=actual.find(m=>m.train.id===selected?.id),last=selected?.stops.at(-1);
  const ended=selected&&!ownPoint&&Number.isInteger(last?.arrival)&&now>last.arrival;
@@ -64,7 +71,12 @@ export function renderRouteMap(props){
  const ownStation=ownPoint?stationFor(ownPoint.y).id:ended?last.station:selected?.stops[0].station;
  const rows=DOWN_STATIONS.map(s=>({...s,groups:groups.filter(g=>g.station===s.id),hasOwn:selected&&s.id===(ownStation==='Chiyoda.Hibiya'||ownStation==='Shinjuku'?'YoyogiUehara':ownStation)}));
  let cursor=TOP+(sourceOwn?_ownHeight+120:0);
- for(const row of rows){row.top=cursor;row.body=cursor+HEADER;let offset=0;for(const g of row.groups){g.offset=offset;g.height=_heights.get(g.key)||ROW;offset+=g.height;}row.end=row.body+Math.max(GAP,(row.hasOwn?_ownHeight:0)+offset);cursor=row.end;}
+ for(const row of rows){
+  row.top=cursor;row.body=cursor+HEADER;
+  row.focus=row.groups.find(g=>g.paths.some(r=>r.key===activeRoute?.key))||row.groups[0];
+  row.expanded=comparisonRequested&&row.focus?.paths.some(r=>r.key===activeRoute?.key);
+  row.end=row.body+Math.max(GAP,(row.hasOwn?_ownHeight:0)+(row.groups.length?(row.expanded?(_heights.get(row.focus.key)||ROW):130):0));cursor=row.end;
+ }
  const height=cursor+100;
  // Reserved annotation space belongs to each station. This monotone projection
  // preserves order and exact dwell anchors; no train's data coordinate changes.
@@ -74,7 +86,7 @@ export function renderRouteMap(props){
   return rows.at(-1).body+30+(y-B.yuen)*.7;
  }
  const map=el('div',undefined,'d-board');map.style.height=`${height}px`;map.style.width=`${width}px`;root.style.height=`${height}px`;
- map.setAttribute('aria-label','小田急 下り2線の定刻運行盤');map.dataset.busFetchedAt=String(busSnapshot?.fetchedAt??'');
+ map.setAttribute('aria-label','小田急 下り2線の定刻運行盤');map.dataset.busFetchedAt=String(busSnapshot?.fetchedAt??'');map.dataset.comparisonGroups=String(groups.length);map.dataset.comparisonRequested=String(comparisonRequested);
  const draw=svg('svg',{viewBox:`0 0 ${width} ${height}`,class:'d-wiring',role:'img','aria-label':'急行線・緩行線の簡略表示。渡り線と進路は省略。登戸以南は下り1線。'},map);
  const end=sy(B.mergeStart),join=sy(B.mergeEnd);
  for(const x of Object.values(TRACK))svg('path',{d:`M ${x} 42 V ${end}`,class:'d-rail'},draw);
@@ -123,12 +135,13 @@ export function renderRouteMap(props){
    const lines=[heading,`${kind(selected)} · ${selected.destination}行`];
    for(const id of DESTINATIONS){const p=comparison.plans.find(p=>p.destination===id);lines.push(`${target(id)} ${Number.isInteger(p?.baseline?.arrival)?clock(p.baseline.arrival)+'着':selected.knownPasses?.includes(id)?'通過':'未取得'}`);}
    const box=balloon(ownBubbleMarker,'b-rider',lines,{y:Math.max(85,ownBubbleMarker.screenY-30),side:ownBubbleMarker.x>=214?'left':'right'});
-   busLines(box,busSnapshot,Object.fromEntries(comparison.plans.map(p=>[p.destination,p.baseline?.arrival])));
+   busLines(box,busSnapshot,Object.fromEntries(comparison.plans.map(p=>[p.destination,p.baseline?.arrival])),false,sharedBuses);
   }
   row.groups.forEach((group,i)=>{
    const route=group.route,first=route.legs[0],t=pool.find(t=>t.id===first.trainId);if(!t)return;
-   const side=i%2===0?'left':'right',y=row.body+(row.hasOwn?_ownHeight:0)+group.offset;
-   const m=forecast(t,first.station,first.departure,y+30,side==='left'?'right':'left');m.key+='|'+group.key;
+   const side='left',y=row.body+(row.hasOwn?_ownHeight:0);
+   const m=forecast(t,first.station,first.departure,y+30,'right');m.key+='|'+group.key;m.candidateReference=true;m.hidden=group!==row.focus;
+   if(group!==row.focus||!row.expanded)return;
    const exact=first.timingBasis==='arrival';
    const lines=[`${shortStation(first.station)}で乗換`,`${clock(first.departure)}発 ${kind(t)}`,
     exact?`自 ${clock(first.alightTime)}着`:`自着 未取得 / ${clock(first.alightTime)}発基準`,
@@ -138,7 +151,7 @@ export function renderRouteMap(props){
    const last=pool.find(t=>t.id===route.legs.at(-1).trainId);
    for(const id of DESTINATIONS){if(first.station==='Noborito'&&id==='Noborito')continue;const a=route.arrivals[id];lines.push(`${target(id)} ${Number.isInteger(a)?clock(a)+'着 '+delta(route.savings[id]):last?.knownPasses?.includes(id)?'通過':'未取得'}`);}
    const box=balloon(m,`b-comparison${route.connection==='tight'?' b-tight':''}`,lines,{y,side,route});
-   busLines(box,busSnapshot,route.arrivals,first.station==='Noborito');
+   busLines(box,busSnapshot,route.arrivals,first.station==='Noborito',sharedBuses);
    box.dataset.pathCount=String(group.paths.length);box.dataset.group=group.key;
    if(route.connection==='likely'&&Object.values(route.savings).some(v=>v>0))el('b','↔','b-connection',box);
   });
@@ -161,7 +174,7 @@ export function renderRouteMap(props){
   for(const m of stack)if(m!==front)m.hidden=true;
  }
  for(const m of markers){
-  const own=selected?.id===m.train.id,eligible=comparison.candidateIds.has(m.train.id),chosen=eligible||activeRoute?.legs.some(l=>l.trainId===m.train.id),allowed=!selected||own||eligible;
+  const own=selected?.id===m.train.id,eligible=comparison.candidateIds.has(m.train.id),chosen=m.candidateReference||comparisonRequested&&activeRoute?.legs.some(l=>l.trainId===m.train.id),allowed=!selected||own||eligible;
   const b=at(el('button',undefined,`d-train ${m.train.type}${own?' d-selected':''}${chosen?' d-candidate':''}${m.track.id==='event'?' d-planned':''}`,map),m.screenY-36,m.x-27);
   b.type='button';if(m.hidden){b.style.visibility='hidden';b.setAttribute('aria-hidden','true');}b.setAttribute('aria-disabled',String(!allowed));b.setAttribute('aria-pressed',String(own||chosen));
   Object.assign(b.dataset,{train:m.train.id,marker:m.key,eventStation:m.eventStation??'',departure:String(m.eventDeparture??dep(m.train)),track:m.track.id,trackConfidence:m.track.confidence,trackBasis:m.track.basis,observed:'false',onTrack:String(m.onTrack),positionKind:m.kind,positionConfidence:m.positionConfidence,identityConfidence:m.identityConfidence,identityBasis:m.identityBasis,anchorY:String(m.y),displayY:String(m.screenY),selectionRole:own?'rider':chosen?'candidate':'none'});
@@ -172,16 +185,16 @@ export function renderRouteMap(props){
   if(m.track.id==='event')el('small',m===ownBubbleMarker?(ended?ownReference:'乗車便'): `${m.originEvent?station(m.eventStation)+' ':''}${clock(m.eventDeparture)} 発予定`,'d-event-time',b);
   if(!m.onTrack&&m.track.id!=='event')el('small','線路未定','d-event-time',b);
   const crowd=markers.filter(n=>Math.abs(n.x-m.x)<35&&Math.abs(n.screenY-m.screenY)<40).length;
-  if(crowd>1){el('small',String(crowd),'d-stack-count',b);if(!own&&markers.some(n=>n!==m&&Math.abs(n.x-m.x)<35&&n.screenY>m.screenY&&n.screenY-m.screenY<40))b.classList.add('d-stacked');}
+  if(crowd>1&&!m.candidateReference){el('small',String(crowd),'d-stack-count',b);if(!own&&markers.some(n=>n!==m&&Math.abs(n.x-m.x)<35&&n.screenY>m.screenY&&n.screenY-m.screenY<40))b.classList.add('d-stacked');}
   b.onclick=e=>{
    if(e.detail===0){if(allowed)onSelect(m.train.id,{station:m.eventStation,departure:m.eventDeparture});return;}
    const near=[...map.querySelectorAll('.d-train')].map(n=>{const r=n.querySelector('.d-glyph').getBoundingClientRect();return {id:n.dataset.train,key:n.dataset.marker,station:n.dataset.eventStation,departure:Number(n.dataset.departure),allowed:n.getAttribute('aria-disabled')!=='true',distance:Math.hypot(e.clientX-r.x-r.width/2,e.clientY-r.y-r.height/2)};}).sort((a,b)=>a.distance-b.distance||a.departure-b.departure||a.key.localeCompare(b.key));
    const group=near.filter(n=>n.allowed&&n.distance<=near[0].distance+8);if(!group.length)return;
-   const previous=group.findIndex(n=>n.key===root.dataset.lastTappedMarker),hit=group[(previous+1)%group.length];root.dataset.lastTappedMarker=hit.key;onSelect(hit.id,{station:hit.station,departure:hit.departure});
+   const previous=group.findIndex(n=>n.key===root.dataset.lastTappedMarker),hit=previous<0?(group.find(n=>n.key===m.key)||group[0]):group[(previous+1)%group.length];root.dataset.lastTappedMarker=hit.key;onSelect(hit.id,{station:hit.station,departure:hit.departure});
   };
  }
  for(const id of DESTINATIONS){
-  const row=rows.find(s=>s.id===id),p=comparison.plans.find(p=>p.destination===id),base=p?.baseline?.arrival,other=activeRoute?.arrivals[id];
+  const row=rows.find(s=>s.id===id),p=comparison.plans.find(p=>p.destination===id),base=p?.baseline?.arrival,other=comparisonRequested?activeRoute?.arrivals[id]:undefined;
   at(el('small',!selected?'電車をタップ':`${Number.isInteger(base)?'乗車 '+clock(base):'乗車 未取得'}${Number.isInteger(other)?' / 比較 '+clock(other)+' '+delta(activeRoute.savings[id]):''}`,'b-station-result',map),row.top+36,12);
   if(selected&&!Number.isInteger(base)&&!Number.isInteger(other)){const ref=model.tCodeReferences?.find(r=>r.tripId===selected.id&&r.url),a=at(el('a','公式 ↗','d-official',map),row.top+64,12);a.href=ref?.url||'https://www.odakyu.jp';a.target='_blank';a.rel='noreferrer';}
  }
