@@ -33,9 +33,9 @@ const order=(a,b)=>dep(a)-dep(b)||a.id.localeCompare(b.id);
 export const TRACK_POLICY=Object.freeze({
   standardSource:'https://www.odakyu.jp/news/o5oaa10000005sd3-att/8732_1784221_.pdf',
   generalSource:'https://www.odakyu.jp/ir/report/o5oaa100000004xv-att/00_all_page.pdf',
-  checkedOn:'2026-10-29',fromIndex:4,toIndex:17
+  checkedOn:'2026-10-29',fromIndex:4,toIndex:17,standardFromMinute:6*60,standardUntilMinute:24*60+10
 });
-export function inferredTrack(train,point) {
+export function inferredTrack(train,point,now) {
   const unknown={id:null,confidence:'unknown',basis:'no_segment_evidence',observed:false};
   if(!point||!Number.isFinite(point.index)||!['provider_id','explicit_trip'].includes(train.identityBasis))return unknown;
   // This board only accepts forward, identified downbound records. A type
@@ -45,6 +45,9 @@ export function inferredTrack(train,point) {
   if(point.index>17&&point.index<18&&beyondY>=DOWNBOARD.mergeEnd&&beyondY<=DOWNBOARD.splitStart)
     return {id:'single',confidence:'confirmed',basis:'single_downbound_topology',observed:false};
   if(point.index<TRACK_POLICY.fromIndex||point.index>TRACK_POLICY.toIndex)return unknown;
+  // The official diagram explicitly lists early/late-night common-track use.
+  // Do not extend its daytime separation rule into those exceptional hours.
+  if(!Number.isInteger(now)||now<TRACK_POLICY.standardFromMinute||now>=TRACK_POLICY.standardUntilMinute)return unknown;
   // Standard operation, not this train's actual track. The official 2018
   // diagram documents downbound express/rapid vs local use at Shimokitazawa;
   // applying the general separation along this corridor remains low confidence.
@@ -54,7 +57,7 @@ export function inferredTrack(train,point) {
     segment:['YoyogiUehara','Noborito']}:unknown;
 }
 export function railX(track,y) {
-  const b=DOWNBOARD,x=track==='express'?b.expressX:b.localX;
+  const b=DOWNBOARD,x=track==='express'?b.expressX:track==='local'?b.localX:b.singleX;
   if(y<=b.mergeStart)return x;
   if(y<b.mergeEnd)return x+(b.singleX-x)*(y-b.mergeStart)/(b.mergeEnd-b.mergeStart);
   if(y<=b.splitStart)return b.singleX;
@@ -98,7 +101,7 @@ function scheduledPoint(train,now) {
 }
 export function trainMarker(train,now,stations) {
   const point=scheduledPoint(train,now);
-  const track=inferredTrack(train,point),y=point?scheduledY(point.index,stations):null;
+  const track=inferredTrack(train,point,now),y=point?scheduledY(point.index,stations):null;
   if(!Number.isFinite(y)||!track.id)return null;
   return {train,track,point,kind:point.kind,observed:false,y,x:railX(track.id,y),
     positionConfidence:point.kind==='schedule_interpolation'?'coarse':'minute_schedule',
@@ -106,7 +109,7 @@ export function trainMarker(train,now,stations) {
 }
 export function visibleTrains(pool,selected,now,partnerIds=[]) {
   const active=t=>{
-    const p=t&&scheduledPoint(t,now);return p&&inferredTrack(t,p).id;
+    const p=t&&scheduledPoint(t,now);return p&&inferredTrack(t,p,now).id;
   };
   if(!selected)return pool.filter(active)
     .sort((a,b)=>Math.abs(dep(a)-now)-Math.abs(dep(b)-now)||order(a,b)).slice(0,3).sort(order);

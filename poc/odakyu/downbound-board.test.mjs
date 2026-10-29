@@ -60,6 +60,9 @@ test('準急・通勤準急・不明転線・範囲外は線路未確定、位�
   assert.equal(inferredTrack(selected,{index:18}).id,null);
   assert.equal(inferredTrack(selected,{index:17.65}).id,'single');
   assert.equal(inferredTrack(selected,{index:17.1}).id,null);
+  assert.equal(inferredTrack(selected,{index:10},359).id,null);
+  assert.equal(inferredTrack(selected,{index:10},1450).id,null);
+  assert.equal(inferredTrack(selected,{index:10},500).id,'local');
 });
 test('既存平日便の前後切替と複数時点で、表示配置不能や架空の実測へ変換しない',()=>{
   for(const t of pool)for(const now of [ref.compareAt,Math.max(0,departure(t)-1),departure(t)+1]) {

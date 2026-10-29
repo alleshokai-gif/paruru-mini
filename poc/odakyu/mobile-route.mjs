@@ -1,5 +1,5 @@
 import {TYPES,clock} from './core.mjs';
-import {arrivalOrderReversals} from './navigation.mjs';
+import {arrivalOrderReversals,scheduledPosition} from './navigation.mjs';
 import {DOWNBOARD as B,DOWN_STATIONS,DOWN_SWITCHES,downRails,trainMarker,visibleTrains,layoutMarkers,inferredTrack,railX} from './downbound-board.mjs';
 const targets=['Noborito','MukogaokaYuen'];
 const departure=t=>t.stops[0].departure??t.stops[0].arrival;
@@ -116,7 +116,7 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
       const y=noteY((marker?.displayY??B.uehara)+20,60,blocked);
       const info=at(el('div',undefined,'d-selected-info',map),y,8);info.setAttribute('role','status');
       el('strong',`${type(selected)} ${selected.destination}行`,undefined,info);
-      el('small',`${clock(departure(selected))}発 · ${!marker?'位置・線路未確定':marker.kind==='scheduled_dwell'?'定刻停車':'定刻概略~'}`,undefined,info);
+      el('small',`${clock(departure(selected))}発 · ${!marker?scheduledPosition(selected,now)?'線路未確定':'位置未取得':marker.kind==='scheduled_dwell'?'定刻停車':'定刻概略~'}`,undefined,info);
       const a=arrival(selected,'Noborito');el('span',`登戸 ${Number.isInteger(a)?clock(a)+'着':'未取得'}`,undefined,info);
     }
   }
@@ -126,12 +126,12 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
     const recommendation=plan?.recommendation;
     const faster=recommendation?.transfers>0&&recommendation.saving>0&&recommendation.connection==='likely';
     const stationPoint={index:model.stations.find(s=>s.id===id).index};
-    const baseline=arrival(selected,id),track=inferredTrack(selected,stationPoint).id;
+    const baseline=arrival(selected,id),track=inferredTrack(selected,stationPoint,baseline).id;
     const own=at(el('div',undefined,'d-arrival d-own-arrival',map),row.y+31,railX(track,row.y)-35);own.dataset.destination=id;
     el('strong',Number.isInteger(baseline)?clock(baseline):selected.knownPasses.includes(id)?'通過':'未取得',undefined,own);
     el('small',Number.isInteger(baseline)?recommendation?.transfers===0?'そのまま':'乗り続ける':null,undefined,own);
     if(faster) {
-      const final=pool.find(t=>t.id===recommendation.legs.at(-1).trainId),targetTrack=inferredTrack(final,stationPoint).id;
+      const final=pool.find(t=>t.id===recommendation.legs.at(-1).trainId),targetTrack=inferredTrack(final,stationPoint,recommendation.arrival).id;
       const top=row.y+31+(targetTrack===track?32:0);
       const target=at(el('div',undefined,'d-arrival d-faster-arrival',map),top,railX(targetTrack,row.y)-35);target.dataset.destination=id;
       el('strong',clock(recommendation.arrival),undefined,target);el('small',`−${recommendation.saving}分 先着`,undefined,target);
@@ -141,7 +141,7 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
       const earlier=trains.filter(t=>t.id!==selected.id&&Number.isInteger(arrival(t,id))&&arrival(t,id)<baseline)
         .sort((a,b)=>arrival(a,id)-arrival(b,id))[0];
       if(earlier) {
-        const otherTrack=inferredTrack(earlier,stationPoint).id;
+        const otherTrack=inferredTrack(earlier,stationPoint,arrival(earlier,id)).id;
         const comparison=at(el('div',undefined,'d-arrival d-faster-arrival',map),row.y+31+(otherTrack===track?32:0),railX(otherTrack,row.y)-35);
         comparison.dataset.destination=id;comparison.dataset.comparisonOnly='true';
         el('strong',clock(arrival(earlier,id)),undefined,comparison);el('small','比較のみ',undefined,comparison);
