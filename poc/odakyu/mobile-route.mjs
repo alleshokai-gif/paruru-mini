@@ -144,7 +144,7 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
         const otherTrack=inferredTrack(earlier,stationPoint).id;
         const comparison=at(el('div',undefined,'d-arrival d-faster-arrival',map),row.y+31+(otherTrack===track?32:0),railX(otherTrack,row.y)-35);
         comparison.dataset.destination=id;comparison.dataset.comparisonOnly='true';
-        el('strong',clock(arrival(earlier,id)),undefined,comparison);el('small','先着・比較のみ',undefined,comparison);
+        el('strong',clock(arrival(earlier,id)),undefined,comparison);el('small','比較のみ',undefined,comparison);
       }
     }
     if(trains.some(t=>t.id!==selected.id&&arrivalOrderReversals(selected,t).some(r=>r.to===id))) {
