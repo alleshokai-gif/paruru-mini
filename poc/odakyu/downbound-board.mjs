@@ -1,7 +1,7 @@
 import {scheduledPosition} from './navigation.mjs';
 // Downbound-only presentation of the previously traced canonical wiring.
-// Express/local routing per TRAIN is a low-confidence type-based hypothesis,
-// never a platform observation, train identity link or new routing engine.
+// Geometry is fixed. Schedule position, identity and segment track confidence
+// are independent; none of these presentation estimates enter the route engine.
 export const DOWNBOARD=Object.freeze({width:351,height:1048,expressX:178,localX:250,singleX:214,
   uehara:150,kyodo:350,seijo:500,noborito:650,yuen:900,mergeStart:750,mergeEnd:795,splitStart:835,splitEnd:870,rejoinStart:935,rejoinEnd:975});
 export const DOWN_STATIONS=Object.freeze([
@@ -30,8 +30,28 @@ export const DOWN_SOURCES=Object.freeze([
 ]);
 const dep=t=>t.stops[0].departure??t.stops[0].arrival;
 const order=(a,b)=>dep(a)-dep(b)||a.id.localeCompare(b.id);
-export function inferredTrack(train) {
-  return {id:train.type==='Local'||train.type==='SemiExpress'?'local':'express',confidence:'low',basis:'train_type',observed:false};
+export const TRACK_POLICY=Object.freeze({
+  standardSource:'https://www.odakyu.jp/news/o5oaa10000005sd3-att/8732_1784221_.pdf',
+  generalSource:'https://www.odakyu.jp/ir/report/o5oaa100000004xv-att/00_all_page.pdf',
+  checkedOn:'2026-10-29',fromIndex:4,toIndex:17
+});
+export function inferredTrack(train,point) {
+  const unknown={id:null,confidence:'unknown',basis:'no_segment_evidence',observed:false};
+  if(!point||!Number.isFinite(point.index)||!['provider_id','explicit_trip'].includes(train.identityBasis))return unknown;
+  // This board only accepts forward, identified downbound records. A type
+  // alone cannot assign a route, an unknown crossover or a station platform.
+  if(train.stops.some((s,i)=>i&&s.index<=train.stops[i-1].index))return unknown;
+  const beyondY=DOWNBOARD.noborito+(point.index-17)*(DOWNBOARD.yuen-DOWNBOARD.noborito);
+  if(point.index>17&&point.index<18&&beyondY>=DOWNBOARD.mergeEnd&&beyondY<=DOWNBOARD.splitStart)
+    return {id:'single',confidence:'confirmed',basis:'single_downbound_topology',observed:false};
+  if(point.index<TRACK_POLICY.fromIndex||point.index>TRACK_POLICY.toIndex)return unknown;
+  // Standard operation, not this train's actual track. The official 2018
+  // diagram documents downbound express/rapid vs local use at Shimokitazawa;
+  // applying the general separation along this corridor remains low confidence.
+  // SemiExpress / commuter types and individual station transfers stay unknown.
+  const id=train.type==='Local'?'local':['Express','RapidExpress'].includes(train.type)?'express':null;
+  return id?{id,confidence:'low',basis:'standard_downbound_segment',observed:false,source:TRACK_POLICY.standardSource,
+    segment:['YoyogiUehara','Noborito']}:unknown;
 }
 export function railX(track,y) {
   const b=DOWNBOARD,x=track==='express'?b.expressX:b.localX;
@@ -66,40 +86,46 @@ export function scheduledY(index,stations) {
   }
   return anchors.at(-1).y;
 }
+function scheduledPoint(train,now) {
+  let point=scheduledPosition(train,now);
+  // An exact published departure/arrival is a schedule event. Never park a
+  // future train at its origin, or extrapolate past a final arrival with no dep.
+  if(point?.kind!=='scheduled_dwell') {
+    const stop=train.stops.find(s=>s.stop&&(s.arrival===now||s.departure===now));
+    if(stop)point={index:stop.index,from:stop.station,to:stop.station,kind:'scheduled_event',observed:false};
+  }
+  return point;
+}
 export function trainMarker(train,now,stations) {
-  const point=scheduledPosition(train,now),track=inferredTrack(train);
-  const origin=DOWN_STATIONS.find(s=>s.id===train.stops[0].station);
-  const y=point?scheduledY(point.index,stations):origin?.y;
-  if(!Number.isFinite(y))return null; // No unverified Shinjuku/Metro origin claim.
-  return {train,track,point,kind:point?'scheduled':'departure',observed:false,y,x:railX(track.id,y)};
+  const point=scheduledPoint(train,now);
+  const track=inferredTrack(train,point),y=point?scheduledY(point.index,stations):null;
+  if(!Number.isFinite(y)||!track.id)return null;
+  return {train,track,point,kind:point.kind,observed:false,y,x:railX(track.id,y),
+    positionConfidence:point.kind==='schedule_interpolation'?'coarse':'minute_schedule',
+    identityBasis:train.identityBasis,identityConfidence:train.confidence??'unknown'};
 }
 export function visibleTrains(pool,selected,now,partnerIds=[]) {
-  if(!selected)return pool.filter(t=>scheduledPosition(t,now)||(dep(t)>=now&&dep(t)<=now+15))
+  const active=t=>{
+    const p=t&&scheduledPoint(t,now);return p&&inferredTrack(t,p).id;
+  };
+  if(!selected)return pool.filter(active)
     .sort((a,b)=>Math.abs(dep(a)-now)-Math.abs(dep(b)-now)||order(a,b)).slice(0,3).sort(order);
-  const point=scheduledPosition(selected,now);
+  const point=scheduledPoint(selected,now);
   const queue=pool.filter(t=>t.stops[0].station===selected.stops[0].station).sort(order),i=queue.findIndex(t=>t.id===selected.id);
   let before=queue[i-1],after=queue[i+1];
   if(point) {
-    const others=pool.filter(t=>t.id!==selected.id).map(train=>({train,p:scheduledPosition(train,now)})).filter(t=>t.p);
+    const others=pool.filter(t=>t.id!==selected.id&&active(t)).map(train=>({train,p:scheduledPoint(train,now)}));
     const near=side=>others.filter(t=>side*(t.p.index-point.index)>0).sort((a,b)=>Math.abs(a.p.index-point.index)-Math.abs(b.p.index-point.index)||order(a.train,b.train))[0]?.train;
     before=near(1)||before;after=near(-1)||after;
   }
   const partner=partnerIds.map(id=>pool.find(t=>t.id===id)).filter(Boolean);
-  const list=[selected,...partner,before,after].filter(Boolean);
+  // Future transfer partners remain in the station annotation, not on a rail.
+  const nearest=pool.filter(t=>active(t)&&t.id!==selected.id).sort((a,b)=>Math.abs(dep(a)-dep(selected))-Math.abs(dep(b)-dep(selected))||order(a,b));
+  const list=[selected,...partner.filter(active),...[before,after].filter(active),...nearest].filter(Boolean);
   return [...new Map(list.map(t=>[t.id,t])).values()].slice(0,3).sort(order);
 }
-// Hit targets are separated along the SAME fixed rail. A short dotted leader
-// retains the original schedule/event anchor when markers need displacement.
+// Keep the actual schedule anchor, including during dwell. Crowded glyphs are
+// cycled by tapping; spacing must never move a stopped train or reverse order.
 export function layoutMarkers(markers) {
-  const placed=[];
-  const blocked=[{top:DOWNBOARD.noborito+22,bottom:DOWNBOARD.noborito+96},{top:DOWNBOARD.yuen+22,bottom:DOWNBOARD.yuen+96}];
-  for(const marker of [...markers].sort((a,b)=>a.y-b.y||order(a.train,b.train))) {
-    const candidates=[0,32,-32,64,-64,96,-96,128,-128].map(d=>marker.y+d);
-    const y=candidates.find(y=>y>=DOWNBOARD.uehara-8&&y<=DOWNBOARD.height-90
-      &&blocked.every(b=>y+24<b.top||y-24>b.bottom)
-      &&placed.every(p=>Math.abs(railX(marker.track.id,y)-p.x)>=56||Math.abs(y-p.displayY)>=32));
-    if(y===undefined)throw Error('TRAIN_MARKER_LAYOUT_UNAVAILABLE');
-    placed.push({...marker,displayY:y,x:railX(marker.track.id,y),displaced:y!==marker.y});
-  }
-  return placed;
+  return [...markers].sort((a,b)=>a.y-b.y||order(a.train,b.train)).map(m=>({...m,displayY:m.y,displaced:false}));
 }

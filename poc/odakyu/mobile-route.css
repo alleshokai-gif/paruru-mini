@@ -7,6 +7,10 @@ h1 {margin:0;font-size:19px;line-height:24px;}
 h1 span {font-size:12px;font-weight:400;color:#acc0d1;}
 #quality {font-size:10px;line-height:16px;color:#e1bf72;white-space:nowrap;}
 #time {width:87px;height:48px;padding:0;border:0;background:transparent;color:#eef5fa;font:650 16px system-ui;}
+.time-controls {display:flex;align-items:center;gap:0;}
+.time-controls button {width:40px;height:48px;padding:0;border:0;background:transparent;color:#c4e9db;font:600 16px system-ui;cursor:pointer;touch-action:manipulation;}
+.time-controls button:focus-visible {outline:2px solid #76e6c0;}
+.time-controls button:disabled {opacity:.35;}
 main {padding-top:0;}
 #rail {width:100%;overflow:clip;}
 .d-board {position:relative;width:351px;isolation:isolate;transform-origin:top left;}
@@ -32,6 +36,8 @@ main {padding-top:0;}
 .d-train.Local {color:#b4d0ec;}.d-train.Express {color:#ffc274;}.d-train.RapidExpress {color:#f4b5da;}.d-train.SemiExpress {color:#a6dfb8;}
 .d-selected .d-glyph {outline:2px solid #76e6c0;}.d-selected {color:#baf3db!important;}
 .d-partner .d-glyph {outline:2px solid #ee9bc8;}.d-partner {color:#f6c0e2!important;}
+.d-selected {z-index:7;}
+.d-stack-count {position:absolute;left:34px;top:4px;background:#173d3c;border-radius:8px;padding:0 3px;font-size:10px;pointer-events:none;}
 .d-train:focus-visible,.d-official:focus-visible {outline:3px solid white;outline-offset:2px;}
 .d-marker-leader {fill:none;stroke:#aac2d3;stroke-width:1;stroke-dasharray:2 4;}
 .d-selected-info,.d-transfer {position:absolute;width:140px;font-size:14px;line-height:20px;pointer-events:none;}

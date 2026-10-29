@@ -20,18 +20,46 @@ test('渡り線は添付配線の下り2線間だけに限定し、上り・検�
   for(const s of DOWN_SWITCHES){const source=TRACK_PATHS.find(p=>p.id===s.source);assert.equal(source?.kind,'switch');assert.ok(!/depot|lower|grade|inner/.test(s.source));}
   assert.deepEqual(DOWN_SWITCHES.filter(s=>s.station==='SeijogakuenMae').map(s=>[s.from,s.to]),[['express','local']]);
 });
-test('既存実便5分比較を維持し、全アイコンの線路割当は低確度推定、位置未取得は発時刻イベント',()=>{
+test('既存実便5分比較を維持し、未来の便を線路上へ架空配置しない',()=>{
   const plan=planNavigation(pool,selected.id,'Noborito',ref.compareAt);assert.equal(plan.recommendation.saving,5);
   const partners=plan.recommendation.legs.map(l=>l.trainId),trains=visibleTrains(pool,selected,ref.compareAt,partners);
-  assert.ok(trains.some(t=>t.id===partners[0]));assert.equal(trainMarker(selected,ref.compareAt,model.stations).kind,'departure');
-  for(const t of trains){const marker=trainMarker(t,ref.compareAt,model.stations);assert.equal(marker.observed,false);assert.equal(marker.track.confidence,'low');assert.equal(inferredTrack(t).observed,false);}
+  assert.ok(!trains.some(t=>t.id===partners[0]));assert.equal(trainMarker(selected,ref.compareAt,model.stations),null);
+  const marker=trainMarker(selected,departure(selected),model.stations);
+  assert.equal(marker.observed,false);assert.equal(marker.track.confidence,'low');
+  assert.equal(marker.identityBasis,'provider_id');assert.equal(marker.identityConfidence,'provider_static');assert.equal(inferredTrack(selected).confidence,'unknown');
   assert.equal(planNavigation(pool,selected.id,'MukogaokaYuen',ref.compareAt).recommendation,null);
 });
-test('同位置の複数実便も個別選択できる配置とし、固定線路から外さない',()=>{
-  const locals=pool.filter(t=>t.type==='Local'&&t.stops[0].station==='YoyogiUehara'&&departure(t)>ref.compareAt).slice(0,3);
-  assert.equal(locals.length,3);const markers=layoutMarkers(locals.map(t=>trainMarker(t,ref.compareAt,model.stations)));
+test('同線路の前後関係を維持し、見栄えのために定刻位置をずらさない',()=>{
+  const locals=pool.filter(t=>t.type==='Local').map(t=>trainMarker(t,departure(selected)+1,model.stations)).filter(Boolean).slice(0,3);
+  assert.equal(locals.length,3);const markers=layoutMarkers(locals);
   for(const m of markers)assert.equal(m.x,railX(m.track.id,m.displayY));
-  for(let i=0;i<markers.length;i++)for(let j=i+1;j<markers.length;j++)assert.ok(Math.abs(markers[i].displayY-markers[j].displayY)>=32);
+  for(const m of markers){assert.equal(m.y,m.displayY);assert.equal(m.displaced,false);}
+  for(let i=1;i<markers.length;i++)assert.ok(markers[i-1].point.index<=markers[i].point.index);
+});
+
+test('実便は1分送りで移動し、成城の既知停車中は固定、着時刻以後は外挿しない',()=>{
+  const a=trainMarker(selected,departure(selected),model.stations),b=trainMarker(selected,departure(selected)+1,model.stations);
+  assert.ok(b.y>a.y);
+  const stop=selected.stops.find(s=>s.arrival!==null&&s.departure>s.arrival);
+  assert.ok(stop);let y;
+  for(let now=stop.arrival;now<=stop.departure;now++){
+    const m=trainMarker(selected,now,model.stations);assert.equal(m.kind,'scheduled_dwell');
+    if(y!==undefined)assert.equal(m.y,y);y=m.y;
+  }
+  assert.ok(trainMarker(selected,stop.departure+1,model.stations).y>y);
+  const end=selected.stops.at(-1);assert.equal(trainMarker(selected,end.arrival,model.stations).kind,'scheduled_event');
+  assert.equal(trainMarker(selected,end.arrival+1,model.stations),null);
+  const incomplete={...selected,stops:selected.stops.map(s=>({...s,arrival:null}))};
+  assert.equal(trainMarker(incomplete,departure(selected)+1,model.stations),null);
+});
+
+test('準急・通勤準急・不明転線・範囲外は線路未確定、位置・便識別とは別管理',()=>{
+  for(const type of ['SemiExpress','CommuterSemiExpress','Unknown'])assert.equal(inferredTrack({...selected,type},{index:10}).id,null);
+  assert.equal(inferredTrack(selected,{index:0}).id,null);
+  assert.equal(inferredTrack({...selected,identityBasis:'hypothesis'},{index:10}).id,null);
+  assert.equal(inferredTrack(selected,{index:18}).id,null);
+  assert.equal(inferredTrack(selected,{index:17.65}).id,'single');
+  assert.equal(inferredTrack(selected,{index:17.1}).id,null);
 });
 test('既存平日便の前後切替と複数時点で、表示配置不能や架空の実測へ変換しない',()=>{
   for(const t of pool)for(const now of [ref.compareAt,Math.max(0,departure(t)-1),departure(t)+1]) {

@@ -55,34 +55,37 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
     }
   }
   const partnerIds=[...new Set([...legs.values()].map(({leg})=>leg.trainId))];
-  const trains=visibleTrains(pool,selected,now,partnerIds);
+  const reversalIds=selected?pool.filter(t=>t.id!==selected.id&&arrivalOrderReversals(selected,t).some(r=>r.to==='Noborito'))
+    .sort((a,b)=>Math.abs(departure(a)-departure(selected))-Math.abs(departure(b)-departure(selected))).map(t=>t.id):[];
+  const trains=visibleTrains(pool,selected,now,[...new Set([...partnerIds,...reversalIds])]);
   const markers=layoutMarkers(trains.map(t=>trainMarker(t,now,model.stations)).filter(Boolean));
   for(const marker of markers) {
     const train=marker.train,own=selected?.id===train.id,partner=partnerIds.includes(train.id);
-    if(marker.displaced) {
-      const originalX=railX(marker.track.id,marker.y),offset=marker.track.id==='express'?-10:10;
-      svg('path',{d:pathD([[originalX,marker.y],[originalX+offset,marker.y],[marker.x+offset,marker.displayY],[marker.x,marker.displayY]]),class:'d-marker-leader','data-anchor-train':train.id},drawing);
-      svg('path',{d:pathD([[originalX-4,marker.y],[originalX+4,marker.y]]),class:'d-marker-leader'},drawing);
-    }
-    const button=at(el('button',undefined,`d-train ${train.type} d-track-${marker.track.id}${own?' d-selected':''}${partner?' d-partner':''}${marker.kind==='departure'?' d-departure':''}`,map),marker.displayY-24,marker.x-26);
+    const button=at(el('button',undefined,`d-train ${train.type} d-track-${marker.track.id}${own?' d-selected':''}${partner?' d-partner':''}`,map),marker.displayY-24,marker.x-26);
     button.type='button';button.onclick=event=>{
-      // Dense icons share a rail. Overlapping generous hit targets must never
-      // steal a tap on the neighboring visible glyph. Keyboard activation
-      // keeps the focused train; pointer taps select the nearest glyph.
+      // Keep every schedule anchor fixed. A tap cycles genuinely crowded
+      // glyphs; otherwise the nearest visible glyph wins. Keyboard activates
+      // the focused train directly.
       if(event.detail===0){onSelect(train.id);return;}
-      const nearest=[...map.querySelectorAll('.d-train')].map(node=>{
+      const near=[...map.querySelectorAll('.d-train')].map(node=>{
         const rect=node.querySelector('.d-glyph').getBoundingClientRect();
         return {id:node.dataset.train,distance:Math.hypot(event.clientX-rect.x-rect.width/2,event.clientY-rect.y-rect.height/2)};
-      }).sort((a,b)=>a.distance-b.distance)[0];
-      onSelect(nearest.id);
+      }).sort((a,b)=>a.distance-b.distance||a.id.localeCompare(b.id));
+      const group=near.filter(n=>n.distance<=near[0].distance+12);
+      const current=group.findIndex(n=>n.id===selected?.id);
+      onSelect(group[(current+1)%group.length].id);
     };button.dataset.train=train.id;
     button.dataset.track=marker.track.id;button.dataset.trackConfidence=marker.track.confidence;button.dataset.observed='false';button.dataset.positionKind=marker.kind;
+    button.dataset.positionConfidence=marker.positionConfidence;button.dataset.identityConfidence=marker.identityConfidence;button.dataset.identityBasis=marker.identityBasis;
+    button.dataset.trackBasis=marker.track.basis;
     button.dataset.anchorY=String(marker.y);button.dataset.displayY=String(marker.displayY);
     button.setAttribute('aria-pressed',String(own));
     button.setAttribute('aria-label',`${clock(departure(train))} ${type(train)} ${train.destination}行を選択`);
-    button.title=`${marker.kind==='departure'?'発時刻マーク・位置未取得':'定刻位置推定'} / 使用線路は種別からの低確度推定`;
+    button.title=`${marker.kind==='scheduled_dwell'?'定刻停車':marker.kind==='schedule_interpolation'?'区間内の概略推定・途中停車時刻未収録':'定刻着発'} / 使用線路は区間標準からの低確度推定`;
     el('span','🚆','d-glyph',button);
-    el('small',marker.kind==='departure'?'発':'~','d-event-flag',button);
+    el('small',marker.kind==='scheduled_dwell'?'停':'~','d-event-flag',button);
+    const crowd=markers.filter(m=>Math.abs(m.x-marker.x)<28&&Math.abs(m.y-marker.y)<28).length;
+    if(crowd>1)el('small',String(crowd),'d-stack-count',button);
     const captionTop=marker.displayY+27,captionBottom=captionTop+32;
     const clear=markers.every(m=>m===marker||Math.abs(m.x-marker.x)>=56||captionBottom<m.displayY-14||captionTop>m.displayY+14)
       &&DOWN_SWITCHES.every(s=>captionBottom<s.fromY||captionTop>s.toY)
@@ -90,7 +93,7 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
     if(clear) {
       const caption=el('span',undefined,'d-train-caption',button);
       el('strong',shortType(train),undefined,caption);
-      el('small',`${clock(departure(train))}${marker.kind==='departure'?'発':'~'}`,undefined,caption);
+      el('small',`${clock(departure(train))}発`,undefined,caption);
     }
   }
   const blocked=DOWN_STATIONS.map(s=>({top:s.y-17,bottom:s.y+17}));
@@ -109,11 +112,11 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
   }
   if(selected) {
     const marker=markers.find(m=>m.train.id===selected.id);
-    if(marker) {
-      const y=noteY(marker.displayY+20,60,blocked);
+    {
+      const y=noteY((marker?.displayY??B.uehara)+20,60,blocked);
       const info=at(el('div',undefined,'d-selected-info',map),y,8);info.setAttribute('role','status');
       el('strong',`${type(selected)} ${selected.destination}行`,undefined,info);
-      el('small',`${clock(departure(selected))}発 · ${marker.kind==='departure'?'位置未取得':'定刻推定'}`,undefined,info);
+      el('small',`${clock(departure(selected))}発 · ${!marker?'位置・線路未確定':marker.kind==='scheduled_dwell'?'定刻停車':'定刻概略~'}`,undefined,info);
       const a=arrival(selected,'Noborito');el('span',`登戸 ${Number.isInteger(a)?clock(a)+'着':'未取得'}`,undefined,info);
     }
   }
@@ -122,15 +125,27 @@ export function renderRouteMap({root,model,pool=[],selected,now,plans=[],onSelec
     if(!selected){at(el('small','列車をタップ','d-target-note',map),row.y+31,8);continue;}
     const recommendation=plan?.recommendation;
     const faster=recommendation?.transfers>0&&recommendation.saving>0&&recommendation.connection==='likely';
-    const baseline=arrival(selected,id),track=inferredTrack(selected).id;
+    const stationPoint={index:model.stations.find(s=>s.id===id).index};
+    const baseline=arrival(selected,id),track=inferredTrack(selected,stationPoint).id;
     const own=at(el('div',undefined,'d-arrival d-own-arrival',map),row.y+31,railX(track,row.y)-35);own.dataset.destination=id;
     el('strong',Number.isInteger(baseline)?clock(baseline):selected.knownPasses.includes(id)?'通過':'未取得',undefined,own);
     el('small',Number.isInteger(baseline)?recommendation?.transfers===0?'そのまま':'乗り続ける':null,undefined,own);
     if(faster) {
-      const final=pool.find(t=>t.id===recommendation.legs.at(-1).trainId),targetTrack=inferredTrack(final).id;
+      const final=pool.find(t=>t.id===recommendation.legs.at(-1).trainId),targetTrack=inferredTrack(final,stationPoint).id;
       const top=row.y+31+(targetTrack===track?32:0);
       const target=at(el('div',undefined,'d-arrival d-faster-arrival',map),top,railX(targetTrack,row.y)-35);target.dataset.destination=id;
       el('strong',clock(recommendation.arrival),undefined,target);el('small',`−${recommendation.saving}分 先着`,undefined,target);
+    } else if(Number.isInteger(baseline)) {
+      // A train can arrive sooner without being reachable from the rider's
+      // current stop. Keep arrival comparison distinct from a transfer offer.
+      const earlier=trains.filter(t=>t.id!==selected.id&&Number.isInteger(arrival(t,id))&&arrival(t,id)<baseline)
+        .sort((a,b)=>arrival(a,id)-arrival(b,id))[0];
+      if(earlier) {
+        const otherTrack=inferredTrack(earlier,stationPoint).id;
+        const comparison=at(el('div',undefined,'d-arrival d-faster-arrival',map),row.y+31+(otherTrack===track?32:0),railX(otherTrack,row.y)-35);
+        comparison.dataset.destination=id;comparison.dataset.comparisonOnly='true';
+        el('strong',clock(arrival(earlier,id)),undefined,comparison);el('small','先着・比較のみ',undefined,comparison);
+      }
     }
     if(trains.some(t=>t.id!==selected.id&&arrivalOrderReversals(selected,t).some(r=>r.to===id))) {
       const note=at(el('small','先着順逆転','d-order-note',map),row.y+32,8);el('span','地点未確認',undefined,note);
