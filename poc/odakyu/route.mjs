@@ -3,7 +3,6 @@ import {planNavigation} from './navigation.mjs';
 import {renderRouteMap} from './mobile-route.mjs';
 import {japanServiceTime} from './simulation-time.mjs';
 import {tapTrain} from './downbound-board.mjs';
-const pDestinationPassed=(plans,a)=>plans.some(p=>p.destinationPassed && (p.alternatives||[]).includes(a));
 const root=document.getElementById('rail'),time=document.getElementById('time');
 const play=document.getElementById('play'),advance=document.getElementById('advance');
 const PLAY_MS_PER_MINUTE=2000,SERVICE_END=24*60+POLICY.serviceDayBoundary-1;
@@ -15,9 +14,11 @@ function render() {
   play.disabled=advance.disabled=!model||!pool.length||!timeValid||now>=SERVICE_END;
   if(!timeValid){root.replaceChildren();root.textContent='時刻未入力';return;}
   const selected=pool.find(t=>t.id===selectedId);
+  const availablePlans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now)})):[];
+  const eligibleCandidateIds=new Set(availablePlans.flatMap(p=>p.eligibleCandidateIds));
+  if(candidateId&&!eligibleCandidateIds.has(candidateId))candidateId=null;
   const candidate=pool.find(t=>t.id===candidateId);
-  const plans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now,candidate?{candidateId:candidate.id}:{})})):[];
-  const eligibleCandidateIds=new Set(plans.flatMap(p=>p.alternatives||[]).filter(a=>a.connection==='likely' && (a.saving>0||pDestinationPassed(plans,a))).flatMap(a=>a.legs.map(l=>l.trainId)));
+  const plans=candidate?availablePlans.map(p=>({destination:p.destination,...planNavigation(pool,selected.id,p.destination,now,{candidateId:candidate.id})})):availablePlans;
   renderRouteMap({root,model,pool,selected,candidate,now,plans,error,eligibleCandidateIds,onSelect:id=>{
     if(selectedId && id!==selectedId && !eligibleCandidateIds.has(id)) return;
     ({selectedId,candidateId}=tapTrain({selectedId,candidateId},id));render();

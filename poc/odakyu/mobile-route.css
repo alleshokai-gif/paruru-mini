@@ -29,6 +29,7 @@ main {padding-top:0;}
 .d-single-label {position:absolute;font-size:11px;color:#9ab2c4;}
 .d-load-status {position:absolute;color:#d5bd98;font-size:14px;}
 .d-train {position:absolute;width:52px;height:48px;border:0;padding:0;background:transparent;color:#dceaf6;cursor:pointer;touch-action:manipulation;z-index:5;}
+.d-train:disabled {opacity:.45;cursor:default;}
 .d-glyph {position:absolute;top:11px;left:13px;width:26px;height:26px;font:22px/26px system-ui;text-align:center;background:#0e1b28;border:1px dashed currentColor;border-radius:3px;}
 .d-train-caption {position:absolute;top:51px;left:0;width:52px;text-align:center;font-size:13px;line-height:16px;background:#0e1b28;pointer-events:none;}
 .d-event-flag {position:absolute;top:17px;font-size:10px;line-height:14px;pointer-events:none;}.d-track-express .d-event-flag {right:46px;}.d-track-local .d-event-flag {left:46px;}
@@ -44,11 +45,15 @@ main {padding-top:0;}
 .d-stack-count {position:absolute;left:34px;top:4px;background:#173d3c;border-radius:8px;padding:0 3px;font-size:10px;pointer-events:none;}
 .d-train:focus-visible,.d-official:focus-visible {outline:3px solid white;outline-offset:2px;}
 .d-marker-leader {fill:none;stroke:#aac2d3;stroke-width:1;stroke-dasharray:2 4;}
-.d-selected-info,.d-candidate-info,.d-transfer {position:absolute;width:140px;font-size:14px;line-height:20px;pointer-events:none;}
-.d-selected-info strong,.d-selected-info span,.d-selected-info small,.d-candidate-info strong,.d-candidate-info small,.d-transfer strong,.d-transfer span,.d-transfer small {display:block;}
+.d-selected-info,.d-transfer {position:absolute;width:140px;font-size:14px;line-height:20px;pointer-events:none;}
+.d-selected-info strong,.d-selected-info span,.d-selected-info small,.d-transfer strong,.d-transfer span,.d-transfer small {display:block;}
 .d-selected-info strong {color:#baf3db;font-size:14px;}.d-selected-info small {color:#a8bdcd;font-size:11px;}
-.d-candidate-info {line-height:18px;}.d-candidate-info strong {color:#e9c6ff;font-size:13px;}.d-candidate-info small {color:#b4a9c5;font-size:11px;}
 .d-transfer {line-height:16px;}.d-transfer strong {color:#e9c6ff;font-size:13px;white-space:nowrap;}.d-transfer span {font-size:12px;}.d-transfer small {font-size:10px;line-height:12px;color:#a8bdcd;}
+.d-transfer-train {position:relative;display:flex;align-items:center;gap:5px;height:20px;padding:0;border:0;background:transparent;color:#e9c6ff;pointer-events:auto;touch-action:manipulation;cursor:pointer;}
+.d-transfer-train::before {content:'';position:absolute;inset:-12px -4px;}
+.d-transfer .d-transfer-glyph {font:16px/18px system-ui;border:1px solid #dfb1ff;border-radius:3px;}
+.d-transfer-train[aria-pressed="true"] .d-transfer-glyph {outline:3px double #dfb1ff;}
+.d-transfer-train:focus-visible {outline:2px solid white;}
 .d-connection-mark {position:absolute;font-size:18px;line-height:20px;width:20px;text-align:center;color:#f6c0e2;}
 .d-arrival {position:absolute;width:70px;text-align:center;background:#173d3c;line-height:23px;}
 .d-arrival strong {display:block;font-size:19px;}.d-arrival small {display:block;font-size:12px;line-height:18px;}

@@ -100,7 +100,7 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   const ride = rideFacts(selected, destination, pool);
   const destinationPassed = ride.destinationPassed;
   const baseline = minute(ride.arrival) ? ride : null;
-  if (baseline && baseline.arrival < now) return { status: 'SCHEDULED_ARRIVED', baseline: { arrival: baseline.arrival, transfers: 0 }, recommendation: null, alternatives: [], difficult: [], scope: '定刻ダイヤ上の到着済み。実際の遅延・位置は未取得' };
+  if (baseline && baseline.arrival < now) return { status: 'SCHEDULED_ARRIVED', baseline: { arrival: baseline.arrival, transfers: 0 }, recommendation: null, alternatives: [], eligibleCandidateIds: [], difficult: [], scope: '定刻ダイヤ上の到着済み。実際の遅延・位置は未取得' };
   const target = pool.flatMap(t => t.stops).find(s => s.stop === true && s.station === destination);
   const alternatives = [], assessments = [];
   const horizon = now + 120, maxTransfers = 2;
@@ -153,9 +153,14 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   const eligible = [...(stay ? [stay] : []), ...alternatives.filter(a => a.connection === 'likely')]
     .sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers || Number(a.connection === 'tight') - Number(b.connection === 'tight'));
   const recommendation = baseline ? eligible[0] || stay : destinationPassed ? eligible[0] || null : null;
+  // Candidate selection is not the bounded alternatives preview. Keep every
+  // usable connection, with the same timing and movement gates as the planner.
+  const eligibleCandidateIds = [...new Set(alternatives
+    .filter(a => a.connection === 'likely' && (a.saving > 0 || destinationPassed))
+    .flatMap(a => a.legs.map(l => l.trainId)))];
   return { status: baseline ? 'PARTIAL_STATIC_ARRIVAL_COMPARISON' : destinationPassed ? 'TRANSFER_REQUIRED' : 'ARRIVAL_UNAVAILABLE',
     destinationPassed: Boolean(destinationPassed), rideContinuations: ride.continuations,
-    baseline: stay, recommendation, alternatives: alternatives.slice(0, 8), difficult: assessments.filter(l => candidateId === undefined || l.trainId === candidateId).slice(0, 4),
+    baseline: stay, recommendation, eligibleCandidateIds, alternatives: alternatives.slice(0, 8), difficult: assessments.filter(l => candidateId === undefined || l.trainId === candidateId).slice(0, 4),
     bestConditional: alternatives[0] || null, maxTransfers, guaranteed: false,
     missing: ['全駅の着発・運転列車番号・直通継続ID・番線・実測移動時間',
       'データセットの未収録駅・便、着時刻の独立した資料との照合・リアルタイム遅延'],
