@@ -7,7 +7,7 @@ const type=t=>t.type==='Local'?'各停':TYPES[t.type];
 const shortType=t=>t.type==='RapidExpress'?'快急':type(t);
 const arrival=(t,id)=>t.stops.find(s=>s.station===id&&s.stop)?.arrival;
 const actionable=p=>p?.recommendation?.transfers>0&&p.recommendation.connection==='likely'
-  &&(p.recommendation.saving>0||p.destinationPassed);
+  &&(p.recommendation.saving>0||p.destinationPassed||p.onwardRequired||p.onwardUnknown);
 function el(tag,text,cls,parent) {
   const n=document.createElement(tag);if(text!==undefined)n.textContent=text;
   if(cls)n.className=cls;parent?.append(n);return n;
@@ -24,7 +24,7 @@ function noteY(preferred,height,blocked) {
   return choices.filter(y=>y>=100&&y+height<B.height&&blocked.every(b=>y+height<=b.top||y>=b.bottom))
     .sort((a,b)=>Math.abs(a-preferred)-Math.abs(b-preferred))[0]??B.height-height;
 }
-export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=[],eligibleCandidateIds=new Set(),onSelect,error}) {
+export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=[],fastestPlans=[],avoidingPlans=[],avoidRapidExpress=false,eligibleCandidateIds=new Set(),onSelect,onChooseRoute,error}) {
   const map=el('div',undefined,'d-board');map.style.height=`${B.height}px`;
   const scale=Math.min(1,root.clientWidth/B.width);
   map.style.transform=`scale(${scale})`;root.style.height=`${B.height*scale}px`;
@@ -49,13 +49,17 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
         at(el('small','着発未取得','d-station-status',map),row.y+12,8);
     } else {
       const platform=svg('rect',{x:B.expressX+16,y:row.y-22,width:B.localX-B.expressX-32,height:44,rx:3,class:'d-platform','data-platform':row.id},drawing);
-      platform.setAttribute('aria-label',`${row.name} 下り島式ホーム`);
+      platform.setAttribute('aria-label',`${row.name} 下り${row.id==='YoyogiUehara'?'1・2番線 同一':''}島式ホーム`);
+      if(row.id==='YoyogiUehara') {
+        at(el('small','2','d-platform-number',map),row.y-10,B.expressX+20);
+        at(el('small','1','d-platform-number',map),row.y-10,B.localX-30);
+      }
     }
     at(el('strong',row.name,`d-station${targets.includes(row.id)?' d-target-name':''}`,map),row.y-13,8).dataset.station=row.id;
   }
-  at(el('span','新宿','d-approach',map),6,110);at(el('span','千代田線','d-approach',map),6,270);
-  at(el('small','急行線','d-track-label',map),B.uehara-46,B.expressX-20);
-  at(el('small','緩行線','d-track-label',map),B.uehara-46,B.localX-20);
+  at(el('span','千代田線','d-approach',map),6,96);at(el('span','新宿','d-approach',map),6,286);
+  at(el('small','急行線','d-track-label',map),B.shimokitazawa+40,B.expressX-60);
+  at(el('small','緩行線','d-track-label',map),B.shimokitazawa+40,B.localX+38);
   at(el('small','下り1線','d-single-label',map),B.mergeEnd+12,B.singleX+14);
   if(!model||!pool.length) {
     at(el('span',error?'読込失敗':model?'該当ダイヤ未取得':'読込中','d-load-status',map),B.uehara+70,8);
@@ -90,6 +94,7 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
       onSelect(group[(current+1)%group.length].id);
     };button.dataset.train=train.id;
     button.dataset.track=marker.track.id;button.dataset.trackConfidence=marker.track.confidence;button.dataset.observed='false';button.dataset.positionKind=marker.kind;
+    button.dataset.onTrack=String(marker.track.id!=='uehara-unassigned');
     button.dataset.positionConfidence=marker.positionConfidence;button.dataset.identityConfidence=marker.identityConfidence;button.dataset.identityBasis=marker.identityBasis;
     button.dataset.trackBasis=marker.track.basis;
     button.dataset.anchorY=String(marker.y);button.dataset.displayY=String(marker.displayY);
@@ -99,10 +104,10 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     const action=own?'乗車中・タップで解除':comparison?'乗換候補・再タップで乗車に変更':selected?(canTransfer?'接続見込みの短縮候補として選ぶ':'推奨対象外（接続・短縮を確認できず）'):'乗車列車にする';
     button.setAttribute('aria-label',`${clock(departure(train))} ${type(train)} ${train.destination}行・${action}`);
     const state=marker.kind==='scheduled_dwell'?'定刻停車':marker.kind==='scheduled_departure'?'定刻発車':marker.kind==='scheduled_arrival'?'定刻到着':'定刻概略~';
-    button.title=`${action} / ${state}${marker.kind==='schedule_interpolation'?'・途中停車時刻未収録':''} / 使用線路は区間標準からの低確度推定`;
+    button.title=`${action} / ${state}${marker.kind.includes('interpolation')?'・公開着発間の概略':''} / ${marker.track.id==='uehara-unassigned'?'使用線路・上原番線は未確認':'使用線路は経路・区間標準からの低確度推定'}`;
     el('span','🚆','d-glyph',button);
     if(own||comparison||partner)el('b',own?'乗車 ×':comparison?'候補':'乗換先','d-role-badge',button);
-    el('small',marker.kind==='scheduled_dwell'?'停':marker.kind==='scheduled_departure'?'発':marker.kind==='scheduled_arrival'?'着':'~','d-event-flag',button);
+    el('small',marker.track.id==='uehara-unassigned'?'線路?':marker.kind==='scheduled_dwell'?'停':marker.kind==='scheduled_departure'?'発':marker.kind==='scheduled_arrival'?'着':'~','d-event-flag',button);
     const crowd=markers.filter(m=>Math.abs(m.x-marker.x)<28&&Math.abs(m.y-marker.y)<28).length;
     if(crowd>1)el('small',String(crowd),'d-stack-count',button);
     const captionTop=marker.displayY+27,captionBottom=captionTop+32;
@@ -141,13 +146,15 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
   if(selected) {
     const marker=markers.find(m=>m.train.id===selected.id);
     {
-      const y=noteY((marker?.displayY??B.uehara)+20,64,blocked);blocked.push({top:y,bottom:y+64});
+      const y=selected.approach?20:noteY((marker?.displayY??B.uehara)+20,64,blocked);blocked.push({top:y,bottom:y+64});
       const info=at(el('div',undefined,'d-selected-info',map),y,8);info.setAttribute('role','status');
       el('strong',`乗車 ${shortType(selected)}`,undefined,info);
-      el('small',`${clock(departure(selected))}発 ${selected.destination}行`,undefined,info);
+      el('small',selected.approach?`日比谷${clock(departure(selected))}発`:`${clock(departure(selected))}発 ${selected.destination}行`,undefined,info);
       const lastArrival=selected.stops.at(-1)?.arrival;
       const state=!marker?scheduledPosition(selected,now)?'線路未確定':Number.isInteger(lastArrival)&&lastArrival<now?'収録区間外':'位置未取得':marker.kind==='scheduled_dwell'?'定刻停車':marker.kind==='scheduled_departure'?'定刻発車':marker.kind==='scheduled_arrival'?'定刻到着':'定刻概略~';
-      el('small',state,undefined,info);
+      const uehara=selected.stops.find(s=>s.station==='YoyogiUehara');
+      el('small',selected.approach?`${clock(uehara.arrival)}上原着・${selected.approach.terminatesAtUehara?'終着':'直通?'}`:marker?.track.id==='uehara-unassigned'?'上原周辺・線路未確認':state,undefined,info);
+      if(selected.approach)info.title=selected.approach.terminatesAtUehara?'上原終着・乗換が必要':'小田急側との同一便リンクは未照合。乗換なしの到着時刻は算出しない';
     }
   }
   // The candidate is identified at the actual connection station above. Do not
@@ -158,12 +165,33 @@ export function renderRouteMap({root,model,pool=[],selected,candidate,now,plans=
     const recommendation=plan?.recommendation;
     const arrived=plan?.status==='SCHEDULED_ARRIVED';
     const faster=actionable(plan);
+    const fastPlan=fastestPlans.find(p=>p.destination===id),calmPlan=avoidingPlans.find(p=>p.destination===id);
+    const fast=fastPlan?.recommendation,calm=calmPlan?.recommendation;
+    if(fast&&calm&&(fast.id!==calm.id||fast.arrival!==calm.arrival)&&onChooseRoute) {
+      // Two choices replace the existing two arrival columns. No new panel or
+      // destination input. A train glyph chooses the route including its policy.
+      for(const [r,avoid,x,label] of [[fast,false,B.expressX,'快速急行あり'],[calm,true,B.localX,'快速急行なし']]) {
+        const final=r.legs.length?pool.find(t=>t.id===r.legs.at(-1).trainId):selected;
+        const own=r.transfers===0,active=avoid===avoidRapidExpress;
+        const cell=at(el('div',undefined,`d-arrival d-route-choice${own?' d-own-arrival':active?' d-faster-arrival':' d-comparison-arrival'}`,map),row.y+12,x-35);
+        cell.dataset.destination=id;cell.dataset.train=final.id;
+        el('small',label,'d-choice-label',cell);el('strong',clock(r.arrival),undefined,cell);
+        const button=el('button',undefined,'d-arrival-train',cell);button.type='button';button.setAttribute('aria-pressed',String(active));
+        button.setAttribute('aria-label',`${DOWN_STATIONS.find(s=>s.id===id).name} ${clock(r.arrival)}着・${label}・${own?'そのまま乗車':type(final)+'へ乗換'}`);
+        button.onclick=()=>onChooseRoute({candidateId:r.legs[0]?.trainId??null,avoidRapidExpress:avoid});
+        el('span',`🚆 ${own?'乗車':shortType(final)}`,undefined,button);
+        el('small',`${clock(r.legs[0]?.departure??departure(final))}発`,undefined,button);
+      }
+      const note=at(el('small',avoidRapidExpress&&calm.transfers===0?'そのまま乗車':avoidRapidExpress?calm.arrival===fast.arrival?'同着・快急なし':`快急より${calm.arrival-fast.arrival}分後`:'乗換案を比較','d-target-note',map),row.y+35,8);
+      if(selected.approach)note.title=selected.approach.terminatesAtUehara?'上原終着。乗換が必要':'小田急側との直通同一便は未照合';
+      continue;
+    }
     const stationPoint={index:model.stations.find(s=>s.id===id).index};
     const baseline=arrival(selected,id),track=inferredTrack(selected,stationPoint,baseline).id;
     const ownX=track?railX(track,row.y):B.localX;
     const own=at(el('div',undefined,'d-arrival d-own-arrival',map),row.y+31,ownX-35);own.dataset.destination=id;own.dataset.train=selected.id;
     el('strong',Number.isInteger(baseline)?clock(baseline):selected.knownPasses.includes(id)?'通過':'未取得',undefined,own);
-    el('small',`乗車 ${shortType(selected)}`,undefined,own);el('small',`${clock(departure(selected))}発`,undefined,own);
+    el('small',selected.approach?.terminatesAtUehara?'上原終着':`乗車 ${shortType(selected)}`,undefined,own);el('small',`${clock(departure(selected))}発`,undefined,own);
     if(Number.isInteger(baseline)&&!faster)at(el('small',arrived?'定刻着済':'そのまま乗車','d-target-note',map),row.y+35,8);
     if(faster) {
       const final=pool.find(t=>t.id===recommendation.legs.at(-1).trainId),targetTrack=inferredTrack(final,stationPoint,recommendation.arrival).id;

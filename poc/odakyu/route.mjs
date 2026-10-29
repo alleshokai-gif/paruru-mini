@@ -9,19 +9,25 @@ const PLAY_MS_PER_MINUTE=2000,SERVICE_END=24*60+POLICY.serviceDayBoundary-1;
 let timer=null;
 const initial=japanServiceTime(new Date());
 time.value=clock(initial.minute);
-let model,pool=[],selectedId=null,candidateId=null,now=initial.minute,error=false,timeEdited=false,timeValid=true;
+let model,pool=[],selectedId=null,candidateId=null,avoidRapidExpress=false,now=initial.minute,error=false,timeEdited=false,timeValid=true;
 function render() {
   play.disabled=advance.disabled=!model||!pool.length||!timeValid||now>=SERVICE_END;
   if(!timeValid){root.replaceChildren();root.textContent='時刻未入力';return;}
   const selected=pool.find(t=>t.id===selectedId);
-  const availablePlans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now)})):[];
-  const eligibleCandidateIds=new Set(availablePlans.flatMap(p=>p.eligibleCandidateIds));
+  const fastestPlans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now)})):[];
+  const avoidingPlans=selected?['Noborito','MukogaokaYuen'].map(destination=>({destination,...planNavigation(pool,selected.id,destination,now,{avoidRapidExpress:true})})):[];
+  const availablePlans=avoidRapidExpress?avoidingPlans:fastestPlans;
+  const eligibleCandidateIds=new Set([...fastestPlans,...avoidingPlans].flatMap(p=>p.eligibleCandidateIds));
   if(candidateId&&!eligibleCandidateIds.has(candidateId))candidateId=null;
   const candidate=pool.find(t=>t.id===candidateId);
-  const plans=candidate?availablePlans.map(p=>({destination:p.destination,...planNavigation(pool,selected.id,p.destination,now,{candidateId:candidate.id})})):availablePlans;
-  renderRouteMap({root,model,pool,selected,candidate,now,plans,error,eligibleCandidateIds,onSelect:id=>{
+  const plans=candidate?availablePlans.map(p=>({destination:p.destination,...planNavigation(pool,selected.id,p.destination,now,{candidateId:candidate.id,avoidRapidExpress})})):availablePlans;
+  renderRouteMap({root,model,pool,selected,candidate,now,plans,fastestPlans,avoidingPlans,avoidRapidExpress,error,eligibleCandidateIds,onChooseRoute:choice=>{
+    const source=choice.avoidRapidExpress?avoidingPlans:fastestPlans;
+    if(!source.some(p=>p.recommendation&&(p.recommendation.legs[0]?.trainId??null)===choice.candidateId))return;
+    avoidRapidExpress=choice.avoidRapidExpress;candidateId=choice.candidateId;render();
+  },onSelect:id=>{
     if(selectedId && id!==selectedId && !eligibleCandidateIds.has(id)) return;
-    ({selectedId,candidateId}=tapTrain({selectedId,candidateId},id));render();
+    avoidRapidExpress=false;({selectedId,candidateId}=tapTrain({selectedId,candidateId},id));render();
   }});
 }
 render();

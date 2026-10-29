@@ -26,7 +26,8 @@ test('下り基本2線、登戸以西1線、遊園構内だけ2線、先で再�
 });
 test('渡り線は添付配線の下り2線間だけに限定し、上り・検車区・立体交差を混ぜない',()=>{
   assert.equal(DOWN_SWITCHES.length,6);
-  for(const s of DOWN_SWITCHES){const source=TRACK_PATHS.find(p=>p.id===s.source);assert.equal(source?.kind,'switch');assert.ok(!/depot|lower|grade|inner/.test(s.source));}
+  for(const s of DOWN_SWITCHES){const source=TRACK_PATHS.find(p=>p.id===s.source);assert.equal(source?.kind,'switch');assert.ok(!/depot|grade|inner/.test(s.source));if(s.source.includes('lower'))assert.equal(s.station,'YoyogiUehara');}
+  assert.deepEqual(DOWN_SWITCHES.filter(s=>s.station==='YoyogiUehara').map(s=>s.source),['uehara-lower-to-outer','uehara-lower-reverse']);
   assert.deepEqual(DOWN_SWITCHES.filter(s=>s.station==='SeijogakuenMae').map(s=>[s.from,s.to]),[['express','local']]);
 });
 test('既存実便5分比較を維持し、未来の便を線路上へ架空配置しない',()=>{
@@ -34,7 +35,8 @@ test('既存実便5分比較を維持し、未来の便を線路上へ架空配�
   const partners=plan.recommendation.legs.map(l=>l.trainId),trains=visibleTrains(pool,selected,ref.compareAt,partners);
   assert.ok(!trains.some(t=>t.id===partners[0]));assert.equal(trainMarker(selected,ref.compareAt,model.stations),null);
   const marker=trainMarker(selected,departure(selected),model.stations);
-  assert.equal(marker.observed,false);assert.equal(marker.track.confidence,'low');
+  assert.equal(marker.observed,false);assert.equal(marker.track.confidence,'unknown');
+  assert.equal(marker.track.id,'uehara-unassigned');
   assert.equal(marker.identityBasis,'provider_id');assert.equal(marker.identityConfidence,'provider_static');assert.equal(inferredTrack(selected).confidence,'unknown');
   assert.equal(planNavigation(pool,selected.id,'MukogaokaYuen',ref.compareAt).recommendation,null);
 });
@@ -78,7 +80,7 @@ test('準急・通勤準急・不明転線・範囲外は線路未確定、位�
 test('既存平日便の前後切替と複数時点で、表示配置不能や架空の実測へ変換しない',()=>{
   for(const t of pool)for(const now of [ref.compareAt,Math.max(0,departure(t)-1),departure(t)+1]) {
     const markers=layoutMarkers(visibleTrains(pool,t,now).map(train=>trainMarker(train,now,model.stations)).filter(Boolean));
-    assert.ok(markers.length<=3);assert.ok(markers.every(m=>!m.observed&&m.track.confidence==='low'&&Number.isFinite(m.displayY)));
+    assert.ok(markers.length<=3);assert.ok(markers.every(m=>!m.observed&&(m.track.confidence==='low'||m.track.id==='uehara-unassigned')&&Number.isFinite(m.displayY)));
   }
 });
 

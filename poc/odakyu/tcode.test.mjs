@@ -7,7 +7,7 @@ import { connectionDemoModel } from './demo.mjs';
 import { planNavigation } from './navigation.mjs';
 
 test('5コードは保存版の便IDに一意対応するが、異なる運行日の新規時刻へ統合しない',async()=>{
- const m=await loadModel((await listSnapshots())[0]);assert.equal(m.trips.length,695);
+ const m=await loadModel((await listSnapshots())[0]);assert.equal(m.trips.filter(t=>!t.approach).length,695);
  assert.equal(m.tCodeReferences.length,5);
  for(const r of m.tCodeReferences){assert.equal(r.status,'unique_reference');assert.equal(r.count,1);
   assert.equal(r.serviceDate,'2026-10-27');assert.equal(r.sourceServiceDate,'2026-09-30');assert.equal(r.sameServiceDate,false);

@@ -18,6 +18,7 @@ main {padding-top:0;}
 .d-rail {fill:none;stroke:#9fb5c7;stroke-width:3;stroke-linejoin:bevel;}
 .d-switch {fill:none;stroke:#8fa9bb;stroke-width:2;}
 .d-platform {fill:#4d606f;stroke:#7a8c99;stroke-width:1;}
+.d-platform-number {position:absolute;color:#fff;font-size:12px;line-height:18px;}
 .d-uehara-band,.d-target-band {fill:#173d3c;}
 .d-uehara-band {opacity:.75;}
 .d-station {position:absolute;font-size:16px;line-height:24px;color:#deebf5;}
@@ -33,6 +34,7 @@ main {padding-top:0;}
 .d-glyph {position:absolute;top:11px;left:13px;width:26px;height:26px;font:22px/26px system-ui;text-align:center;background:#0e1b28;border:1px dashed currentColor;border-radius:3px;}
 .d-train-caption {position:absolute;top:51px;left:0;width:52px;text-align:center;font-size:13px;line-height:16px;background:#0e1b28;pointer-events:none;}
 .d-event-flag {position:absolute;top:17px;font-size:10px;line-height:14px;pointer-events:none;}.d-track-express .d-event-flag {right:46px;}.d-track-local .d-event-flag {left:46px;}
+.d-track-uehara-unassigned .d-event-flag {right:45px;white-space:nowrap;}
 .d-train-caption strong,.d-train-caption small {display:block;white-space:nowrap;}
 .d-train-caption strong {font-size:13px;font-weight:600;}
 .d-train-caption small {font-size:12px;}
@@ -58,5 +60,13 @@ main {padding-top:0;}
 .d-arrival {position:absolute;width:70px;text-align:center;background:#173d3c;line-height:23px;}
 .d-arrival strong {display:block;font-size:19px;}.d-arrival small {display:block;font-size:12px;line-height:18px;}
 .d-own-arrival {color:#baf3db;}.d-faster-arrival {color:#e9c6ff;}
+.d-comparison-arrival {color:#a9bdcd;}
+.d-route-choice .d-choice-label {font-size:10px;line-height:13px;white-space:nowrap;}
+.d-arrival-train {position:relative;width:70px;height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:0;background:transparent;color:inherit;padding:0;cursor:pointer;touch-action:manipulation;}
+.d-arrival-train::before {content:'';position:absolute;inset:-2px 0;}
+.d-arrival-train span {font:12px/18px system-ui;white-space:nowrap;}
+.d-arrival-train small {font-size:11px;line-height:16px;}
+.d-arrival-train[aria-pressed="true"] span {outline:1px solid currentColor;border-radius:3px;}
+.d-arrival-train:focus-visible {outline:2px solid white;}
 .d-order-note,.d-target-note {position:absolute;font-size:11px;color:#aac5cf;line-height:16px;}.d-order-note span {display:block;}
 .d-official {position:absolute;min-width:48px;min-height:48px;display:flex;align-items:center;color:#b5d9ef;font-size:14px;}

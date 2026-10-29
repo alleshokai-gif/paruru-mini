@@ -6,6 +6,7 @@ import { verifyRecordedChecks } from './verification.mjs';
 import { demoModel, connectionDemoModel } from './demo.mjs';
 import { matchTCode, REVIEW_SCOPE } from './tcode.mjs';
 import { datasetModel } from './dataset.mjs';
+import { savedApproaches } from './approaches.mjs';
 import { HOLIDAY_SOURCE, VERIFIED_HOLIDAY_DATES } from '../../bus/providers/tokyu/calendar.js';
 const root = new URL('./', import.meta.url);
 export async function loadModel(snapshot, mode = 'real') {
@@ -21,6 +22,13 @@ export async function loadModel(snapshot, mode = 'real') {
   const provider = JSON.parse(await readFile(new URL('../../bus/release-static/kazu-commute-static.json', root), 'utf8'));
   const reconstructed = reconstructTrips(provider, model);
   model.trips = reconstructed.trips.map(t => ({ ...t, datasetId: 'saved-static', dataKind: 'real' }));
+  let metro;
+  try { metro=JSON.parse(await readFile(new URL('./data/MetroTrainTimetable.json',root),'utf8')); }
+  catch(error) { if(error.code!=='ENOENT')throw error; }
+  const approaches=savedApproaches(provider,metro,stations.rows);
+  model.stations.push(...approaches.stations);
+  model.trips.push(...approaches.trips);
+  model.approachCoverage=approaches.report;
   // Read-only reuse of the existing bounded national-holiday calendar. This
   // chooses a saved calendar, not proof that the saved timetable is current.
   model.calendarCoverage = { ...HOLIDAY_SOURCE, holidays: VERIFIED_HOLIDAY_DATES };

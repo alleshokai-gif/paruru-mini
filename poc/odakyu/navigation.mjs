@@ -91,6 +91,7 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   const extra = options.extraMinutes ?? 0;
   if (!Number.isInteger(extra) || extra < 0 || extra > 10
       || !['normal', 'slow', 'step_free'].includes(options.mobility || 'normal')
+      || options.avoidRapidExpress!==undefined&&typeof options.avoidRapidExpress!=='boolean'
       || Object.values(options.stationConditions || {}).some(value => !MOVEMENT[value])) throw Error('MOVEMENT_INPUT_INVALID');
   const selected = trips.find(t => t.id === selectedId);
   if (!selected || !identified(selected)) throw Error('PROVIDER_TRAIN_REQUIRED');
@@ -99,6 +100,8 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   if (candidateId !== undefined && (candidateId === selectedId || !pool.some(t => t.id === candidateId))) throw Error('CANDIDATE_INVALID');
   const ride = rideFacts(selected, destination, pool);
   const destinationPassed = ride.destinationPassed;
+  const onwardRequired=selected.approach?.terminatesAtUehara===true;
+  const onwardUnknown=Boolean(selected.approach)&&!onwardRequired&&!ride.continuations.length;
   const baseline = minute(ride.arrival) ? ride : null;
   if (baseline && baseline.arrival < now) return { status: 'SCHEDULED_ARRIVED', baseline: { arrival: baseline.arrival, transfers: 0 }, recommendation: null, alternatives: [], eligibleCandidateIds: [], difficult: [], scope: '定刻ダイヤ上の到着済み。実際の遅延・位置は未取得' };
   const target = pool.flatMap(t => t.stops).find(s => s.stop === true && s.station === destination);
@@ -106,6 +109,7 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   const horizon = now + 120, maxTransfers = 2;
   const stations = new Map();
   for (const train of pool) for (const stop of train.stops) {
+    if(options.avoidRapidExpress&&train.type==='RapidExpress')continue;
     if (stop.stop !== true || !EXCHANGE.has(stop.station) || !minute(stop.departure) || stop.departure > horizon || stop.departure < now - 1) continue;
     if (!stations.has(stop.station)) stations.set(stop.station, []);
     stations.get(stop.station).push({ train, stop });
@@ -130,14 +134,17 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
         arrival = stop.departure; timingBasis = 'departure_upper_bound';
       }
       if (!minute(arrival) || arrival > horizon) continue;
-      if (arrival < earliest && (!minute(stop.departure) || stop.departure < earliest)) continue;
+      const waitingAtTerminal=train.id===selected.id&&onwardRequired&&stop.station==='YoyogiUehara'
+        &&earliest-arrival<=120;
+      if (arrival < earliest && (!minute(stop.departure) || stop.departure < earliest)&&!waitingAtTerminal) continue;
       const ready = Math.max(arrival, earliest);
       for (const next of stations.get(stop.station) || []) {
         if (visited.has(next.train.id)) continue;
         const connection = assessConnection({ station: stop.station, arrival: ready, departure: next.stop.departure, now,
           condition: options.stationConditions?.[stop.station] || 'unknown', mobility: options.mobility || 'normal',
           extraMinutes: options.extraMinutes ?? 0 });
-        if (ready > arrival) connection.reasons.push('停車中の現在時刻から残り時間を評価');
+        if (ready > arrival) connection.reasons.push(waitingAtTerminal?'終着駅での現在時刻から残り時間を評価':'停車中の現在時刻から残り時間を評価');
+        if(waitingAtTerminal&&ready>arrival)connection.reasons.push('上原終着後は旅客の駅での待機として評価。列車の在線位置は未取得');
         if (timingBasis === 'departure_upper_bound') connection.reasons.push('乗車列車の起点着時刻なし。発時刻を保守的な下車時刻上限として使用');
         const leg = { station: stop.station, fromTrainId: train.id, trainId: next.train.id,
           departure: next.stop.departure, alightTime: arrival, timingBasis, connection,
@@ -152,13 +159,14 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   const stay = baseline ? { id: 'stay', arrival: baseline.arrival, transfers: 0, legs: [], continuations: baseline.continuations, connection: 'none', saving: 0 } : null;
   const eligible = [...(stay ? [stay] : []), ...alternatives.filter(a => a.connection === 'likely')]
     .sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers || Number(a.connection === 'tight') - Number(b.connection === 'tight'));
-  const recommendation = baseline ? eligible[0] || stay : destinationPassed ? eligible[0] || null : null;
+  const recommendation = baseline ? eligible[0] || stay : destinationPassed||onwardRequired||onwardUnknown ? eligible[0] || null : null;
   // Candidate selection is not the bounded alternatives preview. Keep every
   // usable connection, with the same timing and movement gates as the planner.
   const eligibleCandidateIds = [...new Set(alternatives
-    .filter(a => a.connection === 'likely' && (a.saving > 0 || destinationPassed))
+    .filter(a => a.connection === 'likely' && (a.saving > 0 || destinationPassed || onwardRequired || onwardUnknown))
     .flatMap(a => a.legs.map(l => l.trainId)))];
-  return { status: baseline ? 'PARTIAL_STATIC_ARRIVAL_COMPARISON' : destinationPassed ? 'TRANSFER_REQUIRED' : 'ARRIVAL_UNAVAILABLE',
+  return { status: baseline ? 'PARTIAL_STATIC_ARRIVAL_COMPARISON' : destinationPassed||onwardRequired ? 'TRANSFER_REQUIRED' : onwardUnknown ? 'ONWARD_COMPARISON' : 'ARRIVAL_UNAVAILABLE',
+    onwardRequired,onwardUnknown,avoidRapidExpress:Boolean(options.avoidRapidExpress),
     destinationPassed: Boolean(destinationPassed), rideContinuations: ride.continuations,
     baseline: stay, recommendation, eligibleCandidateIds, alternatives: alternatives.slice(0, 8), difficult: assessments.filter(l => candidateId === undefined || l.trainId === candidateId).slice(0, 4),
     bestConditional: alternatives[0] || null, maxTransfers, guaranteed: false,
