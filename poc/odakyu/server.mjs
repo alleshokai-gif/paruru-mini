@@ -4,8 +4,10 @@ import { listSnapshots, readSnapshot } from './storage.mjs';
 
 import { loadModel } from './model.mjs';
 import { networkConfig } from './network.mjs';
+import {createBoardBusSource} from './bus-source.mjs';
 const root = new URL('./', import.meta.url);
 const network = networkConfig(), { host, port } = network;
+const loadBuses=createBoardBusSource();
 const assets = new Map([
   ['/', ['route.html', 'text/html']], ['/diagnostics', ['index.html', 'text/html']],
   ['/route.mjs', ['route.mjs', 'text/javascript']], ['/route.css', ['route.css', 'text/css']], ['/style.css', ['style.css', 'text/css']],
@@ -15,7 +17,8 @@ const assets = new Map([
   ['/downbound-board.mjs', ['downbound-board.mjs', 'text/javascript']],
   ['/simulation-time.mjs', ['simulation-time.mjs', 'text/javascript']],
   ['/app.mjs', ['app.mjs', 'text/javascript']], ['/core.mjs', ['core.mjs', 'text/javascript']],
-  ['/navigation.mjs', ['navigation.mjs', 'text/javascript']]
+  ['/navigation.mjs', ['navigation.mjs', 'text/javascript']],
+  ['/comparisons.mjs',['comparisons.mjs','text/javascript']],['/home-bus.mjs',['home-bus.mjs','text/javascript']]
 ]);
 const server = createServer(async (request, response) => {
   response.setHeader('Cache-Control', 'no-store');
@@ -53,6 +56,13 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/snapshots') {
       const result = await Promise.all((await listSnapshots()).map(async id => ({ id, fetchedAt: (await readSnapshot(id)).fetchedAt })));
       response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(result)); return;
+    }
+    if(url.pathname==='/api/home-buses'){
+      if([...url.searchParams.keys()].sort().join(',')!=='date,minute') {response.writeHead(400).end('BUS_QUERY_INVALID');return;}
+      const minute=Number(url.searchParams.get('minute'));
+      if(!/^\d{1,4}$/.test(url.searchParams.get('minute')||'')){response.writeHead(400).end('BUS_QUERY_INVALID');return;}
+      response.setHeader('Content-Type','application/json');
+      response.end(JSON.stringify(await loadBuses({serviceDate:url.searchParams.get('date'),minute})));return;
     }
     if (url.pathname === '/api/model') {
       const mode = url.searchParams.get('dataset') || 'real';

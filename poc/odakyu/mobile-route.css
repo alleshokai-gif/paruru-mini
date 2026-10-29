@@ -70,3 +70,33 @@ main {padding-top:0;}
 .d-arrival-train:focus-visible {outline:2px solid white;}
 .d-order-note,.d-target-note {position:absolute;font-size:11px;color:#aac5cf;line-height:16px;}.d-order-note span {display:block;}
 .d-official {position:absolute;min-width:48px;min-height:48px;display:flex;align-items:center;color:#b5d9ef;font-size:14px;}
+/* The topology is unchanged; spacing accommodates labels beside, never over, rails. */
+.d-wiring {width:100%;}
+.d-rail {stroke-width:4;}
+.d-switch {stroke-width:3;}
+.d-glyph {top:6px;left:9px;width:34px;height:36px;font:28px/34px system-ui;border:1px solid currentColor;border-radius:8px;}
+.d-selected .d-glyph {outline:4px solid #76e6c0;}
+.d-candidate .d-glyph {outline:3px solid #d8a5ff;}
+.d-role-badge {top:-11px;font-size:12px;line-height:17px;border-radius:5px;}
+.d-event-time {position:absolute;top:42px;left:0;width:52px;font-size:12px;line-height:16px;color:#c4d8e6;pointer-events:none;}
+.d-planned .d-glyph {background:#24394a;}
+.d-comparable {position:absolute;top:39px;left:0;width:52px;color:#c8a1ea;font-size:11px;pointer-events:none;}
+.d-planned .d-comparable {display:none;}
+.d-stack-count {top:0;left:37px;font-size:12px;line-height:16px;z-index:1;}
+.b-bubble {position:absolute;z-index:8;padding:7px 6px;border:2px solid #d8a5ff;border-radius:12px;background:#1b293b;color:#eedcff;font-size:14px;line-height:18px;pointer-events:none;overflow-wrap:anywhere;}
+.b-bubble strong,.b-bubble span,.b-bubble small {display:block;}
+.b-bubble>strong:first-child {font-size:15px;line-height:19px;}
+.b-bubble small {font-size:12px;line-height:17px;color:#bed0df;}
+.b-rider {border-color:#76e6c0;color:#baf3db;background:#18392f;}
+.b-tight {border-color:#e6b26c;color:#ffdcad;}
+.b-bubble::before {content:'';position:absolute;width:10px;height:10px;background:inherit;border:inherit;border-width:2px 2px 0 0;}
+.b-tail-right::before {right:-7px;top:12px;transform:rotate(45deg);}
+.b-tail-left::before {left:-7px;top:12px;transform:rotate(-135deg);}
+.b-tail-up::before {right:15px;top:-7px;transform:rotate(-45deg);}
+.b-bubble .b-bus {margin-top:3px;padding-top:3px;border-top:1px solid #647b81;color:#a6eddb;font-size:13px;}
+.b-station-result {position:absolute;max-width:154px;font-size:13px;line-height:19px;color:#badaca;}
+.d-floor-label {font-size:12px;}
+main {padding-left:8px;padding-right:0;}
+.d-event-time {left:-9px;width:70px;font-size:11px;}
+.b-bubble {--tail-top:12px;}
+.b-tail-left::before,.b-tail-right::before {top:var(--tail-top);}

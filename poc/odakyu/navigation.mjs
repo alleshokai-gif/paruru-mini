@@ -92,6 +92,7 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   if (!Number.isInteger(extra) || extra < 0 || extra > 10
       || !['normal', 'slow', 'step_free'].includes(options.mobility || 'normal')
       || options.avoidRapidExpress!==undefined&&typeof options.avoidRapidExpress!=='boolean'
+      || options.includeAllAlternatives!==undefined&&typeof options.includeAllAlternatives!=='boolean'
       || Object.values(options.stationConditions || {}).some(value => !MOVEMENT[value])) throw Error('MOVEMENT_INPUT_INVALID');
   const selected = trips.find(t => t.id === selectedId);
   if (!selected || !identified(selected)) throw Error('PROVIDER_TRAIN_REQUIRED');
@@ -168,7 +169,7 @@ export function planNavigation(trips, selectedId, destination, now, options = {}
   return { status: baseline ? 'PARTIAL_STATIC_ARRIVAL_COMPARISON' : destinationPassed||onwardRequired ? 'TRANSFER_REQUIRED' : onwardUnknown ? 'ONWARD_COMPARISON' : 'ARRIVAL_UNAVAILABLE',
     onwardRequired,onwardUnknown,avoidRapidExpress:Boolean(options.avoidRapidExpress),
     destinationPassed: Boolean(destinationPassed), rideContinuations: ride.continuations,
-    baseline: stay, recommendation, eligibleCandidateIds, alternatives: alternatives.slice(0, 8), difficult: assessments.filter(l => candidateId === undefined || l.trainId === candidateId).slice(0, 4),
+    baseline: stay, recommendation, eligibleCandidateIds, alternatives: options.includeAllAlternatives?alternatives:alternatives.slice(0, 8), difficult: assessments.filter(l => candidateId === undefined || l.trainId === candidateId).slice(0, 4),
     bestConditional: alternatives[0] || null, maxTransfers, guaranteed: false,
     missing: ['全駅の着発・運転列車番号・直通継続ID・番線・実測移動時間',
       'データセットの未収録駅・便、着時刻の独立した資料との照合・リアルタイム遅延'],
