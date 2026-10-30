@@ -92,3 +92,28 @@ handoff artifacts after verification. Record any incomplete residual-file scan.
 Final evidence must distinguish staging, published code, live business reads,
 old-token rejection, safe write validation, unchanged data and UI acceptance.
 A test, cloud version creation or successful deployment alone is not completion.
+
+## Production acceptance — 2026-10-30 JST
+
+- Published Mini v197, Family Inbox v37 and Health v35. Independent published
+  readback matches all release files; all three published manifests are unchanged.
+- New-token reads succeeded on both receivers. Old-token reads were rejected with
+  FORBIDDEN (Family Inbox) and UNAUTHORIZED (Health). Direct read data matched the
+  baseline. Invalid write probes stopped at INVALID_INPUT before persistence.
+- Mini's live Inbox family selection/list, Health and Pet Health reads succeeded.
+  All four legacy property entries are absent; unrelated URL/storage keys remain.
+- Worker and PC Review credentials still authenticate. The existing Windows task
+  PALURU-FamilyInbox-LongSchool-Worker retained PT5M and completed naturally after
+  cutover at 17:35:56 JST with exit code 0.
+- Inbox and all seven Health business/audit sheets match pre-cutover snapshots.
+  No PDF was uploaded and no health record was created, corrected or deleted.
+- Full tests: 192/200 pass. The same eight unrelated baseline failures reproduced
+  on unchanged code; changed authentication/intake/worker/review/health tests pass.
+- The initial Health staging attempt used HEAD's incomplete manifest and briefly
+  returned HTTP 404. It was rolled back to the previous published version, then
+  staged and released using that published manifest. Do not describe this task as
+  having had zero interruption. Final live reads and data checks passed.
+- Two managed local conversation records contain the exposed old values. They
+  remain as incident history; those values are now rejected by production.
+  An earlier Temp scan was incomplete due to locked files; no blanket Temp-clean
+  claim is made. Repository exact-value scan found zero old/new credentials.
