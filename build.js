@@ -1,2 +1,2 @@
-// Kaz OS next action guidance release.
-globalThis.BUILD_ID = "v20261026-today-recovery-v1";
+// Family Inbox school print release.
+globalThis.BUILD_ID = "v20261030-family-inbox-long-v1";

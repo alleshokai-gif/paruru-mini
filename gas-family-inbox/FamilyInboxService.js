@@ -16,7 +16,11 @@ const FAMILY_INBOX_LEGACY_HEADERS = Object.freeze([
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
 ]);
-const FAMILY_INBOX_HEADERS = Object.freeze(FAMILY_INBOX_LEGACY_HEADERS.concat(['processingProfile']));
+const FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS = Object.freeze(FAMILY_INBOX_LEGACY_HEADERS.concat(['processingProfile']));
+const FAMILY_INBOX_HISTORICAL_EXTRA_HEADERS = Object.freeze(['knowledgePath', 'gitCommitSha', 'errorMessage']);
+const FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS = Object.freeze(FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS.concat(FAMILY_INBOX_HISTORICAL_EXTRA_HEADERS));
+const FAMILY_INBOX_HEADERS = Object.freeze(FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS.concat(['documentType']));
+const FAMILY_INBOX_HISTORICAL_HEADERS = Object.freeze(FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS.concat(['documentType']));
 const FAMILY_INBOX_MEDIA = Object.freeze({
   'image/jpeg': Object.freeze({ extension: 'jpg', signature: Object.freeze([0xff, 0xd8, 0xff]) }),
   'image/png': Object.freeze({ extension: 'png', signature: Object.freeze([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) }),
@@ -68,7 +72,9 @@ function familyInboxSubmit_(body) {
 
 function familyInboxPersistInput_(input, source, trace, startedAt) {
   const normalizedSource = String(source || '').trim();
+  const documentType = String(input.documentType || '').trim();
   if (normalizedSource !== 'paluru' && normalizedSource !== 'drive_drop') throw familyInboxError_('INVALID_INPUT');
+  if (documentType && (normalizedSource !== 'paluru' || documentType !== 'school_print')) throw familyInboxError_('INVALID_INPUT');
   const processingProfile = familyInboxResolveProcessingProfile_(normalizedSource, input);
   const config = familyInboxLoadConfig_();
   let lock;
@@ -76,13 +82,14 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     lock = LockService.getScriptLock();
     lock.waitLock(30000);
     const sheetState = familyInboxOpenLedger_(config.spreadsheetId);
+    if (documentType === 'school_print') familyInboxEnsureDocumentTypeColumn_(sheetState);
 
     const existing = familyInboxFindRow_(sheetState, function(row) {
       return row.homeId === input.homeId && row.clientRequestId === input.clientRequestId;
     });
     if (existing) {
       const originalNameMatches = normalizedSource === 'drive_drop' || existing.originalName === input.originalName;
-      if (existing.sha256 !== input.sha256 || existing.source !== normalizedSource || existing.submittedByMemberId !== input.submittedByMemberId || existing.subjectMemberHint !== input.subjectMemberId || existing.userNote !== input.userNote || !originalNameMatches || existing.mediaType !== input.mediaType) {
+      if (existing.sha256 !== input.sha256 || existing.source !== normalizedSource || existing.submittedByMemberId !== input.submittedByMemberId || existing.subjectMemberHint !== input.subjectMemberId || existing.userNote !== input.userNote || !originalNameMatches || existing.mediaType !== input.mediaType || existing.processingProfile !== processingProfile || String(existing.documentType || '') !== documentType) {
         throw familyInboxError_('DUPLICATE_REQUEST');
       }
       const replay = familyInboxPublicSubmitResult_(existing, true);
@@ -91,8 +98,21 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     }
 
     const duplicate = familyInboxFindRow_(sheetState, function(row) {
-      return row.homeId === input.homeId && row.sha256 === input.sha256;
+      if (row.homeId !== input.homeId || row.sha256 !== input.sha256) return false;
+      return documentType !== 'school_print' || row.subjectMemberHint === input.subjectMemberId;
     });
+    if (documentType === 'school_print' && duplicate) {
+      if (String(duplicate.documentType || '') !== documentType ||
+          String(duplicate.processingProfile || '') !== processingProfile ||
+          String(duplicate.userNote || '') !== input.userNote ||
+          String(duplicate.originalName || '') !== input.originalName ||
+          String(duplicate.mediaType || '') !== input.mediaType) {
+        throw familyInboxError_('DUPLICATE_REQUEST');
+      }
+      const replay = familyInboxPublicSubmitResult_(duplicate, true);
+      familyInboxLog_(Object.assign(trace, { inboxId: replay.inboxId, stage: 'completed', status: replay.status, durationMs: Date.now() - startedAt }));
+      return replay;
+    }
     const inboxId = familyInboxNewInboxId_();
     const now = familyInboxNow_();
     const status = duplicate ? 'duplicate' : 'pending';
@@ -133,6 +153,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
       errorCode: '',
       duplicateOfInboxId: duplicate ? duplicate.inboxId : '',
       processingProfile: processingProfile,
+      documentType: documentType,
     };
 
     try {
@@ -156,6 +177,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
 
 function familyInboxResolveProcessingProfile_(source, input) {
   if (source === 'drive_drop' && input && input.mediaType === 'application/pdf') return 'school-v1-long';
+  if (source === 'paluru' && input && input.documentType === 'school_print' && input.mediaType === 'application/pdf') return 'school-v1-long';
   if (source === 'paluru') return 'school-v1';
   throw familyInboxError_('CONFIGURATION_ERROR');
 }
@@ -201,7 +223,7 @@ function familyInboxAuthenticate_(body) {
 function familyInboxValidateSubmit_(body) {
   const allowed = {
     operation: true, internalToken: true, clientRequestId: true, subjectMemberId: true,
-    userNote: true, file: true, homeId: true, submittedByMemberId: true, source: true, traceId: true,
+    userNote: true, file: true, homeId: true, submittedByMemberId: true, source: true, traceId: true, documentType: true,
   };
   if (!familyInboxPlainObject_(body) || Object.keys(body).some(function(key) { return !allowed[key]; })) throw familyInboxError_('INVALID_INPUT');
   if (body.operation !== 'familyInbox.submit' || body.source !== 'paluru' || !familyInboxPlainObject_(body.file)) throw familyInboxError_('INVALID_INPUT');
@@ -212,16 +234,20 @@ function familyInboxValidateSubmit_(body) {
   const subjectMemberId = familyInboxRequiredIdentifier_(body.subjectMemberId);
   const userNote = String(body.userNote || '').trim();
   if (Array.from(userNote).length > FAMILY_INBOX_MAX_NOTE_CHARACTERS) throw familyInboxError_('INVALID_INPUT');
+  const hasDocumentType = Object.prototype.hasOwnProperty.call(body, 'documentType');
+  const documentType = hasDocumentType ? String(body.documentType || '').trim() : '';
+  if (hasDocumentType && documentType !== 'school_print') throw familyInboxError_('INVALID_INPUT');
   const originalName = familyInboxSanitizeOriginalName_(body.file.name);
   const mediaType = String(body.file.mediaType || '').trim().toLowerCase();
   if (!FAMILY_INBOX_MEDIA[mediaType]) throw familyInboxError_('UNSUPPORTED_MEDIA_TYPE');
+  if (documentType === 'school_print' && mediaType !== 'application/pdf') throw familyInboxError_('UNSUPPORTED_MEDIA_TYPE');
   const base64 = String(body.file.base64 || '');
   const bytes = familyInboxDecodeBase64_(base64);
   if (!bytes.length) throw familyInboxError_('INVALID_INPUT');
   if (bytes.length > FAMILY_INBOX_MAX_FILE_BYTES) throw familyInboxError_('FILE_TOO_LARGE');
   familyInboxValidateSignature_(mediaType, bytes);
   const sha256 = familyInboxSha256_(bytes);
-  return { clientRequestId: clientRequestId, homeId: homeId, submittedByMemberId: submittedByMemberId, subjectMemberId: subjectMemberId, userNote: userNote, originalName: originalName, mediaType: mediaType, bytes: bytes, sha256: sha256 };
+  return { clientRequestId: clientRequestId, homeId: homeId, submittedByMemberId: submittedByMemberId, subjectMemberId: subjectMemberId, userNote: userNote, originalName: originalName, mediaType: mediaType, bytes: bytes, sha256: sha256, documentType: documentType };
 }
 
 function familyInboxDecodeBase64_(value) {
@@ -268,8 +294,31 @@ function familyInboxOpenLedger_(spreadsheetId) {
   try { sheet = SpreadsheetApp.openById(spreadsheetId).getSheetByName(FAMILY_INBOX_SHEET_NAME); } catch (_) { throw familyInboxError_('CONFIGURATION_ERROR'); }
   if (!sheet || sheet.getLastRow() < 1 || sheet.getLastColumn() < 1) throw familyInboxError_('CONFIGURATION_ERROR');
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function(value) { return String(value || '').trim(); });
-  if (FAMILY_INBOX_HEADERS.some(function(header) { return headers.indexOf(header) < 0; }) || headers.some(function(header, index) { return !header || headers.indexOf(header) !== index; })) throw familyInboxError_('CONFIGURATION_ERROR');
+  if (!familyInboxHeadersMatchAnyKnownShape_(headers, [
+    FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS, FAMILY_INBOX_HEADERS,
+    FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS, FAMILY_INBOX_HISTORICAL_HEADERS,
+  ])) throw familyInboxError_('CONFIGURATION_ERROR');
   return { sheet: sheet, headers: headers };
+}
+
+function familyInboxHeadersMatchAnyKnownShape_(headers, shapes) {
+  if (headers.some(function(header, index) { return !header || headers.indexOf(header) !== index; })) return false;
+  return shapes.some(function(shape) {
+    return headers.length === shape.length && shape.every(function(header) { return headers.indexOf(header) >= 0; });
+  });
+}
+
+function familyInboxEnsureDocumentTypeColumn_(sheetState) {
+  if (sheetState.headers.indexOf('documentType') >= 0) return;
+  if (!familyInboxHeadersMatchAnyKnownShape_(sheetState.headers, [
+    FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS, FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS,
+  ])) {
+    throw familyInboxError_('CONFIGURATION_ERROR');
+  }
+  const lastColumn = sheetState.headers.length;
+  if (Number(sheetState.sheet.getMaxColumns()) <= lastColumn) sheetState.sheet.insertColumnsAfter(lastColumn, 1);
+  sheetState.sheet.getRange(1, lastColumn + 1, 1, 1).setValue('documentType');
+  sheetState.headers.push('documentType');
 }
 
 function familyInboxFindRow_(sheetState, predicate) {

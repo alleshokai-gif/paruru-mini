@@ -3,6 +3,20 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+
+const gatewayManifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'gas', 'appsscript.json'), 'utf8'));
+// The existing main and deployed manifest already contain these seven scopes.
+// Keep the whole set fixed so this change cannot add or silently remove access.
+const deployedScopes = [
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/script.external_request',
+  'https://www.googleapis.com/auth/script.storage',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/cloud-platform',
+];
+assert.deepStrictEqual([...gatewayManifest.oauthScopes].sort(), deployedScopes.sort(), 'Mini Gateway must preserve the deployed scope set');
 const vm = require('vm');
 
 const uuid = '00000000-0000-4000-8000-000000000101';
@@ -21,13 +35,18 @@ function reviewCandidate(overrides = {}) {
 
 function fixture(options = {}) {
   const state = { calls: [], logs: [], authorized: [], driveFiles: [], folders: {}, lockCalls: 0 };
-  const properties = Object.assign({ FAMILY_INBOX_WEBAPP_URL: 'https://script.google.com/macros/s/test-deployment/exec', FAMILY_INBOX_SERVICE_TOKEN: 'internal-service-secret' }, options.properties || {});
+  const properties = Object.assign({ FAMILY_INBOX_WEBAPP_URL: 'https://script.google.com/macros/s/test-deployment/exec', FAMILY_INBOX_SERVICE_TOKEN: 'internal-service-secret', FAMILY_INBOX_SCHOOL_LONG_TARGET_MEMBER_ID: 'youngest_daughter' }, options.properties || {});
   let nextDriveId = 0;
   function makeFolder(name, parent = null) {
     const folder = {
       id: `folder-${++nextDriveId}`, name, parent, folders: [], files: [],
       getId() { return this.id; }, getName() { return this.name; },
       createFolder(childName) { const child = makeFolder(childName, this); this.folders.push(child); return child; },
+      getFoldersByName(childName) {
+        const matches = this.folders.filter((folder) => folder.name === childName);
+        let index = 0;
+        return { hasNext: () => index < matches.length, next: () => matches[index++] };
+      },
       createFile(blob) {
         const file = {
           id: `drive-file-${++nextDriveId}`, name: blob.name, description: '', parent: this,
@@ -36,6 +55,7 @@ function fixture(options = {}) {
           setDescription(value) { this.description = value; return this; },
           setName(value) { this.name = value; return this; },
           moveTo(destination) { this.parent.files = this.parent.files.filter((item) => item !== this); this.parent = destination; destination.files.push(this); return this; },
+          setTrashed(value) { this.trashed = Boolean(value); return this; },
         };
         this.files.push(file); state.driveFiles.push(file); return file;
       },
@@ -51,6 +71,7 @@ function fixture(options = {}) {
     return folder;
   }
   const driveRoot = makeFolder('My Drive');
+  state.driveRoot = driveRoot;
   const members = {
     father: { homeId: 'home-a', memberUserId: 'father', displayName: '父', role: 'admin', status: 'active' },
     youngest_daughter: { homeId: 'home-a', memberUserId: 'youngest_daughter', displayName: '次女', role: 'self_record', status: 'active' },
@@ -62,7 +83,16 @@ function fixture(options = {}) {
     },
     authorizeCapability_: (_, capability) => state.authorized.push(capability),
     getHomeMember_: (homeId, memberId) => homeId === 'home-a' && members[memberId] ? members[memberId] : null,
+    schoolPrintDriveSubmit_: () => { state.legacySchoolCalls = (state.legacySchoolCalls || 0) + 1; return { inboxId, status: 'pending' }; },
     isHomeMemberPolicyMatch_: (member) => Boolean(member && members[member.memberUserId]),
+    HOME_MEMBERS_SHEET_NAME: 'Home_Members',
+    HOME_MEMBERS_HEADERS: ['homeId', 'memberUserId', 'displayName', 'role', 'status', 'createdAt', 'updatedAt'],
+    getRequiredHomeMembershipSheet_: () => ({ getDataRange: () => ({ getValues: () => [
+      ['homeId', 'memberUserId', 'displayName', 'role', 'status', 'createdAt', 'updatedAt'],
+      ...Object.values(members).map(member => [member.homeId, member.memberUserId, member.displayName, member.role, member.status, '', '']),
+      ['home-b', 'youngest_daughter', '次女', '', 'active', '', ''],
+      ['home-a', 'disabled-member', '無効', '', 'disabled', '', ''],
+    ] }) }),
     PropertiesService: { getScriptProperties: () => ({
       getProperty: (key) => properties[key] || '',
       setProperty: (key, value) => { properties[key] = String(value); return this; },
@@ -83,7 +113,7 @@ function fixture(options = {}) {
       if (options.fetchError) throw new Error('raw URL failure');
       const request = JSON.parse(fetchOptions.payload);
       let data;
-      if (request.operation === 'familyInbox.submit') data = { inboxId, status: 'pending', idempotency: { replayed: false }, duplicateOfInboxId: '' };
+      if (request.operation === 'familyInbox.submit') data = { inboxId, status: options.submitStatus || 'pending', idempotency: { replayed: Boolean(options.replayed) }, duplicateOfInboxId: '' };
       else if (request.operation === 'familyInbox.listReviews') data = { items: [{ inboxId, receivedAt: '2026-08-31T00:00:00+09:00', subjectMemberId: 'youngest_daughter', originalName: 'school.pdf', candidateCount: 5, candidateTypes: ['school.document', 'schedule.event', 'school.belongings'], reviewStatus: 'pending' }] };
       else if (request.operation === 'familyInbox.getReview') data = { inboxId, subjectMemberId: 'youngest_daughter', reviewStatus: 'pending', document: { originalName: 'school.pdf', receivedAt: '2026-08-31T00:00:00+09:00' }, candidates: [reviewCandidate()] };
       else if (['familyInbox.updateCandidate', 'familyInbox.approveCandidate', 'familyInbox.rejectCandidate'].includes(request.operation)) data = { candidate: reviewCandidate({ revision: 2, reviewStatus: request.operation === 'familyInbox.approveCandidate' ? 'approved' : request.operation === 'familyInbox.rejectCandidate' ? 'rejected' : 'pending' }), reviewStatus: 'pending', idempotency: { replayed: false } };
@@ -98,9 +128,45 @@ function fixture(options = {}) {
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math,
   };
   vm.createContext(context);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'SchoolPrintDriveService.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'FamilyInboxGatewayService.js'), 'utf8'), context);
   return { api: context, state };
+}
+
+{
+  const f = fixture({ properties: { FAMILY_INBOX_SCHOOL_LONG_TARGET_MEMBER_ID: '' } });
+  const result = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(f.state.legacySchoolCalls, 1, 'unconfigured subjects retain the existing school-print route');
+  assert.strictEqual(f.state.calls.length, 0);
+}
+
+{
+  const replay = fixture({ submitStatus: 'needs_review', replayed: true });
+  const result = replay.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.status, 'needs_review');
+  const invalid = fixture({ submitStatus: 'needs_review', replayed: false });
+  assert.strictEqual(invalid.api.familyInboxGateway_(submit({ documentType: 'school_print' })).error.code, 'INTERNAL_ERROR');
+}
+
+{
+  const f = fixture();
+  const result = f.api.familyInboxGateway_(submit({ subjectMemberId: 'father', documentType: 'school_print' }));
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(f.state.legacySchoolCalls, 1, 'another subject cannot be sent to the grade-specific worker');
+  assert.strictEqual(f.state.calls.length, 0);
+}
+
+{
+  const f = fixture();
+  const result = f.api.familyInboxGateway_({ action: 'familyInbox.listSubjects', auth: { provider: 'firebase', idToken: 'firebase-token' } });
+  assert.strictEqual(result.success, true);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(result.data.subjects)), [
+    { memberUserId: 'father', displayName: '父' },
+    { memberUserId: 'youngest_daughter', displayName: '次女' },
+  ]);
+  assert.deepStrictEqual(f.state.authorized, ['family.inbox.submit']);
+  assert.strictEqual(f.state.calls.length, 0);
 }
 
 function submit(overrides = {}) {
@@ -130,26 +196,26 @@ function submit(overrides = {}) {
 {
   const f = fixture({ properties: { FAMILY_INBOX_SERVICE_TOKEN: '' } });
   const result = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
-  assert.strictEqual(result.success, true);
-  assert.strictEqual(result.data.status, 'queued');
-  assert.strictEqual(result.data.idempotency.replayed, false);
-  assert.match(result.data.fileId, /^drive-file-/);
-  assert.deepStrictEqual(f.state.authorized, ['family.inbox.submit']);
-  assert.strictEqual(f.state.calls.length, 0, 'school print must not forward to Family Inbox Web App');
-  assert.strictEqual(f.state.driveFiles.length, 1);
-  assert.match(f.state.driveFiles[0].name, new RegExp(`^skv3-${uuid}__${result.data.fileId}__school.pdf$`));
-  const metadata = JSON.parse(f.state.driveFiles[0].description);
-  assert.strictEqual(metadata.type, 'school_print_v3');
-  assert.strictEqual(metadata.clientRequestId, uuid);
-  assert.strictEqual(metadata.userNote, 'family private note');
-  const root = Object.values(f.state.folders).find((folder) => folder.name === 'PALURU School Print Inbox');
-  assert.deepStrictEqual(root.folders.map((folder) => folder.name).sort(), ['error', 'inbox', 'processed']);
-  const replay = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
-  assert.strictEqual(replay.success, true);
-  assert.strictEqual(replay.data.fileId, result.data.fileId);
-  assert.strictEqual(replay.data.idempotency.replayed, true);
-  assert.strictEqual(f.state.driveFiles.length, 1);
+  assert.strictEqual(result.success, false, 'school_print uses the existing Family Inbox submit service credentials');
+  assert.strictEqual(result.error.code, 'CONFIGURATION_ERROR');
   assert.strictEqual(f.state.calls.length, 0);
+  assert.strictEqual(f.state.driveFiles.length, 0);
+}
+
+{
+  const f = fixture();
+  const result = f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.status, 'pending');
+  assert.deepStrictEqual(f.state.authorized, ['family.inbox.submit']);
+  assert.strictEqual(f.state.calls.length, 1, 'school print uses existing Family Inbox Web App submit');
+  assert.strictEqual(f.state.driveFiles.length, 0, 'Gateway does not write to Drive');
+  assert.strictEqual(f.state.legacySchoolCalls || 0, 0, 'configured subject uses the long-document route');
+  const forwarded = JSON.parse(f.state.calls[0].fetchOptions.payload);
+  assert.strictEqual(forwarded.operation, 'familyInbox.submit');
+  assert.strictEqual(forwarded.documentType, 'school_print');
+  assert.strictEqual(forwarded.internalToken, 'internal-service-secret');
+  assert.strictEqual(forwarded.file.name, 'school.pdf');
 }
 
 {
@@ -164,10 +230,10 @@ function submit(overrides = {}) {
 {
   const f = fixture();
   f.api.familyInboxGateway_(submit({ documentType: 'school_print' }));
-  const conflict = f.api.familyInboxGateway_(submit({ documentType: 'school_print', file: { name: 'different.pdf', mediaType: 'application/pdf', base64: Buffer.from('%PDF-different').toString('base64') } }));
-  assert.strictEqual(conflict.success, false);
-  assert.strictEqual(conflict.error.code, 'DUPLICATE_REQUEST');
-  assert.strictEqual(f.state.driveFiles.length, 1);
+  const forwarded = JSON.parse(f.state.calls[0].fetchOptions.payload);
+  assert.strictEqual(forwarded.documentType, 'school_print');
+  assert.strictEqual(f.state.calls.length, 1);
+  assert.strictEqual(f.state.driveFiles.length, 0);
 }
 
 {

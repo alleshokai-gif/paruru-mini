@@ -12,19 +12,22 @@ const headers = [
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
-  'processingProfile',
+  'processingProfile', 'documentType',
 ];
 
 class Range {
   constructor(sheet, row, column, rows, columns) { this.sheet = sheet; this.row = row; this.column = column; this.rows = rows; this.columns = columns; }
   getValues() { return Array.from({ length: this.rows }, (_, r) => Array.from({ length: this.columns }, (_, c) => this.sheet.values[this.row - 1 + r]?.[this.column - 1 + c] ?? '')); }
+  setValue(value) { this.sheet.values[this.row - 1][this.column - 1] = value; return this; }
 }
 
 class Sheet {
-  constructor(state) { this.state = state; this.values = [headers.slice()]; }
+  constructor(state, initialHeaders = headers) { this.state = state; this.values = [initialHeaders.slice()]; }
   getLastRow() { return this.values.length; }
   getLastColumn() { return this.values[0].length; }
+  getMaxColumns() { return this.values[0].length; }
   getRange(row, column, rows, columns) { return new Range(this, row, column, rows, columns); }
+  insertColumnsAfter(after, count) { this.values.forEach((row) => row.splice(after, 0, ...Array(count).fill(''))); }
   appendRow(row) { if (this.state.ledgerError) throw new Error('raw ledger failure'); this.values.push(row.slice()); }
 }
 
@@ -40,7 +43,12 @@ function bytesFor(mediaType, suffix = 1) {
 
 function fixture(options = {}) {
   const state = { files: [], logs: [], ledgerError: Boolean(options.ledgerError), driveError: Boolean(options.driveError), uuidCounter: 1, lockCount: 0 };
-  const sheet = new Sheet(state);
+  const initialHeaders = options.legacySchema
+    ? headers.slice(0, -1)
+    : options.historicalP2Schema
+      ? headers.slice(0, -1).concat(['knowledgePath', 'gitCommitSha', 'errorMessage'])
+      : headers;
+  const sheet = new Sheet(state, initialHeaders);
   const properties = Object.assign({
     FAMILY_INBOX_SERVICE_TOKEN: 'service-secret-value',
     FAMILY_INBOX_RAW_FOLDER_ID: 'raw-folder-secret-id',
@@ -104,7 +112,62 @@ for (const [index, mediaType] of ['image/jpeg', 'image/png', 'application/pdf'].
   assert.strictEqual(row.originalName, namesFor(mediaType));
   assert.strictEqual(row.status, 'pending');
   assert.strictEqual(row.processingProfile, 'school-v1');
+  assert.strictEqual(row.documentType, '');
   assert.strictEqual(f.state.files[0].blob.name, `${result.inboxId}.${mediaType === 'image/jpeg' ? 'jpg' : mediaType === 'image/png' ? 'png' : 'pdf'}`);
+}
+
+{
+  const f = fixture({ legacySchema: true });
+  const body = submitBody('application/pdf', uuid(18));
+  body.documentType = 'school_print';
+  const result = f.api.familyInboxSubmit_(body);
+  assert.strictEqual(result.status, 'pending');
+  assert.strictEqual(f.state.files.length, 1, 'the existing Family Inbox storage path writes one PDF');
+  assert.deepStrictEqual(f.sheet.values[0], headers, 'documentType is appended to the existing ledger schema');
+  const row = Object.fromEntries(headers.map((header, column) => [header, f.sheet.values[1][column]]));
+  assert.strictEqual(row.documentType, 'school_print');
+  assert.strictEqual(row.processingProfile, 'school-v1-long', 'server selects the long profile for school PDFs');
+  assert.strictEqual(f.state.files[0].blob.mediaType, 'application/pdf');
+}
+
+{
+  const f = fixture({ historicalP2Schema: true });
+  const body = submitBody('application/pdf', uuid(181));
+  body.documentType = 'school_print';
+  const result = f.api.familyInboxSubmit_(body);
+  const expectedHeaders = headers.slice(0, -1).concat(['knowledgePath', 'gitCommitSha', 'errorMessage', 'documentType']);
+  assert.strictEqual(result.status, 'pending');
+  assert.deepStrictEqual(f.sheet.values[0], expectedHeaders, 'existing historical columns remain in place and documentType appends at the end');
+  const row = Object.fromEntries(expectedHeaders.map((header, column) => [header, f.sheet.values[1][column]]));
+  assert.strictEqual(row.documentType, 'school_print');
+  assert.strictEqual(row.knowledgePath, '');
+  assert.strictEqual(row.gitCommitSha, '');
+  assert.strictEqual(row.errorMessage, '');
+}
+
+{
+  const f = fixture();
+  const firstBody = submitBody('application/pdf', uuid(182));
+  firstBody.documentType = 'school_print';
+  const first = f.api.familyInboxSubmit_(firstBody);
+  const secondBody = submitBody('application/pdf', uuid(183));
+  secondBody.documentType = 'school_print';
+  const replay = f.api.familyInboxSubmit_(secondBody);
+  assert.strictEqual(replay.inboxId, first.inboxId);
+  assert.strictEqual(replay.idempotency.replayed, true);
+  assert.strictEqual(f.sheet.values.length, 2);
+  assert.strictEqual(f.state.files.length, 1);
+  const changedNote = submitBody('application/pdf', uuid(185));
+  changedNote.documentType = 'school_print';
+  changedNote.userNote = 'a different note';
+  expectCode(() => f.api.familyInboxSubmit_(changedNote), 'DUPLICATE_REQUEST');
+  assert.strictEqual(f.sheet.values.length, 2, 'a changed note is not silently discarded or stored as a duplicate');
+  const otherBody = submitBody('application/pdf', uuid(184));
+  otherBody.documentType = 'school_print';
+  otherBody.subjectMemberId = 'different-child';
+  const other = f.api.familyInboxSubmit_(otherBody);
+  assert.notStrictEqual(other.inboxId, first.inboxId);
+  assert.strictEqual(other.status, 'pending');
 }
 
 function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png': 'notice.png', 'application/pdf': 'notice.pdf' }[mediaType]; }
@@ -119,12 +182,33 @@ function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png':
 
 {
   const f = fixture();
+  const body = submitBody('application/pdf', uuid(191));
+  body.documentType = 'school-v1-long';
+  expectCode(() => f.api.familyInboxSubmit_(body), 'INVALID_INPUT');
+  body.documentType = 'school_print';
+  body.file.mediaType = 'image/jpeg';
+  expectCode(() => f.api.familyInboxSubmit_(body), 'UNSUPPORTED_MEDIA_TYPE');
+  assert.strictEqual(f.state.files.length, 0);
+}
+
+{
+  const f = fixture();
   const first = f.api.familyInboxSubmit_(submitBody('application/pdf', uuid(20)));
   const replay = f.api.familyInboxSubmit_(submitBody('application/pdf', uuid(20)));
   assert.strictEqual(replay.inboxId, first.inboxId);
   assert.strictEqual(replay.idempotency.replayed, true);
   assert.strictEqual(f.state.files.length, 1);
   assert.strictEqual(f.sheet.values.length, 2);
+}
+
+{
+  const f = fixture();
+  const body = submitBody('application/pdf', uuid(201));
+  const first = f.api.familyInboxSubmit_(body);
+  f.sheet.values[1][headers.indexOf('processingProfile')] = 'school-v1-long';
+  expectCode(() => f.api.familyInboxSubmit_(body), 'DUPLICATE_REQUEST');
+  assert.strictEqual(first.status, 'pending');
+  assert.strictEqual(f.state.files.length, 1, 'profile mismatch must not create another stored file');
 }
 
 {
