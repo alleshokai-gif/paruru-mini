@@ -60,7 +60,7 @@ function petHealthGatewayForTrustedActor_(input, actor, trustedSource, dashboard
 
   const properties = PropertiesService.getScriptProperties();
   const url = String(properties.getProperty('HEALTH_WEBAPP_URL') || '');
-  const serviceToken = String(properties.getProperty('HEALTH_SERVICE_TOKEN') || '');
+  const serviceToken = getServiceSecret_('HEALTH_SERVICE_TOKEN');
   if (!isAllowedHealthWebAppUrl_(url) || !serviceToken) throw petHealthGatewayError_('CONFIGURATION_ERROR');
 
   const forwarded = {
@@ -105,6 +105,7 @@ function petHealthGatewayForTrustedActor_(input, actor, trustedSource, dashboard
   try { result = JSON.parse(String(response.getContentText() || '')); } catch (_) { throw petHealthGatewayError_('PET_HEALTH_UNAVAILABLE'); }
   if (result && result.success === false) throw petHealthGatewayError_(petHealthGatewayBackendErrorCode_(result));
   if (!petHealthGatewayValidSuccess_(result, operation)) throw petHealthGatewayError_('PET_HEALTH_UNAVAILABLE');
+  retireLegacyServiceSecret_('HEALTH_SERVICE_TOKEN');
   return json_({ success: true, status: result.status, operation: result.operation, data: result.data, warnings: result.warnings, error: null, schemaVersion: result.schemaVersion, message: 'ok' });
 }
 

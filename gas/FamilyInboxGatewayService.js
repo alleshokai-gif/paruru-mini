@@ -178,7 +178,7 @@ function familyInboxGatewayValidateFile_(file) {
 function familyInboxGatewayCallService_(trusted, operation) {
   const properties = PropertiesService.getScriptProperties();
   const url = String(properties.getProperty('FAMILY_INBOX_WEBAPP_URL') || '').trim();
-  const serviceToken = String(properties.getProperty('FAMILY_INBOX_SERVICE_TOKEN') || '');
+  const serviceToken = getServiceSecret_('FAMILY_INBOX_SERVICE_TOKEN');
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url) || !serviceToken) throw familyInboxGatewayError_('CONFIGURATION_ERROR');
   const forwarded = Object.assign({}, trusted, { internalToken: serviceToken });
   if (trusted.file) forwarded.file = { name: trusted.file.name, mediaType: trusted.file.mediaType, base64: trusted.file.base64 };
@@ -193,6 +193,7 @@ function familyInboxGatewayCallService_(trusted, operation) {
   try { envelope = JSON.parse(String(response.getContentText() || '')); } catch (_) { throw familyInboxGatewayError_('INTERNAL_ERROR'); }
   if (!envelope || envelope.success !== true) throw familyInboxGatewayError_(familyInboxGatewayBackendError_(envelope));
   if (envelope.schemaVersion !== FAMILY_INBOX_GATEWAY_SCHEMA_VERSION || !familyInboxGatewayPlainObject_(envelope.data)) throw familyInboxGatewayError_('INTERNAL_ERROR');
+  retireLegacyServiceSecret_('FAMILY_INBOX_SERVICE_TOKEN');
   if (operation === 'familyInbox.submit') {
     if (!/^inb_[0-9a-f]{32}$/i.test(String(envelope.data.inboxId || '')) || !familyInboxGatewayPlainObject_(envelope.data.idempotency) || typeof envelope.data.idempotency.replayed !== 'boolean') throw familyInboxGatewayError_('INTERNAL_ERROR');
     const allowedStatuses = envelope.data.idempotency.replayed ? ['pending', 'duplicate', 'rejected', 'processing', 'candidate_ready', 'needs_review', 'completed', 'failed'] : ['pending', 'duplicate', 'rejected'];

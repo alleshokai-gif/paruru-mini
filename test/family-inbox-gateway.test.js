@@ -127,7 +127,7 @@ function fixture(options = {}) {
     json_: (value) => value,
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math,
   };
-  vm.createContext(context);
+  require('./fixtures/service-secret-test-double')(context); vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'FamilyInboxGatewayService.js'), 'utf8'), context);
   return { api: context, state };
 }
