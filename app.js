@@ -5438,7 +5438,11 @@ async function callAuthenticatedFamilySchedule_(payload) {
       headers: { Authorization: "Bearer " + auth.idToken, "Content-Type": "application/json", "X-Paluru-Request-Id": crypto.randomUUID() },
       body: JSON.stringify(payload),
     });
-    if (!response.ok) throw createHomeControlError("FAMILY_SCHEDULE_UNAVAILABLE");
+    if (!response.ok) {
+      let code = "FAMILY_SCHEDULE_UNAVAILABLE";
+      try { if ((await response.json())?.error?.code === "FAMILY_SCHEDULE_NOT_PUBLISHED") code = "FAMILY_SCHEDULE_NOT_PUBLISHED"; } catch (_) {}
+      throw createHomeControlError(code);
+    }
     return await response.json();
   } finally { clearTimeout(timer); }
 }

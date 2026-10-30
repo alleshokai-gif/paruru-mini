@@ -10,7 +10,10 @@
   const list = document.getElementById('familyScheduleList');
   const target = document.getElementById('familyScheduleMember');
   const today = new Date().toLocaleDateString('sv-SE', {timeZone:'Asia/Tokyo'});
-  month.value = new URLSearchParams(root.location.search).get('scheduleMonth') || today.slice(0,7);
+  const preferenceKey='paluru.familySchedules.period';
+  let preferred='';try {preferred=root.localStorage.getItem(preferenceKey)||'';}catch(_){}
+  const requested=new URLSearchParams(root.location.search).get('scheduleMonth')||preferred;
+  month.value = /^\d{4}-(0[1-9]|1[0-2])$/.test(requested) ? requested : today.slice(0,7);
   function clear() { list.replaceChildren(); target.replaceChildren(new Option('家族全員','')); }
   function render(data) {
     if (data?.schemaVersion !== schema || !Array.isArray(data.events)
@@ -42,9 +45,11 @@
   let last;
   async function load() {
     if (!read) return;
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month.value)){status.textContent='対象月を選んでください。';return;}
+    try {root.localStorage.setItem(preferenceKey,month.value);}catch(_){}
     const current=++sequence;status.textContent='予定を読み込み中…';
     try {const data=await read({period:month.value});if(current!==sequence)return;last=data;render(data);}
-    catch (_) {if(current!==sequence)return;last=null;clear();panel.dataset.freshness='unavailable';status.textContent='予定を取得できませんでした。再読み込みしてください。';}
+    catch (error) {if(current!==sequence)return;last=null;clear();panel.dataset.freshness='unavailable';status.textContent=error.code==='FAMILY_SCHEDULE_NOT_PUBLISHED'?'この月の予定はまだ登録されていません。対象月を選んでください。':'予定を取得できませんでした。再読み込みしてください。';}
   }
   document.getElementById('familyScheduleReload').addEventListener('click',load);
   month.addEventListener('change',load);
