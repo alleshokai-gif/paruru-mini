@@ -46,13 +46,16 @@ class Range {
       for (let c = 0; c < this.columns; c += 1) this.sheet.values[this.row - 1 + r][this.column - 1 + c] = values[r][c];
     }
   }
+  setValue(value) { this.setValues([[value]]); }
 }
 
 class Sheet {
   constructor(name, headers, state) { this.name = name; this.values = [headers.slice()]; this.state = state; }
   getLastRow() { return this.values.length; }
   getLastColumn() { return this.values[0].length; }
-  getRange(row, column, rows, columns) { return new Range(this, row, column, rows, columns); }
+  getRange(row, column, rows = 1, columns = 1) { return new Range(this, row, column, rows, columns); }
+  getMaxColumns() { return this.getLastColumn(); }
+  insertColumnAfter(after) { this.values.forEach(row => row.splice(after, 0, '')); }
   appendRow(row) { this.values.push(row.slice()); }
 }
 
@@ -113,6 +116,7 @@ function fixture(options = {}) {
     },
     Utilities: {
       DigestAlgorithm: { SHA_256: 'SHA_256' },
+      Charset: { UTF_8: 'UTF-8' },
       base64Decode: (value) => Array.from(Buffer.from(value, 'base64')),
       base64Encode: (values) => Buffer.from(values).toString('base64'),
       computeDigest: (_, values) => Array.from(crypto.createHash('sha256').update(Buffer.from(values)).digest()),
@@ -130,7 +134,7 @@ function fixture(options = {}) {
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math, isFinite,
   };
   vm.createContext(context);
-  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js', 'FamilyInboxPcReviewService.js', 'Code.js']) {
+  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js', 'FamilyInboxPcReviewService.js', 'FamilyInboxSchoolAutomation.js', 'Code.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', file), 'utf8'), context);
   }
   return { api: context, state, inbox, candidates, reviewItems };
@@ -1050,4 +1054,34 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   expectCode(() => mixed.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list')), 'CONFIGURATION_ERROR');
 }
 
-console.log('PASS Family Inbox PC Review dedicated auth, automatic single-home scope, long batch persistence, fragment promotion/recovery, canonical bulk approval, profile limits, safe logs, and zero Domain writes');
+{
+  const f=fixture();
+  const created=submit(f,'application/pdf',1900,'school_print');
+  const claim=f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext',{inboxId:created.inboxId,subjectMemberId:'child-01'}));
+  const candidates=candidatesFixture();
+  f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates',{
+    inboxId:created.inboxId,claimVersion:claim.claimVersion,publishRequestId:uuid(1901),
+    payloadDigest:longDigest(f,candidates,[]),candidates,reviewItems:[],usage:{inputTokens:1,outputTokens:1},durationMs:1,
+  }));
+  const pending=f.api.familyInboxSchoolAutomationNext_(workerBody('familyInbox.schoolAutomation.next',{subjectMemberId:'child-01'}));
+  assert.strictEqual(pending.items.length,2);
+  const manifest={schemaVersion:'school-knowledge-inbox/1.0',inboxId:created.inboxId,subjectMemberId:'child-01',
+    sourceSha256:pending.sourceSha256,period:'2026-08',targetGrade:3,knowledge:[{type:'document',payload:{title:'Fictional'}}],
+    decisions:pending.items.map((item,index)=>({itemId:item.itemId,revision:item.revision,disposition:index===0?'knowledge':'exception',reason:index===0?'document_metadata':'class_assignment_required'}))};
+  const projectionDigest=f.api.familyInboxSchoolAutomationHash_(manifest);
+  const body=workerBody('familyInbox.schoolAutomation.complete',{inboxId:created.inboxId,snapshotDigest:pending.snapshotDigest,manifest,projectionDigest,
+    receipt:{status:'APPLIED',projectionDigest,sourceInboxId:created.inboxId,sourceSha256:pending.sourceSha256,readback:{ok:true,otherRowsUnchanged:true}}});
+  expectCode(()=>f.api.familyInboxSchoolAutomationComplete_({...body,snapshotDigest:'stale'}),'CLAIM_CONFLICT');
+  const result=f.api.familyInboxSchoolAutomationComplete_(body);
+  assert.strictEqual(result.resolvedCount,1);
+  assert.strictEqual(f.candidates.values[1][candidateHeaders.indexOf('reviewStatus')],'resolved');
+  assert.strictEqual(f.candidates.values[2][candidateHeaders.indexOf('reviewStatus')],'pending');
+  assert.strictEqual(f.candidates.values[1][candidateHeaders.indexOf('reviewedByMemberId')],'');
+  assert.strictEqual(f.api.familyInboxOpenLedger_('ledger-id').headers.length,inboxHeaders.length+2);
+  assert.strictEqual(f.api.familyInboxSchoolAutomationNext_(workerBody('familyInbox.schoolAutomation.next',{subjectMemberId:'child-01'})).inboxId,null);
+  assert.strictEqual(f.api.familyInboxSchoolAutomationComplete_(body).replayed,true);
+  const before=f.candidates.values.length;
+  submit(f,'application/pdf',1902,'school_print');
+  assert.strictEqual(f.candidates.values.length,before);
+}
+console.log('PASS Family Inbox PC Review auth, private School automation receipts, exception-only pending, preserved history, append-only schema, idempotency and legacy contracts');

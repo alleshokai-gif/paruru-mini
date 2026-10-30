@@ -539,8 +539,8 @@ function familyInboxPcReviewPromotedDto_(candidates, reviewRecord) {
 }
 
 function familyInboxPcReviewAggregateStatus_(candidateEntries, reviewEntries) {
-  const candidateDone = candidateEntries.every(function(entry) { return ['approved', 'rejected'].indexOf(String(entry.record.reviewStatus || 'pending')) >= 0; });
-  const reviewDone = reviewEntries.every(function(entry) { return ['promoted', 'rejected'].indexOf(String(entry.record.status || 'pending')) >= 0; });
+  const candidateDone = candidateEntries.every(function(entry) { return ['approved', 'rejected', 'resolved'].indexOf(String(entry.record.reviewStatus || 'pending')) >= 0; });
+  const reviewDone = reviewEntries.every(function(entry) { return ['promoted', 'rejected', 'resolved'].indexOf(String(entry.record.status || 'pending')) >= 0; });
   return candidateDone && reviewDone ? 'reviewed' : 'pending';
 }
 

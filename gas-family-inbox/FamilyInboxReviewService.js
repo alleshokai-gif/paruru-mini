@@ -88,7 +88,10 @@ function familyInboxReviewListCore_(context, homeId) {
       return {
         inboxId: String(entry.record.inboxId || ''), receivedAt: String(entry.record.receivedAt || ''),
         subjectMemberId: String(entry.record.subjectMemberHint || ''), originalName: String(entry.record.originalName || ''),
-        candidateCount: matches.length + pcItems.length, candidateTypes: candidateTypes,
+        candidateCount: entry.record.schoolAutomationReceiptJson
+          ? matches.filter(function(item) { return item.record.candidateType !== 'school.document' && String(item.record.reviewStatus || 'pending') === 'pending'; }).length +
+            pcItems.filter(function(item) { return item.record.status === 'pending'; }).length
+          : matches.length + pcItems.length, candidateTypes: candidateTypes,
         reviewStatus: pcReview ? ((matches.length || pcItems.length) ? familyInboxPcReviewAggregateStatus_(matches, pcItems) : 'pending') : familyInboxReviewAggregateStatus_(matches),
         ...(pcReview ? { reviewChannel: 'pc' } : {}),
       };
@@ -280,7 +283,7 @@ function familyInboxReviewAggregateStatus_(entries) {
   if (!entries.length) return 'pending';
   return entries.every(function(entry) {
     const status = String(entry.record.reviewStatus || 'pending');
-    return status === 'approved' || status === 'rejected';
+    return status === 'approved' || status === 'rejected' || status === 'resolved';
   }) ? 'reviewed' : 'pending';
 }
 
