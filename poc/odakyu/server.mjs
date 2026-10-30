@@ -13,6 +13,7 @@ const assets = new Map([
   ['/route.mjs', ['route.mjs', 'text/javascript']], ['/route.css', ['route.css', 'text/css']], ['/style.css', ['style.css', 'text/css']],
   ['/route-layout.mjs', ['route-layout.mjs', 'text/javascript']],
   ['/mobile-route.mjs', ['mobile-route.mjs', 'text/javascript']], ['/mobile-route.css', ['mobile-route.css', 'text/css']],
+  ['/board-view-state.mjs', ['board-view-state.mjs', 'text/javascript']],
   ['/track-board.mjs', ['track-board.mjs', 'text/javascript']],
   ['/downbound-board.mjs', ['downbound-board.mjs', 'text/javascript']],
   ['/simulation-time.mjs', ['simulation-time.mjs', 'text/javascript']],

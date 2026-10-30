@@ -15,6 +15,9 @@ function render(){
   const comparison=compareAll(pool,selected,now);
   let activeRoute=comparison.routes.find(r=>r.key===activeKey);
   if(!activeRoute){
+    // An expired comparison must not silently color a different recommendation
+    // purple. Keep the rider; wait for the next explicit comparison tap.
+    comparisonRequested=false;
     const rec=comparison.plans.find(p=>p.destination==='Noborito')?.recommendation;
     activeRoute=rec?.transfers>0?comparison.routes.find(r=>!r.originWait&&r.legs.length===rec.legs.length&&r.legs.every((l,i)=>l.trainId===rec.legs[i].trainId&&l.station===rec.legs[i].station&&l.departure===rec.legs[i].departure)):null;
     activeKey=activeRoute?.key??null;
