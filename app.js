@@ -1455,7 +1455,7 @@ familyInboxForm.addEventListener("submit", async (event) => {
       file: { name: file.name, mediaType: file.type, base64 },
     });
     if (isSchoolPrint) {
-      setFamilyInboxStatus_("学校プリントをDrive inboxに受け付けたで。ローカルworkerが整理するで。", "success");
+      setFamilyInboxStatus_("学校プリントを預かったで。処理を待ってるで。", "success");
     } else {
       const duplicateText = data.status === "duplicate" ? "（同じ内容を検知）" : "";
       setFamilyInboxStatus_(`預かったで。${data.inboxId} / ${data.status}${duplicateText}`, "success");
