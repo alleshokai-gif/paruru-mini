@@ -215,8 +215,9 @@ function familyInboxGatewayCallService_(trusted, operation) {
 }
 
 function familyInboxGatewayReviewListItem_(value) {
-  const allowed = { inboxId: true, receivedAt: true, subjectMemberId: true, originalName: true, candidateCount: true, candidateTypes: true, reviewStatus: true };
-  if (!familyInboxGatewayExactKeys_(value, allowed) || !/^inb_[0-9a-f]{32}$/i.test(String(value.inboxId || '')) || !Number.isInteger(Number(value.candidateCount)) || Number(value.candidateCount) < 0 || Number(value.candidateCount) > 8 || !Array.isArray(value.candidateTypes) || ['pending', 'reviewed'].indexOf(String(value.reviewStatus || '')) < 0) throw familyInboxGatewayError_('INTERNAL_ERROR');
+  const pcReview = value && value.reviewChannel === 'pc';
+  const allowed = { inboxId: true, receivedAt: true, subjectMemberId: true, originalName: true, candidateCount: true, candidateTypes: true, reviewStatus: true, ...(pcReview ? { reviewChannel: true } : {}) };
+  if (!familyInboxGatewayExactKeys_(value, allowed) || (Object.prototype.hasOwnProperty.call(value, 'reviewChannel') && !pcReview) || !/^inb_[0-9a-f]{32}$/i.test(String(value.inboxId || '')) || !Number.isInteger(Number(value.candidateCount)) || Number(value.candidateCount) < 0 || Number(value.candidateCount) > (pcReview ? 128 : 8) || !Array.isArray(value.candidateTypes) || ['pending', 'reviewed'].indexOf(String(value.reviewStatus || '')) < 0) throw familyInboxGatewayError_('INTERNAL_ERROR');
   return {
     inboxId: String(value.inboxId),
     receivedAt: String(value.receivedAt || ''),
@@ -225,6 +226,7 @@ function familyInboxGatewayReviewListItem_(value) {
     candidateCount: Number(value.candidateCount),
     candidateTypes: value.candidateTypes.map(String),
     reviewStatus: String(value.reviewStatus),
+    ...(pcReview ? { reviewChannel: 'pc' } : {}),
   };
 }
 

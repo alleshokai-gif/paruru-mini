@@ -66,13 +66,19 @@ function familyInboxReviewListCore_(context, homeId) {
   const inboxLedger = familyInboxOpenLedger_(context.config.spreadsheetId);
   const candidateLedger = familyInboxReviewOpenCandidateLedger_(context.config.spreadsheetId);
   const candidateEntries = familyInboxReviewCandidateEntries_(candidateLedger);
-  return familyInboxWorkerInboxEntries_(inboxLedger)
+  const inboxEntries = familyInboxWorkerInboxEntries_(inboxLedger);
+  const needsPcReview = inboxEntries.some(function(entry) { return String(entry.record.homeId || '') === homeId && String(entry.record.status || '') === 'needs_review' && String(entry.record.processingProfile || '') === 'school-v1-long'; });
+  const reviewEntries = needsPcReview ? familyInboxPcReviewEntries_(familyInboxPcReviewOpenItemLedger_(context.config.spreadsheetId)) : [];
+  return inboxEntries
     .filter(function(entry) { return String(entry.record.homeId || '') === homeId && String(entry.record.status || '') === 'needs_review'; })
     .map(function(entry) {
       const matches = candidateEntries.filter(function(candidate) {
         return String(candidate.record.inboxId || '') === String(entry.record.inboxId || '') && String(candidate.record.homeId || '') === homeId;
       });
       if (matches.length) familyInboxReviewAssertPublishGroup_(matches);
+      const pcReview = String(entry.record.processingProfile || '') === 'school-v1-long';
+      const pcItems = pcReview ? reviewEntries.filter(function(item) { return String(item.record.inboxId || '') === String(entry.record.inboxId || '') && String(item.record.homeId || '') === homeId; }) : [];
+      if (pcReview && (matches.length || pcItems.length)) familyInboxPcReviewAssertGroup_(matches, pcItems);
       const typeSeen = {};
       const candidateTypes = [];
       matches.forEach(function(candidate) {
@@ -82,7 +88,9 @@ function familyInboxReviewListCore_(context, homeId) {
       return {
         inboxId: String(entry.record.inboxId || ''), receivedAt: String(entry.record.receivedAt || ''),
         subjectMemberId: String(entry.record.subjectMemberHint || ''), originalName: String(entry.record.originalName || ''),
-        candidateCount: matches.length, candidateTypes: candidateTypes, reviewStatus: familyInboxReviewAggregateStatus_(matches),
+        candidateCount: matches.length + pcItems.length, candidateTypes: candidateTypes,
+        reviewStatus: pcReview ? familyInboxPcReviewAggregateStatus_(matches, pcItems) : familyInboxReviewAggregateStatus_(matches),
+        ...(pcReview ? { reviewChannel: 'pc' } : {}),
       };
     })
     .sort(function(left, right) { return String(right.receivedAt || '').localeCompare(String(left.receivedAt || '')); });

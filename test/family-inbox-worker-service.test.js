@@ -750,6 +750,11 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   assert.strictEqual(published.reviewItemIds.length, 9);
   assert.strictEqual(f.reviewItems.values.length, 10);
 
+  const mobileList = f.api.familyInboxListReviews_(reviewBody('familyInbox.listReviews'));
+  assert.strictEqual(mobileList.items[0].reviewChannel, 'pc');
+  assert.strictEqual(mobileList.items[0].candidateCount, 12, 'PC-only list includes canonical and review items');
+  assert.strictEqual(mobileList.items[0].reviewStatus, 'pending');
+
   const list = f.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list'));
   assert.strictEqual(list.batches.length, 1);
   assert.strictEqual(list.batches[0].profile, 'school-v1-long');
@@ -885,6 +890,10 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
     usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
   }));
   assert.strictEqual(accepted.candidateIds.length, 64);
+  const mobileList = long.api.familyInboxListReviews_(reviewBody('familyInbox.listReviews'));
+  assert.strictEqual(mobileList.items[0].reviewChannel, 'pc');
+  assert.strictEqual(mobileList.items[0].candidateCount, 64);
+  assert.strictEqual(mobileList.items[0].reviewStatus, 'pending');
 
   const overLimit = fixture();
   const overLimitCreated = submitLong(overLimit, 225);

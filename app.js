@@ -1909,6 +1909,9 @@ function renderFamilyInboxReviewList_() {
   familyInboxReviewList.innerHTML = familyInboxReviews.map((item) => {
     const reviewed = item.reviewStatus === "reviewed";
     const memberLabel = familyInboxReviewMemberLabel_(item.subjectMemberId);
+    if (item.reviewChannel === "pc") {
+      return `<article class="family-inbox-review-card"><div class="family-inbox-review-card-header"><div><h3>${escapeHtml(familyInboxReviewDocumentLabel_(item.candidateTypes))}</h3><p class="family-inbox-review-card-meta">${escapeHtml(memberLabel)}・確認対象 ${Number(item.candidateCount) || 0}件・${escapeHtml(formatFamilyInboxReviewDate_(item.receivedAt))}受付</p></div><span class="family-inbox-review-status">${reviewed ? "確認済み" : "PCで確認"}</span></div><p>長い書類はPC Reviewで確認してな。</p></article>`;
+    }
     return `
       <article class="family-inbox-review-card">
         <div class="family-inbox-review-card-header">
