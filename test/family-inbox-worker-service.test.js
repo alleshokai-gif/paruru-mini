@@ -645,6 +645,17 @@ console.log('PASS Family Inbox worker GAS claim, lease, bounded source, strict c
 
 {
   const f = fixture();
+  const created = submitLong(f, 119);
+  const index = f.inbox.values.findIndex(row => row[inboxHeaders.indexOf('inboxId')] === created.inboxId);
+  f.inbox.values[index][inboxHeaders.indexOf('status')] = 'needs_review';
+  const list = f.api.familyInboxListReviews_(reviewBody('familyInbox.listReviews'));
+  assert.strictEqual(list.items[0].candidateCount, 0);
+  assert.strictEqual(list.items[0].reviewChannel, 'pc');
+  assert.strictEqual(list.items[0].reviewStatus, 'pending', 'empty review groups must not be marked reviewed');
+}
+
+{
+  const f = fixture();
   const created = submit(f, 'image/jpeg', 100);
   publishCandidates(f, created, fiveCandidatesFixture(), 951);
   submit(f, 'image/jpeg', 101);

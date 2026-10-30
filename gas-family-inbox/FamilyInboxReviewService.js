@@ -89,7 +89,7 @@ function familyInboxReviewListCore_(context, homeId) {
         inboxId: String(entry.record.inboxId || ''), receivedAt: String(entry.record.receivedAt || ''),
         subjectMemberId: String(entry.record.subjectMemberHint || ''), originalName: String(entry.record.originalName || ''),
         candidateCount: matches.length + pcItems.length, candidateTypes: candidateTypes,
-        reviewStatus: pcReview ? familyInboxPcReviewAggregateStatus_(matches, pcItems) : familyInboxReviewAggregateStatus_(matches),
+        reviewStatus: pcReview ? ((matches.length || pcItems.length) ? familyInboxPcReviewAggregateStatus_(matches, pcItems) : 'pending') : familyInboxReviewAggregateStatus_(matches),
         ...(pcReview ? { reviewChannel: 'pc' } : {}),
       };
     })
