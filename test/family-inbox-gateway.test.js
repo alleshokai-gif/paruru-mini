@@ -114,7 +114,7 @@ function fixture(options = {}) {
       const request = JSON.parse(fetchOptions.payload);
       let data;
       if (request.operation === 'familyInbox.submit') data = { inboxId, status: options.submitStatus || 'pending', idempotency: { replayed: Boolean(options.replayed) }, duplicateOfInboxId: '' };
-      else if (request.operation === 'familyInbox.listReviews') data = { items: [{ inboxId, receivedAt: '2026-08-31T00:00:00+09:00', subjectMemberId: 'youngest_daughter', originalName: 'school.pdf', candidateCount: 5, candidateTypes: ['school.document', 'schedule.event', 'school.belongings'], reviewStatus: 'pending' }] };
+      else if (request.operation === 'familyInbox.listReviews') data = { items: options.reviewItems || [{ inboxId, receivedAt: '2026-08-31T00:00:00+09:00', subjectMemberId: 'youngest_daughter', originalName: 'school.pdf', candidateCount: 5, candidateTypes: ['school.document', 'schedule.event', 'school.belongings'], reviewStatus: 'pending' }] };
       else if (request.operation === 'familyInbox.getReview') data = { inboxId, subjectMemberId: 'youngest_daughter', reviewStatus: 'pending', document: { originalName: 'school.pdf', receivedAt: '2026-08-31T00:00:00+09:00' }, candidates: [reviewCandidate()] };
       else if (['familyInbox.updateCandidate', 'familyInbox.approveCandidate', 'familyInbox.rejectCandidate'].includes(request.operation)) data = { candidate: reviewCandidate({ revision: 2, reviewStatus: request.operation === 'familyInbox.approveCandidate' ? 'approved' : request.operation === 'familyInbox.rejectCandidate' ? 'rejected' : 'pending' }), reviewStatus: 'pending', idempotency: { replayed: false } };
       else data = { inboxId: request.inboxId, status: 'pending', receivedAt: '2026-08-28T00:00:00+09:00', updatedAt: '2026-08-28T00:00:00+09:00', errorCode: '', duplicateOfInboxId: '' };
@@ -130,6 +130,17 @@ function fixture(options = {}) {
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'FamilyInboxGatewayService.js'), 'utf8'), context);
   return { api: context, state };
+}
+
+{
+  const item = { inboxId, receivedAt: '2026-08-31T00:00:00+09:00', subjectMemberId: 'youngest_daughter', originalName: 'school.pdf', candidateCount: 54, candidateTypes: ['school.document', 'schedule.event'], reviewStatus: 'pending', reviewChannel: 'pc' };
+  const f = fixture({ reviewItems: [item] });
+  const result = f.api.familyInboxGateway_({ action: 'familyInbox.listReviews', auth: { provider: 'firebase', idToken: 'firebase-token' } });
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.items[0].candidateCount, 54);
+  assert.strictEqual(result.data.items[0].reviewChannel, 'pc');
+  const invalid = fixture({ reviewItems: [{ ...item, reviewChannel: 'unknown' }] });
+  assert.strictEqual(invalid.api.familyInboxGateway_({ action: 'familyInbox.listReviews', auth: { provider: 'firebase', idToken: 'firebase-token' } }).error.code, 'INTERNAL_ERROR');
 }
 
 {
