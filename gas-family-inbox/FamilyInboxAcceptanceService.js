@@ -14,7 +14,8 @@ function familyInboxAcceptance_(body) {
     const expected = String(PropertiesService.getScriptProperties().getProperty(FAMILY_INBOX_ACCEPTANCE_TOKEN_PROPERTY) || '');
     if (!expected) throw familyInboxError_('CONFIGURATION_ERROR');
     if (!familyInboxConstantTimeEquals_(expected, String(body && body.acceptanceToken || ''))) throw familyInboxError_('FORBIDDEN');
-    if (['FAMILY_INBOX_SERVICE_TOKEN', 'FAMILY_INBOX_WORKER_TOKEN', 'FAMILY_INBOX_PC_REVIEW_TOKEN'].some(function(property) {
+    if (serviceTokenMatches_(expected)) throw familyInboxError_('CONFIGURATION_ERROR');
+    if (['FAMILY_INBOX_WORKER_TOKEN', 'FAMILY_INBOX_PC_REVIEW_TOKEN'].some(function(property) {
       const other = String(PropertiesService.getScriptProperties().getProperty(property) || '');
       return other && familyInboxConstantTimeEquals_(expected, other);
     })) throw familyInboxError_('CONFIGURATION_ERROR');

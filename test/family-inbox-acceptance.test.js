@@ -48,7 +48,7 @@ function fixture() {
     },
     Logger: { log: (line) => state.logs.push(line) }, Date, Object, Array, String, Number, Error, Math, RegExp, JSON, isFinite,
   };
-  vm.createContext(api);
+  require('./fixtures/service-secret-test-double')(api); vm.createContext(api);
   for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js', 'FamilyInboxPcReviewService.js', 'DriveDropImporter.js', 'FamilyInboxAcceptanceService.js', 'Code.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', file), 'utf8'), api);
   }

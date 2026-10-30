@@ -50,7 +50,7 @@ function resolveHealthGatewayContext_(input) {
 function fetchHealthGatewayData_(input, actor, targetUserId) {
   const properties = PropertiesService.getScriptProperties();
   const url = String(properties.getProperty('HEALTH_WEBAPP_URL') || '');
-  const serviceToken = String(properties.getProperty('HEALTH_SERVICE_TOKEN') || '');
+  const serviceToken = getServiceSecret_('HEALTH_SERVICE_TOKEN');
   if (!isAllowedHealthWebAppUrl_(url) || !serviceToken) throw healthGatewayError_('CONFIGURATION_ERROR');
 
   // Only server-resolved identity is forwarded. The Firebase token never crosses this boundary.
@@ -73,6 +73,7 @@ function fetchHealthGatewayData_(input, actor, targetUserId) {
     const upstreamCode = result && result.error && result.error.code;
     throw healthGatewayError_(['INVALID_INPUT', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR'].indexOf(upstreamCode) >= 0 ? upstreamCode : 'HEALTH_UNAVAILABLE');
   }
+  retireLegacyServiceSecret_('HEALTH_SERVICE_TOKEN');
   return result.data;
 }
 

@@ -213,11 +213,9 @@ function familyInboxGetStatus_(body) {
 }
 
 function familyInboxAuthenticate_(body) {
-  const properties = PropertiesService.getScriptProperties();
-  const expected = String(properties.getProperty(FAMILY_INBOX_PROPERTIES.serviceToken) || '');
-  if (!expected) throw familyInboxError_('CONFIGURATION_ERROR');
   const actual = String(body && body.internalToken || '');
-  if (!actual || !familyInboxConstantTimeEquals_(expected, actual)) throw familyInboxError_('FORBIDDEN');
+  if (!serviceTokenMatches_(actual)) throw familyInboxError_('FORBIDDEN');
+  retireLegacyServiceToken_();
 }
 
 function familyInboxValidateSubmit_(body) {
