@@ -1,7 +1,7 @@
 /** Reconcile typed extraction with the existing School Knowledge projection.
  * A service resolution is recorded separately from human approval. */
 function familyInboxSchoolAutomationHash_(value) {
-  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(value))
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(value), Utilities.Charset.UTF_8)
     .map(function(byte) { return ('0' + (byte & 255).toString(16)).slice(-2); }).join('');
 }
 

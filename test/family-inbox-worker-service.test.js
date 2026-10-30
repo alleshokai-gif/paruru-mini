@@ -116,6 +116,7 @@ function fixture(options = {}) {
     },
     Utilities: {
       DigestAlgorithm: { SHA_256: 'SHA_256' },
+      Charset: { UTF_8: 'UTF-8' },
       base64Decode: (value) => Array.from(Buffer.from(value, 'base64')),
       base64Encode: (values) => Buffer.from(values).toString('base64'),
       computeDigest: (_, values) => Array.from(crypto.createHash('sha256').update(Buffer.from(values)).digest()),
