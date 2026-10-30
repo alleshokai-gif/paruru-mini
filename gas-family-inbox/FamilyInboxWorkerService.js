@@ -327,8 +327,10 @@ function familyInboxIsLegacySchoolKnowledge_(record) {
 }
 
 function familyInboxLongSchoolPrintMatchesSubject_(record, subjectMemberId) {
-  if (String(record.documentType || '') !== 'school_print') return true;
-  return Boolean(subjectMemberId && String(record.subjectMemberHint || '') === subjectMemberId);
+  const isSchoolPrint = String(record.documentType || '') === 'school_print';
+  if (!subjectMemberId) return !isSchoolPrint;
+  return isSchoolPrint && String(record.processingProfile || '') === 'school-v1-long' &&
+    String(record.subjectMemberHint || '') === subjectMemberId;
 }
 
 function familyInboxSchoolKnowledgeClaimNext_(body) {

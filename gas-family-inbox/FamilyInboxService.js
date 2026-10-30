@@ -103,7 +103,10 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     });
     if (documentType === 'school_print' && duplicate) {
       if (String(duplicate.documentType || '') !== documentType ||
-          String(duplicate.processingProfile || '') !== processingProfile) {
+          String(duplicate.processingProfile || '') !== processingProfile ||
+          String(duplicate.userNote || '') !== input.userNote ||
+          String(duplicate.originalName || '') !== input.originalName ||
+          String(duplicate.mediaType || '') !== input.mediaType) {
         throw familyInboxError_('DUPLICATE_REQUEST');
       }
       const replay = familyInboxPublicSubmitResult_(duplicate, true);

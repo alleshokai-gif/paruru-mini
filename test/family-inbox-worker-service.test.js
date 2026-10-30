@@ -204,6 +204,15 @@ function claimSchoolKnowledge(f, inboxId) {
 
 {
   const f = fixture();
+  const unrelated = submit(f, 'image/jpeg', 109);
+  const created = submit(f, 'application/pdf', 110, 'school_print');
+  const claim = f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext', { subjectMemberId: 'child-01' }));
+  assert.strictEqual(claim.inboxId, created.inboxId, 'a subject-scoped worker must skip ordinary inbox records');
+  assert.strictEqual(inboxRow(f.inbox, unrelated.inboxId).status, 'pending');
+}
+
+{
+  const f = fixture();
   const created = submit(f, 'application/pdf', 110, 'school_print');
   const initial = inboxRow(f.inbox, created.inboxId);
   assert.strictEqual(initial.processingProfile, 'school-v1-long');

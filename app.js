@@ -344,6 +344,7 @@ const refreshInboxButton = document.querySelector("#refreshInboxButton");
 const familyInboxForm = document.querySelector("#familyInboxForm");
 const familyInboxFile = document.querySelector("#familyInboxFile");
 const familyInboxSubjectMember = document.querySelector("#familyInboxSubjectMember");
+let familyInboxSubjectsReady = false;
 const familyInboxNote = document.querySelector("#familyInboxNote");
 const familyInboxSchoolPrint = document.querySelector("#familyInboxSchoolPrint");
 const familyInboxSubmit = document.querySelector("#familyInboxSubmit");
@@ -1440,6 +1441,10 @@ familyInboxForm.addEventListener("submit", async (event) => {
     setFamilyInboxStatus_("家族情報を確認できませんでした。再読み込みしてな。", "error");
     return;
   }
+  if (!familyInboxSubjectsReady || familyInboxSubjectMember.selectedOptions[0]?.disabled) {
+    setFamilyInboxStatus_("登録できる家族を確認して、もう一度選んでな。", "error");
+    return;
+  }
 
   familyInboxSubmit.disabled = true;
   familyInboxSubmit.textContent = "アップロード中…";
@@ -1455,7 +1460,11 @@ familyInboxForm.addEventListener("submit", async (event) => {
       file: { name: file.name, mediaType: file.type, base64 },
     });
     if (isSchoolPrint) {
-      setFamilyInboxStatus_("学校プリントを預かったで。処理を待ってるで。", "success");
+      if (data.idempotency?.replayed && ["failed", "rejected"].includes(data.status)) {
+        setFamilyInboxStatus_("同じ書類は登録済みやけど、処理に失敗してるで。管理者に確認してな。", "error");
+        return;
+      }
+      setFamilyInboxStatus_(data.idempotency?.replayed ? "同じ書類はすでに預かってるで。" : "学校プリントを預かったで。処理を待ってるで。", "success");
     } else {
       const duplicateText = data.status === "duplicate" ? "（同じ内容を検知）" : "";
       setFamilyInboxStatus_(`預かったで。${data.inboxId} / ${data.status}${duplicateText}`, "success");
@@ -1516,6 +1525,7 @@ function setFamilyInboxStatus_(text, state) {
 
 function familyInboxErrorMessage_(code) {
   const normalized = String(code || "");
+  if (normalized === "DUPLICATE_REQUEST") return "同じ書類が別のメモなどで登録済みやで。内容を確認してな。";
   if (["INVALID_INPUT", "UNSUPPORTED_MEDIA_TYPE", "FILE_TOO_LARGE", "INVALID_FILE_SIGNATURE", "INVALID_MEMBER"].includes(normalized)) return "ファイルか対象の家族を確認して、もう一度送ってな。";
   if (normalized === "FORBIDDEN") return "この端末では送信できません。端末登録を確認してな。";
   if (normalized === "CONFIGURATION_ERROR") return "保存先の準備がまだできていません。管理者に確認してな。";
@@ -1839,8 +1849,23 @@ async function loadInbox(options = {}) {
 
 async function loadInboxView_(options = {}) {
   const inboxLoaded = await loadInbox(options);
+  await loadFamilyInboxSubjects_();
   await loadFamilyInboxReviews_();
   return inboxLoaded;
+}
+
+async function loadFamilyInboxSubjects_() {
+  if (!hasMembershipCapability_("family.inbox.submit")) return;
+  familyInboxSubjectsReady = false;
+  try {
+    const data = await callHomeControlApi({ ...buildMemoCredentialPayload("familyInbox.listSubjects") });
+    if (!Array.isArray(data.subjects)) throw new Error("INVALID_SUBJECTS");
+    const available = new Set(data.subjects.map((member) => String(member.memberUserId || "")));
+    Array.from(familyInboxSubjectMember.options).forEach((option) => { option.disabled = !available.has(option.value); });
+    familyInboxSubjectsReady = true;
+  } catch (_) {
+    setFamilyInboxStatus_("登録できる家族を確認できへんかった。受信箱を更新してな。", "error");
+  }
 }
 
 async function loadFamilyInboxReviews_() {

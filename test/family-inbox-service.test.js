@@ -157,6 +157,11 @@ for (const [index, mediaType] of ['image/jpeg', 'image/png', 'application/pdf'].
   assert.strictEqual(replay.idempotency.replayed, true);
   assert.strictEqual(f.sheet.values.length, 2);
   assert.strictEqual(f.state.files.length, 1);
+  const changedNote = submitBody('application/pdf', uuid(185));
+  changedNote.documentType = 'school_print';
+  changedNote.userNote = 'a different note';
+  expectCode(() => f.api.familyInboxSubmit_(changedNote), 'DUPLICATE_REQUEST');
+  assert.strictEqual(f.sheet.values.length, 2, 'a changed note is not silently discarded or stored as a duplicate');
   const otherBody = submitBody('application/pdf', uuid(184));
   otherBody.documentType = 'school_print';
   otherBody.subjectMemberId = 'different-child';
