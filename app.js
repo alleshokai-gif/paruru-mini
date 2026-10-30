@@ -1,4 +1,4 @@
-const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
+﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.2.0";
 const DEBUG = false;
@@ -5433,7 +5433,7 @@ async function callAuthenticatedFamilySchedule_(payload) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
-    const response = await fetch(globalThis.PALURU_READ_TRANSPORT_V2_CONFIG.v3BaseUrl + "/v2/read/family-schedules", {
+    const response = await fetch(globalThis.PALURU_READ_TRANSPORT_V2_CONFIG.familySchedulesBaseUrl + "/v2/read/family-schedules", {
       method: "POST", cache: "no-store", redirect: "error", signal: controller.signal,
       headers: { Authorization: "Bearer " + auth.idToken, "Content-Type": "application/json", "X-Paluru-Request-Id": crypto.randomUUID() },
       body: JSON.stringify(payload),
