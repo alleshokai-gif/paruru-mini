@@ -1065,6 +1065,8 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   }));
   const pending=f.api.familyInboxSchoolAutomationNext_(workerBody('familyInbox.schoolAutomation.next',{subjectMemberId:'child-01'}));
   assert.strictEqual(pending.items.length,2);
+  assert.strictEqual(crypto.createHash('sha256').update(Buffer.from(pending.originalBase64,'base64')).digest('hex'),pending.sourceSha256);
+  assert(!f.state.logs.some(log=>log.includes(pending.originalBase64)));
   const manifest={schemaVersion:'school-knowledge-inbox/1.0',inboxId:created.inboxId,subjectMemberId:'child-01',
     sourceSha256:pending.sourceSha256,period:'2026-08',targetGrade:3,knowledge:[{type:'document',payload:{title:'Fictional'}}],
     decisions:pending.items.map((item,index)=>({itemId:item.itemId,revision:item.revision,disposition:index===0?'knowledge':'exception',reason:index===0?'document_metadata':'class_assignment_required'}))};
