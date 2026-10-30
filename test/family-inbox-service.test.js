@@ -58,11 +58,11 @@ function fixture(options = {}) {
     PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || '' }) },
     LockService: { getScriptLock: () => ({ waitLock: () => { state.lockCount += 1; }, releaseLock: () => {} }) },
     SpreadsheetApp: { openById: (id) => { assert.strictEqual(id, 'ledger-secret-id'); return { getSheetByName: (name) => name === 'Family_Inbox' ? sheet : null }; } },
-    DriveApp: { getFolderById: (id) => {
+    DriveApp: { getFileById: id=>state.files.find(file=>file.id===id), getFolderById: (id) => {
       assert.strictEqual(id, 'raw-folder-secret-id');
       if (state.driveError) throw new Error('raw drive failure');
       return { createFile: (blob) => {
-        const file = { id: `drive-raw-secret-${state.files.length + 1}`, blob, trashed: false, getId() { return this.id; }, setTrashed(value) { this.trashed = value; } };
+        const file = { id: `drive-raw-secret-${state.files.length + 1}`, blob, trashed: false, getId() { return this.id; }, setDescription(value){this.description=value;},getDescription(){return this.description||'';}, setTrashed(value) { this.trashed = value; } };
         state.files.push(file);
         return file;
       } };
@@ -80,6 +80,7 @@ function fixture(options = {}) {
   };
   require('./fixtures/service-secret-test-double')(context); vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', 'FamilyInboxService.js'), 'utf8'), context);
+  for(const name of ['FamilyInboxWorkerService.js','FamilyScheduleInbox.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..','gas-family-inbox',name),'utf8'),context);
   return { api: context, state, sheet, properties };
 }
 
@@ -285,3 +286,14 @@ function namesFor(mediaType) { return { 'image/jpeg': 'notice.jpg', 'image/png':
 }
 
 console.log('PASS Family Inbox service media validation, idempotency, duplicate retention, storage, atomicity, status, and safe logs');
+
+{
+ const f=fixture(),body={...submitBody('image/png',uuid(200)),subjectMemberId:'student-test',documentType:'family_schedule',scheduleContext:{organizationId:'club-test',organizationName:'架空クラブ',schoolType:'high_school',category:'club',period:'2026-11'}};
+ const a=f.api.familyInboxSubmit_(body),b=f.api.familyInboxSubmit_({...body,clientRequestId:uuid(201)});
+ assert.equal(a.inboxId,b.inboxId);assert.equal(b.idempotency.replayed,true);assert.equal(f.state.files.length,1);
+ const record=f.sheet.values[1];assert.equal(record[f.sheet.values[0].indexOf('processingProfile')],'family-schedule-v1');
+ const metadata=JSON.parse(f.state.files[0].getDescription());assert.equal(metadata.memberId,'student-test');assert.equal(metadata.context.period,'2026-11');
+ expectCode(()=>f.api.familyInboxSubmit_({...body,clientRequestId:uuid(202),scheduleContext:{...body.scheduleContext,period:'2026-12'}}),'DUPLICATE_REQUEST');
+ assert.equal(f.api.familyInboxWorkerClaimEligible_({documentType:'family_schedule',status:'pending'},new Date()),false);
+ console.log('PASS Family schedule PNG custody, context consistency, replay, and elementary queue isolation');
+}

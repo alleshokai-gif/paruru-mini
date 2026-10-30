@@ -74,7 +74,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
   const normalizedSource = String(source || '').trim();
   const documentType = String(input.documentType || '').trim();
   if (normalizedSource !== 'paluru' && normalizedSource !== 'drive_drop') throw familyInboxError_('INVALID_INPUT');
-  if (documentType && (normalizedSource !== 'paluru' || documentType !== 'school_print')) throw familyInboxError_('INVALID_INPUT');
+  if (documentType && (normalizedSource !== 'paluru' || !['school_print','family_schedule'].includes(documentType))) throw familyInboxError_('INVALID_INPUT');
   const processingProfile = familyInboxResolveProcessingProfile_(normalizedSource, input);
   const config = familyInboxLoadConfig_();
   let lock;
@@ -82,7 +82,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     lock = LockService.getScriptLock();
     lock.waitLock(30000);
     const sheetState = familyInboxOpenLedger_(config.spreadsheetId);
-    if (documentType === 'school_print') familyInboxEnsureDocumentTypeColumn_(sheetState);
+    if (documentType === 'school_print' || documentType === 'family_schedule') familyInboxEnsureDocumentTypeColumn_(sheetState);
 
     const existing = familyInboxFindRow_(sheetState, function(row) {
       return row.homeId === input.homeId && row.clientRequestId === input.clientRequestId;
@@ -92,6 +92,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
       if (existing.sha256 !== input.sha256 || existing.source !== normalizedSource || existing.submittedByMemberId !== input.submittedByMemberId || existing.subjectMemberHint !== input.subjectMemberId || existing.userNote !== input.userNote || !originalNameMatches || existing.mediaType !== input.mediaType || existing.processingProfile !== processingProfile || String(existing.documentType || '') !== documentType) {
         throw familyInboxError_('DUPLICATE_REQUEST');
       }
+      if(documentType==='family_schedule')familyInboxFamilyScheduleCheckContext_(existing,input);
       const replay = familyInboxPublicSubmitResult_(existing, true);
       familyInboxLog_(Object.assign(trace, { inboxId: replay.inboxId, stage: 'completed', status: replay.status, durationMs: Date.now() - startedAt }));
       return replay;
@@ -99,9 +100,9 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
 
     const duplicate = familyInboxFindRow_(sheetState, function(row) {
       if (row.homeId !== input.homeId || row.sha256 !== input.sha256) return false;
-      return documentType !== 'school_print' || row.subjectMemberHint === input.subjectMemberId;
+      return !['school_print','family_schedule'].includes(documentType) || row.subjectMemberHint === input.subjectMemberId;
     });
-    if (documentType === 'school_print' && duplicate) {
+    if (['school_print','family_schedule'].includes(documentType) && duplicate) {
       if (String(duplicate.documentType || '') !== documentType ||
           String(duplicate.processingProfile || '') !== processingProfile ||
           String(duplicate.userNote || '') !== input.userNote ||
@@ -109,6 +110,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
           String(duplicate.mediaType || '') !== input.mediaType) {
         throw familyInboxError_('DUPLICATE_REQUEST');
       }
+      if(documentType==='family_schedule')familyInboxFamilyScheduleCheckContext_(duplicate,input);
       const replay = familyInboxPublicSubmitResult_(duplicate, true);
       familyInboxLog_(Object.assign(trace, { inboxId: replay.inboxId, stage: 'completed', status: replay.status, durationMs: Date.now() - startedAt }));
       return replay;
@@ -157,6 +159,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
     };
 
     try {
+      if(documentType==='family_schedule')createdFile.setDescription(JSON.stringify({schemaVersion:'family-schedule.source.v1',homeId:input.homeId,memberId:input.subjectMemberId,inboxId:inboxId,sha256:input.sha256,context:input.scheduleContext}));
       familyInboxAppendRecord_(sheetState, record);
     } catch (_) {
       try { createdFile.setTrashed(true); } catch (cleanupError) {
@@ -176,6 +179,7 @@ function familyInboxPersistInput_(input, source, trace, startedAt) {
 }
 
 function familyInboxResolveProcessingProfile_(source, input) {
+  if(source==='paluru'&&input&&input.documentType==='family_schedule')return 'family-schedule-v1';
   if (source === 'drive_drop' && input && input.mediaType === 'application/pdf') return 'school-v1-long';
   if (source === 'paluru' && input && input.documentType === 'school_print' && input.mediaType === 'application/pdf') return 'school-v1-long';
   if (source === 'paluru') return 'school-v1';
@@ -221,7 +225,7 @@ function familyInboxAuthenticate_(body) {
 function familyInboxValidateSubmit_(body) {
   const allowed = {
     operation: true, internalToken: true, clientRequestId: true, subjectMemberId: true,
-    userNote: true, file: true, homeId: true, submittedByMemberId: true, source: true, traceId: true, documentType: true,
+    userNote: true, file: true, homeId: true, submittedByMemberId: true, source: true, traceId: true, documentType: true, scheduleContext:true,
   };
   if (!familyInboxPlainObject_(body) || Object.keys(body).some(function(key) { return !allowed[key]; })) throw familyInboxError_('INVALID_INPUT');
   if (body.operation !== 'familyInbox.submit' || body.source !== 'paluru' || !familyInboxPlainObject_(body.file)) throw familyInboxError_('INVALID_INPUT');
@@ -234,7 +238,9 @@ function familyInboxValidateSubmit_(body) {
   if (Array.from(userNote).length > FAMILY_INBOX_MAX_NOTE_CHARACTERS) throw familyInboxError_('INVALID_INPUT');
   const hasDocumentType = Object.prototype.hasOwnProperty.call(body, 'documentType');
   const documentType = hasDocumentType ? String(body.documentType || '').trim() : '';
-  if (hasDocumentType && documentType !== 'school_print') throw familyInboxError_('INVALID_INPUT');
+  if (hasDocumentType && !['school_print','family_schedule'].includes(documentType)) throw familyInboxError_('INVALID_INPUT');
+  const scheduleContext=documentType==='family_schedule'?familyInboxFamilyScheduleContext_(body.scheduleContext):null;
+  if(documentType!=='family_schedule'&&body.scheduleContext!==undefined)throw familyInboxError_('INVALID_INPUT');
   const originalName = familyInboxSanitizeOriginalName_(body.file.name);
   const mediaType = String(body.file.mediaType || '').trim().toLowerCase();
   if (!FAMILY_INBOX_MEDIA[mediaType]) throw familyInboxError_('UNSUPPORTED_MEDIA_TYPE');
@@ -245,7 +251,7 @@ function familyInboxValidateSubmit_(body) {
   if (bytes.length > FAMILY_INBOX_MAX_FILE_BYTES) throw familyInboxError_('FILE_TOO_LARGE');
   familyInboxValidateSignature_(mediaType, bytes);
   const sha256 = familyInboxSha256_(bytes);
-  return { clientRequestId: clientRequestId, homeId: homeId, submittedByMemberId: submittedByMemberId, subjectMemberId: subjectMemberId, userNote: userNote, originalName: originalName, mediaType: mediaType, bytes: bytes, sha256: sha256, documentType: documentType };
+  return { clientRequestId: clientRequestId, homeId: homeId, submittedByMemberId: submittedByMemberId, subjectMemberId: subjectMemberId, userNote: userNote, originalName: originalName, mediaType: mediaType, bytes: bytes, sha256: sha256, documentType: documentType, ...(scheduleContext?{scheduleContext:scheduleContext}:{}) };
 }
 
 function familyInboxDecodeBase64_(value) {

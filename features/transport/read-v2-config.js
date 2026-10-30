@@ -16,6 +16,7 @@
     mode: 'DIRECT_V2',
     baseUrl: phase2Canary ? phase2CanaryBaseUrl : stableBaseUrl,
     v3BaseUrl: v3PreviewBaseUrl,
+    familySchedulesBaseUrl: 'https://family---kaz-os-v3-shadow-preview-jwnmkrlyha-an.a.run.app',
     canaryCapability: '',
     routeModes: Object.freeze({
       projects: 'DIRECT_V2',
