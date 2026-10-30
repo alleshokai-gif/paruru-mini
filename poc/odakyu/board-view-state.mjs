@@ -1,5 +1,20 @@
 // Drawing state only: never changes routes, schedule evidence or BUS results.
 // Selection role and position evidence are independent dimensions.
+import {DOWNBOARD as B} from './downbound-board.mjs';
+// Phone drawing coordinates only. The canonical wiring and track inference are
+// unchanged. Every on-track glyph uses this same geometry as the drawn rails.
+export function boardGeometry(width){
+  const edge=44,express=edge,local=width-edge,single=width/2;
+  return {express,local,single,calloutX:express+42,calloutWidth:local-express-84};
+}
+export function displayRailX(point,geometry){
+  const id=point?.track?.id;
+  const start=['express','platform-2','chiyoda-approach'].includes(id)?geometry.express:['local','platform-1','shinjuku-approach'].includes(id)?geometry.local:id==='single'?geometry.single:null;
+  if(start===null)return null;
+  if(point.y<=B.mergeStart||id==='single')return start;
+  if(point.y>=B.mergeEnd)return geometry.single;
+  return start+(geometry.single-start)*(point.y-B.mergeStart)/(B.mergeEnd-B.mergeStart);
+}
 export const trainViewKey=(train,serviceDate)=>JSON.stringify([
   serviceDate||train.sourceServiceDate||train.calendar||'date-unknown',train.id
 ]);

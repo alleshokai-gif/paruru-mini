@@ -4,7 +4,8 @@ import {loadModel} from './model.mjs';
 import {listSnapshots} from './storage.mjs';
 import {compareAll,upcomingDepartures} from './comparisons.mjs';
 import {visibleTrains,trainMarker} from './downbound-board.mjs';
-import {buildBoardViewState,trainViewKey} from './board-view-state.mjs';
+import {buildBoardViewState,trainViewKey,boardGeometry,displayRailX} from './board-view-state.mjs';
+import {DOWNBOARD as B} from './downbound-board.mjs';
 const model=await loadModel((await listSnapshots())[0]),pool=model.trips.filter(t=>t.calendar==='Weekday');
 const selected=pool.find(t=>t.id==='provider:Weekday:odakyu-81ff0062');
 const comparison=compareAll(pool,selected,497);
@@ -34,4 +35,22 @@ test('current position wins over every station reference and changes from planne
  assert.deepEqual(e.position,trainMarker(e.train,506,model.stations));
  assert.equal(s.visible.filter(v=>v.train.id===e.train.id).length,1);
  const unknown=state().entities.find(e=>e.role==='rider');assert.equal(unknown.placement,'track-unknown');assert.equal(unknown.position.track.confidence,'unknown');
+});
+test('phone projection centers every supported train on its rail without changing schedule positions',()=>{
+ const geometry=boardGeometry(374);assert.ok(geometry.local-geometry.express>200);
+ for(const now of [497,506,512,513,1080]){
+  const points=visibleTrains(pool,now,model.stations).map(t=>trainMarker(t,now,model.stations)),before=JSON.stringify(points);
+  for(const point of points){
+   const x=displayRailX(point,geometry);
+   if(point.track.id==='uehara-unassigned'){assert.equal(x,null);continue;}
+   assert.ok(Number.isFinite(x));
+   if(point.y<=B.mergeStart)assert.equal(x,point.track.id==='single'?geometry.single:['express','platform-2','chiyoda-approach'].includes(point.track.id)?geometry.express:geometry.local);
+   if(point.y>=B.mergeEnd)assert.equal(x,geometry.single);
+  }
+  assert.equal(JSON.stringify(points),before);
+ }
+ assert.equal(displayRailX(null,geometry),null);
+ const rider=pool.find(t=>t.id===selected.id);
+ const a=trainMarker(rider,512,model.stations),b=trainMarker(rider,513,model.stations);
+ assert.equal(a.kind,'scheduled_dwell');assert.equal(a.y,b.y);assert.equal(displayRailX(a,geometry),geometry.local);assert.equal(displayRailX(b,geometry),geometry.local);
 });

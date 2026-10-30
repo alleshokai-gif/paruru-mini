@@ -5,6 +5,17 @@ import {compareAll,upcomingDepartures,pathsForTrain} from './comparisons.mjs';
 const root=document.getElementById('rail'),time=document.getElementById('time');
 const play=document.getElementById('play'),advance=document.getElementById('advance');
 const PLAY_MS_PER_MINUTE=2000,SERVICE_END=24*60+POLICY.serviceDayBoundary-1,BUS_POLL_MS=30000;
+// Explicit saved-service-day replay; never changes the computer clock or the
+// routing/BUS rules. The normal URL still opens at today's Japan service time.
+const replayDate=new URLSearchParams(location.search).get('date');
+let replayInstant=null,replayError=null;
+if(replayDate){
+ try{
+  const d=new Date(`${replayDate}T12:00:00+09:00`);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(replayDate)||!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==replayDate)throw Error('REPLAY_DATE_INVALID');
+  replayInstant=d;
+ }catch(e){replayError=e;}
+}
 const initial=japanServiceTime(new Date());time.value=clock(initial.minute);
 let timer=null,model,pool=[],selectedId=null,selectedOrigin=null,activeKey=null,comparisonRequested=false,now=initial.minute,error=false,timeEdited=false,timeValid=true,busSnapshot=null,busRequest=0;
 function render(){
@@ -56,12 +67,14 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
 time.oninput=time.onchange=()=>{pause();timeEdited=true;try{const v=minutes(time.value);if(!Number.isInteger(v))throw Error('TIME_INVALID');now=v;timeValid=true;render();refreshBuses();}catch{timeValid=false;busRequest++;busSnapshot=null;render();}};
 window.addEventListener('resize',render);
 try{
+  if(replayError)throw replayError;
   const r=await fetch('/api/model?dataset=real',{cache:'no-store'});if(!r.ok)throw Error('DATA_UNAVAILABLE');
   const incoming=await r.json();if(incoming.dataset?.kind!=='real'||!Array.isArray(incoming.trips)||!incoming.trips.length)throw Error('REAL_DATA_REQUIRED');model=incoming;
-  const current=japanServiceTime(new Date(),model.calendarCoverage);pool=model.trips.filter(t=>current.calendar&&t.calendar===current.calendar);
+  const current=japanServiceTime(replayInstant||new Date(),model.calendarCoverage);pool=model.trips.filter(t=>current.calendar&&t.calendar===current.calendar);
   if(!timeEdited){now=current.minute;time.value=clock(now);}
   const dates=[...new Set(pool.map(t=>t.sourceServiceDate).filter(Boolean))];
   const quality=document.getElementById('quality');quality.textContent=current.calendar?`${dates.length===1?dates[0].slice(5).replace('-','/')+'保存':'保存'} ${current.calendar==='Weekday'?'平日':'土休日'}~・線路推定`:'暦未対応';
+  if(replayInstant)quality.textContent=`${replayDate.slice(5).replace('-','/')}再生 · ${quality.textContent}`;
   quality.title=`表示営業日 ${current.serviceDate} / 保存対象日 ${dates.join('・')||'未取得'} / 現行ダイヤへの適用未確認・実運行ではない / バス: 川崎市交通局・東急バス / ODPT`;
   root.dataset.serviceDate=current.serviceDate;root.dataset.calendar=current.calendar||'unknown';render();refreshBuses();
   setInterval(()=>{if(!document.hidden)refreshBuses();},BUS_POLL_MS);

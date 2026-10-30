@@ -2,10 +2,10 @@ import {TYPES,clock} from './core.mjs';
 import {DOWNBOARD as B,DOWN_STATIONS,trainMarker,visibleTrains,layoutMarkers} from './downbound-board.mjs';
 import {DESTINATIONS} from './comparisons.mjs';
 import {busConnections,busClock} from './home-bus.mjs';
-import {buildBoardViewState} from './board-view-state.mjs';
+import {buildBoardViewState,boardGeometry,displayRailX} from './board-view-state.mjs';
 // Display projection only. Schedule anchors, track evidence, routing and BUS
 // calculations remain in their existing modules. No switch geometry is drawn.
-const TRACK={express:178,local:250}, ROW=310, OWN_ROW=220, HEADER=108, TOP=210, GAP=160;
+const ROW=350, OWN_ROW=260, HEADER=108, TOP=210, GAP=160,REFERENCE_GAP=90;
 const dep=t=>t.stops[0].departure??t.stops[0].arrival;
 const kind=t=>t.type==='Local'?'各停':t.type==='RapidExpress'?'快速急行':TYPES[t.type]||t.type;
 const station=id=>id==='Chiyoda.Hibiya'?'日比谷':id==='Shinjuku'?'新宿':DOWN_STATIONS.find(s=>s.id===id)?.name||id;
@@ -44,6 +44,7 @@ export function renderRouteMap(props){
  const {root,model,pool=[],selected,now,comparison={plans:[],routes:[],candidateIds:new Set()},activeRoute,comparisonRequested=false,originChoices=[],busSnapshot,onSelect,error,_heights=new Map(),_ownHeight=OWN_ROW,_measured=false}=props;
  const restoreScroll=props._scrollTop??window.scrollY;
  const width=Math.max(B.width,root.clientWidth);
+ const TRACK=boardGeometry(width);
  const sharedBuses=new Set();
  if(comparisonRequested&&activeRoute)for(const id of DESTINATIONS){
   const a=busConnections(busSnapshot,id,comparison.plans.find(p=>p.destination===id)?.baseline?.arrival).options[0];
@@ -66,7 +67,8 @@ export function renderRouteMap(props){
  for(const row of rows){
   row.top=cursor;row.body=cursor+HEADER;
   row.expanded=row.id===comparedStation;
-  row.end=row.body+Math.max(GAP,(row.hasOwn?_ownHeight:0)+(row.expanded?(_heights.get(view.focusedGroup.key)||ROW):row.groups.length?130:0));cursor=row.end;
+  const references=view.visible.filter(e=>displayRailX(e.position,TRACK)===null&&(e.position?stationFor(e.position.y).id:e.reference?.station||e.train.stops[0].station)===row.id).length;
+  row.end=row.body+Math.max(GAP,references*60+60,(row.hasOwn?_ownHeight:0)+(row.expanded?(_heights.get(view.focusedGroup.key)||ROW):row.groups.length?130:0));cursor=row.end;
  }
  const height=cursor+100;
  // Reserved annotation space belongs to each station. This monotone projection
@@ -80,35 +82,37 @@ export function renderRouteMap(props){
  map.setAttribute('aria-label','小田急 下り2線の定刻運行盤');map.dataset.busFetchedAt=String(busSnapshot?.fetchedAt??'');map.dataset.comparisonGroups=String(groups.length);map.dataset.comparisonRequested=String(comparisonRequested);
  const draw=svg('svg',{viewBox:`0 0 ${width} ${height}`,class:'d-wiring',role:'img','aria-label':'急行線・緩行線の簡略表示。渡り線と進路は省略。登戸以南は下り1線。'},map);
  const end=sy(B.mergeStart),join=sy(B.mergeEnd);
- for(const x of Object.values(TRACK))svg('path',{d:`M ${x} 42 V ${end}`,class:'d-rail'},draw);
- svg('path',{d:`M ${TRACK.express} ${end} L ${B.singleX} ${join} M ${TRACK.local} ${end} L ${B.singleX} ${join} V ${height-30}`,class:'d-rail'},draw);
+ for(const x of [TRACK.express,TRACK.local])svg('path',{d:`M ${x} 42 V ${end}`,class:'d-rail'},draw);
+ svg('path',{d:`M ${TRACK.express} ${end} L ${TRACK.single} ${join} M ${TRACK.local} ${end} L ${TRACK.single} ${join} V ${height-30}`,class:'d-rail'},draw);
  for(const row of rows){
   svg('rect',{x:3,y:row.top-24,width:width-6,height:98,rx:16,class:'d-station-band'},draw);
-  if(row.id==='ShimoKitazawa')for(const [x,floor]of [[193,'B2'],[225,'B1']])svg('rect',{x,y:row.top-8,width:17,height:50,rx:5,class:'d-platform','data-floor':floor},draw);
-  else if(row.id!=='MukogaokaYuen')svg('rect',{x:203,y:row.top-8,width:22,height:50,rx:6,class:'d-platform'},draw);
-  at(el('strong',row.name,'d-station',map),row.top-8,12).dataset.station=row.id;
-  if(row.id==='ShimoKitazawa')at(el('small','B2 急行 / B1 緩行','d-floor-label',map),row.top+25,12);
+  if(row.id==='ShimoKitazawa')for(const [x,floor]of [[TRACK.express+27,'B2'],[TRACK.local-44,'B1']])svg('rect',{x,y:row.top-8,width:17,height:50,rx:5,class:'d-platform','data-floor':floor},draw);
+  else if(row.id!=='MukogaokaYuen')svg('rect',{x:TRACK.single-11,y:row.top+37,width:22,height:24,rx:6,class:'d-platform'},draw);
+  at(el('strong',row.name,'d-station',map),row.top-8,TRACK.calloutX).dataset.station=row.id;
+  if(row.id==='ShimoKitazawa')at(el('small','B2 急行 / B1 緩行','d-floor-label',map),row.top+25,TRACK.calloutX);
  }
- at(el('span','千代田線方面','d-approach',map),9,88);at(el('span','新宿方面','d-approach',map),9,264);
+ at(el('span','千代田線方面','d-approach',map),9,8);at(el('span','新宿方面','d-approach',map),9,width-85);
  at(el('b','急行線','d-track-label',map),59,TRACK.express-28);at(el('b','緩行線','d-track-label',map),59,TRACK.local-28);
  if(!model||!pool.length){at(el('small',error?'読込失敗':model?'未取得':'読込中','d-load-status',map),TOP+90,12);root.replaceChildren(map);return;}
+ const referenceSlots=new Map();
  const markers=view.visible.map(entity=>{
   const point=entity.position,ref=entity.reference;
-  if(point){
-   const x=['express','platform-2','chiyoda-approach'].includes(point.track.id)?TRACK.express:['local','platform-1','shinjuku-approach'].includes(point.track.id)?TRACK.local:point.track.id==='single'?B.singleX:320;
-   return {...point,entity,key:entity.key,x,screenY:sy(point.y),onTrack:entity.placement==='track-estimate'};
+  const railX=displayRailX(point,TRACK);
+  if(point&&railX!==null){
+   return {...point,entity,key:entity.key,x:railX,screenY:sy(point.y),onTrack:true,isReference:false};
   }
-  const stationId=ref?.station||entity.train.stops[0].station,row=rows.find(r=>r.id===stationId)||rows[0];
+  const stationId=point?stationFor(point.y).id:ref?.station||entity.train.stops[0].station,row=rows.find(r=>r.id===stationId)||rows[0];
   const isSource=['Chiyoda.Hibiya','Shinjuku'].includes(stationId),own=entity.role==='rider';
-  const y=isSource?85:row.body+30+(!own&&row.hasOwn?_ownHeight:0);
-  return {entity,train:entity.train,key:entity.key,x:stationId==='Chiyoda.Hibiya'||!selected&&stationId==='YoyogiUehara'?40:320,screenY:y,y:row.y,onTrack:false,eventStation:stationId,eventDeparture:ref?.departure??dep(entity.train),
-   track:{id:'event',confidence:'unknown',basis:'reference_not_position'},kind:entity.placement,positionConfidence:'unknown',identityConfidence:entity.train.confidence??'unknown',identityBasis:entity.train.identityBasis};
+  const slot=referenceSlots.get(stationId)||0;referenceSlots.set(stationId,slot+1);
+  const y=isSource?(stationId==='Chiyoda.Hibiya'?85:145):row.body+30+(!own&&row.hasOwn?_ownHeight+(Math.max(0,slot-1))*60:slot*60);
+  return {entity,train:entity.train,key:entity.key,x:TRACK.single,screenY:y,y:point?.y??row.y,onTrack:false,isReference:true,eventStation:stationId,eventDeparture:ref?.departure??dep(entity.train),
+   track:point?.track||{id:'event',confidence:'unknown',basis:'reference_not_position'},kind:entity.placement,positionConfidence:point?.positionConfidence||'unknown',identityConfidence:entity.train.confidence??'unknown',identityBasis:entity.train.identityBasis};
  });
  function balloon(m,cls,lines,route){
   // A callout belongs to the unique entity, not to a second copy at a transfer
   // station. Its short tail ends beside this icon's actual screen bounds.
-  const left=m.x>=214,x=left?8:m.x+44,w=left?m.x-52:width-x-6;
-  const box=at(el('div',undefined,`b-bubble ${cls} b-tail-${left?'right':'left'}`,map),Math.max(85,m.screenY-18),x);box.style.width=`${w}px`;
+  const left=m.x>=TRACK.single,x=TRACK.calloutX,w=TRACK.calloutWidth;
+  const box=at(el('div',undefined,`b-bubble ${cls} ${m.isReference?'b-tail-up':`b-tail-${left?'right':'left'}`}`,map),Math.max(85,m.screenY+(m.isReference?38:-18)),x);box.style.width=`${w}px`;
   Object.assign(box.dataset,{train:m.train.id,marker:m.key,station:m.eventStation||'',serviceDate:m.entity.serviceDate||''});
   box.title='保存定刻による比較・実運行ではない';
   if(route){box.dataset.route=route.key;box.dataset.connection=route.connection;box.dataset.group=view.focusedGroup.key;}
@@ -138,26 +142,28 @@ export function renderRouteMap(props){
  }
  for(const m of markers){
   const {entity}=m,own=entity.role==='rider',chosen=entity.role==='compared',eligible=comparison.candidateIds.has(m.train.id),allowed=!selected||own||eligible;
-  const b=at(el('button',undefined,`d-train ${m.train.type}${own?' d-selected':''}${chosen?' d-candidate':''}${!entity.position?' d-planned':''}`,map),m.screenY-36,m.x-27);
+  const b=at(el('button',undefined,`${m.isReference?'d-reference':'d-train'} ${m.train.type}${own?' d-selected':''}${chosen?' d-candidate':''}`,map),m.screenY-(m.isReference?24:36),m.x-(m.isReference?TRACK.calloutWidth/2:27));
+  if(m.isReference)b.style.width=`${TRACK.calloutWidth}px`;
   b.type='button';b.setAttribute('aria-disabled',String(!allowed));b.setAttribute('aria-pressed',String(own||chosen));
   Object.assign(b.dataset,{train:m.train.id,marker:m.key,serviceDate:entity.serviceDate||'',eventStation:m.eventStation??'',departure:String(m.eventDeparture??dep(m.train)),track:m.track.id,trackConfidence:m.track.confidence,trackBasis:m.track.basis,observed:'false',onTrack:String(m.onTrack),positionKind:m.kind,positionConfidence:m.positionConfidence,identityConfidence:m.identityConfidence,identityBasis:m.identityBasis,anchorY:String(m.y),displayY:String(m.screenY),selectionRole:entity.role,placement:entity.placement});
   const action=own?'乗車中・タップで解除':selected?eligible?'乗換比較':'接続候補なし':'乗車列車にする';
-  b.setAttribute('aria-label',`${clock(m.eventDeparture??dep(m.train))} ${kind(m.train)} ${m.train.destination}行・${action}${!entity.position?'・'+station(m.eventStation)+'発時刻参照':''}`);
-  b.title=`${action} / ${entity.position?'定刻位置推定':'発着参照。現在位置ではない'} / 使用線路は未実測`;
-  trainFace(b);
+  b.setAttribute('aria-label',`${clock(m.eventDeparture??dep(m.train))} ${kind(m.train)} ${m.train.destination}行・${action}${m.isReference?'・'+station(m.eventStation)+'発着参照':''}`);
+  b.title=`${action} / ${m.isReference?'発着参照。現在位置ではない':'定刻位置推定'} / 使用線路は未実測`;
+  if(!m.isReference)trainFace(b);
   // Normal moving trains stay icon-only. In particular their labels must not
   // float into a different train's callout when positions are close together.
-  if(own||chosen||!entity.position)el('b',kind(m.train),'d-train-kind',b);
-  if(!entity.position)el('small',`${clock(m.eventDeparture)} ${entity.placement==='departure-planned'?'発予定':entity.placement==='record-ended'?'収録終':'位置未取得'}`,'d-event-time',b);
-  else if(!m.onTrack)el('small','線路未定','d-event-time',b);
-  const crowd=markers.filter(n=>Math.abs(n.x-m.x)<35&&Math.abs(n.screenY-m.screenY)<40);
+  if(m.isReference){
+   el('b',`${clock(m.eventDeparture)} ${kind(m.train)}`,undefined,b);
+   el('small',`${shortStation(m.eventStation)} · ${entity.placement==='track-unknown'?'線路未定':entity.placement==='departure-planned'?'発予定':entity.placement==='record-ended'?'収録終':'位置未取得'}`,undefined,b);
+  }else if(own||chosen)el('b',kind(m.train),'d-train-kind',b);
+  const crowd=markers.filter(n=>n.isReference===m.isReference&&Math.abs(n.x-m.x)<35&&Math.abs(n.screenY-m.screenY)<40);
   if(crowd.length>1){el('small',String(crowd.length),'d-stack-count',b);if(!own&&!chosen&&crowd.some(n=>n!==m&&n.screenY>m.screenY))b.classList.add('d-stacked');}
   b.onclick=e=>{
    if(!allowed)return;
    // Reference alternatives are data, not extra copies of each train in DOM.
    // Repeated taps keep the existing station-stack selection behavior.
-   if(!entity.position&&entity.role!=='rider'){
-    const options=view.entities.filter(v=>!v.position&&v.role!=='rider'&&v.references.some(r=>r.station===m.eventStation)&&(!selected||comparison.candidateIds.has(v.train.id)));
+   if(m.isReference&&entity.role!=='rider'){
+    const options=view.entities.filter(v=>displayRailX(v.position,TRACK)===null&&v.role!=='rider'&&v.references.some(r=>r.station===m.eventStation)&&(!selected||comparison.candidateIds.has(v.train.id)));
     options.sort((a,b)=>a.references.find(r=>r.station===m.eventStation).departure-b.references.find(r=>r.station===m.eventStation).departure);
     const previous=entity.role==='compared'?options.findIndex(v=>v.key===root.dataset.lastTappedMarker):-1,hit=previous<0?entity:options[(previous+1)%options.length]||entity;
     root.dataset.lastTappedMarker=hit.key;const ref=hit.references.find(r=>r.station===m.eventStation);onSelect(hit.train.id,{station:ref?.station,departure:ref?.departure});return;
@@ -170,15 +176,29 @@ export function renderRouteMap(props){
  }
  for(const id of DESTINATIONS){
   const row=rows.find(s=>s.id===id),p=comparison.plans.find(p=>p.destination===id),base=p?.baseline?.arrival,other=comparisonRequested?activeRoute?.arrivals[id]:undefined;
-  at(el('small',!selected?'電車をタップ':`${Number.isInteger(base)?'乗車 '+clock(base):'乗車 未取得'}${Number.isInteger(other)?' / 比較 '+clock(other)+' '+delta(activeRoute.savings[id]):''}`,'b-station-result',map),row.top+36,12);
+  at(el('small',!selected?'電車をタップ':`${Number.isInteger(base)?'乗車 '+clock(base):'乗車 未取得'}${Number.isInteger(other)?' / 比較 '+clock(other)+' '+delta(activeRoute.savings[id]):''}`,'b-station-result',map),row.top+36,TRACK.calloutX);
   if(selected&&!Number.isInteger(base)&&!Number.isInteger(other)){const ref=model.tCodeReferences?.find(r=>r.tripId===selected.id&&r.url),a=at(el('a','公式 ↗','d-official',map),row.top+64,12);a.href=ref?.url||'https://www.odakyu.jp';a.target='_blank';a.rel='noreferrer';}
  }
  root.replaceChildren(map);
+ // Move callouts inside the free space, never the train. A side tail may move
+ // along its box edge so it still points horizontally at the exact glyph.
+ const obstacles=[...map.querySelectorAll('.d-station,.d-floor-label,.b-station-result,.d-reference')].map(n=>({x:n.offsetLeft,y:n.offsetTop,w:n.offsetWidth,h:n.offsetHeight}));
+ for(const box of map.querySelectorAll('.b-bubble')){
+  const m=markers.find(m=>m.key===box.dataset.marker),preferred=box.offsetTop,h=box.offsetHeight,x=box.offsetLeft,w=box.offsetWidth;
+  if(!m.isReference){
+   const low=Math.max(85,m.screenY-h+8),high=Math.max(low,m.screenY-14);
+   const candidates=[preferred,...obstacles.flatMap(o=>[o.y-h-14,o.y+o.h+14])].map(y=>Math.min(high,Math.max(low,y)));
+   const overlap=y=>obstacles.reduce((sum,o)=>sum+Math.max(0,Math.min(x+w,o.x+o.w)-Math.max(x,o.x))*Math.max(0,Math.min(y+h,o.y+o.h)-Math.max(y,o.y)),0);
+   candidates.sort((a,b)=>overlap(a)-overlap(b)||Math.abs(a-preferred)-Math.abs(b-preferred));
+   const y=candidates[0];box.style.top=`${y}px`;box.style.setProperty('--tail-y',`${m.screenY-y-8}px`);
+  }
+  obstacles.push({x,y:box.offsetTop,w,h});
+ }
  // Measure the actual wrapped text at this phone width. Add station space,
  // never shrink type or overlap a longer two-transfer/BUS balloon.
  if(!_measured){
-  const heights=new Map([...map.querySelectorAll('.b-comparison')].map(box=>[box.dataset.group,Math.max(ROW,box.offsetHeight+40)]));
-  const ownHeight=Math.max(OWN_ROW,(map.querySelector('.b-rider')?.offsetHeight||0)+40);
+  const heights=new Map([...map.querySelectorAll('.b-comparison')].map(box=>[box.dataset.group,Math.max(ROW,box.offsetHeight+REFERENCE_GAP)]));
+  const ownHeight=Math.max(OWN_ROW,(map.querySelector('.b-rider')?.offsetHeight||0)+REFERENCE_GAP);
   if(ownHeight>OWN_ROW||[...heights.values()].some(h=>h>ROW))return renderRouteMap({...props,_heights:heights,_ownHeight:ownHeight,_measured:true,_scrollTop:restoreScroll});
  }
  if(window.scrollY!==restoreScroll)window.scrollTo({top:restoreScroll,behavior:'instant'});
