@@ -592,6 +592,7 @@ function familyInboxWorkerFindInboxEntry_(sheetState, inboxId) {
 }
 
 function familyInboxWorkerClaimEligible_(record, now) {
+  if(record.documentType==='family_schedule')return false;
   const status = String(record.status || '');
   if (status === 'pending') return true;
   if (status === 'processing') return familyInboxWorkerTime_(record.leaseExpiresAt) <= now.getTime();

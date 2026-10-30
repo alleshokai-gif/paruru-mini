@@ -73,7 +73,7 @@ function familyInboxGatewayListSubjects_(homeId) {
 
 function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId) {
   if (operation === 'familyInbox.submit') {
-    const allowed = { action: true, auth: true, clientRequestId: true, subjectMemberId: true, userNote: true, file: true, documentType: true };
+    const allowed = { action: true, auth: true, clientRequestId: true, subjectMemberId: true, userNote: true, file: true, documentType: true, scheduleContext:true };
     if (!familyInboxGatewayPlainObject_(input) || Object.keys(input).some(function(key) { return !allowed[key]; })) throw familyInboxGatewayError_('INVALID_INPUT');
     const subjectMemberId = String(input.subjectMemberId || '').trim();
     const subject = getHomeMember_(actor.homeId, subjectMemberId);
@@ -81,7 +81,7 @@ function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId
     const file = familyInboxGatewayValidateFile_(input.file);
     const hasDocumentType = Object.prototype.hasOwnProperty.call(input, 'documentType');
     const documentType = hasDocumentType ? String(input.documentType || '').trim() : '';
-    if (hasDocumentType && documentType !== 'school_print') throw familyInboxGatewayError_('INVALID_INPUT');
+    if (hasDocumentType && !['school_print','family_schedule'].includes(documentType)) throw familyInboxGatewayError_('INVALID_INPUT');
     if (documentType === 'school_print' && file.mediaType !== 'application/pdf') throw familyInboxGatewayError_('UNSUPPORTED_MEDIA_TYPE');
     const clientRequestId = String(input.clientRequestId || '').trim();
     const userNote = String(input.userNote || '').trim();
@@ -98,6 +98,8 @@ function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId
       traceId: traceId,
     };
     if (documentType) trusted.documentType = documentType;
+    if(documentType==='family_schedule')trusted.scheduleContext=familyInboxGatewayScheduleContext_(input.scheduleContext);
+    else if(input.scheduleContext!==undefined)throw familyInboxGatewayError_('INVALID_INPUT');
     return trusted;
   }
 
@@ -312,4 +314,12 @@ function familyInboxGatewayLog_(metadata) {
     if (Object.prototype.hasOwnProperty.call(metadata || {}, key) && metadata[key] !== undefined && metadata[key] !== '') safe[key] = metadata[key];
   });
   try { Logger.log('[PALURU_FAMILY_INBOX] ' + JSON.stringify(safe)); } catch (_) {}
+}
+
+function familyInboxGatewayScheduleContext_(value) {
+  const keys=['organizationId','organizationName','schoolType','category','period'];
+  if(!familyInboxGatewayPlainObject_(value)||Object.keys(value).length!==keys.length||Object.keys(value).some(k=>!keys.includes(k))||
+    !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(value.organizationId||'')||typeof value.organizationName!=='string'||!value.organizationName.trim()||value.organizationName.length>100||
+    !['elementary','junior_high','high_school','university','other'].includes(value.schoolType)||!['club','school','university','other'].includes(value.category)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(value.period||''))throw familyInboxGatewayError_('INVALID_INPUT');
+  return {organizationId:value.organizationId,organizationName:value.organizationName.trim(),schoolType:value.schoolType,category:value.category,period:value.period};
 }

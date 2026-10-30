@@ -1,4 +1,4 @@
-﻿const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxSyWgosHRhERKpBrzoMLpdG5_2xe0mtThCkQDtucHyCODj6xbK00Nb9nSVk8Fqdmd5Eg/exec";
 
 const APP_VERSION = "1.2.0";
 const DEBUG = false;
@@ -1077,6 +1077,7 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsAiProgressStatusApi: callAuthenticatedKazOsAiProgressStatus_,
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
+      familyScheduleApi: callAuthenticatedFamilySchedule_,
       nurseOkanCommentApi: callNurseOkanComment_,
       petHealthApi: callAuthenticatedPetHealth_,
       petHealthDashboardCache: petHealthDashboardCacheFacade_(),
@@ -5421,6 +5422,25 @@ async function callDirectKazOsRead_(kind, requestId) {
   if (kind === "context") return client.context();
   if (kind === "aiEngine") return client.aiEngine();
   throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
+}
+
+async function callAuthenticatedFamilySchedule_(payload) {
+  if (appAuthenticationState !== "active_member"
+      || !["admin", "guardian", "self_record"].includes(activeMembershipContext?.role)) {
+    throw createHomeControlError("FORBIDDEN");
+  }
+  const auth = await firebaseAuthService.getAuthEnvelope(false);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(globalThis.PALURU_READ_TRANSPORT_V2_CONFIG.v3BaseUrl + "/v2/read/family-schedules", {
+      method: "POST", cache: "no-store", redirect: "error", signal: controller.signal,
+      headers: { Authorization: "Bearer " + auth.idToken, "Content-Type": "application/json", "X-Paluru-Request-Id": crypto.randomUUID() },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw createHomeControlError("FAMILY_SCHEDULE_UNAVAILABLE");
+    return await response.json();
+  } finally { clearTimeout(timer); }
 }
 
 async function callAuthenticatedKazOsV3Dashboard_() {
