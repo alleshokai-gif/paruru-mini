@@ -45,8 +45,10 @@ function familyInboxSchoolAutomationNext_(body) {
     });
     if (!entry) return { inboxId: null };
     const state = familyInboxSchoolAutomationState_(context.config, entry.record.inboxId);
+    const bytes = DriveApp.getFileById(entry.record.originalRef).getBlob().getBytes();
+    if (!bytes.length || bytes.length > FAMILY_INBOX_MAX_FILE_BYTES || familyInboxSha256_(bytes) !== entry.record.sha256) throw familyInboxError_('SOURCE_READ_ERROR');
     return { inboxId: entry.record.inboxId, subjectMemberId: subject, documentType: 'school_print', profile: 'school-v1-long',
-      sourceFileId: entry.record.originalRef, sourceSha256: entry.record.sha256, items: state.items, snapshotDigest: state.snapshotDigest };
+      sourceFileId: entry.record.originalRef, sourceSha256: entry.record.sha256, originalBase64: Utilities.base64Encode(bytes), items: state.items, snapshotDigest: state.snapshotDigest };
   });
 }
 
