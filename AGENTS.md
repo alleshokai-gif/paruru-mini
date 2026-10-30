@@ -18,6 +18,13 @@ AIは修正対象以外を変更してはならない。修正範囲を広げる
 
 # PALURU Mini Rules
 
+## Secret settings inspection
+
+- Apps Script settings can expose plaintext Script Properties in accessibility/DOM snapshots. Never emit an unfiltered settings AX tree, DOM text, input values, screenshot, or raw response. Select the exact allowed property names first and return only their names and presence booleans. Do not return prefixes, lengths, hashes, or other value-derived fields by default.
+- Credential rotation diagnostics may hold authorized values in process memory, but must emit only service aliases, success/error codes and verification booleans. Do not place values in command arguments, temporary plaintext files, Git, exception messages or test failure output.
+- Before a GAS deployment, inspect both current HEAD and the currently published version, including the manifest and Web App settings. Preserve unrelated HEAD work and published access/scopes; pull alone does not prove the published configuration.
+- Browser credential entry/save must be handed to the user when required by the browser policy. Prepare the bounded overlap and verification first; do not add an anonymous admin endpoint or change Cloud projects to avoid this boundary.
+
 ## 禁止事項
 
 - Agentの仕様を勝手に変更しない
