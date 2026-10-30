@@ -294,10 +294,14 @@ function familyInboxOpenLedger_(spreadsheetId) {
   try { sheet = SpreadsheetApp.openById(spreadsheetId).getSheetByName(FAMILY_INBOX_SHEET_NAME); } catch (_) { throw familyInboxError_('CONFIGURATION_ERROR'); }
   if (!sheet || sheet.getLastRow() < 1 || sheet.getLastColumn() < 1) throw familyInboxError_('CONFIGURATION_ERROR');
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function(value) { return String(value || '').trim(); });
-  if (!familyInboxHeadersMatchAnyKnownShape_(headers, [
+  const knownShapes = [
     FAMILY_INBOX_PRE_DOCUMENT_TYPE_HEADERS, FAMILY_INBOX_HEADERS,
     FAMILY_INBOX_PRE_DOCUMENT_TYPE_HISTORICAL_HEADERS, FAMILY_INBOX_HISTORICAL_HEADERS,
-  ])) throw familyInboxError_('CONFIGURATION_ERROR');
+  ];
+  const automationHeaders = ['schoolKnowledgeJson', 'schoolAutomationReceiptJson'];
+  if (!familyInboxHeadersMatchAnyKnownShape_(headers, knownShapes.concat(knownShapes.map(function(shape) {
+    return shape.concat(automationHeaders);
+  })))) throw familyInboxError_('CONFIGURATION_ERROR');
   return { sheet: sheet, headers: headers };
 }
 
