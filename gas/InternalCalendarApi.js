@@ -1,4 +1,5 @@
 const PALURU_CALENDAR_API_TOKEN_PROPERTY = 'PALURU_CALENDAR_API_TOKEN';
+const PALURU_CALENDAR_SERVICE_HOME_SECRET = 'KAZ_OS_PROGRESS_OWNER_HOME_ID';
 const PALURU_CALENDAR_INTERNAL_SCHEMA_VERSION = 'calendar-context-internal-1.0';
 const PALURU_KUROBE_CALENDAR_SNAPSHOT_SCHEMA = 'kurobe-family-calendar-snapshot-v1';
 
@@ -28,9 +29,13 @@ function calendarContextInternal_(body, method, dependencies) {
 }
 
 // Single source of truth: GCP Secret Manager. Do not inspect old GAS token properties.
-function loadInternalCalendarSecret_() {
+function loadInternalCalendarSecret_(secretName) {
+  const name = secretName || PALURU_CALENDAR_API_TOKEN_PROPERTY;
+  if ([PALURU_CALENDAR_API_TOKEN_PROPERTY, PALURU_CALENDAR_SERVICE_HOME_SECRET].indexOf(name) < 0) {
+    throw internalCalendarError_('UNAUTHORIZED');
+  }
   const url = 'https://secretmanager.googleapis.com/v1/projects/paluru-bus/secrets/'
-    + PALURU_CALENDAR_API_TOKEN_PROPERTY + '/versions/latest:access';
+    + name + '/versions/latest:access';
   let response;
   try {
     response = UrlFetchApp.fetch(url, {
@@ -47,8 +52,10 @@ function loadInternalCalendarSecret_() {
     const body = JSON.parse(response.getContentText());
     encoded = body && body.payload && body.payload.data;
     if (typeof encoded !== 'string' || !encoded) throw new Error('invalid payload');
-    const value = Utilities.newBlob(Utilities.base64Decode(encoded)).getDataAsString();
-    if (value.length < 32) throw new Error('invalid secret');
+    const rawValue = Utilities.newBlob(Utilities.base64Decode(encoded)).getDataAsString();
+    const value = name === PALURU_CALENDAR_SERVICE_HOME_SECRET ? rawValue.trim() : rawValue;
+    if (name === PALURU_CALENDAR_API_TOKEN_PROPERTY ? value.length < 32
+        : !/^[a-zA-Z0-9_-]{1,200}$/.test(value)) throw new Error('invalid secret');
     return value;
   } catch (_) {
     throw internalCalendarError_('UNAUTHORIZED');
@@ -64,6 +71,11 @@ function authenticateInternalCalendar_(providedToken) {
 }
 
 function validateInternalCalendarInput_(body) {
+  // Existing token authentication already ran. See the scoped design review and
+  // the six-roster + signed-ingress regressions; app enrollment is not LINE identity.
+  if (body.service !== undefined || body.requesterMemberId !== undefined) {
+    return validateLineCalendarServiceInput_(body);
+  }
   const allowedKeys = ['action', 'internalToken', 'period', 'scope', 'actor', 'snapshot', 'audience', 'targetMemberId'];
   if (Object.keys(body).some(function(key) { return allowedKeys.indexOf(key) < 0; })) throw internalCalendarError_('INVALID_INPUT');
   if (body.snapshot !== undefined && body.snapshot !== true) throw internalCalendarError_('INVALID_INPUT');
@@ -100,6 +112,33 @@ function validateInternalCalendarInput_(body) {
     now: new Date(),
     audience: lineAudience ? 'line_group' : '',
     targetMemberId: target
+  };
+}
+
+// Shared-only service contract. Retains canonical home binding, token auth,
+// roster validation and safe projection. HomeMemberPolicy is the fixed SIX-person
+// roster; unlike getHomeMember_, it never queries app enrollment or device state.
+function validateLineCalendarServiceInput_(body) {
+  const allowed = ['action', 'internalToken', 'service', 'homeId', 'audience', 'period', 'scope', 'requesterMemberId', 'targetMemberId'];
+  if (Object.keys(body).some(function(key) { return allowed.indexOf(key) < 0; })
+      || body.service !== 'kurobe_line' || body.audience !== 'line_group'
+      || ['today', 'tomorrow', 'this_week'].indexOf(body.period) < 0
+      || ['mine', 'family'].indexOf(body.scope) < 0) throw internalCalendarError_('INVALID_INPUT');
+  if (typeof body.homeId !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(body.homeId)
+      || !constantTimeEqualsCalendar_(body.homeId, loadInternalCalendarSecret_(PALURU_CALENDAR_SERVICE_HOME_SECRET))) {
+    throw internalCalendarError_('UNAUTHORIZED');
+  }
+  const requester = typeof body.requesterMemberId === 'string' ? body.requesterMemberId : '';
+  const target = body.targetMemberId === undefined ? '' : body.targetMemberId;
+  const requesterPolicy = findHomeMemberPolicy_(requester);
+  const targetPolicy = typeof target === 'string' && target ? findHomeMemberPolicy_(target) : null;
+  if (!requesterPolicy || requesterPolicy.memberUserId !== requester || (target !== '' &&
+      (!targetPolicy || targetPolicy.memberUserId !== target))) throw internalCalendarError_('UNAUTHORIZED');
+  if (body.scope === 'mine' && target && target !== requester) throw internalCalendarError_('UNAUTHORIZED');
+  return {
+    serviceId: 'kurobe_line', requesterMemberId: requester,
+    period: body.period, scope: body.scope, audience: 'line_group',
+    targetMemberId: target, snapshot: false, now: new Date()
   };
 }
 

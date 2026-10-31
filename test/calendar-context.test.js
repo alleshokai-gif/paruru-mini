@@ -56,10 +56,11 @@ const context = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: (name) => properties[name] || '' }) },
   ScriptApp: { getOAuthToken: () => 'fake-google-oauth-token' },
   UrlFetchApp: { fetch: (url, options) => {
-    if (!url.includes('/secrets/PALURU_CALENDAR_API_TOKEN/versions/latest:access')) throw new Error('unexpected fetch');
+    const isHome = url.includes('/secrets/KAZ_OS_PROGRESS_OWNER_HOME_ID/versions/latest:access');
+    if (!isHome && !url.includes('/secrets/PALURU_CALENDAR_API_TOKEN/versions/latest:access')) throw new Error('unexpected fetch');
     if (options.headers.Authorization !== 'Bearer fake-google-oauth-token') throw new Error('bad oauth');
     return { getResponseCode: () => 200, getContentText: () => JSON.stringify({
-      payload: { data: Buffer.from(fixtureToken).toString('base64') }
+      payload: { data: Buffer.from(isHome ? 'home_test' : fixtureToken).toString('base64') }
     }) };
   } },
   ContentService: {
@@ -273,6 +274,54 @@ test('notification and Home Agent wrappers preserve legacy shapes', () => {
 });
 
 let failures = 0;
+test('shared service admits all six without app membership and preserves minimized privacy', () => {
+  const original = context.getHomeMember_;
+  context.getHomeMember_ = () => { throw new Error('app enrollment must not be consulted'); };
+  const roster = ['father','mother','eldest_son','eldest_daughter','second_son','youngest_daughter'];
+  const tags = ['父','母','理','は','ふ','り'];
+  const candidates = tags.map((tag, i) => event({title:'（'+tag+'）学校',id:'safe-'+i,start:'2026-07-19T09:00:00+09:00',end:'2026-07-19T10:00:00+09:00'}));
+  for (const [title,visibility] of [['（母）仕事','PRIVATE'],['（理）仕事の通院','DEFAULT'],['（父）社外秘の仕事','PUBLIC'],['（は）不明な私用','DEFAULT']]) {
+    candidates.push(event({title,visibility,id:title,start:'2026-07-19T09:00:00+09:00',end:'2026-07-19T10:00:00+09:00'}));
+  }
+  try {
+    for (const id of roster) {
+      const input = context.validateInternalCalendarInput_({action:'calendarContextInternal',service:'kurobe_line',homeId:'home_test',audience:'line_group',requesterMemberId:id,period:'tomorrow',scope:'family'});
+      assert(input.serviceId === 'kurobe_line' && !input.actor, 'principal must be a service');
+      const result = callRead({...input,now:'2026-07-18T12:00:00+09:00'},candidates);
+      assert(result.data.events.length === 6 && !JSON.stringify(result.data).includes('title'), 'shared result leaked or depended on caller');
+      const mine = callRead({...input,scope:'mine',now:'2026-07-18T12:00:00+09:00'},candidates);
+      assert(mine.data.events.length === 1 && mine.data.events[0].memberId === id, 'mine crossed person');
+    }
+  } finally { context.getHomeMember_ = original; }
+});
+test('shared service cannot bypass token, household, audience, identity or mine boundaries', () => {
+  const base = {action:'calendarContextInternal',internalToken:fixtureToken,service:'kurobe_line',homeId:'home_test',audience:'line_group',requesterMemberId:'mother',period:'tomorrow',scope:'family'};
+  let calls=0; const dependencies={calendarReadService:{readContext:()=>{calls++; return {data:{},warnings:[]};}}};
+  for (const change of [
+    {internalToken:'wrong'}, {homeId:'another_home'}, {audience:'authenticated_member'},
+    {service:'other'}, {requesterMemberId:'unknown'}, {requesterMemberId:'constructor'},
+    {targetMemberId:'__proto__'}, {targetMemberId:'toString'}, {period:'next_7_days'},
+    {actor:internalActor}, {snapshot:true}, {scope:'mine',targetMemberId:'eldest_son'}
+  ]) {
+    const value=parse(context.calendarContextInternal_({...base,...change},'POST',dependencies));
+    assert(value.success === false && ['INVALID_INPUT','UNAUTHORIZED'].includes(value.error.code), 'invalid service input accepted');
+  }
+  assert(calls===0, 'invalid request reached Calendar');
+  assert(parse(context.calendarContextInternal_(base,'POST',dependencies)).success===true && calls===1,'authenticated valid service failed');
+  const legacy=parse(context.calendarContextInternal_({action:'calendarContextInternal',internalToken:fixtureToken,actor:{homeId:'home_test',memberUserId:'mother'},period:'today',scope:'mine'},'POST',dependencies));
+  assert(legacy.success===false && legacy.error.code==='UNAUTHORIZED', 'app membership gate weakened');
+});
+test('fixed family policy contains all six identities independent of app enrollment', () => {
+  const original = context.getHomeMember_;
+  let calls = 0;
+  context.getHomeMember_ = () => { calls++; return null; };
+  try {
+    for (const id of ['father','mother','eldest_son','eldest_daughter','second_son','youngest_daughter']) {
+      assert(context.findHomeMemberPolicy_(id).memberUserId === id, 'fixed policy lacks an identity');
+    }
+    assert(calls === 0, 'fixed roster unexpectedly depends on app enrollment');
+  } finally { context.getHomeMember_ = original; }
+});
 test('LINE all-day dates do not carry yesterday into tomorrow across calendar timezones', () => {
   const result = callRead({period:'tomorrow', scope:'family', actor, audience:'line_group', now:'2026-07-18T12:00:00+09:00'}, [
     event({title:'（り）学校', id:'yesterday-end', allDay:true, start:'2026-07-18T09:00:00+09:00', end:'2026-07-19T09:00:00+09:00', allDayStart:'2026-07-18T00:00:00+09:00', allDayEnd:'2026-07-19T00:00:00+09:00'}),
