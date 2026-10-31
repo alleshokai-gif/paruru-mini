@@ -1,11 +1,17 @@
-#familySchedulePanel {margin:1rem 0;padding:1rem;border:1px solid #d9deec;border-radius:16px;background:#fff;}
+#familySchedulePanel {margin:1rem 0;padding:1rem;border:1px solid #d9deec;border-radius:16px;background:#fff;min-width:0;}
+#familySchedulesView {min-width:0;}
 .family-schedule-controls {display:flex;flex-wrap:wrap;gap:12px;align-items:end;}
-.family-schedule-controls label {display:grid;gap:6px;min-width:140px;}
+.family-schedule-controls label {display:grid;gap:6px;min-width:0;flex:1 1 180px;max-width:100%;}
 .family-schedule-controls input,.family-schedule-controls select,.family-schedule-controls button {min-height:48px;font-size:16px;max-width:100%;}
+.family-schedule-controls input,.family-schedule-controls select {width:100%;box-sizing:border-box;min-width:0;}
+.family-schedule-day {font-size:1.1rem;margin:24px 0 4px;}
+.family-schedule-event summary {min-height:48px;display:flex;align-items:center;font-size:16px;cursor:pointer;}
+.family-schedule-event details p {font-size:.9rem;}
 .family-schedule-event {border-top:1px solid #e0e5ed;padding:12px 0;overflow-wrap:anywhere;}
 .family-schedule-event h3 {margin:0;font-size:1.1rem;}
 .family-schedule-event p {margin:8px 0 0;line-height:1.6;}
 #familySchedulePanel[data-freshness="stale"],#familySchedulePanel[data-freshness="updating"] {border-color:#b47c20;}
-.family-schedule-signage .app-topbar,.family-schedule-signage #homeView > :not(#familySchedulePanel),.family-schedule-signage .app-drawer,.family-schedule-signage .bottom-nav {display:none!important;}
+.family-schedule-signage .app-topbar,.family-schedule-signage #homeView,.family-schedule-signage .app-drawer,.family-schedule-signage .bottom-nav,.family-schedule-signage #familyScheduleBack {display:none!important;}
 .family-schedule-signage #familySchedulePanel {margin:0;font-size:20px;}
 .family-schedule-signage .app-shell {max-width:none;padding:12px;}
+@media(max-width:480px){#familySchedulePanel{padding:12px;margin:12px 0;}.family-schedule-controls{display:grid;grid-template-columns:minmax(0,1fr);}.family-schedule-controls label,.family-schedule-controls button{width:100%;}.family-schedule-event h3{font-size:1rem;}#familySchedulesView .view-header{flex-wrap:wrap;}}
