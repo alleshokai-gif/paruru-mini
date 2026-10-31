@@ -18,14 +18,20 @@ h1{margin:0;font-size:20px;line-height:25px}h1 span{font-size:15px;font-weight:7
 .d-track-label{position:absolute;color:#a9dff5;font-size:14px;line-height:20px}
 .d-train{position:absolute;width:54px;height:76px;border:0;padding:0;background:transparent;color:#fff;cursor:pointer;touch-action:manipulation;z-index:5}
 .d-train[aria-disabled=true]{cursor:default}.d-train:focus-visible{outline:3px solid #fff;outline-offset:5px;border-radius:16px}
-.d-reference{position:absolute;height:48px;padding:2px 5px;border:1px solid #58788e;border-radius:10px;background:#10283b;color:#e3eff7;cursor:pointer;touch-action:manipulation;z-index:5;font:700 15px/20px system-ui;text-align:center}
-.d-reference b,.d-reference small{display:block}.d-reference small{font-size:12px;font-weight:400;line-height:17px;color:#bad0df}
-.d-reference.d-selected{border:3px solid #2fe4a0}.d-reference.d-candidate{border:3px solid #d491f5}.d-reference:focus-visible{outline:2px solid white;outline-offset:2px}
+.d-reference{position:absolute;width:112px;height:56px;padding:0;border:0;border-radius:10px;background:transparent;color:#e3eff7;cursor:pointer;touch-action:manipulation;z-index:5;font:700 15px/18px system-ui;text-align:left}
+.d-reference:focus-visible{outline:2px solid white;outline-offset:3px}
+.d-ref-time,.d-ref-kind,.d-ref-status{position:absolute;left:49px;white-space:nowrap}
+.d-ref-time{top:1px;font-size:15px}.d-ref-kind{top:20px;font-size:12px;line-height:16px}.d-reference .d-ref-status{top:37px;font-size:10px;line-height:13px;font-weight:400;color:#bad0df}
 .d-glyph{position:absolute;left:3px;top:2px;width:48px;height:64px;border:3px solid #8ed6fa;border-radius:13px 13px 11px 11px;background:#fff7e8;box-shadow:0 2px 0 #426981;display:block}
 .d-glyph .window{position:absolute;left:4px;right:4px;top:4px;height:25px;border-radius:7px 7px 4px 4px;background:#284e66}
 .d-glyph .light{position:absolute;top:36px;width:7px;height:7px;border-radius:50%;background:#ffca64}.d-glyph .light.left{left:5px}.d-glyph .light.right{right:5px}
 .d-glyph .stripe{position:absolute;left:0;right:0;top:45px;height:5px;background:#71c6ee}.d-train.Express .stripe{background:#ffb45b}.d-train.RapidExpress .stripe{background:#e985c9}
 .d-glyph .bumper{position:absolute;left:6px;right:6px;bottom:3px;height:3px;background:#b8c9cd;border-radius:3px}
+.d-reference .d-glyph{left:8px;top:4px;width:32px;height:44px;border-width:2px;border-radius:9px}
+.d-reference .d-glyph .window{left:3px;right:3px;top:3px;height:17px;border-radius:5px}
+.d-reference .d-glyph .light{top:25px;width:5px;height:5px}.d-reference .d-glyph .light.left{left:3px}.d-reference .d-glyph .light.right{right:3px}
+.d-reference .d-glyph .stripe{top:32px;height:3px}.d-reference .d-glyph .bumper{left:4px;right:4px;bottom:2px;height:2px}
+.d-reference.Express .stripe{background:#ffb45b}.d-reference.RapidExpress .stripe{background:#e985c9}
 .d-selected{z-index:7}.d-candidate{z-index:6}
 .d-selected .d-glyph{outline:6px solid #2fe4a0;outline-offset:3px}.d-candidate:not(.d-selected) .d-glyph{outline:4px solid #d491f5;outline-offset:3px}
 .d-train-kind{position:absolute;top:74px;left:-8px;width:70px;font-size:14px;line-height:20px;text-align:center;white-space:nowrap;text-shadow:0 1px 3px #091a2b}
