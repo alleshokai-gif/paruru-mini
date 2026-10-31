@@ -1,0 +1,9 @@
+# Family schedule periods
+
+The independent family page defaults to today through today+6 in Asia/Tokyo. The thirty-day option includes today through today+29; full-month mode includes historical dates and exposes the month picker. A supplied `scheduleMonth` deep link intentionally opens full-month mode. The old remembered month never overrides the default seven-day view.
+
+Window construction uses date keys and UTC calendar arithmetic after resolving today's Tokyo date, avoiding browser timezone/DST drift. Required monthly private snapshots are requested through the existing authenticated backend. A thirty-day window can span three months around February; no single-month assumption remains. Period/member/organization filters never invoke School GAS or AI. Successful current snapshots may be reused until expiry; reload explicitly re-reads them. Lock clears the private in-memory cache. Failed months are listed as unavailable, while no-source months are labelled as having no registered source; neither becomes a false empty/current result.
+
+The school canonical projection and club entries share the existing snapshot schema and read permissions. A visible school/club badge distinguishes activities. Elementary dismissal appears as an end time labelled 下校, not as the start of a school event. Stable event/source/revision references remain available for future detail/history management. No editing permission, new canonical write, login mechanism or public snapshot is introduced.
+
+Preserve the existing Home launch entry and other features. Acceptance requires the deployed page at 390px, both family scopes and organization filters, month/year boundary checks, a historical month, no horizontal overflow, and a return to Home. Physical Android acceptance must be stated separately from desktop browser viewport verification.

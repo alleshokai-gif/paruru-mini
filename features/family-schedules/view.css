@@ -9,6 +9,9 @@
 .family-schedule-event details p {font-size:.9rem;}
 .family-schedule-event {border-top:1px solid #e0e5ed;padding:12px 0;overflow-wrap:anywhere;}
 .family-schedule-event h3 {margin:0;font-size:1.1rem;}
+.family-schedule-kind {display:inline-block;font-size:.8rem;border-radius:6px;padding:2px 8px;background:#edf2fc;margin-bottom:6px;}
+.family-schedule-controls [hidden] {display:none;}
+#familySchedulePanel[data-freshness="unavailable"] {border-color:#b47c20;}
 .family-schedule-event p {margin:8px 0 0;line-height:1.6;}
 #familySchedulePanel[data-freshness="stale"],#familySchedulePanel[data-freshness="updating"] {border-color:#b47c20;}
 .family-schedule-signage .app-topbar,.family-schedule-signage #homeView,.family-schedule-signage .app-drawer,.family-schedule-signage .bottom-nav,.family-schedule-signage #familyScheduleBack {display:none!important;}

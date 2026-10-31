@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261031-family-schedules-page-v1");
-// Release: v20261031-family-schedules-page-v1
+importScripts("./build.js?v=v20261031-family-period-v2");
+// Release: v20261031-family-period-v2
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
