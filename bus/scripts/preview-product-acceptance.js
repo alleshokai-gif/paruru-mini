@@ -212,7 +212,7 @@ globalThis.PALURU_BUS_HOME_ROUTE_ENABLED=true;
 globalThis.PALURU_BUS_POSITION_SHADOW_ENABLED=${scenario !== 'position-off'};
 globalThis.PALURU_BUS_HOME_ROUTE_SOURCE={
  getCommuteTrains:async()=>{const q=new URLSearchParams();const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/commute-trains?'+q);if(!r.ok)throw Error('TRAIN_UNAVAILABLE');return r.json()},
- evaluateOnboard:async({trainId,stationId})=>{const q=new URLSearchParams({trainId,stationId});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/commute-onboard?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()},
+ evaluateOnboard:async({trainId,stationId,target='home'})=>{const q=new URLSearchParams({trainId,stationId,target});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/commute-onboard?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()},
  getTrainChoices:async(journeyId,page=0)=>{const q=new URLSearchParams({journeyId,page:String(page)});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/trains?'+q);if(!r.ok)throw Error('TRAIN_UNAVAILABLE');return r.json()},
  evaluate:async({journeyId,trainId,page=0})=>{const q=new URLSearchParams({journeyId,trainId,page:String(page),case:${JSON.stringify(scenario)}});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/home-route?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()},
  evaluateCommute:async(mode)=>{const q=new URLSearchParams({mode});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/commute-route?'+q);if(!r.ok)throw Error('COMMUTE_UNAVAILABLE');return r.json()}
@@ -229,7 +229,8 @@ const server = createServer(async (req, res) => {
       : scenarioIds.has(url.searchParams.get('case')) ? url.searchParams.get('case') : 'live';
     if (url.pathname === '/preview/commute-trains' || url.pathname === '/preview/commute-onboard') {
       return responseJson(res, await commutePreview('hibiya', previewNow(url), url.pathname.endsWith('-trains')
-        ? 'choices' : { trainId: url.searchParams.get('trainId'), stationId: url.searchParams.get('stationId') }));
+        ? 'choices' : { trainId: url.searchParams.get('trainId'), stationId: url.searchParams.get('stationId'),
+          target: url.searchParams.get('target') || 'home' }));
     }
     if (url.pathname === '/preview/commute-route') {
       const mode = url.searchParams.get('mode');

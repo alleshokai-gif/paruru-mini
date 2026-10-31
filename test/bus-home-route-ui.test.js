@@ -15,7 +15,8 @@ const elementsWithClass = (node, name) => [...(node.className === name ? [node] 
   ...(node.children || []).flatMap(child => elementsWithClass(child, name))];
 const collapsedText = node => node.tagName === 'details' ? renderedText(node.children[0])
   : [node.textContent || '', ...(node.children || []).map(collapsedText)].join(' ');
-async function savedHibiyaComparison() {
+async function savedHibiyaComparison({ trainId = '2026-09-30:metro:weekday:odpt.Train:TokyoMetro.Chiyoda.A705S',
+  stationId = 'YoyogiUehara' } = {}) {
   const { createCommuteOnboardService } = await import('../bus/rail/commute-onboard.js');
   const { getFutureBuses } = await import('../bus/journey/future-bus.js');
   const { P0_QUERIES } = await import('../bus/config/queries.js');
@@ -27,7 +28,7 @@ async function savedHibiyaComparison() {
     loadBuses: ({ boardingAt }) => getFutureBuses({ index,
       queries: P0_QUERIES.filter(q => q.id === 'noborito_to_home'),
       providerContext: KAWASAKI_CONTEXT, now, boardingAt, limit: 100 }).results.flatMap(g => g.arrivals)
-  }).evaluate({ trainId: '2026-09-30:metro:weekday:odpt.Train:TokyoMetro.Chiyoda.A705S', stationId: 'YoyogiUehara' });
+  }).evaluate({ trainId, stationId });
 }
 
 test('saved same-bus comparison emphasizes home arrivals and zero home difference; details stay collapsed', async () => {
@@ -36,7 +37,8 @@ test('saved same-bus comparison emphasizes home arrivals and zero home differenc
   const cards = elementsWithClass(mount, 'bus-home-route-rail-alternative');
   assert.match(collapsedText(cards[0]), /急行.*08:29発.*08:59.*±0分.*08:51発/s);
   assert.match(collapsedText(cards[1]), /快速急行.*08:24発.*08:59.*±0分.*08:51発.*同じバス/s);
-  assert.doesNotMatch(collapsedText(cards[1]), /−6分|最速|徒歩|待ち|次便|のりば|08:16/);
+  assert.doesNotMatch(collapsedText(cards[1]), /−6分|最速|徒歩8分|待ち|次便|のりば|08:16/);
+  assert.match(collapsedText(cards[1]), /徒歩後6分/);
   assert.match(renderedText(cards[1]), /08:16着 → 08:24発.*徒歩8分.*待ち6分/s);
   assert.ok(cards.some(card => /快速急行なし/.test(collapsedText(card))));
   assert.ok(cards.some(card => /\+10分/.test(collapsedText(card))));
@@ -56,6 +58,56 @@ test('unknown home arrival never gains a fabricated home time or a home differen
   assert.equal(elementsWithClass(mount, 'bus-home-route-choice-difference').length, 0);
 });
 
+test('three goals use station versus home arrivals; railway-only ranking ignores every bus field', async () => {
+  const response = await savedHibiyaComparison(), before = JSON.stringify(response);
+  const home = ui.projectOnboardComparison(response, 'home'), nob = ui.projectOnboardComparison(response, 'noborito');
+  const rapid = view => view.entries.find(e => e.route.transfers === 1 && e.route.legs[0].departure === 504);
+  const express = view => view.entries.find(e => e.route.transfers === 1 && e.route.legs[0].departure === 509);
+  assert.equal(rapid(home).arrivalAt, express(home).arrivalAt);
+  assert.equal(rapid(home).differenceMinutes, 0); assert.equal(rapid(home).sameBus, true);
+  assert.equal(rapid(nob).differenceMinutes, -6); assert.equal(express(nob).differenceMinutes, 0);
+  assert.ok(nob.entries.some(e => e.route.transfers === 2 && e.route.legs.some(l => l.station === 'SeijogakuenMae')));
+  for (const view of [home, nob]) {
+    assert.ok(view.representatives.length >= 3 && view.representatives.length <= 5);
+    assert.equal(view.representatives.length + view.remaining.length, view.entries.length);
+    assert.equal(view.entries.length, response.results[0].routes.length);
+    assert.ok(view.entries.some(e => e.differenceMinutes > 0));
+    assert.ok(view.representatives.some(e => !e.route.usesRapidExpress));
+    assert.ok(view.representatives.some(e => e.route.transfers === 2));
+  }
+  const doc = fakeDocument(), mount = doc.createElement('div'); ui.renderOnboard(doc, mount, response, 'noborito');
+  assert.match(collapsedText(mount), /登戸着.*08:37.*−6分/s);
+  assert.doesNotMatch(renderedText(mount), /神木本町|🚌|徒歩|バス接続注意/);
+  const edited = structuredClone(response);
+  for (const result of edited.results) for (const route of result.routes) route.buses = [];
+  const noBuses = ui.projectOnboardComparison(edited, 'noborito');
+  assert.deepEqual(noBuses.representatives.map(e => [e.key, e.differenceMinutes]), nob.representatives.map(e => [e.key, e.differenceMinutes]));
+  assert.equal(JSON.stringify(response), before);
+});
+
+test('Seijo decision keeps stay and later transfers while excluding earlier stations; Yuen remains honestly empty', async () => {
+  const response = await savedHibiyaComparison({ trainId: '2026-09-30:odakyu:weekday:odakyu-81ff0062', stationId: 'SeijogakuenMae' });
+  const nob = ui.projectOnboardComparison(response, 'noborito');
+  assert.equal(nob.reference.route.transfers, 0); assert.equal(nob.reference.route.arrival, 522);
+  assert.ok(nob.entries.some(e => e.route.legs.some(l => l.departure === 519) && e.differenceMinutes === 1));
+  assert.ok(nob.entries.every(e => e.route.legs.every(l => l.station !== 'YoyogiUehara')));
+  assert.ok(nob.representatives.some(e => e.route.transfers === 0));
+  const yuen = ui.projectOnboardComparison(response, 'mukougaoka');
+  assert.equal(yuen.entries.length, 0); assert.equal(yuen.reference, null);
+  assert.match(yuen.missing.join(''), /向ヶ丘遊園.*着時刻未収録/);
+  const doc = fakeDocument(), mount = doc.createElement('div'); ui.renderOnboard(doc, mount, response, 'mukougaoka');
+  assert.doesNotMatch(renderedText(mount), /神木本町|🚌|±0分|08:5/);
+});
+
+test('semantic duplicate paths render once without deleting any computed path', async () => {
+  const response = await savedHibiyaComparison();
+  const original = ui.projectOnboardComparison(response, 'noborito');
+  response.results[0].routes.push({ ...response.results[0].routes[0], id: 'alias-of-same-path' });
+  const view = ui.projectOnboardComparison(response, 'noborito');
+  assert.equal(view.entries.length, original.entries.length);
+  assert.equal(view.totalCalculated, original.totalCalculated + 1);
+});
+
 test('onboard renders saved Hibiya routes, uncertain connections and missing Yuen without pretending through service', async () => {
   const { createCommuteOnboardService } = await import('../bus/rail/commute-onboard.js');
   const artifact = JSON.parse(fs.readFileSync(require.resolve('../bus/release-static/kazu-commute-static.json')));
@@ -66,7 +118,7 @@ test('onboard renders saved Hibiya routes, uncertain connections and missing Yue
   const text = renderedText(mount);
   assert.match(text, /08:16着 → 08:24発/); assert.match(text, /08:37着/);
   assert.match(text, /快速急行なし/); assert.match(text, /ギリギリ/);
-  assert.match(text, /着時刻未取得・比較保留/); assert.match(text, /直通継続は未照合/);
+  assert.match(text, /着時刻未収録・比較保留/); assert.match(text, /直通継続は未照合/);
   assert.doesNotMatch(text, /そのまま乗車/);
   assert.ok(response.results[0].routes.length > 100);
   assert.ok(mount.children[1].children.length < 10); // Full alternatives are not laid out as hundreds of cards.

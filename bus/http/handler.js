@@ -25,8 +25,9 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
       const onboardKeys = [...url.searchParams.keys()];
       const onboardChoices = url.pathname === '/api/bus/commute-trains' && !url.search;
       const onboardEvaluation = url.pathname === '/api/bus/commute-onboard'
-        && onboardKeys.length === 2 && new Set(onboardKeys).size === 2
-        && onboardKeys.every(key => ['trainId', 'stationId'].includes(key))
+        && [2, 3].includes(onboardKeys.length) && new Set(onboardKeys).size === onboardKeys.length
+        && onboardKeys.every(key => ['trainId', 'stationId', 'target'].includes(key))
+        && (!url.searchParams.has('target') || ['home', 'noborito', 'mukougaoka'].includes(url.searchParams.get('target')))
         && /^[a-zA-Z0-9:._-]{1,180}$/.test(url.searchParams.get('trainId') || '')
         && ['YoyogiUehara','ShimoKitazawa','Kyodo','SeijogakuenMae','Noborito'].includes(url.searchParams.get('stationId'));
       const commuteQuery = commuteRoutePath && [...url.searchParams.keys()].length === 1
@@ -55,7 +56,8 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
           if (typeof kazuRouteServiceFactory !== 'function') return reply({ error: 'BUS_NOT_FOUND' }, 404);
           const service = kazuRouteServiceFactory(env);
           return reply(onboardChoices ? await service.getTrainChoices()
-            : await service.evaluateOnboard({ trainId: url.searchParams.get('trainId'), stationId: url.searchParams.get('stationId') }));
+            : await service.evaluateOnboard({ trainId: url.searchParams.get('trainId'), stationId: url.searchParams.get('stationId'),
+              target: url.searchParams.get('target') || 'home' }));
         }
         if (commuteQuery) {
           if (typeof kazuRouteServiceFactory !== 'function')

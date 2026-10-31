@@ -83,5 +83,31 @@ test('onboard read-only HTTP validates query keys and preserves the old commute 
   assert.equal((await call(`commute-onboard?trainId=${metro}&stationId=YoyogiUehara`)).status, 200);
   assert.equal((await call(`commute-onboard?trainId=${metro}&stationId=Hibiya`)).status, 404);
   assert.equal((await call(`commute-onboard?trainId=${metro}&stationId=Noborito&stationId=Kyodo`)).status, 404);
+  for (const target of ['home', 'noborito', 'mukougaoka']) {
+    const response = await call(`commute-onboard?trainId=${metro}&stationId=YoyogiUehara&target=${target}`);
+    assert.equal(response.status, 200); assert.equal((await response.json()).target, target);
+  }
+  assert.equal((await call(`commute-onboard?trainId=${metro}&stationId=YoyogiUehara&target=unknown`)).status, 404);
+  assert.equal((await call(`commute-onboard?trainId=${metro}&stationId=YoyogiUehara&target=home&target=noborito`)).status, 404);
   assert.equal((await call('commute-route?mode=hibiya')).status, 200);
+});
+
+test('station goals do not load buses and retain all downstream railway paths', async () => {
+  let calls = 0;
+  const service = serviceAt('08:00', async () => { calls++; throw Error('BUS_MUST_NOT_BE_REQUIRED'); });
+  for (const target of ['noborito', 'mukougaoka']) {
+    const result = await service.evaluate({ trainId: metro, stationId: 'YoyogiUehara', target });
+    assert.equal(result.target, target); assert.equal(calls, 0);
+    assert.ok(result.results[0].routes.some(r => r.transfers === 2 && r.legs.some(l => l.station === 'SeijogakuenMae')));
+    assert.ok(result.results[0].routes.every(r => r.buses.length === 0));
+  }
+  await assert.rejects(service.evaluate({ trainId: metro, stationId: 'YoyogiUehara', target: 'other' }));
+});
+
+test('changing goals rechecks the operation day and passed decision station at the current clock', async () => {
+  let now = at('08:20');
+  const service = createCommuteOnboardService({ artifact, clock: () => now, loadBuses: load });
+  await service.evaluate({ trainId: local, stationId: 'SeijogakuenMae', target: 'home' });
+  now = at('08:36');
+  await assert.rejects(service.evaluate({ trainId: local, stationId: 'SeijogakuenMae', target: 'noborito' }));
 });

@@ -95,7 +95,8 @@ export function createCommuteOnboardService({ artifact, loadBuses, clock = () =>
         .map(t => describe(t, c)), rejectedTrips: rejected.length,
         coverage: { shinjuku: false, mukougaoka: false, throughIdentity: false } };
     },
-    async evaluate({ trainId, stationId }) {
+    async evaluate({ trainId, stationId, target = 'home' }) {
+      if (!['home', 'noborito', 'mukougaoka'].includes(target)) throw Error('COMMUTE_TARGET_INVALID');
       const c = context(), selected = available(c).find(t => `${c.serviceDate}:${t.id}` === trainId);
       const station = selected && decisionStations(selected, c.minute).find(s => s.id === stationId);
       if (!station) throw Error('COMMUTE_DECISION_STATION_INVALID_OR_PASSED');
@@ -120,7 +121,7 @@ export function createCommuteOnboardService({ artifact, loadBuses, clock = () =>
         return { destination, name: COMMUTE_STATIONS[destination], status: plan.status,
           baselineArrival: baseline, referenceRouteId: reference?.id ?? null, routes };
       });
-      for (const result of results) {
+      for (const result of target === 'home' ? results : []) {
         if (!result.routes.length) continue;
         const terminal = result.destination === 'Noborito' ? 'noborito' : 'mukougaoka';
         const earliest = Math.min(...result.routes.map(r => r.arrivalAt));
@@ -156,7 +157,7 @@ export function createCommuteOnboardService({ artifact, loadBuses, clock = () =>
             ? Math.round((route.buses[0].homeArrivalAt - stay.buses[0].homeArrivalAt) / 60) : null;
         }
       }
-      return { ...c, selectedTrain: describe(selected, c), decisionStation: station, results,
+      return { ...c, target, selectedTrain: describe(selected, c), decisionStation: station, results,
         coverage: { shinjuku: false, mukougaoka: false, throughIdentity: false } };
     }
   });

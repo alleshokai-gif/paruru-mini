@@ -10,9 +10,9 @@ globalThis.PALURU_BUS_HOME_ROUTE_SOURCE = Object.freeze({
       if (!response.ok) throw Error('BUS_COMMUTE_TRAINS_UNAVAILABLE');
       return response.json();
     },
-    async evaluateOnboard({ trainId, stationId }) {
+    async evaluateOnboard({ trainId, stationId, target = 'home' }) {
       const url = new URL(globalThis.PALURU_BUS_API_URL); url.pathname = '/api/bus/commute-onboard';
-      url.search = new URLSearchParams({ trainId, stationId });
+      url.search = new URLSearchParams({ trainId, stationId, target });
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) throw Error('BUS_COMMUTE_ONBOARD_UNAVAILABLE');
       return response.json();
