@@ -30,6 +30,8 @@ function event(options) {
     getStartTime: () => new Date(value.start),
     getEndTime: () => new Date(value.end),
     isAllDayEvent: () => value.allDay === true,
+    getAllDayStartDate: () => new Date(value.allDayStart || value.start),
+    getAllDayEndDate: () => new Date(value.allDayEnd || value.end),
     getId: () => value.id || '',
     getVisibility: () => value.visibility || 'DEFAULT',
     isCancelled: () => value.cancelled === true,
@@ -271,6 +273,13 @@ test('notification and Home Agent wrappers preserve legacy shapes', () => {
 });
 
 let failures = 0;
+test('LINE all-day dates do not carry yesterday into tomorrow across calendar timezones', () => {
+  const result = callRead({period:'tomorrow', scope:'family', actor, audience:'line_group', now:'2026-07-18T12:00:00+09:00'}, [
+    event({title:'（り）学校', id:'yesterday-end', allDay:true, start:'2026-07-18T09:00:00+09:00', end:'2026-07-19T09:00:00+09:00', allDayStart:'2026-07-18T00:00:00+09:00', allDayEnd:'2026-07-19T00:00:00+09:00'}),
+    event({title:'（り）学校', id:'tomorrow', allDay:true, start:'2026-07-19T09:00:00+09:00', end:'2026-07-20T09:00:00+09:00', allDayStart:'2026-07-19T00:00:00+09:00', allDayEnd:'2026-07-20T00:00:00+09:00'})
+  ]);
+  assert(result.data.events.length === 1 && result.data.events[0].startAt === '2026-07-19', 'wrong all-day date');
+});
 test('LINE audience projects safe categories and excludes private, medical and unclassified events', () => {
   const base = {start: '2026-07-18T13:00:00+09:00', end: '2026-07-18T14:00:00+09:00'};
   const result = callRead({period:'today', scope:'family', actor, audience:'line_group', now:'2026-07-18T12:00:00+09:00'}, [
