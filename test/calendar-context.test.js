@@ -31,6 +31,7 @@ function event(options) {
     getEndTime: () => new Date(value.end),
     isAllDayEvent: () => value.allDay === true,
     getId: () => value.id || '',
+    getVisibility: () => value.visibility || 'DEFAULT',
     isCancelled: () => value.cancelled === true,
     getDescription: () => { throw new Error('description must not be read'); },
     getLocation: () => { throw new Error('location must not be read'); },
@@ -66,7 +67,7 @@ const context = {
   CalendarApp: { getCalendarById: () => null },
 };
 vm.createContext(context);
-['Code.js', 'CalendarReadService.js', 'InternalCalendarApi.js', 'InternalWeatherApi.js'].forEach((name) => {
+['HomeMemberPolicy.js', 'Code.js', 'CalendarReadService.js', 'InternalCalendarApi.js', 'InternalWeatherApi.js'].forEach((name) => {
   new vm.Script(fs.readFileSync(path.join(gas, name), 'utf8'), { filename: name }).runInContext(context);
 });
 vm.runInContext('this.CalendarReadServiceTest = CalendarReadService', context);
@@ -270,6 +271,26 @@ test('notification and Home Agent wrappers preserve legacy shapes', () => {
 });
 
 let failures = 0;
+test('LINE audience projects safe categories and excludes private, medical and unclassified events', () => {
+  const base = {start: '2026-07-18T13:00:00+09:00', end: '2026-07-18T14:00:00+09:00'};
+  const result = callRead({period:'today', scope:'family', actor, audience:'line_group', now:'2026-07-18T12:00:00+09:00'}, [
+    event({...base, title:'（り）学校', id:'school'}),
+    event({...base, title:'（父）仕事', visibility:'PRIVATE', id:'private'}),
+    event({...base, title:'（父）仕事の健康診察', id:'medical'}),
+    event({...base, title:'（母）未分類の秘密', id:'unknown'}),
+  ]);
+  assert(result.data.audience === 'line_group' && result.data.events.length === 1, 'unsafe event disclosed');
+  const row = result.data.events[0];
+  assert(row.memberId === 'youngest_daughter' && row.category === 'school', 'wrong member/category');
+  assert(!('title' in row) && !('rawTitle' in row) && !('personLabel' in row), 'title escaped to LINE DTO');
+});
+test('LINE target filter does not impersonate the target member', () => {
+  const input = context.validateInternalCalendarInput_({action:'calendarContextInternal', period:'tomorrow', scope:'family', actor:internalActor, audience:'line_group', targetMemberId:'youngest_daughter'});
+  assert(input.actor.memberUserId === 'father' && input.targetMemberId === 'youngest_daughter', 'actor was replaced');
+  let rejected = false;
+  try { context.validateInternalCalendarInput_({action:'calendarContextInternal', period:'today', scope:'mine', actor:internalActor, audience:'line_group', targetMemberId:'youngest_daughter'}); } catch(e) { rejected = e.code === 'UNAUTHORIZED'; }
+  assert(rejected, 'mine query crossed actor boundary');
+});
 for (const item of tests) {
   try { item.fn(); console.log('PASS ' + item.name); }
   catch (error) { failures += 1; console.error('FAIL ' + item.name + ': ' + error.message); }

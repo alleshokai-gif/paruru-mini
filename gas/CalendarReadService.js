@@ -34,6 +34,10 @@ const CalendarReadService = (function() {
 
     const filtered = deduplicateOccurrences_(normalized.filter(function(event) {
       if (scope === 'mine' && event.memberKey !== actorKey) return false;
+      if (input.audience === 'line_group') {
+        if (input.targetMemberId && event.memberKey !== input.targetMemberId) return false;
+        if (!projectLineCalendarEvent_(event)) return false;
+      }
       if (event.allDay) return event.end.getTime() > range.queryFrom.getTime();
       return event.end.getTime() > range.from.getTime();
     })).sort(compareEvents_);
@@ -41,10 +45,11 @@ const CalendarReadService = (function() {
     const returned = filtered.slice(0, MAX_CONTEXT_EVENTS);
     const truncated = totalEvents > returned.length;
     if (truncated) warnings.push('events_truncated');
-    const events = returned.map(toPublicEvent_);
+    const events = returned.map(input.audience === 'line_group' ? projectLineCalendarEvent_ : toPublicEvent_);
     return {
       data: {
         status: 'current', period: period, scope: scope,
+        audience: input.audience === 'line_group' ? 'line_group' : 'authenticated_member',
         from: formatDateTime_(range.from), to: formatDateTime_(range.to),
         events: events,
         summary: {
@@ -101,6 +106,7 @@ const CalendarReadService = (function() {
       memberKey: String(member.memberKey || 'unknown'),
       personLabel: sanitizePersonLabel_(member.memberLabel),
       matched: member.matched === true,
+      visibility: typeof event.getVisibility === 'function' ? String(event.getVisibility()).toLowerCase() : 'unknown',
       start: new Date(start.getTime()),
       end: new Date(end.getTime()),
       allDay: Boolean(event.isAllDayEvent && event.isAllDayEvent()),
