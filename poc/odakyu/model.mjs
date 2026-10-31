@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { normalize } from './core.mjs';
 import { readSnapshot, latest } from './storage.mjs';
 import { reconstructTrips } from './reconstruct.mjs';
-import { verifyRecordedChecks } from './verification.mjs';
+import { verifyRecordedChecks,verifyTimetableReview } from './verification.mjs';
 import { demoModel, connectionDemoModel } from './demo.mjs';
 import { matchTCode, REVIEW_SCOPE } from './tcode.mjs';
 import { datasetModel } from './dataset.mjs';
@@ -28,6 +28,8 @@ export async function loadModel(snapshot, mode = 'real') {
   const approaches=savedApproaches(provider,metro,stations.rows);
   model.stations.push(...approaches.stations);
   model.trips.push(...approaches.trips);
+  const review=JSON.parse(await readFile(new URL('./timetable-review.json',root),'utf8'));
+  model.timetableReview=verifyTimetableReview(model.trips,review);
   model.approachCoverage=approaches.report;
   // Read-only reuse of the existing bounded national-holiday calendar. This
   // chooses a saved calendar, not proof that the saved timetable is current.

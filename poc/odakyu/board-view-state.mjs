@@ -1,6 +1,25 @@
 // Drawing state only: never changes routes, schedule evidence or BUS results.
 // Selection role and position evidence are independent dimensions.
-import {DOWNBOARD as B} from './downbound-board.mjs';
+import {DOWNBOARD as B,DOWN_STATIONS} from './downbound-board.mjs';
+// Reserve bounded annotation space before selection. Expanding a balloon must
+// never change the screen coordinates of a scheduled train or its station.
+export function boardVerticalLayout(){
+  const header=108,top=210,space={YoyogiUehara:720,SeijogakuenMae:600};
+  let cursor=top;
+  const rows=DOWN_STATIONS.map(station=>{
+    const row={...station,top:cursor,body:cursor+header};
+    row.end=row.body+(space[row.id]??180);cursor=row.end;return row;
+  });
+  function y(value){
+    if(value<=B.uehara)return 70+(rows[0].body+30-70)*(value-36)/(B.uehara-36);
+    for(let i=1;i<rows.length;i++){
+      const a=rows[i-1],b=rows[i];
+      if(value<=b.y)return a.body+30+(b.body-a.body)*(value-a.y)/(b.y-a.y);
+    }
+    return rows.at(-1).body+30+(value-B.yuen)*.7;
+  }
+  return {rows,height:cursor+100,y};
+}
 // Phone drawing coordinates only. The canonical wiring and track inference are
 // unchanged. Every on-track glyph uses this same geometry as the drawn rails.
 export function boardGeometry(width){

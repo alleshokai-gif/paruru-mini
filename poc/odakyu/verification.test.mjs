@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyRecordedChecks } from './verification.mjs';
+import { verifyRecordedChecks,verifyTimetableReview } from './verification.mjs';
 const trips = [{ id: 'provider:Weekday:odakyu-fixture', sourceTrainId: 'odakyu-fixture', calendar: 'Weekday', stops: [
   { station: 'YoyogiUehara', stop: true, departure: 600 }, { station: 'Noborito', stop: true, arrival: 630 } ] }];
 const record = () => ({ schemaVersion: 1, method: 'public_ui_observation', checkedAt: '2026-10-27T09:00:00+09:00', checks: [{
@@ -36,4 +36,16 @@ test('取得URLの発時刻と照合値、平日指定と日付が矛盾した�
   assert.throws(() => verifyRecordedChecks(trips, wrongTime));
   const sunday = record(); sunday.checks[0].serviceDate = '2026-10-25'; sunday.checks[0].sourceUrl = sunday.checks[0].sourceUrl.replace('2026-10-27', '2026-10-25');
   assert.throws(() => verifyRecordedChecks(trips, sunday));
+});
+
+test('代表便の現行照合は全件一致や新ID結合に昇格せず、保存データ変更で失効する',async()=>{
+  const {loadModel}=await import('./model.mjs'),{listSnapshots}=await import('./storage.mjs');
+  const {readFile}=await import('node:fs/promises');
+  const model=await loadModel((await listSnapshots())[0]);
+  const review=JSON.parse(await readFile(new URL('./timetable-review.json',import.meta.url),'utf8'));
+  const result=verifyTimetableReview(model.trips,review);
+  assert.equal(result.status,'partial');assert.equal(result.currentForAllTrips,false);
+  assert.equal(result.identityMappingConfirmed,false);assert.equal(result.timetableImported,false);
+  assert.deepEqual(result.calendars,{Weekday:{matched:3,mismatched:0,total:369,notChecked:366},SaturdayHoliday:{matched:3,mismatched:0,total:326,notChecked:323}});
+  assert.equal(verifyTimetableReview(model.trips.slice(1),review).status,'saved_data_changed');
 });

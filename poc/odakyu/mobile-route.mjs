@@ -2,10 +2,11 @@ import {TYPES,clock} from './core.mjs';
 import {DOWNBOARD as B,DOWN_STATIONS,trainMarker,visibleTrains,layoutMarkers} from './downbound-board.mjs';
 import {DESTINATIONS} from './comparisons.mjs';
 import {busConnections,busClock} from './home-bus.mjs';
-import {buildBoardViewState,boardGeometry,displayRailX} from './board-view-state.mjs';
+import {buildBoardViewState,boardGeometry,boardVerticalLayout,displayRailX} from './board-view-state.mjs';
 // Display projection only. Schedule anchors, track evidence, routing and BUS
 // calculations remain in their existing modules. No switch geometry is drawn.
-const ROW=350, OWN_ROW=260, HEADER=108, TOP=210, GAP=160,REFERENCE_GAP=90;
+const OWN_ROW=260, TOP=210,REFERENCE_GAP=90;
+const TRAIN_HIT_HEIGHT=76,REFERENCE_HIT_HEIGHT=48;
 const dep=t=>t.stops[0].departure??t.stops[0].arrival;
 const kind=t=>t.type==='Local'?'各停':t.type==='RapidExpress'?'快速急行':TYPES[t.type]||t.type;
 const station=id=>id==='Chiyoda.Hibiya'?'日比谷':id==='Shinjuku'?'新宿':DOWN_STATIONS.find(s=>s.id===id)?.name||id;
@@ -41,7 +42,7 @@ function busLines(box,snapshot,arrivals,onlyYuen=false,sharedBuses=new Set(),com
  }
 }
 export function renderRouteMap(props){
- const {root,model,pool=[],selected,now,comparison={plans:[],routes:[],candidateIds:new Set()},activeRoute,comparisonRequested=false,originChoices=[],busSnapshot,onSelect,error,_heights=new Map(),_ownHeight=OWN_ROW,_measured=false}=props;
+ const {root,model,pool=[],selected,now,comparison={plans:[],routes:[],candidateIds:new Set()},activeRoute,comparisonRequested=false,originChoices=[],busSnapshot,onSelect,error,_ownHeight=OWN_ROW,_measured=false}=props;
  const restoreScroll=props._scrollTop??window.scrollY;
  const width=Math.max(B.width,root.clientWidth);
  const TRACK=boardGeometry(width);
@@ -57,27 +58,10 @@ export function renderRouteMap(props){
  const ownPoint=actual.find(m=>m.train.id===selected?.id),last=selected?.stops.at(-1);
  const ended=selected&&!ownPoint&&Number.isInteger(last?.arrival)&&now>last.arrival;
  const ownReference=ended?(selected.approach?.terminatesAtUehara?'終着済':'収録終'):selected&&now<dep(selected)?'発予定':'位置未取得';
- const sourceOwn=selected&&!ended&&(ownPoint?.y<B.uehara||selected.identityBasis==='station_departure'||now<=dep(selected)&&['Chiyoda.Hibiya','Shinjuku'].includes(selected.stops[0].station));
  const stationFor=y=>[...DOWN_STATIONS].reverse().find(s=>s.y<=y)||DOWN_STATIONS[0];
  const ownStation=ownPoint?stationFor(ownPoint.y).id:ended?last.station:selected?.stops[0].station;
- const compared=view.visible.find(e=>e.role==='compared');
- const comparedStation=compared?.position?stationFor(compared.position.y).id:compared?.reference?.station;
- const rows=DOWN_STATIONS.map(s=>({...s,groups:groups.filter(g=>g.station===s.id),hasOwn:selected&&s.id===(ownStation==='Chiyoda.Hibiya'||ownStation==='Shinjuku'?'YoyogiUehara':ownStation)}));
- let cursor=TOP+(sourceOwn?_ownHeight+120:0);
- for(const row of rows){
-  row.top=cursor;row.body=cursor+HEADER;
-  row.expanded=row.id===comparedStation;
-  const references=view.visible.filter(e=>displayRailX(e.position,TRACK)===null&&(e.position?stationFor(e.position.y).id:e.reference?.station||e.train.stops[0].station)===row.id).length;
-  row.end=row.body+Math.max(GAP,references*60+60,(row.hasOwn?_ownHeight:0)+(row.expanded?(_heights.get(view.focusedGroup.key)||ROW):row.groups.length?130:0));cursor=row.end;
- }
- const height=cursor+100;
- // Reserved annotation space belongs to each station. This monotone projection
- // preserves order and exact dwell anchors; no train's data coordinate changes.
- function sy(y){
-  if(y<=B.uehara)return sourceOwn?70+(rows[0].body+30-70)*(y-36)/(B.uehara-36):rows[0].body+30+(y-B.uehara)*1.1;
-  for(let i=1;i<rows.length;i++){const a=rows[i-1],b=rows[i];if(y<=b.y)return a.body+30+(b.body-a.body)*(y-a.y)/(b.y-a.y);}
-  return rows.at(-1).body+30+(y-B.yuen)*.7;
- }
+ const layout=boardVerticalLayout(),sy=layout.y,height=layout.height;
+ const rows=layout.rows.map(s=>({...s,hasOwn:selected&&s.id===(ownStation==='Chiyoda.Hibiya'||ownStation==='Shinjuku'?'YoyogiUehara':ownStation)}));
  const map=el('div',undefined,'d-board');map.style.height=`${height}px`;map.style.width=`${width}px`;root.style.height=`${height}px`;
  map.setAttribute('aria-label','小田急 下り2線の定刻運行盤');map.dataset.busFetchedAt=String(busSnapshot?.fetchedAt??'');map.dataset.comparisonGroups=String(groups.length);map.dataset.comparisonRequested=String(comparisonRequested);
  const draw=svg('svg',{viewBox:`0 0 ${width} ${height}`,class:'d-wiring',role:'img','aria-label':'急行線・緩行線の簡略表示。渡り線と進路は省略。登戸以南は下り1線。'},map);
@@ -156,7 +140,7 @@ export function renderRouteMap(props){
    el('b',`${clock(m.eventDeparture)} ${kind(m.train)}`,undefined,b);
    el('small',`${shortStation(m.eventStation)} · ${entity.placement==='track-unknown'?'線路未定':entity.placement==='departure-planned'?'発予定':entity.placement==='record-ended'?'収録終':'位置未取得'}`,undefined,b);
   }else if(own||chosen)el('b',kind(m.train),'d-train-kind',b);
-  const crowd=markers.filter(n=>n.isReference===m.isReference&&Math.abs(n.x-m.x)<35&&Math.abs(n.screenY-m.screenY)<40);
+  const crowd=markers.filter(n=>n.isReference===m.isReference&&Math.abs(n.x-m.x)<35&&Math.abs(n.screenY-m.screenY)<(m.isReference?REFERENCE_HIT_HEIGHT:TRAIN_HIT_HEIGHT));
   if(crowd.length>1){el('small',String(crowd.length),'d-stack-count',b);if(!own&&!chosen&&crowd.some(n=>n!==m&&n.screenY>m.screenY))b.classList.add('d-stacked');}
   b.onclick=e=>{
    if(!allowed)return;
@@ -177,7 +161,12 @@ export function renderRouteMap(props){
  for(const id of DESTINATIONS){
   const row=rows.find(s=>s.id===id),p=comparison.plans.find(p=>p.destination===id),base=p?.baseline?.arrival,other=comparisonRequested?activeRoute?.arrivals[id]:undefined;
   at(el('small',!selected?'電車をタップ':`${Number.isInteger(base)?'乗車 '+clock(base):'乗車 未取得'}${Number.isInteger(other)?' / 比較 '+clock(other)+' '+delta(activeRoute.savings[id]):''}`,'b-station-result',map),row.top+36,TRACK.calloutX);
-  if(selected&&!Number.isInteger(base)&&!Number.isInteger(other)){const ref=model.tCodeReferences?.find(r=>r.tripId===selected.id&&r.url),a=at(el('a','公式 ↗','d-official',map),row.top+64,12);a.href=ref?.url||'https://www.odakyu.jp';a.target='_blank';a.rel='noreferrer';}
+  if(selected&&!Number.isInteger(base)&&!Number.isInteger(other)){
+   const reviewed=model.timetableReview?.status==='partial'&&model.timetableReview.checks.find(r=>r.tripId===selected.id&&r.result==='matched');
+   const ref=model.tCodeReferences?.find(r=>r.tripId===selected.id&&r.url),a=at(el('a','公式 ↗','d-official',map),row.top+64,12);
+   a.href=reviewed?.sourceUrl||ref?.url||'https://www.odakyu.jp';a.target='_blank';a.rel='noreferrer';
+   a.title=reviewed?'代表便の現行画面照合先。保存日と参照日は別・永続ID照合ではない':'保存版の公式参照先';
+  }
  }
  root.replaceChildren(map);
  // Move callouts inside the free space, never the train. A side tail may move
@@ -194,12 +183,11 @@ export function renderRouteMap(props){
   }
   obstacles.push({x,y:box.offsetTop,w,h});
  }
- // Measure the actual wrapped text at this phone width. Add station space,
- // never shrink type or overlap a longer two-transfer/BUS balloon.
+ // Measure reference-label spacing only. The station/rail/position projection
+ // is fixed independently of these heights and all selection roles.
  if(!_measured){
-  const heights=new Map([...map.querySelectorAll('.b-comparison')].map(box=>[box.dataset.group,Math.max(ROW,box.offsetHeight+REFERENCE_GAP)]));
   const ownHeight=Math.max(OWN_ROW,(map.querySelector('.b-rider')?.offsetHeight||0)+REFERENCE_GAP);
-  if(ownHeight>OWN_ROW||[...heights.values()].some(h=>h>ROW))return renderRouteMap({...props,_heights:heights,_ownHeight:ownHeight,_measured:true,_scrollTop:restoreScroll});
+  if(ownHeight>OWN_ROW)return renderRouteMap({...props,_ownHeight:ownHeight,_measured:true,_scrollTop:restoreScroll});
  }
  if(window.scrollY!==restoreScroll)window.scrollTo({top:restoreScroll,behavior:'instant'});
 }
