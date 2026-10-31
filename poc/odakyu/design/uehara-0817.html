@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- Static composition only. Values are the user-specified acceptance scene.
+     Icons identify comparison options, not measured positions or proven tracks.
+     No scripts, timetable acquisition, route/BUS calculations or state switching. -->
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小田急運行盤・上原08:17の静的完成見本</title>
+<style>
+*{box-sizing:border-box}html{color-scheme:dark}body{margin:0;background:#091b2c;color:#f4f8fd;font-family:system-ui,'Yu Gothic',sans-serif}
+.scene{position:relative;width:390px;height:844px;margin:auto;overflow:hidden;background:#0b1d2f}
+header{height:82px;border-bottom:1px solid #284055;padding:15px 14px}
+h1{margin:0;font-size:21px;line-height:27px;letter-spacing:.02em}.clock{position:absolute;right:15px;top:15px;font-size:23px;font-weight:800;font-variant-numeric:tabular-nums}
+.preview{display:inline-block;margin-top:6px;color:#efc77a;font-size:12px;line-height:18px}.quality{position:absolute;right:15px;top:51px;font-size:11px;color:#9fb5c8}
+.wiring{position:absolute;top:82px;left:0;width:390px;height:762px}.rail{stroke:#84aec5;stroke-width:11;stroke-linecap:round;fill:none}
+.track-name{position:absolute;top:110px;color:#a3dbed;font-size:14px;font-weight:700;transform:translateX(-50%)}.express{left:171px}.local{left:284px}
+.station{position:absolute;left:8px;right:8px;border-radius:18px;background:transparent}
+.uehara{top:173px;height:532px}.station h2{margin:15px 13px;font-size:23px;line-height:30px;color:#eefbff}
+.noborito{top:722px;height:94px}.noborito h2{margin:10px 13px;font-size:21px}
+.station .bus-note{position:absolute;left:13px;top:48px;color:#c6e9df;font-size:17px;font-weight:750}
+.train{position:absolute;z-index:3}.train .face{width:52px;height:72px;border:3px solid #9dddff;border-radius:15px 15px 12px 12px;background:#fff5e5;position:relative;box-shadow:0 3px 0 #365b70}
+.face .window{position:absolute;left:5px;right:5px;top:5px;height:29px;border-radius:8px 8px 5px 5px;background:#2b526c}
+.face .light{position:absolute;top:41px;width:8px;height:8px;border-radius:50%;background:#ffcc69}.face .light.a{left:6px}.face .light.b{right:6px}
+.face .stripe{position:absolute;left:0;right:0;top:51px;height:6px;background:#72c6ed}.face .bumper{position:absolute;left:7px;right:7px;bottom:4px;height:3px;border-radius:3px;background:#c0cdd0}
+.rider{left:258px;top:239px}.rider .face{outline:7px solid #31e3a1;outline-offset:4px}
+.tag{position:absolute;top:-34px;width:100px;left:50%;transform:translateX(-50%);text-align:center;font-size:14px;font-weight:800;white-space:nowrap;color:#9bf9d4}
+.candidate{left:149px;top:452px}.candidate .face{width:44px;height:60px;outline:5px solid #d692f7;outline-offset:4px;border-radius:12px}
+.candidate .window{height:23px;left:4px;right:4px;top:4px}.candidate .light{top:33px;width:6px;height:6px}.candidate .stripe{top:42px;height:5px;background:#e78bc6}.candidate .bumper{bottom:3px;left:6px;right:6px}
+.candidate .tag{color:#dfb1ff;top:76px;width:80px;font-size:12px;line-height:18px}
+.bubble{position:absolute;z-index:2;border:3px solid;border-radius:19px;padding:12px 13px;line-height:1.45;box-shadow:0 3px 10px #07141f33}
+.bubble:after{content:'';position:absolute;width:15px;height:15px;background:inherit;border:inherit;border-width:3px 3px 0 0}
+.own{left:12px;top:254px;width:226px;background:#123d36;border-color:#31e3a1}
+.own:after{right:-10px;top:14px;transform:rotate(45deg)}
+.alternative{left:213px;top:452px;width:165px;background:#202d45;border-color:#d692f7}
+.alternative:after{left:-10px;top:17px;transform:rotate(-135deg)}
+.bubble h3{margin:0 0 4px;font-size:18px;line-height:25px}.own h3{color:#a3ffde}.alternative h3{color:#f0d5ff;font-size:17px;line-height:24px;white-space:nowrap}
+.service{font-size:15px;color:#d1e3ee}.arrival{margin-top:7px;font-size:22px;line-height:29px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.alternative .service{font-size:14px;white-space:nowrap}
+.arrival .label{font-size:15px;font-weight:600;margin-right:7px}
+.saving{margin-top:5px;font-size:32px;font-weight:850;line-height:40px;color:#e4b9ff;white-space:nowrap;letter-spacing:.01em}.certainty{margin-top:8px;color:#c4ccdc;font-size:12px;line-height:17px}
+.transfer-mark{position:absolute;left:209px;top:432px;color:#d692f7;font-size:28px;font-weight:700;line-height:28px}
+</style>
+<main class="scene" aria-label="上原08:17各停と08:24快速急行の静止構図見本">
+ <header><h1>小田急 運行盤</h1><span class="clock">08:17</span><span class="preview">構図見本</span><span class="quality">実位置・使用番線は未表示</span></header>
+ <svg class="wiring" viewBox="0 0 390 762" aria-hidden="true"><g fill="#123b4c"><rect x="8" y="91" width="374" height="532" rx="18"/><rect x="8" y="640" width="374" height="94" rx="18"/></g><path class="rail" d="M171 62V762M284 62V762"/></svg>
+ <span class="track-name express">急行線</span><span class="track-name local">緩行線</span>
+ <section class="station uehara"><h2>代々木上原</h2></section>
+ <div class="train rider" aria-label="乗車中の各停08:17発の記号。実位置ではない"><span class="tag">乗車中</span><div class="face"><i class="window"></i><i class="light a"></i><i class="light b"></i><i class="stripe"></i><i class="bumper"></i></div></div>
+ <section class="bubble own" aria-label="乗車便の吹き出し"><h3>このまま乗車</h3><div class="service">各停 08:17発</div><div class="arrival"><span class="label">登戸</span>08:42</div></section>
+ <span class="transfer-mark" aria-hidden="true">↙</span>
+ <div class="train candidate" aria-label="乗換先の快速急行08:24発の予定記号。現在位置ではない"><span class="tag">乗換先<br>発車予定</span><div class="face"><i class="window"></i><i class="light a"></i><i class="light b"></i><i class="stripe"></i><i class="bumper"></i></div></div>
+ <section class="bubble alternative" aria-label="上原で待つ候補の吹き出し"><h3>上原で乗換</h3><div class="service">快速急行 08:24発</div><div class="arrival"><span class="label">登戸</span>08:37</div><div class="saving">−5分</div><div class="certainty">発時刻基準・接続未確認</div></section>
+ <section class="station noborito"><h2>登戸</h2><span class="bus-note">同じ08:51バス</span></section>
+</main>
+</html>
