@@ -14,43 +14,99 @@
   const signed = value => value === 0 ? '±0分' : `${value > 0 ? '+' : '−'}${Math.abs(value)}分`;
   function renderOnboard(doc, mount, response) {
     mount.replaceChildren();
-    mount.append(node(doc, 'p', 'bus-home-route-quality',
-      `保存ダイヤ ${response.referenceDate || '適用日不明'}・現行未照合／列車は定刻。${response.selectedTrain.onwardIdentity === 'unknown' ? '上原の直通継続は未照合。' : ''}`));
+    const sourceDetails = node(doc, 'details', 'bus-home-route-source-detail', '');
+    sourceDetails.append(node(doc, 'summary', '', `保存ダイヤ ${response.referenceDate || '適用日不明'}・現行未照合`),
+      node(doc, 'p', 'bus-home-route-quality', `列車は定刻。${response.selectedTrain.onwardIdentity === 'unknown' ? '上原の直通継続は未照合。' : ''}`));
+    mount.append(sourceDetails);
     for (const result of response.results) {
-      const section = node(doc, 'section', 'bus-home-route-commute-card', '');
-      section.append(node(doc, 'h3', '', `${result.name}へ`));
-      if (result.busUnavailableSources?.length) section.append(node(doc, 'p', 'bus-home-route-quality', '一部のバス乗り場はデータ未取得'));
+      const section = node(doc, 'section', 'bus-home-route-onboard-group', '');
+      section.append(node(doc, 'h3', 'bus-home-route-onboard-heading', `${result.name}経由`));
       if (!result.routes.length) {
-        section.append(node(doc, 'p', '', '着時刻未取得・比較保留')); mount.append(section); continue;
+        section.append(node(doc, 'p', 'bus-home-route-quality', '着時刻未取得・比較保留')); mount.append(section); continue;
       }
       const reference = result.routes.find(r => r.id === result.referenceRouteId);
-      if (reference && reference.transfers > 0) section.append(node(doc, 'p', 'bus-home-route-quality',
-        `比較基準：${reference.legs.map(l => `${l.stationName} ${railClock(l.departure)} ${l.train.type}`).join(' → ')}・${railClock(reference.arrival)}着`));
+      const referenceHome = reference?.buses[0]?.homeArrivalAt;
+      const knownHome = route => Number.isFinite(route.buses[0]?.homeArrivalAt);
+      const conditional = route => route.connection === 'tight' || route.buses[0]?.connection === 'tight'
+        || route.buses[0]?.transferMode === 'rush';
       const renderRoute = route => {
-        const item = node(doc, 'div', 'bus-home-route-rail-alternative', '');
-        const title = route.transfers === 0 ? 'そのまま乗車' : route.legs.map(l => `${l.stationName}で${l.train.type}へ`).join(' → ');
-        item.append(node(doc, 'strong', '', `${title} · ${railClock(route.arrival)}着${Number.isFinite(route.differenceMinutes) ? `（${signed(route.differenceMinutes)}）` : ''}`));
-        for (const leg of route.legs) item.append(node(doc, 'p', 'bus-home-route-rail',
-          `${railClock(leg.alightTime)}着 → ${railClock(leg.departure)}発 ${leg.train.destination}行き／${leg.remaining ? '残り' : ''}${leg.connection.gapMinutes}分・${leg.connection.label}`));
-        if (!route.usesRapidExpress) item.append(node(doc, 'span', 'bus-home-route-quality', '快速急行なし'));
-        for (const [i, bus] of route.buses.entries()) item.append(node(doc, 'p', 'bus-home-route-bus',
-          `${i ? '次便 ' : ''}🚌 ${clock(bus.departureAt)}発 ${bus.routeLabel} ${bus.platform || ''}／徒歩${bus.walkMinutes}分＋待ち${bus.waitMinutes}分`
-          + (bus.transferMode === 'rush' ? '・急ぎの接続' : bus.connection === 'tight' ? '・余裕なし' : '')
-          + (i === 0 && route.sameBusAsStay && route.id !== result.referenceRouteId ? '・基準案と同じバス' : '')
-          + `／${bus.timingQuality === 'realtime_arrival' ? '到着予測' : bus.timingQuality === 'departure_delay_projection' ? '発車遅延から推定' : '定刻'}`
-          + (bus.homeArrivalAt === null ? '・神木本町着未取得' : `・神木本町${clock(bus.homeArrivalAt)}着`)));
-        if (Number.isFinite(route.homeDifferenceMinutes)) item.append(node(doc, 'p', 'bus-home-route-quality', `神木本町着の差 ${signed(route.homeDifferenceMinutes)}`));
-        if (!route.buses.length) item.append(node(doc, 'p', 'bus-home-route-quality', result.busStatus === 'unavailable' ? 'バス取得失敗・鉄道のみ比較' : '接続バス未取得'));
+        const item = node(doc, 'article', 'bus-home-route-rail-alternative', '');
+        const isReference = route.id === result.referenceRouteId, bus = route.buses[0];
+        const homeKnown = knownHome(route);
+        // Home differences are provided by the existing service; never substitute rail differences.
+        const differenceKnown = homeKnown && Number.isFinite(referenceHome) && Number.isFinite(route.homeDifferenceMinutes);
+        const header = node(doc, 'div', 'bus-home-route-choice-header', '');
+        header.append(node(doc, 'span', '', route.transfers === 0 ? 'このまま乗車'
+          : route.legs.map(l => `${l.stationName}で乗換`).join(' → ')));
+        if (isReference) header.append(node(doc, 'span', 'bus-home-route-choice-tag', '基準'));
+        item.append(header);
+        const trains = route.legs.length ? route.legs.map(l => ({ type: l.train.type, departure: railClock(l.departure) }))
+          : [{ type: response.selectedTrain.type, departure: response.selectedTrain.departure }];
+        for (const train of trains) {
+          const trainLine = node(doc, 'div', 'bus-home-route-choice-train', '');
+          trainLine.append(node(doc, 'strong', '', train.type),
+            node(doc, 'strong', '', train.departure ? `${train.departure}発` : '発時刻未取得'));
+          item.append(trainLine);
+        }
+        const home = node(doc, 'div', 'bus-home-route-choice-home', '');
+        const time = node(doc, 'div', '', '');
+        time.append(node(doc, 'span', 'bus-home-route-choice-home-label', '神木本町着'),
+          node(doc, 'strong', `bus-home-route-choice-home-time${homeKnown ? '' : ' is-unknown'}`,
+            homeKnown ? clock(bus.homeArrivalAt) : '着時刻未取得'));
+        home.append(time);
+        if (differenceKnown) {
+          const difference = node(doc, 'div', `bus-home-route-choice-difference${route.homeDifferenceMinutes < 0 ? ' is-earlier' : ''}`, '');
+          difference.append(node(doc, 'span', '', '基準との差'), node(doc, 'strong', '', signed(route.homeDifferenceMinutes)));
+          home.append(difference);
+        }
+        item.append(home);
+        const busLine = node(doc, 'div', 'bus-home-route-choice-bus', '');
+        busLine.append(node(doc, 'span', '', bus ? `🚌 ${clock(bus.departureAt)}発` : '🚌 未取得'));
+        if (route.sameBusAsStay && !isReference) busLine.append(node(doc, 'span', 'bus-home-route-choice-tag', '同じバス'));
+        item.append(busLine);
+        const tags = node(doc, 'div', 'bus-home-route-choice-tags', '');
+        if (!route.usesRapidExpress) tags.append(node(doc, 'span', '', '快速急行なし'));
+        if (route.connection === 'tight') tags.append(node(doc, 'span', 'bus-home-route-choice-caution', '電車接続注意'));
+        if (bus?.connection === 'tight' || bus?.transferMode === 'rush') tags.append(node(doc, 'span', 'bus-home-route-choice-caution', 'バス接続注意'));
+        if (bus) tags.append(node(doc, 'span', '', bus.timingQuality === 'realtime_arrival' ? 'バス到着予測'
+          : bus.timingQuality === 'departure_delay_projection' ? 'バス推定' : 'バス定刻'));
+        item.append(tags);
+        const details = node(doc, 'details', 'bus-home-route-connection-detail', '');
+        const summary = node(doc, 'summary', '', '');
+        summary.append(node(doc, 'span', '', Number.isFinite(route.arrival) ? `${result.name} ${railClock(route.arrival)}着` : `${result.name}着未取得`),
+          node(doc, 'span', '', '接続詳細'));
+        details.append(summary);
+        for (const leg of route.legs) details.append(node(doc, 'p', '',
+          `${leg.stationName} ${railClock(leg.alightTime)}着 → ${railClock(leg.departure)}発 ${leg.train.destination}行き／${leg.remaining ? '残り' : ''}${leg.connection.gapMinutes}分・${leg.connection.label}`));
+        for (const [i, connectionBus] of route.buses.entries()) details.append(node(doc, 'p', '',
+          `${i ? '次便 ' : ''}🚌 ${clock(connectionBus.departureAt)}発 ${connectionBus.routeLabel} ${connectionBus.platform || ''}／徒歩${connectionBus.walkMinutes}分＋待ち${connectionBus.waitMinutes}分`
+          + (connectionBus.transferMode === 'rush' ? '・急ぎの接続' : connectionBus.connection === 'tight' ? '・余裕なし' : '')
+          + (Number.isFinite(connectionBus.homeArrivalAt) ? `／神木本町${clock(connectionBus.homeArrivalAt)}着` : '／神木本町着未取得')));
+        if (!bus) details.append(node(doc, 'p', '', result.busStatus === 'unavailable' ? 'バス取得失敗・鉄道のみ比較' : '接続バス未取得'));
+        if (result.busUnavailableSources?.length) details.append(node(doc, 'p', '', '一部のバス乗り場はデータ未取得'));
+        item.append(details);
         return item;
       };
-      // Retain every computed route. Surface diverse practical choices; expand the rest in batches.
-      const priority = [reference, result.routes.find(r => r.connection === 'likely'),
-        result.routes.find(r => r.usesRapidExpress && r.connection === 'likely'),
-        result.routes.find(r => !r.usesRapidExpress && r.connection === 'likely' && r.differenceMinutes > 0),
-        result.routes.find(r => r.connection === 'tight')].filter(Boolean);
+      // This is display ordering only. Keep all calculated paths, including later/no-rapid paths.
+      // Anchor the baseline first. Equal home arrivals are never promoted by rail-only savings.
+      const homeOrder = (a, b) => Number(b.id === result.referenceRouteId) - Number(a.id === result.referenceRouteId)
+        || Number(conditional(a)) - Number(conditional(b))
+        || Number(!knownHome(a)) - Number(!knownHome(b))
+        || (knownHome(a) && knownHome(b) ? a.buses[0].homeArrivalAt - b.buses[0].homeArrivalAt : 0)
+        || a.transfers - b.transfers;
+      const displayRoutes = [...result.routes].sort(homeOrder);
+      const earliestHome = result.routes.filter(r => !conditional(r) && knownHome(r))
+        .sort((a, b) => a.buses[0].homeArrivalAt - b.buses[0].homeArrivalAt || a.transfers - b.transfers)[0];
+      const priority = [reference, displayRoutes.find(r => r.transfers === 0),
+        earliestHome,
+        displayRoutes.find(r => r.usesRapidExpress && r.connection === 'likely'),
+        displayRoutes.find(r => !r.usesRapidExpress && r.connection === 'likely' && r.homeDifferenceMinutes > 0),
+        displayRoutes.find(r => r.connection === 'tight')].filter(Boolean);
       const shown = new Set();
-      for (const route of priority) if (!shown.has(route.id)) { section.append(renderRoute(route)); shown.add(route.id); }
-      const remaining = result.routes.filter(r => !shown.has(r.id));
+      for (const route of [...new Map(priority.map(r => [r.id, r])).values()].sort(homeOrder)) {
+        section.append(renderRoute(route)); shown.add(route.id);
+      }
+      const remaining = displayRoutes.filter(r => !shown.has(r.id));
       if (remaining.length) {
         const details = node(doc, 'details', '', ''), summary = node(doc, 'summary', '', `他の乗換案 ${remaining.length}件（早着・遅着）`);
         const list = node(doc, 'div', '', ''), more = node(doc, 'button', 'bus-home-route-page', '次の10件'); more.type = 'button';
