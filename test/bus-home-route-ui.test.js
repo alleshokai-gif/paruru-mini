@@ -12,6 +12,22 @@ function fakeDocument() {
 }
 const renderedText = (node) => [node.textContent || '', ...(node.children || []).flatMap(renderedText)].join(' ');
 
+test('onboard renders saved Hibiya routes, uncertain connections and missing Yuen without pretending through service', async () => {
+  const { createCommuteOnboardService } = await import('../bus/rail/commute-onboard.js');
+  const artifact = JSON.parse(fs.readFileSync(require.resolve('../bus/release-static/kazu-commute-static.json')));
+  const service = createCommuteOnboardService({ artifact,
+    clock: () => Date.parse('2026-09-30T08:00:00+09:00') / 1000, loadBuses: async () => [] });
+  const response = await service.evaluate({ trainId: '2026-09-30:metro:weekday:odpt.Train:TokyoMetro.Chiyoda.A705S', stationId: 'YoyogiUehara' });
+  const doc = fakeDocument(), mount = doc.createElement('div'); ui.renderOnboard(doc, mount, response);
+  const text = renderedText(mount);
+  assert.match(text, /08:16着 → 08:24発/); assert.match(text, /08:37着/);
+  assert.match(text, /快速急行なし/); assert.match(text, /ギリギリ/);
+  assert.match(text, /着時刻未取得・比較保留/); assert.match(text, /直通継続は未照合/);
+  assert.doesNotMatch(text, /そのまま乗車/);
+  assert.ok(response.results[0].routes.length > 100);
+  assert.ok(mount.children[1].children.length < 10); // Full alternatives are not laid out as hundreds of cards.
+});
+
 test('train choice uses an explicit accessible dropdown rather than GPS inference', () => {
   const doc = fakeDocument(), mount = doc.createElement('div'), selected = [];
   ui.renderTrainChoices(doc, mount, [{ id: 'train-a', label: 'この電車 18:18 登戸着' }],

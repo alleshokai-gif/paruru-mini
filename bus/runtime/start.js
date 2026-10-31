@@ -84,7 +84,8 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
     odptToken: config.env.ODPT_ACCESS_TOKEN, challengeEnv: env });
   const kazuStatic = JSON.parse(readFileSync(new URL('../release-static/kazu-commute-static.json', import.meta.url), 'utf8'));
   const commuteQueries = Object.freeze({ noborito: ['noborito_to_home',
-    'noborito_tamagawa_to_kibukihoncho'], mizonokuchi: ['mizonokuchi_to_home'] });
+    'noborito_tamagawa_to_kibukihoncho'], mizonokuchi: ['mizonokuchi_to_home'],
+    mukougaoka: ['mukougaoka_to_kibukihoncho'] });
   const kazuRouteService = createKazuRouteService({ artifact: kazuStatic,
     loadBuses: async ({ terminal, boardingAt, now }) => {
       let realtime = null;

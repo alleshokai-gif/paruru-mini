@@ -72,3 +72,6 @@
 @media (max-width: 360px) {
   .bus-home-route-commute-choice { font-size: 14px; }
 }
+.bus-home-route-rail-alternative { margin: 12px 0; padding: 12px 0; border-top: 1px solid #dbe3ec; font-size: 16px; line-height: 1.55; overflow-wrap: anywhere; }
+.bus-home-route-rail-alternative p { margin: 6px 0; }
+.bus-home-route-result summary { min-height: 48px; padding: 10px 0; font-size: 16px; cursor: pointer; }

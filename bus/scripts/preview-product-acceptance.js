@@ -5,7 +5,6 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { extname, resolve, sep } from 'node:path';
 import { shadowPosition } from '../position/shadow.js';
-import { mergeKawasakiStatic } from '../providers/kawasaki/journey-static.js';
 import { P0_QUERIES } from '../config/queries.js';
 import { KAWASAKI_JOURNEY_QUERIES } from '../providers/kawasaki/journey-config.js';
 import { KAWASAKI_CONTEXT } from '../providers/kawasaki/context.js';
@@ -50,7 +49,15 @@ const transferMinutes = Object.freeze({ 'noborito-normal': 8, 'noborito-tamagawa
   mukougaoka: 5, mizonokuchi: 6 }); // Preview-only user-editable estimates, not measured walking times.
 const p0Static = JSON.parse(await readFile(new URL('../generated/p0-static.json', import.meta.url)));
 const journeyStatic = JSON.parse(await readFile(new URL('../generated/kawasaki-p2-5-static.json', import.meta.url)));
-const futureIndex = mergeKawasakiStatic(p0Static, journeyStatic);
+// Local captures are different feed versions. Never merge them or relabel their versions.
+const futureIndex = p0Static;
+function previewFutureBuses(options) {
+  return { results: options.queries.flatMap(query => {
+    const index = Object.hasOwn(p0Static.directions, query.id) ? p0Static
+      : Object.hasOwn(journeyStatic.directions, query.id) ? journeyStatic : null;
+    return index ? getFutureBuses({ ...options, index, queries: [query] }).results : [];
+  }) };
+}
 const futureQueries = [...P0_QUERIES, ...KAWASAKI_JOURNEY_QUERIES];
 const futureSourceIds = ['noborito_to_home', 'noborito_tamagawa_to_kibukihoncho',
   'mukougaoka_to_kibukihoncho', 'mizonokuchi_to_home'];
@@ -85,7 +92,7 @@ async function railChoices(journeyId, now, page = 0) {
 }
 function futureBusLoader(now) {
   const sourceLoaders = Object.fromEntries(futureSourceIds.map((id) => [
-    `kawasaki:${id}`, ({ boardingAt }) => getFutureBuses({
+    `kawasaki:${id}`, ({ boardingAt }) => previewFutureBuses({
       index: futureIndex, queries: [futureQueryMap.get(id)], providerContext: KAWASAKI_CONTEXT,
       now, boardingAt, realtime: null
     }).results[0].arrivals
@@ -93,20 +100,24 @@ function futureBusLoader(now) {
   // Tokyu future-time data is unavailable in this local preview and remains explicitly partial.
   return createHomeBusLoader(sourceLoaders);
 }
-async function commutePreview(mode, now) {
+async function commutePreview(mode, now, onboard = null) {
   const artifact = JSON.parse(await readFile(kazuStaticFile, 'utf8'));
   const service = createKazuRouteService({ artifact, clock: () => now,
     loadBuses: async ({ terminal, boardingAt }) => {
       const ids = terminal === 'noborito'
         ? ['noborito_to_home', 'noborito_tamagawa_to_kibukihoncho'] : ['mizonokuchi_to_home'];
-      return ids.flatMap((queryId) => getFutureBuses({ index: futureIndex,
+      const rows = ids.flatMap((queryId) => previewFutureBuses({ index: futureIndex,
         queries: futureQueries.filter((query) => query.id === queryId),
         providerContext: KAWASAKI_CONTEXT, now, realtime: null,
         boardingAt: boardingAt + (queryId === 'noborito_tamagawa_to_kibukihoncho'
           ? (KAZU_TRANSFER_MINUTES.noborito_tamagawa - KAZU_TRANSFER_MINUTES.noborito) * 60 : 0),
         limit: 100 }).results.flatMap((group) => group.arrivals));
+      rows.unavailableSources = ids.filter(id => !Object.hasOwn(p0Static.directions, id)
+        && !Object.hasOwn(journeyStatic.directions, id));
+      return rows;
     } });
-  return service.evaluate(mode);
+  return onboard === 'choices' ? service.getTrainChoices() : onboard
+    ? service.evaluateOnboard(onboard) : service.evaluate(mode);
 }
 const shadowArtifact = Object.freeze({ approvedForShadow: true, approvedForPublic: false, geometryReady: false });
 function positionFixture(scenario) {
@@ -200,6 +211,8 @@ const configOverride = (scenario) => `\n;globalThis.PALURU_BUS_API_URL='/api/bus
 globalThis.PALURU_BUS_HOME_ROUTE_ENABLED=true;
 globalThis.PALURU_BUS_POSITION_SHADOW_ENABLED=${scenario !== 'position-off'};
 globalThis.PALURU_BUS_HOME_ROUTE_SOURCE={
+ getCommuteTrains:async()=>{const q=new URLSearchParams();const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/commute-trains?'+q);if(!r.ok)throw Error('TRAIN_UNAVAILABLE');return r.json()},
+ evaluateOnboard:async({trainId,stationId})=>{const q=new URLSearchParams({trainId,stationId});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/commute-onboard?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()},
  getTrainChoices:async(journeyId,page=0)=>{const q=new URLSearchParams({journeyId,page:String(page)});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/trains?'+q);if(!r.ok)throw Error('TRAIN_UNAVAILABLE');return r.json()},
  evaluate:async({journeyId,trainId,page=0})=>{const q=new URLSearchParams({journeyId,trainId,page:String(page),case:${JSON.stringify(scenario)}});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/home-route?'+q);if(!r.ok)throw Error('ROUTE_UNAVAILABLE');return r.json()},
  evaluateCommute:async(mode)=>{const q=new URLSearchParams({mode});const at=new URLSearchParams(location.search).get('at');if(at)q.set('at',at);const r=await fetch('/preview/commute-route?'+q);if(!r.ok)throw Error('COMMUTE_UNAVAILABLE');return r.json()}
@@ -214,6 +227,10 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const scenario = scenarioIds.has(url.searchParams.get('previewCase')) ? url.searchParams.get('previewCase')
       : scenarioIds.has(url.searchParams.get('case')) ? url.searchParams.get('case') : 'live';
+    if (url.pathname === '/preview/commute-trains' || url.pathname === '/preview/commute-onboard') {
+      return responseJson(res, await commutePreview('hibiya', previewNow(url), url.pathname.endsWith('-trains')
+        ? 'choices' : { trainId: url.searchParams.get('trainId'), stationId: url.searchParams.get('stationId') }));
+    }
     if (url.pathname === '/preview/commute-route') {
       const mode = url.searchParams.get('mode');
       if (!['hibiya', 'tamachi', 'pharmacy'].includes(mode))
@@ -266,4 +283,4 @@ const server = createServer(async (req, res) => {
       'Cache-Control': 'no-store' }); res.end(body);
   } catch { responseJson(res, { error: 'PREVIEW_UNAVAILABLE' }, 503); }
 });
-server.listen(port, '0.0.0.0', () => console.log(`PALURU_BUS_PREVIEW_READY port=${port}`));
+server.listen(port, process.env.PALURU_BUS_PREVIEW_HOST || '127.0.0.1', () => console.log(`PALURU_BUS_PREVIEW_READY port=${port}`));

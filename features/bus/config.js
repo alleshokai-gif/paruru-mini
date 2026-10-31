@@ -4,6 +4,19 @@ globalThis.PALURU_BUS_HUB_UI_ENABLED = true;
 globalThis.PALURU_BUS_POSITION_SHADOW_ENABLED = true;
 globalThis.PALURU_BUS_HOME_ROUTE_ENABLED = true;
 globalThis.PALURU_BUS_HOME_ROUTE_SOURCE = Object.freeze({
+    async getCommuteTrains() {
+      const url = new URL(globalThis.PALURU_BUS_API_URL); url.pathname = '/api/bus/commute-trains'; url.search = '';
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) throw Error('BUS_COMMUTE_TRAINS_UNAVAILABLE');
+      return response.json();
+    },
+    async evaluateOnboard({ trainId, stationId }) {
+      const url = new URL(globalThis.PALURU_BUS_API_URL); url.pathname = '/api/bus/commute-onboard';
+      url.search = new URLSearchParams({ trainId, stationId });
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) throw Error('BUS_COMMUTE_ONBOARD_UNAVAILABLE');
+      return response.json();
+    },
   async getTrainChoices(journeyId, page = 0) {
     const url = new URL(globalThis.PALURU_BUS_API_URL);
     url.pathname = '/api/bus/trains';

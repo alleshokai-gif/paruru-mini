@@ -10,6 +10,58 @@
   const railStationName = Object.freeze({ noborito: '登戸', mukougaoka: '向ヶ丘遊園',
     musashi_mizonokuchi: '武蔵溝ノ口' });
   const DISPLAY_ONLY_LIMIT = 5;
+  const railClock = minute => `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+  const signed = value => value === 0 ? '±0分' : `${value > 0 ? '+' : '−'}${Math.abs(value)}分`;
+  function renderOnboard(doc, mount, response) {
+    mount.replaceChildren();
+    mount.append(node(doc, 'p', 'bus-home-route-quality',
+      `保存ダイヤ ${response.referenceDate || '適用日不明'}・現行未照合／列車は定刻。${response.selectedTrain.onwardIdentity === 'unknown' ? '上原の直通継続は未照合。' : ''}`));
+    for (const result of response.results) {
+      const section = node(doc, 'section', 'bus-home-route-commute-card', '');
+      section.append(node(doc, 'h3', '', `${result.name}へ`));
+      if (result.busUnavailableSources?.length) section.append(node(doc, 'p', 'bus-home-route-quality', '一部のバス乗り場はデータ未取得'));
+      if (!result.routes.length) {
+        section.append(node(doc, 'p', '', '着時刻未取得・比較保留')); mount.append(section); continue;
+      }
+      const reference = result.routes.find(r => r.id === result.referenceRouteId);
+      if (reference && reference.transfers > 0) section.append(node(doc, 'p', 'bus-home-route-quality',
+        `比較基準：${reference.legs.map(l => `${l.stationName} ${railClock(l.departure)} ${l.train.type}`).join(' → ')}・${railClock(reference.arrival)}着`));
+      const renderRoute = route => {
+        const item = node(doc, 'div', 'bus-home-route-rail-alternative', '');
+        const title = route.transfers === 0 ? 'そのまま乗車' : route.legs.map(l => `${l.stationName}で${l.train.type}へ`).join(' → ');
+        item.append(node(doc, 'strong', '', `${title} · ${railClock(route.arrival)}着${Number.isFinite(route.differenceMinutes) ? `（${signed(route.differenceMinutes)}）` : ''}`));
+        for (const leg of route.legs) item.append(node(doc, 'p', 'bus-home-route-rail',
+          `${railClock(leg.alightTime)}着 → ${railClock(leg.departure)}発 ${leg.train.destination}行き／${leg.remaining ? '残り' : ''}${leg.connection.gapMinutes}分・${leg.connection.label}`));
+        if (!route.usesRapidExpress) item.append(node(doc, 'span', 'bus-home-route-quality', '快速急行なし'));
+        for (const [i, bus] of route.buses.entries()) item.append(node(doc, 'p', 'bus-home-route-bus',
+          `${i ? '次便 ' : ''}🚌 ${clock(bus.departureAt)}発 ${bus.routeLabel} ${bus.platform || ''}／徒歩${bus.walkMinutes}分＋待ち${bus.waitMinutes}分`
+          + (bus.transferMode === 'rush' ? '・急ぎの接続' : bus.connection === 'tight' ? '・余裕なし' : '')
+          + (i === 0 && route.sameBusAsStay && route.id !== result.referenceRouteId ? '・基準案と同じバス' : '')
+          + `／${bus.timingQuality === 'realtime_arrival' ? '到着予測' : bus.timingQuality === 'departure_delay_projection' ? '発車遅延から推定' : '定刻'}`
+          + (bus.homeArrivalAt === null ? '・神木本町着未取得' : `・神木本町${clock(bus.homeArrivalAt)}着`)));
+        if (Number.isFinite(route.homeDifferenceMinutes)) item.append(node(doc, 'p', 'bus-home-route-quality', `神木本町着の差 ${signed(route.homeDifferenceMinutes)}`));
+        if (!route.buses.length) item.append(node(doc, 'p', 'bus-home-route-quality', result.busStatus === 'unavailable' ? 'バス取得失敗・鉄道のみ比較' : '接続バス未取得'));
+        return item;
+      };
+      // Retain every computed route. Surface diverse practical choices; expand the rest in batches.
+      const priority = [reference, result.routes.find(r => r.connection === 'likely'),
+        result.routes.find(r => r.usesRapidExpress && r.connection === 'likely'),
+        result.routes.find(r => !r.usesRapidExpress && r.connection === 'likely' && r.differenceMinutes > 0),
+        result.routes.find(r => r.connection === 'tight')].filter(Boolean);
+      const shown = new Set();
+      for (const route of priority) if (!shown.has(route.id)) { section.append(renderRoute(route)); shown.add(route.id); }
+      const remaining = result.routes.filter(r => !shown.has(r.id));
+      if (remaining.length) {
+        const details = node(doc, 'details', '', ''), summary = node(doc, 'summary', '', `他の乗換案 ${remaining.length}件（早着・遅着）`);
+        const list = node(doc, 'div', '', ''), more = node(doc, 'button', 'bus-home-route-page', '次の10件'); more.type = 'button';
+        let count = 0;
+        const showMore = () => { for (const route of remaining.slice(count, count + 10)) list.append(renderRoute(route)); count += 10; more.hidden = count >= remaining.length; };
+        details.addEventListener('toggle', () => { if (details.open && count === 0) showMore(); });
+        more.addEventListener('click', showMore); details.append(summary, list, more); section.append(details);
+      }
+      mount.append(section);
+    }
+  }
   let active = false, expanded = false, generation = 0, mounted = false, activate = null;
   const clock = (epoch) => new Date((epoch + 9 * 3600) * 1000).toISOString().slice(11, 16);
   const node = (doc, tag, className, value) => {
@@ -257,6 +309,47 @@
         status.textContent = '列車候補を読み込めません'; return;
       }
       let selectedJourneyId = 'university', selectedPage = 0, selectedCommute = null;
+      const selectOnboard = () => {
+        root.PALURUBusHub?.selectHub?.('noborito-mukougaoka');
+        const request = ++generation;
+        choices.replaceChildren(); result.replaceChildren(); status.textContent = '乗車便を読み込み中…';
+        Promise.resolve().then(() => source.getCommuteTrains()).then(response => {
+          if (!active || request !== generation) return;
+          const trainLabel = node(doc, 'label', 'bus-home-route-train-label', '乗車中・これから乗る列車');
+          const trainSelect = node(doc, 'select', 'bus-home-route-train-choice', '');
+          trainSelect.setAttribute('aria-label', '乗車列車');
+          const placeholder = node(doc, 'option', '', '列車を選択'); placeholder.value = ''; trainSelect.append(placeholder);
+          for (const train of response.trains) {
+            const option = node(doc, 'option', '', `${train.origin} ${train.departure} ${train.type} ${train.destination}行き${train.boarded ? '' : '（次便）'}`);
+            option.value = train.id; trainSelect.append(option);
+          }
+          trainLabel.append(trainSelect);
+          const stationLabel = node(doc, 'label', 'bus-home-route-train-label', '乗換を判断する駅');
+          const stationSelect = node(doc, 'select', 'bus-home-route-train-choice', '');
+          stationSelect.setAttribute('aria-label', '乗換判断駅'); stationSelect.disabled = true; stationLabel.append(stationSelect);
+          choices.append(trainLabel, stationLabel);
+          status.textContent = response.trains.length ? '停車駅の着時刻がある列車だけ表示' : '比較できる列車がありません';
+          const evaluate = () => {
+            const evaluation = ++generation; result.replaceChildren();
+            if (!trainSelect.value || !stationSelect.value) { status.textContent = '列車を選んでください'; return; }
+            status.textContent = 'この駅からの乗換・バスを比較中…';
+            Promise.resolve().then(() => source.evaluateOnboard({ trainId: trainSelect.value, stationId: stationSelect.value }))
+              .then(value => { if (!active || evaluation !== generation) return; renderOnboard(doc, result, value); status.textContent = ''; })
+              .catch(() => { if (active && evaluation === generation) { result.replaceChildren(); status.textContent = '比較できません。通過済みの場合は列車を選び直してください'; } });
+          };
+          trainSelect.addEventListener('change', () => {
+            const previous = stationSelect.value;
+            stationSelect.replaceChildren();
+            const train = response.trains.find(t => t.id === trainSelect.value);
+            for (const station of train?.decisionStations || []) {
+              const option = node(doc, 'option', '', `${station.name} ${station.arrival}着`); option.value = station.id; stationSelect.append(option);
+            }
+            if (train?.decisionStations.some(s => s.id === previous)) stationSelect.value = previous;
+            stationSelect.disabled = !train; evaluate();
+          });
+          stationSelect.addEventListener('change', evaluate);
+        }).catch(() => { if (active && request === generation) status.textContent = '乗車便を読み込めません'; });
+      };
       const selectJourney = (journeyId, page = 0) => {
         selectedCommute = null;
         selectedJourneyId = journeyId; selectedPage = page;
@@ -295,6 +388,10 @@
         Promise.resolve().then(() => source.evaluateCommute(mode)).then((response) => {
           if (!active || request !== generation) return;
           renderCommute(doc, result, response); status.textContent = '';
+          if (mode === 'hibiya' && typeof source.getCommuteTrains === 'function' && typeof source.evaluateOnboard === 'function') {
+            const onboard = node(doc, 'button', 'bus-home-route-page', '乗車中の電車・判断駅で比較'); onboard.type = 'button';
+            onboard.addEventListener('click', selectOnboard); choices.append(onboard);
+          }
           if (mode !== 'pharmacy') {
             const terminal = response.routes?.find((route) => route.rank === 1)?.station;
             root.PALURUBusHub?.selectHub?.(terminal === '溝の口'
@@ -322,7 +419,7 @@
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();
   }
-  return { renderDecision, renderTrainChoices, renderCommute, hubForJourney, install,
+  return { renderDecision, renderTrainChoices, renderCommute, renderOnboard, hubForJourney, install,
     setActive(value) {
       active = !!value; if (!active) generation++;
       if (active && expanded) activate?.();

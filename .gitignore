@@ -9,3 +9,7 @@ features/auth/firebase-auth-poc-server.local.json
 
 # Generated Home menu review fixture
 /test/fixtures/home-menu-review.html
+
+# Local BUS onboard acceptance evidence (saved source captures stay out of Git).
+/bus/generated/onboard-*.log
+/bus/generated/onboard-acceptance/
