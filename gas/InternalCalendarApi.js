@@ -64,10 +64,13 @@ function authenticateInternalCalendar_(providedToken) {
 }
 
 function validateInternalCalendarInput_(body) {
-  const allowedKeys = ['action', 'internalToken', 'period', 'scope', 'actor', 'snapshot'];
+  const allowedKeys = ['action', 'internalToken', 'period', 'scope', 'actor', 'snapshot', 'audience', 'targetMemberId'];
   if (Object.keys(body).some(function(key) { return allowedKeys.indexOf(key) < 0; })) throw internalCalendarError_('INVALID_INPUT');
   if (body.snapshot !== undefined && body.snapshot !== true) throw internalCalendarError_('INVALID_INPUT');
   const snapshot = body.snapshot === true;
+  const lineAudience = body.audience === 'line_group';
+  if ((body.audience !== undefined && !lineAudience) || (snapshot && lineAudience)
+      || (body.targetMemberId !== undefined && !lineAudience)) throw internalCalendarError_('INVALID_INPUT');
   const periods = { today: true, tomorrow: true, this_week: true, next_7_days: true };
   const scopes = { mine: true, family: true };
   const actor = body.actor;
@@ -87,11 +90,33 @@ function validateInternalCalendarInput_(body) {
   }
   const member = getHomeMember_(homeId, memberUserId);
   if (!member || member.status !== 'active' || !isHomeMemberPolicyMatch_(member)) throw internalCalendarError_('UNAUTHORIZED');
+  const target = body.targetMemberId || '';
+  if (target && !/^(father|mother|eldest_son|eldest_daughter|second_son|youngest_daughter)$/.test(target)) throw internalCalendarError_('INVALID_INPUT');
+  if (body.scope === 'mine' && target && target !== memberUserId) throw internalCalendarError_('UNAUTHORIZED');
   return {
     period: body.period, scope: body.scope,
     actor: { memberUserId: memberUserId },
     snapshot: snapshot,
-    now: new Date()
+    now: new Date(),
+    audience: lineAudience ? 'line_group' : '',
+    targetMemberId: target
+  };
+}
+
+// Only the existing shared family calendar is read. Never expose its raw title,
+// private/confidential occurrences, sensitive details or unclassified events to LINE.
+function projectLineCalendarEvent_(event) {
+  if (!event || ['default', 'public'].indexOf(String(event.visibility || '').toLowerCase()) < 0
+      || !/^(father|mother|eldest_son|eldest_daughter|second_son|youngest_daughter)$/.test(event.memberKey || '')) return null;
+  const title = String(event.legacyRawTitle || event.rawTitle || event.title || '');
+  if (/非公開|内緒|秘密|機密|社外秘|顧客|契約|会議|面談|人事|医療|通院|病院|診察|検査|治療|受診|精神|カウンセリング|private|confidential|secret/i.test(title)) return null;
+  const category = classifyKurobeCalendarCategory_(event.title);
+  if (['work', 'school', 'club', 'cram'].indexOf(category) < 0) return null;
+  return {
+    memberId: event.memberKey, category: category,
+    startAt: Utilities.formatDate(event.start, 'Asia/Tokyo', event.allDay ? 'yyyy-MM-dd' : "yyyy-MM-dd'T'HH:mm:ssXXX"),
+    endAt: Utilities.formatDate(event.end, 'Asia/Tokyo', event.allDay ? 'yyyy-MM-dd' : "yyyy-MM-dd'T'HH:mm:ssXXX"),
+    allDay: event.allDay === true
   };
 }
 
