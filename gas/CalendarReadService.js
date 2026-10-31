@@ -24,7 +24,7 @@ const CalendarReadService = (function() {
     const startedAt = Date.now();
     let normalized;
     try {
-      normalized = readNormalizedRange_(range.queryFrom, range.to, input.calendar);
+      normalized = readNormalizedRange_(range.queryFrom, range.to, input.calendar, input.audience === 'line_group');
     } catch (error) {
       throw calendarReadError_('UPSTREAM_ERROR');
     }
@@ -82,19 +82,24 @@ const CalendarReadService = (function() {
     return readNormalizedRange_(start, end, calendar);
   }
 
-  function readNormalizedRange_(start, end, suppliedCalendar) {
+  function readNormalizedRange_(start, end, suppliedCalendar, normalizeAllDayDates) {
     const calendar = suppliedCalendar || getCalendarByConfig_(getCalendarConfig_('family'));
     return (calendar.getEvents(start, end) || []).filter(function(event) {
       return !isCancelled_(event);
-    }).map(normalizeEvent_).filter(function(event) {
+    }).map(function(event) { return normalizeEvent_(event, normalizeAllDayDates === true); }).filter(function(event) {
       return event && overlapsRange_(event, start, end);
     });
   }
 
-  function normalizeEvent_(event) {
+  function normalizeEvent_(event, normalizeAllDayDates) {
     if (!event || typeof event.getStartTime !== 'function' || typeof event.getEndTime !== 'function') return null;
-    const start = event.getStartTime();
-    const end = event.getEndTime();
+    const allDay = Boolean(event.isAllDayEvent && event.isAllDayEvent());
+    // LINE emits date-only values in script JST. Calendar getStart/EndTime may
+    // use a different calendar timezone; prefer the actual all-day dates.
+    const useDates = normalizeAllDayDates === true && allDay
+      && typeof event.getAllDayStartDate === 'function' && typeof event.getAllDayEndDate === 'function';
+    const start = useDates ? event.getAllDayStartDate() : event.getStartTime();
+    const end = useDates ? event.getAllDayEndDate() : event.getEndTime();
     if (!(start instanceof Date) || !(end instanceof Date) || end.getTime() <= start.getTime()) return null;
     const legacyRawTitle = String(event.getTitle ? event.getTitle() : '');
     const rawTitle = sanitizeTitle_(legacyRawTitle);
@@ -109,7 +114,7 @@ const CalendarReadService = (function() {
       visibility: typeof event.getVisibility === 'function' ? String(event.getVisibility()).toLowerCase() : 'unknown',
       start: new Date(start.getTime()),
       end: new Date(end.getTime()),
-      allDay: Boolean(event.isAllDayEvent && event.isAllDayEvent()),
+      allDay: allDay,
       rawEventId: event.getId ? String(event.getId() || '') : ''
     };
   }
