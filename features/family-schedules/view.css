@@ -1,5 +1,8 @@
 #familySchedulePanel {margin:1rem 0;padding:1rem;border:1px solid #d9deec;border-radius:16px;background:#fff;min-width:0;}
 #familySchedulesView {min-width:0;}
+#familySchedulesView > .view-header {flex-wrap:nowrap;gap:12px;}
+#familySchedulesView > .view-header h1 {flex:0 0 auto;white-space:nowrap;}
+#familyScheduleBack {flex:0 0 auto;width:auto;min-height:48px;padding:0 12px;white-space:nowrap;}
 .family-schedule-controls {display:flex;flex-wrap:wrap;gap:12px;align-items:end;}
 .family-schedule-controls label {display:grid;gap:6px;min-width:0;flex:1 1 180px;max-width:100%;}
 .family-schedule-controls input,.family-schedule-controls select,.family-schedule-controls button {min-height:48px;font-size:16px;max-width:100%;}
@@ -17,4 +20,4 @@
 .family-schedule-signage .app-topbar,.family-schedule-signage #homeView,.family-schedule-signage .app-drawer,.family-schedule-signage .bottom-nav,.family-schedule-signage #familyScheduleBack {display:none!important;}
 .family-schedule-signage #familySchedulePanel {margin:0;font-size:20px;}
 .family-schedule-signage .app-shell {max-width:none;padding:12px;}
-@media(max-width:480px){#familySchedulePanel{padding:12px;margin:12px 0;}.family-schedule-controls{display:grid;grid-template-columns:minmax(0,1fr);}.family-schedule-controls label,.family-schedule-controls button{width:100%;}.family-schedule-event h3{font-size:1rem;}#familySchedulesView .view-header{flex-wrap:wrap;}}
+@media(max-width:480px){#familySchedulePanel{padding:12px;margin:12px 0;}.family-schedule-controls{display:grid;grid-template-columns:minmax(0,1fr);}.family-schedule-controls label,.family-schedule-controls button{width:100%;}.family-schedule-event h3{font-size:1rem;}}
