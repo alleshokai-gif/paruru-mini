@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261031-family-schedules-v2");
-// Release: v20261031-family-schedules-v2
+importScripts("./build.js?v=v20261031-family-schedules-page-v1");
+// Release: v20261031-family-schedules-page-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -13,6 +13,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/transport/read-v2-config.js"),
   versioned("features/transport/read-v2.js"),
   versioned("app.js"),
+  versioned("features/family-schedules/page.js"),
+  versioned("features/family-schedules/view.css"),
   versioned("features/auth/firebase-auth.js"),
   versioned("features/auth/firebase-auth-runtime.js"),
   versioned("features/navigation/config.js"),

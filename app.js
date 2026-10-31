@@ -1086,6 +1086,9 @@ const activateMembershipContext_ = function(membershipContext) {
   if (/^#kaz-os(?:\/|$)/.test(globalThis.location?.hash || "")) activeView = "kaz-os";
   const restoredView = consumeViewAfterControllerChange_();
   if (restoredView) activeView = restoredView;
+  if ((globalThis.location?.hash === "#family-schedules"
+      || new URLSearchParams(globalThis.location?.search || "").get("familyScheduleSignage") === "1")
+      && isViewAllowed_("family-schedules")) activeView = "family-schedules";
   const initialViewLoad = switchView(activeView);
   void scheduleAuthenticatedBackgroundReads_(membershipContext, initialViewLoad);
   return initialViewLoad;
@@ -1770,6 +1773,10 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
+  if (resolvedView === "family-schedules" || globalThis.location?.hash === "#family-schedules") {
+    const hash = resolvedView === "family-schedules" ? "#family-schedules" : "";
+    globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}${hash}`);
+  }
   if (resolvedView !== "kaz-os" && /^#kaz-os(?:\/|$)/.test(String(globalThis.location?.hash || ""))) {
     const cleanUrl = `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}` || "./";
     globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", cleanUrl);
@@ -1787,6 +1794,14 @@ async function switchView(viewName) {
     ? `kaz-${String(globalThis.location?.hash || "").split("/")[1] || "today"}`
     : resolvedView);
   showMessage("", "");
+
+  if (resolvedView === "family-schedules") {
+    const pending = [];
+    document.dispatchEvent(new CustomEvent("family-schedules:opened", {detail:{waitUntil(promise){pending.push(promise);}}}));
+    await Promise.allSettled(pending);
+    window.scrollTo({top:0,behavior:"instant"});
+    return;
+  }
 
   if (resolvedView === "kaz-os") {
     const initialReads = [];
@@ -5323,6 +5338,9 @@ function saveUserProfileFromForm() {
 }
 
 function isViewAllowed_(viewName) {
+  // A read-only child of the existing Home permission, with the same API roles.
+  if (viewName === "family-schedules") return isViewAllowed_("home")
+    && ["admin", "guardian", "self_record"].includes(activeMembershipContext?.role);
   if (viewName === "kaz-os" && activeMembershipContext?.role !== "admin") return false;
   return appAuthenticationState === "active_member"
     && Array.isArray(activeMembershipContext?.allowedViews)
