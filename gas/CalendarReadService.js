@@ -18,7 +18,8 @@ const CalendarReadService = (function() {
     const period = String(input.period || '');
     const scope = String(input.scope || '');
     if (!PERIODS[period] || !SCOPES[scope]) throw calendarReadError_('INVALID_INPUT');
-    const actorKey = resolveActorMemberKey_(input.actor);
+    const actorKey = resolveActorMemberKey_(input.audience === 'line_group' && input.serviceId === 'kurobe_line'
+      ? { memberUserId: input.requesterMemberId } : input.actor);
     const now = input.now instanceof Date ? new Date(input.now.getTime()) : new Date();
     const range = buildPeriodRange_(period, now);
     const startedAt = Date.now();
