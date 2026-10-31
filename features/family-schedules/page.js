@@ -28,7 +28,7 @@
   const panel=document.getElementById('familySchedulePanel'),month=document.getElementById('familyScheduleMonth'),status=document.getElementById('familyScheduleStatus');
   const period=document.getElementById('familySchedulePeriod'),monthControl=document.getElementById('familyScheduleMonthControl');
   const list=document.getElementById('familyScheduleList'),member=document.getElementById('familyScheduleMember'),organization=document.getElementById('familyScheduleOrganization');
-  const reload=document.getElementById('familyScheduleReload'),preferenceKey='paluru.familySchedules.period',cache=new Map();
+  const reload=document.getElementById('familyScheduleReload'),preferenceKey='paluru.familySchedules.period',cache=new Map(),cacheMillis=60000;
   let read,last,sequence=0,loading=false;
   let preferred='';try{preferred=root.localStorage.getItem(preferenceKey)||'';}catch(_){}
   const requested=new URLSearchParams(root.location.search).get('scheduleMonth');
@@ -72,15 +72,15 @@
     try {
       const results=await Promise.allSettled(periods.map(async p=>{
         const existing=cache.get(p);
-        if(!force&&existing&&Date.parse(existing.validUntil||'')>Date.now()&&existing.freshness==='current')return existing;
+        if(!force&&existing&&Date.now()-existing.receivedAt<cacheMillis&&Date.parse(existing.data.validUntil||'')>Date.now()&&existing.data.freshness==='current')return existing.data;
         const data=await read({period:p});
         if(data?.schemaVersion!==schema||data.period!==p||!Array.isArray(data.events)||!Array.isArray(data.organizations)||!Array.isArray(data.sources)||!['current','stale','updating'].includes(data.freshness))throw Error('INVALID_SNAPSHOT');
-        if(current===sequence)cache.set(p,data);return data;
+        if(current===sequence)cache.set(p,{data,receivedAt:Date.now()});return data;
       }));if(current!==sequence)return;
       const forbidden=results.find(r=>r.status==='rejected'&&['FORBIDDEN','UNAUTHENTICATED','INVALID_SNAPSHOT'].includes(r.reason.code||r.reason.message));if(forbidden)throw forbidden.reason;
       const good=results.filter(r=>r.status==='fulfilled').map(r=>r.value),missing=periods.filter((p,i)=>results[i].status==='rejected');
       const orgs=new Map(),events=new Map();good.forEach(d=>{d.organizations.forEach(o=>orgs.set(o.organizationId,o));d.events.forEach(e=>{const old=events.get(e.eventId);if(!old||e.revision>old.revision)events.set(e.eventId,e);});});
-      last={key:loadKey,window,organizations:[...orgs.values()],events:[...events.values()],missing,unregistered:good.filter(d=>!d.sources.length).map(d=>d.period),
+      last={key:loadKey,receivedAt:Date.now(),validUntil:good.map(d=>d.validUntil).sort()[0],window,organizations:[...orgs.values()],events:[...events.values()],missing,unregistered:good.filter(d=>!d.sources.length).map(d=>d.period),
         freshness:missing.length?'unavailable':good.some(d=>d.freshness==='updating')?'updating':good.some(d=>d.freshness==='stale')?'stale':'current',
         generatedAt:good.map(d=>d.generatedAt).sort()[0]};
       const labels=new Map(Array.from(document.querySelectorAll('#familyInboxSubjectMember option')).map(o=>[o.value,o.textContent]));
@@ -95,6 +95,6 @@
   member.addEventListener('change',()=>{if(last)render();});organization.addEventListener('change',()=>{if(last)render();});
   document.getElementById('familyScheduleBack').addEventListener('click',()=>document.dispatchEvent(new CustomEvent('paruru:view-request',{detail:{viewName:'home'}})));
   document.addEventListener('paruru:authenticated',event=>{read=event.detail.familyScheduleApi;});
-  document.addEventListener('family-schedules:opened',event=>{if(last&&last.key===key()){render();return;}if(!loading)event.detail.waitUntil(load());});
+  document.addEventListener('family-schedules:opened',event=>{if(last&&last.key===key()&&Date.now()-last.receivedAt<cacheMillis&&Date.parse(last.validUntil||'')>Date.now()){render();return;}if(!loading)event.detail.waitUntil(load());});
   document.addEventListener('kaz-os:locked',()=>{sequence++;read=null;last=null;cache.clear();loading=false;reload.disabled=false;clear();});
 })(globalThis);

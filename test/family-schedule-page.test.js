@@ -32,10 +32,12 @@ test('home authentication performs no family read; opening page loads once, filt
  class El {constructor(){this.children=[];this.value='';this.listeners={};this.dataset={};}append(...e){this.children.push(...e);}replaceChildren(...e){this.children=e;}add(e){this.children.push(e);}get options(){return this.children;}addEventListener(n,f){this.listeners[n]=f;}setAttribute(){} }
  const elements=new Map(['Panel','Period','MonthControl','Month','Status','List','Member','Organization','Reload','Back'].map(n=>['familySchedule'+n,new El()]));const listeners={};
  const document={getElementById:id=>elements.get(id),createElement:()=>new El(),querySelectorAll:()=>[{value:'child-a',textContent:'Child A'},{value:'child-b',textContent:'Child B'}],addEventListener:(n,f)=>listeners[n]=f,dispatchEvent(){}};
- let calls=0;const c={document,Date,URLSearchParams,Option:class{constructor(label,value){this.textContent=label;this.value=value;}},location:{search:'?scheduleMonth=2026-11'},localStorage:{getItem:()=>'',setItem(){}},CustomEvent:class{constructor(type,{detail}){this.type=type;this.detail=detail;}}};vm.createContext(c);vm.runInContext(source,c);
+ let calls=0,clock=Date.now();const c={document,Date:class extends Date{static now(){return clock;}},URLSearchParams,Option:class{constructor(label,value){this.textContent=label;this.value=value;}},location:{search:'?scheduleMonth=2026-11'},localStorage:{getItem:()=>'',setItem(){}},CustomEvent:class{constructor(type,{detail}){this.type=type;this.detail=detail;}}};vm.createContext(c);vm.runInContext(source,c);
  listeners['paruru:authenticated']({detail:{familyScheduleApi:async()=>{calls++;return data();}}});assert.equal(calls,0);
  const pending=[];listeners['family-schedules:opened']({detail:{waitUntil:p=>pending.push(p)}});await Promise.all(pending);assert.equal(calls,1);
- elements.get('familyScheduleMember').value='child-a';elements.get('familyScheduleMember').listeners.change();assert.equal(calls,1);assert.equal(elements.get('familyScheduleList').children.filter(e=>e.className==='family-schedule-event').length,2);
+ listeners['family-schedules:opened']({detail:{waitUntil:p=>pending.push(p)}});await Promise.all(pending);assert.equal(calls,1);
+ clock+=61000;listeners['family-schedules:opened']({detail:{waitUntil:p=>pending.push(p)}});await Promise.all(pending);assert.equal(calls,2);
+ elements.get('familyScheduleMember').value='child-a';elements.get('familyScheduleMember').listeners.change();assert.equal(calls,2);assert.equal(elements.get('familyScheduleList').children.filter(e=>e.className==='family-schedule-event').length,2);
  listeners['kaz-os:locked']();assert.equal(elements.get('familyScheduleList').children.length,0);
 });
 
