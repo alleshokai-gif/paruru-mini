@@ -122,7 +122,7 @@ function validateLineCalendarServiceInput_(body) {
   const allowed = ['action', 'internalToken', 'service', 'homeId', 'audience', 'period', 'scope', 'requesterMemberId', 'targetMemberId'];
   if (Object.keys(body).some(function(key) { return allowed.indexOf(key) < 0; })
       || body.service !== 'kurobe_line' || body.audience !== 'line_group'
-      || ['today', 'tomorrow', 'this_week'].indexOf(body.period) < 0
+      || ['today', 'tomorrow', 'this_week', 'upcoming'].indexOf(body.period) < 0
       || ['mine', 'family'].indexOf(body.scope) < 0) throw internalCalendarError_('INVALID_INPUT');
   if (typeof body.homeId !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(body.homeId)
       || !constantTimeEqualsCalendar_(body.homeId, loadInternalCalendarSecret_(PALURU_CALENDAR_SERVICE_HOME_SECRET))) {
@@ -142,17 +142,13 @@ function validateLineCalendarServiceInput_(body) {
   };
 }
 
-// Only the existing shared family calendar is read. Never expose its raw title,
-// private/confidential occurrences, sensitive details or unclassified events to LINE.
+// The authenticated family group reads the existing shared family calendar.
+// Preserve its title and dates; classification is only for return-home snapshots.
 function projectLineCalendarEvent_(event) {
-  if (!event || ['default', 'public'].indexOf(String(event.visibility || '').toLowerCase()) < 0
-      || !/^(father|mother|eldest_son|eldest_daughter|second_son|youngest_daughter)$/.test(event.memberKey || '')) return null;
-  const title = String(event.legacyRawTitle || event.rawTitle || event.title || '');
-  if (/非公開|内緒|秘密|機密|社外秘|顧客|契約|会議|面談|人事|医療|通院|病院|診察|検査|治療|受診|精神|カウンセリング|private|confidential|secret/i.test(title)) return null;
-  const category = classifyKurobeCalendarCategory_(event.title);
-  if (['work', 'school', 'club', 'cram'].indexOf(category) < 0) return null;
+  if (!event) return null;
   return {
-    memberId: event.memberKey, category: category,
+    memberId: /^(father|mother|eldest_son|eldest_daughter|second_son|youngest_daughter)$/.test(event.memberKey || '') ? event.memberKey : 'unassigned',
+    title: String(event.legacyRawTitle === undefined ? event.rawTitle || event.title || '' : event.legacyRawTitle),
     startAt: Utilities.formatDate(event.start, 'Asia/Tokyo', event.allDay ? 'yyyy-MM-dd' : "yyyy-MM-dd'T'HH:mm:ssXXX"),
     endAt: Utilities.formatDate(event.end, 'Asia/Tokyo', event.allDay ? 'yyyy-MM-dd' : "yyyy-MM-dd'T'HH:mm:ssXXX"),
     allDay: event.allDay === true

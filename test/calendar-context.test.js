@@ -274,7 +274,7 @@ test('notification and Home Agent wrappers preserve legacy shapes', () => {
 });
 
 let failures = 0;
-test('shared service admits all six without app membership and preserves minimized privacy', () => {
+test('shared service admits all six without app membership and preserves full shared Calendar titles', () => {
   const original = context.getHomeMember_;
   context.getHomeMember_ = () => { throw new Error('app enrollment must not be consulted'); };
   const roster = ['father','mother','eldest_son','eldest_daughter','second_son','youngest_daughter'];
@@ -288,9 +288,9 @@ test('shared service admits all six without app membership and preserves minimiz
       const input = context.validateInternalCalendarInput_({action:'calendarContextInternal',service:'kurobe_line',homeId:'home_test',audience:'line_group',requesterMemberId:id,period:'tomorrow',scope:'family'});
       assert(input.serviceId === 'kurobe_line' && !input.actor, 'principal must be a service');
       const result = callRead({...input,now:'2026-07-18T12:00:00+09:00'},candidates);
-      assert(result.data.events.length === 6 && !JSON.stringify(result.data).includes('title'), 'shared result leaked or depended on caller');
+      assert(result.data.events.length === candidates.length && result.data.events.every(e => typeof e.title === 'string'), 'shared result leaked or depended on caller');
       const mine = callRead({...input,scope:'mine',now:'2026-07-18T12:00:00+09:00'},candidates);
-      assert(mine.data.events.length === 1 && mine.data.events[0].memberId === id, 'mine crossed person');
+      assert(mine.data.events.length === candidates.filter(e => context.parseCalendarMemberTag_(e.getTitle()).memberKey === id).length && mine.data.events.every(e => e.memberId === id), 'mine crossed person');
     }
   } finally { context.getHomeMember_ = original; }
 });
@@ -329,7 +329,7 @@ test('LINE all-day dates do not carry yesterday into tomorrow across calendar ti
   ]);
   assert(result.data.events.length === 1 && result.data.events[0].startAt === '2026-07-19', 'wrong all-day date');
 });
-test('LINE audience projects safe categories and excludes private, medical and unclassified events', () => {
+test('LINE includes all shared Calendar categories and original titles without keyword or visibility filtering', () => {
   const base = {start: '2026-07-18T13:00:00+09:00', end: '2026-07-18T14:00:00+09:00'};
   const result = callRead({period:'today', scope:'family', actor, audience:'line_group', now:'2026-07-18T12:00:00+09:00'}, [
     event({...base, title:'（り）学校', id:'school'}),
@@ -337,10 +337,10 @@ test('LINE audience projects safe categories and excludes private, medical and u
     event({...base, title:'（父）仕事の健康診察', id:'medical'}),
     event({...base, title:'（母）未分類の秘密', id:'unknown'}),
   ]);
-  assert(result.data.audience === 'line_group' && result.data.events.length === 1, 'unsafe event disclosed');
+  assert(result.data.audience === 'line_group' && result.data.events.length === 4, 'shared Calendar events disappeared');
   const row = result.data.events[0];
-  assert(row.memberId === 'youngest_daughter' && row.category === 'school', 'wrong member/category');
-  assert(!('title' in row) && !('rawTitle' in row) && !('personLabel' in row), 'title escaped to LINE DTO');
+  assert(row.memberId === 'youngest_daughter' && row.title === '（り）学校', 'wrong member/category');
+  assert(!('description' in row) && !('rawEventId' in row) && !('category' in row), 'title escaped to LINE DTO');
 });
 test('LINE target filter does not impersonate the target member', () => {
   const input = context.validateInternalCalendarInput_({action:'calendarContextInternal', period:'tomorrow', scope:'family', actor:internalActor, audience:'line_group', targetMemberId:'youngest_daughter'});
@@ -348,6 +348,24 @@ test('LINE target filter does not impersonate the target member', () => {
   let rejected = false;
   try { context.validateInternalCalendarInput_({action:'calendarContextInternal', period:'today', scope:'mine', actor:internalActor, audience:'line_group', targetMemberId:'youngest_daughter'}); } catch(e) { rejected = e.code === 'UNAUTHORIZED'; }
   assert(rejected, 'mine query crossed actor boundary');
+});
+test('LINE today includes ended plans; upcoming differs and app today stays unchanged', () => {
+  const now='2026-07-18T12:00:00+09:00';
+  const candidates=[event({title:'（父）私用',id:'past',start:'2026-07-18T09:00:00+09:00',end:'2026-07-18T10:00:00+09:00'}),event({title:'（父）家族行事',id:'future',start:'2026-07-18T14:00:00+09:00',end:'2026-07-18T15:00:00+09:00'})];
+  const input={period:'today',scope:'mine',actor,audience:'line_group',now};
+  assert(callRead(input,candidates).data.events.length===2,'today lost ended plans');
+  assert(callRead({...input,period:'upcoming'},candidates).data.events.length===1,'upcoming includes ended plans');
+  assert(callRead({...input,audience:''},candidates).data.events.length===1,'app contract changed');
+});
+test('LINE family includes untagged plans, but mine never guesses their owner', () => {
+  const candidates=[event({title:'家族の行事',id:'common',start:'2026-07-18T09:00:00+09:00',end:'2026-07-18T10:00:00+09:00'})];
+  const input={period:'today',scope:'family',actor,audience:'line_group',now:'2026-07-18T12:00:00+09:00'};
+  assert(callRead(input,candidates).data.events[0].memberId==='unassigned','untagged family plan lost');
+  assert(callRead({...input,scope:'mine'},candidates).data.events.length===0,'owner guessed');
+});
+test('invalid source entries are marked partial rather than a complete empty day', () => {
+  const result=callRead({period:'today',scope:'family',actor,audience:'line_group',now:'2026-07-18T12:00:00+09:00'},[event({title:'invalid',start:'bad',end:'bad'})]);
+  assert(result.data.status==='partial' && result.data.events.length===0,'invalid source represented as empty');
 });
 for (const item of tests) {
   try { item.fn(); console.log('PASS ' + item.name); }
