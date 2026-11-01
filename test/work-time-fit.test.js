@@ -23,6 +23,7 @@ assert.equal(api.fit(work,{...record,confidence:0.5},snapshot,null,now),null);
 assert.equal(api.fit(work,{...record,recommendation:{...proposal,step_estimate_min:null,step_estimate_origin:'unknown',step_kind:'recorded_action'}},snapshot,null,now),null);
 assert.equal(api.precedes({...work,state:'READY',priority:'CRITICAL'},{...work,id:'another',state:'DOING',priority:'LOW'},now),false);
 assert.equal(api.precedes({...work,planning_preference:'today'},{...work,id:'another'},now),true);
+assert.equal(api.precedes(work,{...work,id:'adopted',placement:'ADOPTED_SCHEDULE'},now),false);
 assert.equal(api.validateProposal({...proposal,step_estimate_min:121}),false);
 assert.equal(api.validateProposal({first_step:'作業を確認する',action_origin:'work_record',reason:'既存形式',estimate_min:null}),true);
 const unknown={...work,estimate_min:null};

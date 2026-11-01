@@ -122,6 +122,7 @@
       const rows = live ? dailyPlan.today[name].items : dashboard.today?.[name] || [];
       return rows.map(item => live ? item : activeWork.has(item?.id)
         ? { ...activeWork.get(item.id), plan_start: item.plan_start, plan_end: item.plan_end,
+            placement: item.placement, planning_preference: item.planning_preference,
             next_policy_window: item.next_policy_window } : null)
         .filter((item, index, all) => item && !['DONE', 'CANCELLED'].includes(item.state)
           && !['done', 'carry_forward', 'delayed', 'blocked'].includes(progress.get(item.id))

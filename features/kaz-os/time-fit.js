@@ -18,6 +18,7 @@
   }
   function precedes(left,right,now){
     if(!right)return true;
+    if(right.placement==='ADOPTED_SCHEDULE')return left.id===right.id;
     const a=priority(left,now),b=priority(right,now);
     for(let i=0;i<a.length;i++){if(a[i]!==b[i])return a[i]<b[i];}
     return left.id===right.id;
@@ -46,7 +47,7 @@
   function fit(work,record,snapshot,plan,now){
     const p=record?.recommendation;
     if(!work||!snapshot||!Number.isFinite(now)||!Number.isFinite(Date.parse(record?.as_of))
-      ||!validateProposal(p)||!Object.hasOwn(p,'estimate_origin')||record.confidence<0.75
+      ||!validateProposal(p)||!Object.hasOwn(p,'estimate_origin')||typeof record.confidence!=='number'||record.confidence<0.75
       ||!p.first_step.trim()||!p.estimate_reason.trim()||!duration(p.step_estimate_min)
       ||!['recorded_action','substep','generated_action'].includes(p.step_kind)
       ||!['DOING','READY','SCHEDULED'].includes(work.state)
