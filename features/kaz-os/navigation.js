@@ -335,6 +335,7 @@
         addText(section,'p',`最初の一手（${recommendation.step_kind==='substep'?'元Workの分割提案':recommendation.action_origin==='work_record'?'Work記録':'AI具体化・未確定'}）: ${recommendation.first_step}`,'kai-action-first-step');
         addText(section,'p',`元Work全体: ${recommendation.estimate_min===null?'不明':recommendation.estimate_min+'分'}（${origin[recommendation.estimate_origin]}） · 今回の一手: ${recommendation.step_estimate_min===null?'不明':recommendation.step_estimate_min+'分（AI推定・未確定）'}`,'kai-action-fit');
         if(recommendation.estimate_reason)addText(section,'p',`見積りの根拠: ${recommendation.estimate_reason}`,'kai-action-source');
+        if(Number.isFinite(dailyRow?.confidence))addText(section,'p',`一手の時間は概算です（提案全体のAI確度 ${Math.round(dailyRow.confidence*100)}%）。完了実績ではありません。`,'kai-action-source');
         if(fit){
           const clock=value=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
           addText(section,'p',`${fit.domain==='company'?'会社':'家庭・個人'}の確認済み空き枠に適合: ${clock(fit.start)}–${clock(fit.end)} JST（実行提案・予定への保存なし）`,'kai-action-fit');
