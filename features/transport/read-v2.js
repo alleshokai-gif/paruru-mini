@@ -228,6 +228,8 @@
             && (!row.recommendation || typeof row.recommendation !== 'object'
               || Object.keys(row.recommendation).sort().join(',')
                 !== 'action_origin,estimate_min,first_step,reason'
+                && !(root.KazWorkTimeFit?.validateProposal(row.recommendation)
+                  && Object.hasOwn(row.recommendation, 'estimate_origin'))
               || typeof row.recommendation.first_step !== 'string'
               || row.recommendation.first_step.length > 300
               || !['work_record', 'ai_generated'].includes(row.recommendation.action_origin)

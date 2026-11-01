@@ -318,14 +318,40 @@
       }
       if (epoch !== renderEpoch || !current()) return;
       addText(section, 'p', availableTime(now), 'kai-action-availability');
-      const nowCandidate = lane('now')[0] || null;
+      const canonicalNow = lane('now')[0] || null;
+      const dailyRow = latest.get('daily_planner');
+      const dailyMatch = resolved.get('daily_planner');
+      const dailyTarget = dailyMatch?.item && !progress.has(dailyMatch.item.id) ? dailyMatch.item : null;
+      const stepFit = dailyTarget && globalThis.KazWorkTimeFit?.fit(dailyTarget,dailyRow,dashboard,dailyPlan,now);
+      const plannedTarget = dailyTarget && [...lane('next'),...lane('scheduled')].find(w=>w.id===dailyTarget.id);
+      const useStepNow = stepFit && globalThis.KazWorkTimeFit.precedes(
+        {...dailyTarget,planning_preference:plannedTarget?.planning_preference},canonicalNow,now);
+      const nowCandidate = useStepNow ? dailyTarget : canonicalNow;
+      const renderStep = (target, recommendation, fit) => {
+        const origin = {work_record:'Work正本',daily_estimate:'本人の日次見積り',ai_estimated:'AI推定・未確定',unknown:'unknown'};
+        addText(section,'p',`最初の一手（${recommendation.step_kind==='substep'?'元Workの分割提案':recommendation.action_origin==='work_record'?'Work記録':'AI具体化・未確定'}）: ${recommendation.first_step}`,'kai-action-first-step');
+        addText(section,'p',`元Work全体: ${recommendation.estimate_min===null?'unknown':recommendation.estimate_min+'分'}（${origin[recommendation.estimate_origin]}） · 今回の一手: ${recommendation.step_estimate_min===null?'unknown':recommendation.step_estimate_min+'分（AI推定・未確定）'}`,'kai-action-fit');
+        if(recommendation.estimate_reason)addText(section,'p',`見積りの根拠: ${recommendation.estimate_reason}`,'kai-action-source');
+        if(fit){
+          const clock=value=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
+          addText(section,'p',`${fit.domain==='company'?'会社':'家庭・個人'}の確認済み空き枠に適合: ${clock(fit.start)}–${clock(fit.end)} JST（実行提案・予定への保存なし）`,'kai-action-fit');
+        }else addText(section,'p','現在実行できる枠・所要時間は未確認です。NEXTの一手として保持します。','kai-action-source');
+        addText(section,'p','一手の実施は元Work全体の完了ではありません。途中の進捗は「継続中」とメモで記録できます。','kai-action-source');
+      };
       addText(section, 'h3', 'NOW · 今やること（確認済み情報から選定）');
       if (nowCandidate) {
-        addWork(section, nowCandidate, '決定的Plannerの現在候補 · Calendar・Work状態を反映', { prominentAction: true });
-        timeFit(section, nowCandidate, now);
+        addWork(section, nowCandidate, useStepNow?'時間枠に収まる一手のAI提案 · 元Workの見積りは変更していません':'決定的Plannerの現在候補 · Calendar・Work状態を反映', { prominentAction: !useStepNow });
+        if(useStepNow)renderStep(dailyTarget,dailyRow.recommendation,stepFit);
+        else timeFit(section, nowCandidate, now);
         addProgressButton(section, nowCandidate);
       } else {
         addText(section, 'p', '現在時刻に実行可能と確認できたWorkはありません。', 'kai-action-source');
+      }
+      if(dailyTarget && Object.hasOwn(dailyRow?.recommendation||{},'estimate_origin') && !useStepNow){
+        addText(section,'h3','NEXT · 今回の一手（AI提案・未確定）');
+        addWork(section,dailyTarget,'元Workに紐づく提案 · 優先順と現在の実行枠は別に確認',{prominentAction:false});
+        renderStep(dailyTarget,dailyRow.recommendation,null);
+        addProgressButton(section,dailyTarget);
       }
       const row = [...latest.values()].sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of))[0] || null;
       const match = row ? resolved.get(row.feature) : null;
@@ -371,7 +397,7 @@
               : '時点不明';
             addText(section, 'p', `AI Planner（${timestamp}）は別のWorkを推薦しています。NOWは「${nowTitle}」です。推薦は生成時点の判断で、現在の実行順を上書きしません。`, 'kp-notice');
           }
-          if (recommendation?.first_step) {
+          if (recommendation?.first_step && !Object.hasOwn(recommendation,'estimate_origin')) {
             const source = recommendation.action_origin === 'work_record'
               ? 'Work記録' : 'AI生成（根拠はWork記録）';
             addText(section, 'p', `最初の一手（${source}）: ${recommendation.first_step}`,
@@ -381,7 +407,7 @@
             `AI判断が参照したWork · ${row.feature === 'daily_planner' ? 'Daily Planner' : 'Check-in'}（NOWとは別）`,
             { prominentAction: !recommendation });
           const fitShown = timeFit(section, target, now);
-          if (planningDomain(target) === 'personal' && !fitShown
+          if (!Object.hasOwn(recommendation||{},'estimate_origin') && planningDomain(target) === 'personal' && !fitShown
               && recommendation?.estimate_min !== null && recommendation?.estimate_min !== undefined) {
             addText(section, 'p', `所要時間の目安: ${recommendation.estimate_min}分（Work見積り）`,
               'kai-action-fit');
