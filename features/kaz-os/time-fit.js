@@ -9,10 +9,12 @@
   };
   function priority(work,now){
     const date=day(now),end=Date.parse(date+'T00:00:00+09:00')+86400000;
-    const deadline=Date.parse(work.deadline?.start||''),scheduled=String(work.scheduled?.start||'');
+    const rawDeadline=work.deadline?.start||'';
+    const deadline=Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(rawDeadline)?rawDeadline+'T23:59:59.999+09:00':rawDeadline),scheduled=String(work.scheduled?.start||'');
     return [work.state==='DOING'?0:1,work.planning_preference==='today'?0:1,
       Number.isFinite(deadline)&&deadline<end?0:1,scheduled.slice(0,10)===date?0:1,
       ({CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3})[work.priority]??4,
+      Number.isFinite(deadline)?deadline:Infinity,
       ({DOING:0,READY:1,SCHEDULED:2,BACKLOG:3})[work.state]??4,
       Number(String(work.work_id||'').match(/\d+$/)?.[0]||Number.MAX_SAFE_INTEGER)];
   }
@@ -51,6 +53,7 @@
       ||!p.first_step.trim()||!p.estimate_reason.trim()||!duration(p.step_estimate_min)
       ||!['recorded_action','substep','generated_action'].includes(p.step_kind)
       ||!['DOING','READY','SCHEDULED'].includes(work.state)
+      ||String(work.blocker||'').trim()
       ||day(Date.parse(record.as_of))!==day(now)||Date.parse(record.as_of)>now)return null;
     const area=domain(work,snapshot);if(!area)return null;
     // Human/Notion estimates win even if an old proposal survived the read.
@@ -73,5 +76,18 @@
     return window?{parent_work_id:work.id,domain:area,start:new Date(now).toISOString(),
       end:new Date(now+p.step_estimate_min*60000).toISOString(),proposal:p}:null;
   }
-  return Object.freeze({fit,precedes,validateProposal,domain});
+  function reason(work){
+    const parts=[];
+    if(work.state==='DOING')parts.push('着手済みの作業を継続');
+    if(work.planning_preference==='today')parts.push('本人が今日の対象に指定');
+    const importance={CRITICAL:'最優先',HIGH:'高',MEDIUM:'中',LOW:'低'}[work.priority];
+    if(importance)parts.push('優先度'+importance);
+    if(work.deadline?.start){
+      const raw=work.deadline.start;
+      parts.push(/^\d{4}-\d{2}-\d{2}$/.test(raw)?'期限'+raw+'（時刻未設定）':
+        Number.isFinite(Date.parse(raw))?'期限'+new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',dateStyle:'short',timeStyle:'short'}).format(new Date(raw))+' JST':'期限の時刻は未確認');
+    }
+    return parts.length?parts.join('・'):'確認済みのWork順から選定';
+  }
+  return Object.freeze({fit,precedes,validateProposal,domain,reason});
 });

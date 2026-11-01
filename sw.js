@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261101-work-time-fit-v3");
-// Release: v20261101-work-time-fit-v3
+importScripts("./build.js?v=v20261102-today-quality-v1");
+// Release: v20261102-today-quality-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -34,6 +34,7 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/kaz-os/personal.js"),
   versioned("features/kaz-os/personal.css"),
   versioned("features/kaz-os/navigation.js"),
+  versioned("features/kaz-os/time-fit.js"),
   versioned("features/kaz-os/v3-component-data.js"),
   "manifest.json",
 ];

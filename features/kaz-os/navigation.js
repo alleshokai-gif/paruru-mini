@@ -127,6 +127,7 @@
             placement: item.placement, planning_preference: item.planning_preference,
             next_policy_window: item.next_policy_window } : null)
         .filter((item, index, all) => item && !['DONE', 'CANCELLED'].includes(item.state)
+          && !String(item.blocker || '').trim()
           && !['done', 'carry_forward', 'delayed', 'blocked'].includes(progress.get(item.id))
           && (name !== 'now' || (Date.parse(item.plan_start) <= Date.now() && Date.parse(item.plan_end) > Date.now()))
           && all.findIndex(other => other?.id === item.id) === index);
@@ -324,7 +325,8 @@
       const canonicalNow = lane('now')[0] || null;
       const dailyRow = latest.get('daily_planner');
       const dailyMatch = resolved.get('daily_planner');
-      const dailyTarget = dailyMatch?.item && !progress.has(dailyMatch.item.id) ? dailyMatch.item : null;
+      const dailyTarget = dailyMatch?.item && !progress.has(dailyMatch.item.id)
+        && !String(dailyMatch.item.blocker || '').trim() ? dailyMatch.item : null;
       const stepFit = dailyTarget && globalThis.KazWorkTimeFit?.fit(dailyTarget,dailyRow,dashboard,dailyPlan,now);
       const plannedTarget = dailyTarget && [...lane('next'),...lane('scheduled')].find(w=>w.id===dailyTarget.id);
       const useStepNow = stepFit && globalThis.KazWorkTimeFit.precedes(
@@ -333,6 +335,7 @@
       const renderStep = (target, recommendation, fit) => {
         const origin = {work_record:'Work正本',daily_estimate:'本人の日次見積り',ai_estimated:'AI推定・未確定',unknown:'未推定'};
         addText(section,'p',`最初の一手（${recommendation.step_kind==='substep'?'元Workの分割提案':recommendation.action_origin==='work_record'?'Work記録':'AI具体化・未確定'}）: ${recommendation.first_step}`,'kai-action-first-step');
+        addText(section,'p',`選んだ理由: ${recommendation.reason}`,'kai-action-reason');
         addText(section,'p',`元Work全体: ${recommendation.estimate_min===null?'不明':recommendation.estimate_min+'分'}（${origin[recommendation.estimate_origin]}） · 今回の一手: ${recommendation.step_estimate_min===null?'不明':recommendation.step_estimate_min+'分（AI推定・未確定）'}`,'kai-action-fit');
         if(recommendation.estimate_reason)addText(section,'p',`見積りの根拠: ${recommendation.estimate_reason}`,'kai-action-source');
         if(Number.isFinite(dailyRow?.confidence))addText(section,'p',`一手の時間は概算です（提案全体のAI確度 ${Math.round(dailyRow.confidence*100)}%）。完了実績ではありません。`,'kai-action-source');
@@ -346,7 +349,10 @@
       if (nowCandidate) {
         addWork(section, nowCandidate, useStepNow?'時間枠に収まる一手のAI提案 · 元Workの見積りは変更していません':'決定的Plannerの現在候補 · Calendar・Work状態を反映', { prominentAction: !useStepNow });
         if(useStepNow)renderStep(dailyTarget,dailyRow.recommendation,stepFit);
-        else timeFit(section, nowCandidate, now);
+        else {
+          addText(section,'p',`選んだ理由: ${globalThis.KazWorkTimeFit?.reason?.(nowCandidate) || '確認済みのWork順から選定'}`,'kai-action-reason');
+          timeFit(section, nowCandidate, now);
+        }
         addProgressButton(section, nowCandidate);
       } else {
         addText(section, 'p', '現在時刻に実行可能と確認できたWorkはありません。', 'kai-action-source');
@@ -359,7 +365,8 @@
       }
       const row = [...latest.values()].sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of))[0] || null;
       const match = row ? resolved.get(row.feature) : null;
-      const target = match?.item && !progress.has(match.item.id) ? match.item : null;
+      const target = match?.item && !progress.has(match.item.id)
+        && !String(match.item.blocker || '').trim() ? match.item : null;
       const nextCandidate = [...new Map([...lane('next'), ...lane('scheduled')]
         .filter(item => !nowCandidate || item.id !== nowCandidate.id)
         .map(item => [item.id, item])).values()][0] || null;
@@ -426,6 +433,8 @@
             evidence.append(summary, body); section.appendChild(evidence);
           }
           if (!sameAsNow && !stepAlreadyShown) addProgressButton(section, target);
+        } else if (match?.item && String(match.item.blocker || '').trim()) {
+          addText(section,'p','このWorkには妨げる要因が記録されています。通常の着手候補から外し、Workの内容確認を優先します。','kp-notice');
         } else if (match?.item && progress.has(match.item.id)) {
           addText(section, 'p', '進み具合を記録しました。次は確認済みのWork順から選び直しています。', 'kai-action-source');
         } else {
@@ -435,6 +444,7 @@
       if (!target && nextCandidate) {
         addText(section, 'h3', 'NEXT · 次に取り組む候補（Workの優先順）', 'kai-action-next-heading');
         addWork(section, nextCandidate, '決定的Plannerの候補 · 新しいAI判断ではありません', { prominentAction: true });
+        addText(section,'p',`候補の理由: ${globalThis.KazWorkTimeFit?.reason?.(nextCandidate) || '確認済みのWork順から選定'}`,'kai-action-reason');
         timeFit(section, nextCandidate, now);
         addProgressButton(section, nextCandidate);
       }
