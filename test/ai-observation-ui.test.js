@@ -120,6 +120,10 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     for(const key of ['work','today','calendar','work_busy'])snapshot.sources[key]={status:'current',valid_until:'2026-10-21T23:59:59+09:00'};
     snapshot.today.kaz_free_windows=targeted==='step_no_window'?[]:[{start:'2026-10-21T18:00:00+09:00',end:'2026-10-21T18:30:00+09:00'}];
     snapshot.today.company_free_windows=targeted==='step_company'?[...snapshot.today.kaz_free_windows]:[];
+    if(targeted==='step_unplaced'){
+      snapshot.today.next=[];
+      snapshot.component_data={today:{today:{not_fit_today:[{...snapshot.work[2]}]}}};
+    }
   }
   handlers['paruru:authenticated']({ detail: {
     context: { role: 'admin', allowedViews: ['kaz-os'] },
@@ -321,7 +325,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   }
 }
 
-Promise.all([run(18,false,false,'step_company'),run(18,false,false,'step_personal'),run(18,false,false,'step_no_window'),run(18), run(21), run(18, false, false, false, 'ブロック'),
+Promise.all([run(18,false,false,'step_unplaced'),run(18,false,false,'step_company'),run(18,false,false,'step_personal'),run(18,false,false,'step_no_window'),run(18), run(21), run(18, false, false, false, 'ブロック'),
   run(18, false, false, false, '継続中'),
   run(18, false, false, false, '延期', 'failed'), run(18, true), run(21, false, true),
   run(21, false, false, false, '明日へ持ち越し'),
