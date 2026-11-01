@@ -16,6 +16,7 @@ assert.equal(api.fit(work,record,snapshot,null,now+1),null,'29m59s does not fit 
 assert.equal(api.fit(work,record,{...snapshot,today:{...snapshot.today,company_free_windows:[]}},null,now),null);
 assert.equal(api.fit(work,record,{...snapshot,sources:{...snapshot.sources,work_busy:{status:'failed'}}},null,now),null);
 assert.equal(api.fit({...work,state:'BLOCKED'},record,snapshot,null,now),null);
+assert.equal(api.fit({...work,blocker:'Review required'},record,snapshot,null,now),null);
 assert.equal(api.fit({...work,project_id:'unknown'},record,snapshot,null,now),null);
 assert.equal(api.fit(work,{...record,as_of:'2026-11-01T08:00:00+09:00'},snapshot,null,now),null);
 assert.equal(api.fit({...work,estimate_min:60},record,snapshot,null,now),null);
@@ -24,6 +25,9 @@ assert.equal(api.fit(work,{...record,recommendation:{...proposal,step_estimate_m
 assert.equal(api.precedes({...work,state:'READY',priority:'CRITICAL'},{...work,id:'another',state:'DOING',priority:'LOW'},now),false);
 assert.equal(api.precedes({...work,planning_preference:'today'},{...work,id:'another'},now),true);
 assert.equal(api.precedes(work,{...work,id:'adopted',placement:'ADOPTED_SCHEDULE'},now),false);
+assert.equal(api.precedes({...work,deadline:{start:'2026-11-02T10:00:00+09:00'}},{...work,id:'later',deadline:{start:'2026-11-02'}},now),true);
+assert.match(api.reason({...work,deadline:{start:'2026-11-02'}}),/時刻未設定/);
+assert.match(api.reason(work),/着手済み.*優先度高/);
 assert.equal(api.validateProposal({...proposal,step_estimate_min:121}),false);
 assert.equal(api.validateProposal({first_step:'作業を確認する',action_origin:'work_record',reason:'既存形式',estimate_min:null}),true);
 const unknown={...work,estimate_min:null};

@@ -175,6 +175,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   if (targeted) await new Promise(resolve => setTimeout(resolve, 60));
   const all = descendants(host);
   if(timeFitMode){
+    assert.equal(all.some(n=>n.textContent.includes('選んだ理由: 記録された資料準備を小さく区切る。')),true);
+
     assert.equal(all.some(n=>n.textContent.includes('元Work全体: 120分（Work正本） · 今回の一手: 30分（AI推定・未確定）')),true);
     assert.equal(all.some(n=>n.textContent.includes('一手の実施は元Work全体の完了ではありません')),true);
     assert.equal(all.some(n=>n.textContent.includes('確認済み空き枠に適合')),targeted!=='step_no_window');
