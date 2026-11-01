@@ -243,8 +243,14 @@
         if (w.plan_start && w.plan_end && (!v3 || label === 'SCHEDULED'))
           add('p', `${fmt(w.plan_start)}–${fmt(w.plan_end)} · ${w.placement || '配置候補'}`, 'kp-muted', row);
         else if (w.placement === 'ESTIMATE_REQUIRED') add('p', '所要時間未設定。INBOXで分数を答えると配置できます。', 'kp-notice', row);
-        else if (w.placement === 'NO_AVAILABLE_SLOT') add('p', '今日は確定している空き時間に収まりません。', 'kp-notice', row);
+        else if (w.placement === 'NO_AVAILABLE_SLOT') add('p', label === 'NEXT'
+          ? '今日の時間配置とは独立した優先候補です。' : '今日は確定している空き時間に収まりません。', 'kp-notice', row);
         else if (w.waiting_reason) add('p', `待ち理由: ${w.waiting_reason}`, 'kp-muted', row);
+        if (label === 'NEXT' && w.next_policy_window?.availability_confirmed === false) {
+          const window = w.next_policy_window;
+          const date = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' }).format(new Date(window.start));
+          add('p', `次の作業時間候補: ${date} ${fmt(window.start)}–${fmt(window.end)} JST（設定と既知の拘束から算出。予定・BUSYの確認前）`, 'kp-notice', row);
+        }
         if (w.next_action) {
           const sentence = w.next_action.split(/[。\n]/, 1)[0];
           const excerpt = Array.from(sentence).slice(0, 72).join('');
@@ -293,12 +299,38 @@
           });
         });
       };
+      const companyState = t.work_time;
+      const companyEmptyMessage = companyState?.company_day_kind === 'non_working_day'
+        ? '会社の勤務時間は設定済みですが、今日は勤務対象曜日ではありません。'
+        : companyState?.company_hours_configured === false || t.limitations?.includes('company_work_hours_unconfigured')
+          || t.unassigned?.some(row => row.planning_reason === 'WORKING_HOURS_UNAVAILABLE')
+          ? '会社の勤務時間が設定されていないため、会社の空き時間は表示していません。'
+          : data.sources?.work_busy?.status !== 'ok'
+            ? `${companyState?.company_hours_configured === true ? '会社の勤務時間は設定済みですが、' : ''}BUSY予定を確認できないため会社の空き枠は未確認です。`
+            : companyState?.company_hours_configured === true
+              ? '会社の勤務時間は設定済みです。今日の確認済み空き枠はありません。'
+              : '今日の会社の確認済み空き枠はありません。';
+      if (companyState?.company_hours_configured) {
+        add('p', `会社勤務時間: 月〜金 ${companyState.company_hours.map(r => `${r.start}–${r.end}`).join('、')} · JST`, 'kp-muted');
+        const window = companyState.next_company_window;
+        if (window) {
+          const day = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' }).format(new Date(window.start));
+          add('p', `次の会社作業時間候補: ${day} ${fmt(window.start)}–${fmt(window.end)} JST（予定・BUSY確認前）`, 'kp-muted');
+        }
+      }
+      const diagnostics = t.candidate_diagnostics;
+      if (diagnostics) {
+        add('p', `Work ${diagnostics.total_count}件 · 優先候補 ${diagnostics.eligible_count}件 · 今日配置 ${diagnostics.placed_count}件`, 'kp-muted');
+        const detail = fold('候補の選定・除外理由');
+        add('p', `完了・取消 ${diagnostics.terminal_count}件、状態待ち ${diagnostics.waiting_state_count}件、未着手対象外 ${diagnostics.not_actionable_state_count}件、意向による保留 ${diagnostics.deferred_preference_count}件、確定配置 ${diagnostics.adopted_schedule_count}件。`, 'kp-muted', detail);
+        add('p', `候補のうち所要時間未設定 ${diagnostics.estimate_required_count}件、今日の空き枠なし ${diagnostics.no_slot_count}件、時間帯未確認 ${diagnostics.unassigned_count}件。依存関係はこのWork投影に含まれず、未解決の状態やBlocker記録を別途確認します。`, 'kp-muted', detail);
+      }
       if (v3) {
         const overview = part('今日の予定・空き時間');
         overview.dataset.todayOverview = 'true';
         add('p', '既存Calendarと個人作業時間の設定を重ねた候補です。会社の作業時間とは分けて表示します。 · JST', 'kp-muted', overview);
         renderFreeWindows('🏢 会社の空き時間', t.company_free_windows,
-          '確認済みの会社の空き時間はありません。', overview, false, true);
+          companyEmptyMessage, overview, false, true);
         const currentWindows = (t.kaz_free_windows || []).filter(window =>
           Number.isFinite(stamp(window.start)) && Number.isFinite(stamp(window.end))
           && stamp(window.end) > now && stamp(window.start) < stamp(window.end));
@@ -362,7 +394,7 @@
       } else if (v2) {
         add('p', '確認済みの予定と、設定済みの作業可能時間を重ねて表示 · JST', 'kp-muted', head);
         renderFreeWindows('🏢 会社の空き時間', t.company_free_windows,
-          '会社の勤務時間が設定されていないため、会社の空き時間は表示していません。');
+          companyEmptyMessage);
         renderFreeWindows('🏠 家庭・個人の作業候補時間', t.calendar_free_windows,
           t.calendar_state?.unknown?.some(value => value.reason === 'TIME_UNRESOLVED')
             ? '時刻不明の予定があるため空き枠を確定できません。'
@@ -389,6 +421,7 @@
         else (t.now?.items || []).forEach(w => renderCandidate(w, nowSection, 'NOW'));
 
         const nextSection = part('NEXT');
+        add('p', '次に優先するWorkです。現在実行できるNOWや、確定した実行予定とは別です。', 'kp-muted', nextSection);
         if (t.next?.kind === 'none') add('p', '次候補はありません。', 'kp-muted', nextSection);
         else (t.next?.items || []).forEach(w => renderCandidate(w, nextSection, 'NEXT'));
       }

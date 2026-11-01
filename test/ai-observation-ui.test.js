@@ -105,7 +105,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
       { id: 'work-3', title: '次の作業', state: 'READY', project_id: targeted === 'company' ? 'project-company' : 'project-personal',
         next_action: '次の資料を用意する' },
       { id: 'work-4', title: '計画対象外の確認作業', state: 'HUMAN_REVIEW', project_id: 'project-personal' }],
-    today: { now: emptyPlan ? [] : [{ id: 'work-1' }],
+    today: { now: emptyPlan ? [] : [{ id: 'work-1',
+      plan_start: '2026-10-21T00:00:00+09:00', plan_end: '2026-10-22T00:00:00+09:00' }],
       next: emptyPlan ? [] : [{ id: 'work-2' }, { id: 'work-3' }],
       scheduled: [], kaz_free_windows: [{ start: '2026-10-21T22:00:00+09:00',
         end: '2026-10-21T23:00:00+09:00' }] } };
@@ -286,7 +287,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   assert.equal(dashboardReads, 2, 'Work and TODAY candidate sources are read back after progress is saved');
   assert.equal(descendants(host).some(node => node.textContent.includes('今日の計画を読み直しました')), true);
   if (!emptyPlan && targeted !== 'generated' && targeted !== 'company')
-    assert.equal(descendants(host).some(node => node.textContent.includes('次に取り組む候補（確認済みのWork順）')), true);
+    assert.equal(descendants(host).some(node => node.textContent.includes('NEXT · 次に取り組む候補（Workの優先順）')), true);
   if (planCalendarStatus !== 'ok')
     assert.equal(descendants(host).some(node => node.textContent.includes('利用できる時間は未確認です。')), true);
   if (night && actionChoice === '明日へ持ち越し') {

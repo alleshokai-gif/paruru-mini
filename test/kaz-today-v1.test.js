@@ -283,4 +283,32 @@ test('PWA exposes Dynamic TODAY time context without UI score',()=>{
   assert(!personal.includes('UI scoreはまだ使っていません'));
 });
 
+test('V2 retains configured non-working day, priority-only NEXT, and safe diagnostics',()=>{
+  const v=snapshotV2();
+  const hint={start:'2026-11-02T09:00:00+09:00',end:'2026-11-02T11:45:00+09:00',availability_confirmed:false};
+  v.today.now={kind:'none',items:[],basis:[]};
+  v.today.next.items[0]={...v.today.next.items[0],plan_start:null,plan_end:null,estimate_min:null,
+    placement:'ESTIMATE_REQUIRED',next_policy_window:hint};
+  v.today.work_time={company_hours_configured:true,company_day_kind:'non_working_day',
+    company_hours:[{start:'09:00',end:'11:45'},{start:'12:30',end:'17:30'}],next_company_window:hint};
+  v.today.candidate_diagnostics={total_count:66,eligible_count:16,terminal_count:35,waiting_state_count:2,
+    adopted_schedule_count:0,deferred_preference_count:0,not_actionable_state_count:13,
+    estimate_required_count:8,no_slot_count:8,unassigned_count:0,placed_count:0,
+    deadline_count:0,scheduled_count:0,blocker_text_count:6,
+    state_counts:{DOING:2,READY:14,HUMAN_REVIEW:2,BACKLOG:12,IDEA:1,DONE:27,CANCELLED:8},
+    domain_counts:{company:4,personal:62},eligible_domain_counts:{company:2,personal:14},
+    dependency_status:'not_in_work_projection'};
+  const result=h.ctx.sanitizeKazOsToday_(v);
+  assert.equal(result.today.work_time.company_day_kind,'non_working_day');
+  assert.equal(result.today.candidate_diagnostics.total_count,66);
+  assert.equal(result.today.next.items[0].plan_start,null);
+  assert.equal(result.today.next.items[0].estimate_min,null);
+  assert.equal(result.today.next.items[0].next_policy_window.availability_confirmed,false);
+  v.today.next.items[0].next_policy_window={...hint,availability_confirmed:true};
+  assert.throws(()=>h.ctx.sanitizeKazOsToday_(v));
+  v.today.next.items[0].next_policy_window=hint;
+  v.today.work_time.company_hours_configured=false;
+  assert.throws(()=>h.ctx.sanitizeKazOsToday_(v));
+});
+
 console.log(`kaz-today-v1: ${checks}/${checks} PASS`);
