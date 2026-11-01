@@ -79,6 +79,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   sandbox.KazV3ComponentData = { dashboard: () => ({}) };
   sandbox.KazPersonalView = { render: target => target.replaceChildren() };
   const source = fs.readFileSync(path.join(__dirname, '../features/kaz-os/navigation.js'), 'utf8');
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../features/kaz-os/time-fit.js'),'utf8'),sandbox);
   vm.runInNewContext(source, sandbox);
   const sent = [];
   let planningReads = 0, dashboardReads = 0, statusReads = 0;
@@ -110,6 +111,16 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
       next: emptyPlan ? [] : [{ id: 'work-2' }, { id: 'work-3' }],
       scheduled: [], kaz_free_windows: [{ start: '2026-10-21T22:00:00+09:00',
         end: '2026-10-21T23:00:00+09:00' }] } };
+  const timeFitMode=typeof targeted==='string'&&targeted.startsWith('step_');
+  if(timeFitMode){
+    snapshot.today.now=[];snapshot.today.next=[{id:'work-3'}];
+    snapshot.work[2].estimate_min=120;
+    snapshot.projects[1].area=targeted==='step_company'?'WORK':'PERSONAL';
+    snapshot.work[2].project_id='project-company';
+    for(const key of ['work','today','calendar','work_busy'])snapshot.sources[key]={status:'current',valid_until:'2026-10-21T23:59:59+09:00'};
+    snapshot.today.kaz_free_windows=targeted==='step_no_window'?[]:[{start:'2026-10-21T18:00:00+09:00',end:'2026-10-21T18:30:00+09:00'}];
+    snapshot.today.company_free_windows=targeted==='step_company'?[...snapshot.today.kaz_free_windows]:[];
+  }
   handlers['paruru:authenticated']({ detail: {
     context: { role: 'admin', allowedViews: ['kaz-os'] },
     kazOsV3DashboardApi: async () => { dashboardReads++; return snapshot; },
@@ -130,10 +141,13 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
         judgment: 'REPLAN_REVIEW', status: 'review_pending', as_of: '2026-10-21T18:00:00+09:00',
         evidence: selectedEvidence('work-1') }, { feature: 'daily_planner',
         judgment: 'FOCUS_REVIEW', status: 'review_pending',
-        as_of: ['generated', 'company'].includes(targeted)
+        as_of: timeFitMode?'2026-10-21T17:00:00+09:00':['generated', 'company'].includes(targeted)
           ? '2026-10-21T18:30:00+09:00' : '2026-10-21T18:00:00+09:00',
         ...(targeted === 'generated' ? { recommendation: { first_step: 'Work内容を開いて確認する',
           action_origin: 'ai_generated', reason: '確認作業がWorkに記録されています。', estimate_min: null } } : {}),
+        ...(timeFitMode?{recommendation:{first_step:'資料の最初の項目の不明点を一覧にする',action_origin:'ai_generated',
+          reason:'記録された資料準備を小さく区切る。',estimate_min:120,estimate_origin:'work_record',estimate_reason:'最初の項目の確認とメモに区切る。',
+          step_estimate_min:30,step_kind:'substep',step_estimate_origin:'ai_estimated'},confidence:0.9}:{}),
         evidence: selectedEvidence('work-3') }, { feature: 'night_review',
         judgment: 'CARRY_FORWARD_REVIEW', status: 'review_pending', as_of: '2026-10-21T21:00:00+09:00',
         evidence: selectedEvidence('work-3') }]
@@ -156,6 +170,15 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   await new Promise(resolve => setImmediate(resolve));
   if (targeted) await new Promise(resolve => setTimeout(resolve, 60));
   const all = descendants(host);
+  if(timeFitMode){
+    assert.equal(all.some(n=>n.textContent.includes('元Work全体: 120分（Work正本） · 今回の一手: 30分（AI推定・未確定）')),true);
+    assert.equal(all.some(n=>n.textContent.includes('一手の実施は元Work全体の完了ではありません')),true);
+    assert.equal(all.some(n=>n.textContent.includes('確認済み空き枠に適合')),targeted!=='step_no_window');
+    assert.equal(all.some(n=>n.textContent.includes('現在時刻に実行可能と確認できたWorkはありません。')),targeted==='step_no_window');
+    assert.equal(snapshot.work[2].estimate_min,120);
+    assert.equal(sent.length,0,'rendering a substep never updates canonical progress');
+    return;
+  }
   if (targeted && targeted !== 'invalid') {
     if (targeted !== 'generated') {
       assert.equal(all.some(node => node.textContent.includes('再計画を確認')), true);
@@ -298,7 +321,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   }
 }
 
-Promise.all([run(18), run(21), run(18, false, false, false, 'ブロック'),
+Promise.all([run(18,false,false,'step_company'),run(18,false,false,'step_personal'),run(18,false,false,'step_no_window'),run(18), run(21), run(18, false, false, false, 'ブロック'),
   run(18, false, false, false, '継続中'),
   run(18, false, false, false, '延期', 'failed'), run(18, true), run(21, false, true),
   run(21, false, false, false, '明日へ持ち越し'),
