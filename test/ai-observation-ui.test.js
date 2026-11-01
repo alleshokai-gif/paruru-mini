@@ -142,7 +142,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     },
     kazOsAiEngineApi: slowShadow ? () => new Promise(() => {})
       : async () => ({ judgments: targeted ? [{ feature: 'check_in',
-        judgment: 'REPLAN_REVIEW', status: 'review_pending', as_of: '2026-10-21T18:00:00+09:00',
+        judgment: 'REPLAN_REVIEW', status: 'review_pending', as_of: targeted==='step_no_window'?'2026-10-21T16:00:00+09:00':'2026-10-21T18:00:00+09:00',
         evidence: selectedEvidence('work-1') }, { feature: 'daily_planner',
         judgment: 'FOCUS_REVIEW', status: 'review_pending',
         as_of: timeFitMode?'2026-10-21T17:00:00+09:00':['generated', 'company'].includes(targeted)
@@ -181,6 +181,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     assert.equal(all.some(n=>n.textContent.includes('現在時刻に実行可能と確認できたWorkはありません。')),targeted==='step_no_window');
     assert.equal(snapshot.work[2].estimate_min,120);
     assert.equal(sent.length,0,'rendering a substep never updates canonical progress');
+    if(targeted==='step_no_window')assert.equal(all.filter(n=>n.tag==='button'&&n.textContent==='このWorkの進捗操作を開く').length,1,'same proposal has one progress entry');
     return;
   }
   if (targeted && targeted !== 'invalid') {
