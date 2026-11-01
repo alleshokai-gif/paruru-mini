@@ -114,9 +114,20 @@
       && typeof item.id === 'string' && !['DONE', 'CANCELLED'].includes(item.state))
       .map(item => [item.id, item]));
     let activeWork = activeWorkFor(snapshot);
-    const lane = name => (dashboard.today?.[name] || []).map(item => activeWork.get(item?.id))
-      .filter((item, index, all) => item && !['done', 'carry_forward', 'delayed', 'blocked'].includes(progress.get(item.id))
-        && all.findIndex(other => other?.id === item.id) === index);
+    const lane = name => {
+      const source = dailyPlan?.sources?.work_items;
+      const live = dailyPlan?.schema_version === 'kaz-today-plan-v2' && source?.status === 'ok'
+        && source.complete === true && Date.parse(source.valid_until) > Date.now()
+        && Array.isArray(dailyPlan.today?.[name]?.items);
+      const rows = live ? dailyPlan.today[name].items : dashboard.today?.[name] || [];
+      return rows.map(item => live ? item : activeWork.has(item?.id)
+        ? { ...activeWork.get(item.id), plan_start: item.plan_start, plan_end: item.plan_end,
+            next_policy_window: item.next_policy_window } : null)
+        .filter((item, index, all) => item && !['DONE', 'CANCELLED'].includes(item.state)
+          && !['done', 'carry_forward', 'delayed', 'blocked'].includes(progress.get(item.id))
+          && (name !== 'now' || (Date.parse(item.plan_start) <= Date.now() && Date.parse(item.plan_end) > Date.now()))
+          && all.findIndex(other => other?.id === item.id) === index);
+    };
     const addText = (parent, tag, value, className = '') => {
       const node = document.createElement(tag);
       node.className = className;
@@ -163,6 +174,12 @@
         }
       } else addText(parent, 'p', '次の行動は未記録です。Workの詳細を確認してください。');
       addText(parent, 'p', source, 'kai-action-source');
+      if (item.next_policy_window?.availability_confirmed === false) {
+        const window = item.next_policy_window;
+        const day = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' }).format(new Date(window.start));
+        const clock = value => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+        addText(parent, 'p', `次の作業時間候補: ${day} ${clock(window.start)}–${clock(window.end)} JST（予定・BUSY確認前）`, 'kai-action-fit');
+      }
       if (progress.get(item.id) === 'delayed')
         addText(parent, 'p', '延期を記録済み。次の提案更新に反映します。', 'kai-action-source');
       else if (progress.get(item.id) === 'blocked')
@@ -384,7 +401,7 @@
         }
       }
       if (!target && nextCandidate) {
-        addText(section, 'h3', '次に取り組む候補（確認済みのWork順）', 'kai-action-next-heading');
+        addText(section, 'h3', 'NEXT · 次に取り組む候補（Workの優先順）', 'kai-action-next-heading');
         addWork(section, nextCandidate, '決定的Plannerの候補 · 新しいAI判断ではありません', { prominentAction: true });
         timeFit(section, nextCandidate, now);
         addProgressButton(section, nextCandidate);

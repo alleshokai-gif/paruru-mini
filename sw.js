@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261031-home-schedule-recovery-v1");
-// Release: v20261031-home-schedule-recovery-v1
+importScripts("./build.js?v=v20261101-today-next-working-day-v1");
+// Release: v20261101-today-next-working-day-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
