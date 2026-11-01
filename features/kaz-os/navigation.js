@@ -86,6 +86,8 @@
         || !snapshot?.work || !globalThis.crypto?.subtle || !globalThis.TextEncoder) return null;
     const todayIds = new Set(['now', 'next', 'scheduled'].flatMap(lane =>
       (snapshot.today?.[lane] || []).map(row => row?.id)));
+    for(const lane of ['not_fit_today','waiting'])for(const row of snapshot.today?.[lane]||snapshot.component_data?.today?.today?.[lane]||[])
+      if(['DOING','READY','SCHEDULED'].includes(row?.state))todayIds.add(row.id);
     for (const item of snapshot.work) {
       if (!item || typeof item.id !== 'string' || ['DONE', 'CANCELLED'].includes(item.state)) continue;
       if (!todayIds.has(item.id)) continue;
