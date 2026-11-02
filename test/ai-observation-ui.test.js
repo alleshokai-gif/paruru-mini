@@ -27,6 +27,7 @@ class Node {
   replaceChildren() { this.children = []; }
   remove() { if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1); }
   querySelector(selector) {
+    if (selector === '[role="status"]') return this.children.find(node => node.role === 'status') || null;
     if (selector === '[data-progress-status-check]')
       return descendants(this).find(node => node.dataset.progressStatusCheck === 'true') || null;
     if (selector === '[data-progress-explicit-retry]')
@@ -48,7 +49,7 @@ class Node {
       && String(node.className || '').split(' ').includes('kai-observation-send'));
   }
   scrollIntoView() {}
-  setAttribute() {}
+  setAttribute(name, value) { if (name === 'role') this.role = value; }
   addEventListener(name, handler) { this.listeners[name] = handler; }
 }
 function descendants(node) {
@@ -57,7 +58,7 @@ function descendants(node) {
 
 async function run(hourJst, slowShadow = false, claimed = false, targeted = false,
   actionChoice = '継続中', planCalendarStatus = 'ok', recovery = null,
-  sourcePicker = false, emptyPlan = false, initialStatus = 'not_recorded') {
+  sourcePicker = false, emptyPlan = false, initialStatus = 'not_recorded', persisted = null) {
   const handlers = {};
   const host = new Node();
   const view = new Node();
@@ -83,6 +84,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   vm.runInNewContext(source, sandbox);
   const sent = [];
   let planningReads = 0, dashboardReads = 0, statusReads = 0;
+  let interacting = false, hydrationReads = 0;
   const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const evidence = id => {
     const text = id === 'work-1' ? '架空の作業 · DOING · 資料を確認する。残りの説明はWork詳細で確認する'
@@ -168,6 +170,13 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     },
     kazOsAiProgressStatusApi: async payload => {
       assert.deepEqual(Object.keys(payload).sort(), ['action', 'feature', 'observed_at', 'work_id']);
+      if (!interacting) {
+        hydrationReads++;
+        if (persisted === 'unknown' && payload.work_id === 'work-3') return { status: 'unknown' };
+        return payload.work_id === 'work-3' && payload.action === 'delayed' && persisted === 'saved'
+          ? { status: 'saved', observed_at: '2026-10-21T17:14:22+09:00' }
+          : { status: 'not_recorded' };
+      }
       statusReads++;
       if (statusReads === 1) return { status: initialStatus, work_updated: false };
       return { status: recovery === 'not_recorded' ? 'not_recorded' : 'unknown', work_updated: false };
@@ -176,6 +185,23 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   await new Promise(resolve => setImmediate(resolve));
   if (targeted) await new Promise(resolve => setTimeout(resolve, 60));
   const all = descendants(host);
+  if (persisted) {
+    const brief = all.find(n => n.dataset.aiActionBrief === 'true');
+    const detail = descendants(brief);
+    assert.equal(detail.some(n => n.textContent === 'NEXT · 今回の一手（AI提案・未確定）'), false);
+    assert.equal(detail.some(n => n.textContent === '次の作業'), false,
+      'saved delay or unknown progress cannot remain an actionable candidate');
+    assert.equal(sent.length, 0, 'reload only reads existing observations');
+    assert.ok(hydrationReads <= 15, 'reads are shared between overlapping render epochs');
+    assert.equal(detail.some(n => n.textContent.includes(persisted === 'saved'
+      ? '保存済みの進捗を反映' : '進捗を読み戻せません')), true);
+    if (persisted === 'saved') {
+      const row = all.find(n => n.dataset.workItem === 'work-3');
+      assert.ok(descendants(row).some(n => n.textContent.includes('延期を記録済み')));
+      assert.equal(descendants(row).find(n => n.dataset.progressAction === 'delayed').disabled, true);
+    }
+    return;
+  }
   if(timeFitMode){
     const brief=all.find(n=>n.dataset.aiActionBrief==='true');
     assert.equal(brief.dataset.plannerJudgmentId,digest({feature:'daily_planner'}));
@@ -266,6 +292,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     selectedActionButton = selectedButtons.find(node => node.textContent === actionChoice);
     assert.ok(selectedActionButton);
   }
+  interacting = true;
   (selectedActionButton || buttons.find(node => node.textContent === actionChoice)).listeners.click();
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setTimeout(resolve, 60));
@@ -333,7 +360,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   }
 }
 
-Promise.all([run(18,false,false,'step_unplaced'),run(18,false,false,'step_company'),run(18,false,false,'step_personal'),run(18,false,false,'step_no_window'),run(18), run(21), run(18, false, false, false, 'ブロック'),
+Promise.all([... ['saved','unknown'].map(persisted => run(18,false,false,'step_personal',undefined,undefined,undefined,false,false,undefined,persisted)),run(18,false,false,'step_unplaced'),run(18,false,false,'step_company'),run(18,false,false,'step_personal'),run(18,false,false,'step_no_window'),run(18), run(21), run(18, false, false, false, 'ブロック'),
   run(18, false, false, false, '継続中'),
   run(18, false, false, false, '延期', 'failed'), run(18, true), run(21, false, true),
   run(21, false, false, false, '明日へ持ち越し'),

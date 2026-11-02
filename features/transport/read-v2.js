@@ -548,7 +548,12 @@
             || !['saved', 'not_recorded', 'unknown'].includes(value.status)
             || value.work_updated !== (value.status === 'saved'
               && ['done', 'carry_forward'].includes(payload.action))
-            || value.provider_calls !== 0 || value.raw_payload_stored !== false)
+            || value.provider_calls !== 0 || value.raw_payload_stored !== false
+            || (Object.hasOwn(value, 'observed_at') && (value.status === 'saved'
+              ? !Number.isFinite(Date.parse(value.observed_at))
+                || new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Tokyo'}).format(new Date(value.observed_at))
+                  !== new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Tokyo'}).format(new Date(payload.observed_at))
+              : value.observed_at !== null)))
           throw codedError_('AI_PROGRESS_STATUS_RECEIPT_INVALID');
         return value;
       } catch (error) {
