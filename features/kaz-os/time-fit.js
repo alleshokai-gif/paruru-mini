@@ -46,6 +46,32 @@
       &&(p.step_kind!=='substep'||p.action_origin==='ai_generated'&&duration(p.step_estimate_min)&&p.step_estimate_min<=30)
       &&(p.estimate_min===null||p.step_estimate_min===null||p.step_estimate_min<=p.estimate_min);
   }
+  function availability(snapshot,plan,area,now){
+    if(!['company','personal'].includes(area)||!Number.isFinite(now))return {confirmed:false,windows:[]};
+    if(area==='company'&&(plan?.today?.limitations||snapshot?.component_data?.today?.today?.limitations||[])
+      .includes('company_work_hours_unconfigured'))return {confirmed:false,windows:[]};
+    if(plan?.schema_version==='kaz-today-plan-v2'
+      &&['work_items','calendar',...(area==='company'?['work_busy']:[])].some(k=>
+        plan.sources?.[k]&&plan.sources[k].status!=='ok'))return {confirmed:false,windows:[]};
+    const live=plan?.schema_version==='kaz-today-plan-v2'&&plan.planning_date===day(now)
+      &&['work_items','calendar'].every(k=>plan.sources?.[k]?.status==='ok'
+        &&plan.sources[k].complete===true&&Date.parse(plan.sources[k].valid_until)>now)
+      &&(area!=='company'||plan.sources?.work_busy?.status==='ok');
+    const liveWindows=plan?.today?.[area==='company'?'company_free_windows':'calendar_free_windows'];
+    if(live&&Array.isArray(liveWindows))return {confirmed:true,windows:liveWindows,origin:'live'};
+    // A CURRENT Snapshot is independently aged by the server. TODAY is derived:
+    // null means its dependency deadlines apply, not unlimited freshness.
+    const current=snapshot?.status==='CURRENT'&&Date.parse(snapshot.generated_at)<=now
+      &&day(Date.parse(snapshot.generated_at))===day(now)
+      &&['projects','work','today','calendar','work_busy'].every(k=>snapshot.sources?.[k]?.status==='current')
+      &&['projects','work','calendar','work_busy'].every(k=>Date.parse(snapshot.sources[k].valid_until)>now)
+      &&(snapshot.sources.today.valid_until===null||Date.parse(snapshot.sources.today.valid_until)>now)
+      &&typeof snapshot.sources.today.revision==='string'&&snapshot.sources.today.revision.length>0
+      &&snapshot.sources.today.revision===snapshot.sources.work.revision;
+    const windows=snapshot?.today?.[area==='company'?'company_free_windows':'personal_free_windows'];
+    return current&&Array.isArray(windows)
+      ?{confirmed:true,windows,origin:'snapshot',as_of:snapshot.generated_at}:{confirmed:false,windows:[]};
+  }
   function fit(work,record,snapshot,plan,now){
     const p=record?.recommendation;
     if(!work||!snapshot||!Number.isFinite(now)||!Number.isFinite(Date.parse(record?.as_of))
@@ -60,21 +86,13 @@
     if(duration(work.estimate_min)&&(p.estimate_origin!=='work_record'||p.estimate_min!==work.estimate_min))return null;
     if(p.step_kind==='recorded_action'&&p.first_step!==work.next_action)return null;
     if(p.step_kind==='generated_action'&&work.next_action)return null;
-    let windows=null;
-    const live=plan?.schema_version==='kaz-today-plan-v2'&&plan.planning_date===day(now)
-      &&plan.sources?.work_items?.status==='ok'&&plan.sources.work_items.complete===true
-      &&Date.parse(plan.sources.work_items.valid_until)>now
-      &&plan.sources?.calendar?.status==='ok'&&plan.sources.calendar.complete===true
-      &&Date.parse(plan.sources.calendar.valid_until)>now&&plan.sources?.work_busy?.status==='ok';
-    if(live)windows=plan.today?.[area==='company'?'company_free_windows':'calendar_free_windows'];
-    else if(snapshot.status==='CURRENT'&&day(Date.parse(snapshot.generated_at))===day(now)
-      &&['work','today','calendar','work_busy'].every(k=>snapshot.sources?.[k]?.status==='current')
-      &&['today','calendar','work_busy'].every(k=>Date.parse(snapshot.sources[k].valid_until)>now))
-      windows=snapshot.today?.[area==='company'?'company_free_windows':'kaz_free_windows'];
-    if(!Array.isArray(windows))return null;
+    const available=availability(snapshot,plan,area,now);
+    if(!available.confirmed)return null;
+    const windows=available.windows;
     const window=windows.find(w=>Date.parse(w.start)<=now&&Date.parse(w.end)-now>=p.step_estimate_min*60000);
     return window?{parent_work_id:work.id,domain:area,start:new Date(now).toISOString(),
-      end:new Date(now+p.step_estimate_min*60000).toISOString(),proposal:p}:null;
+      end:new Date(now+p.step_estimate_min*60000).toISOString(),proposal:p,
+      availability_origin:available.origin,availability_as_of:available.as_of||null}:null;
   }
   function reason(work){
     const parts=[];
@@ -89,5 +107,5 @@
     }
     return parts.length?parts.join('・'):'確認済みのWork順から選定';
   }
-  return Object.freeze({fit,precedes,validateProposal,domain,reason});
+  return Object.freeze({fit,precedes,validateProposal,domain,reason,availability});
 });

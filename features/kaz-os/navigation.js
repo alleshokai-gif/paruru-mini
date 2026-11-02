@@ -192,34 +192,11 @@
         addText(parent, 'p', '継続中と記録済み。次の提案更新に反映します。', 'kai-action-source');
     };
     const calendarWindows = now => {
-      const calendar = dailyPlan?.sources?.calendar;
-      const hasPlan = dailyPlan?.schema_version === 'kaz-today-plan-v2';
-      const planValid = hasPlan
-        && calendar?.status === 'ok' && calendar?.complete === true
-        && (calendar.valid_until == null || Date.parse(calendar.valid_until) > now)
-        && Array.isArray(dailyPlan.today?.calendar_free_windows);
-      const dashboardValid = !hasPlan && dashboard?.sources?.calendar?.status === 'current';
-      const windows = planValid ? dailyPlan.today.calendar_free_windows
-        : dashboardValid ? dashboard.today?.kaz_free_windows || [] : [];
-      return { confirmed: planValid || dashboardValid, windows };
+      return globalThis.KazWorkTimeFit?.availability(dashboard, dailyPlan, 'personal', now)
+        || { confirmed: false, windows: [] };
     };
-    const companyWindows = now => {
-      const planValid = dailyPlan?.schema_version === 'kaz-today-plan-v2'
-        && dailyPlan.sources?.calendar?.status === 'ok'
-        && dailyPlan.sources?.calendar?.complete === true
-        && dailyPlan.sources?.work_busy?.status === 'ok'
-        && !(dailyPlan.today?.limitations || []).includes('company_work_hours_unconfigured')
-        && (dailyPlan.sources.calendar.valid_until == null
-          || Date.parse(dailyPlan.sources.calendar.valid_until) > now)
-        && Array.isArray(dailyPlan.today?.company_free_windows);
-      const dashboardValid = dailyPlan?.schema_version !== 'kaz-today-plan-v2'
-        && dashboard?.sources?.calendar?.status === 'current'
-        && dashboard?.sources?.work_busy?.status === 'current'
-        && Array.isArray(dashboard.today?.company_free_windows);
-      return { confirmed: planValid || dashboardValid,
-        windows: planValid ? dailyPlan.today.company_free_windows
-          : dashboardValid ? dashboard.today.company_free_windows : [] };
-    };
+    const companyWindows = now => globalThis.KazWorkTimeFit?.availability(
+      dashboard, dailyPlan, 'company', now) || { confirmed: false, windows: [] };
     const planningDomain = item => {
       const area = (dashboard?.projects || []).find(project => project?.id === item?.project_id)?.area;
       if (area === 'WORK') return 'company';
@@ -325,6 +302,13 @@
       const canonicalNow = lane('now')[0] || null;
       const dailyRow = latest.get('daily_planner');
       const dailyMatch = resolved.get('daily_planner');
+      if (dailyMatch?.item && /^[a-f0-9]{64}$/.test(dailyRow?.judgment_id || '')) {
+        section.dataset.plannerJudgmentId = dailyRow.judgment_id;
+        section.dataset.plannerWorkId = dailyMatch.item.id;
+      } else {
+        delete section.dataset.plannerJudgmentId;
+        delete section.dataset.plannerWorkId;
+      }
       const dailyTarget = dailyMatch?.item && !progress.has(dailyMatch.item.id)
         && !String(dailyMatch.item.blocker || '').trim() ? dailyMatch.item : null;
       const stepFit = dailyTarget && globalThis.KazWorkTimeFit?.fit(dailyTarget,dailyRow,dashboard,dailyPlan,now);
@@ -340,6 +324,10 @@
         if(recommendation.estimate_reason)addText(section,'p',`見積りの根拠: ${recommendation.estimate_reason}`,'kai-action-source');
         if(Number.isFinite(dailyRow?.confidence))addText(section,'p',`一手の時間は概算です（提案全体のAI確度 ${Math.round(dailyRow.confidence*100)}%）。完了実績ではありません。`,'kai-action-source');
         if(fit){
+          if (fit.availability_origin === 'snapshot') {
+            const at = new Intl.DateTimeFormat('ja-JP', {timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(fit.availability_as_of));
+            addText(section,'p',`時間枠は${at}時点の確認済み予定に基づきます。予定変更直後は再読込してください。`,'kai-action-source');
+          }
           const clock=value=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
           addText(section,'p',`${fit.domain==='company'?'会社':'家庭・個人'}の確認済み空き枠に適合: ${clock(fit.start)}–${clock(fit.end)} JST（実行提案・予定への保存なし）`,'kai-action-fit');
         }else addText(section,'p','今の空き枠に収まることは確認できていません。NEXTの一手として保持します。','kai-action-source');

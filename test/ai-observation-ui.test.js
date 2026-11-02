@@ -97,7 +97,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     ? { ...evidence(id), quote_hash: '0'.repeat(64) } : evidence(id);
   const snapshot = { schema_version: 'kaz-os-dashboard-v3', status: 'CURRENT',
     generated_at: '2026-10-21T12:00:00+09:00',
-    sources: Object.fromEntries(['projects', 'work', 'today', 'calendar'].map(name => [name, { status: 'current' }])),
+    sources: Object.fromEntries(['projects', 'work', 'today', 'calendar', 'work_busy'].map(name => [name, { status: 'current', revision:'fixture', valid_until:'2026-10-21T23:59:59+09:00' }])),
     projects: [{ id: 'project-personal', area: 'PERSONAL' },
       { id: 'project-company', area: targeted === 'company' ? 'WORK' : 'PERSONAL' }],
     work: [{ id: 'work-1', title: '架空の作業', state: actionChoice === '完了' ? 'ACCEPTANCE' : 'DOING', project_id: 'project-personal', estimate_min: 30, priority: 'HIGH',
@@ -109,7 +109,8 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     today: { now: emptyPlan ? [] : [{ id: 'work-1',
       plan_start: '2026-10-21T00:00:00+09:00', plan_end: '2026-10-22T00:00:00+09:00' }],
       next: emptyPlan ? [] : [{ id: 'work-2' }, { id: 'work-3' }],
-      scheduled: [], kaz_free_windows: [{ start: '2026-10-21T22:00:00+09:00',
+      scheduled: [], personal_free_windows: [{ start: '2026-10-21T22:00:00+09:00',
+        end: '2026-10-21T23:00:00+09:00' }], kaz_free_windows: [{ start: '2026-10-21T22:00:00+09:00',
         end: '2026-10-21T23:00:00+09:00' }] } };
   const timeFitMode=typeof targeted==='string'&&targeted.startsWith('step_');
   if(timeFitMode){
@@ -117,9 +118,10 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
     snapshot.work[2].estimate_min=120;
     snapshot.projects[1].area=targeted==='step_company'?'WORK':'PERSONAL';
     snapshot.work[2].project_id='project-company';
-    for(const key of ['work','today','calendar','work_busy'])snapshot.sources[key]={status:'current',valid_until:'2026-10-21T23:59:59+09:00'};
+    for(const key of ['work','today','calendar','work_busy'])snapshot.sources[key]={status:'current',revision:'fixture',valid_until:key==='today'?null:'2026-10-21T23:59:59+09:00'};
     snapshot.today.kaz_free_windows=targeted==='step_no_window'?[]:[{start:'2026-10-21T18:00:00+09:00',end:'2026-10-21T18:30:00+09:00'}];
     snapshot.today.company_free_windows=targeted==='step_company'?[...snapshot.today.kaz_free_windows]:[];
+    snapshot.today.personal_free_windows=targeted==='step_company'?[]:[...snapshot.today.kaz_free_windows];
     if(targeted==='step_unplaced'){
       snapshot.today.next=[];
       snapshot.component_data={today:{today:{not_fit_today:[{...snapshot.work[2]}]}}};
@@ -149,7 +151,7 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
           ? '2026-10-21T18:30:00+09:00' : '2026-10-21T18:00:00+09:00',
         ...(targeted === 'generated' ? { recommendation: { first_step: 'Work内容を開いて確認する',
           action_origin: 'ai_generated', reason: '確認作業がWorkに記録されています。', estimate_min: null } } : {}),
-        ...(timeFitMode?{recommendation:{first_step:'資料の最初の項目の不明点を一覧にする',action_origin:'ai_generated',
+        ...(timeFitMode?{judgment_id:digest({feature:'daily_planner'}),recommendation:{first_step:'資料の最初の項目の不明点を一覧にする',action_origin:'ai_generated',
           reason:'記録された資料準備を小さく区切る。',estimate_min:120,estimate_origin:'work_record',estimate_reason:'最初の項目の確認とメモに区切る。',
           step_estimate_min:30,step_kind:'substep',step_estimate_origin:'ai_estimated'},confidence:0.9}:{}),
         evidence: selectedEvidence('work-3') }, { feature: 'night_review',
@@ -175,6 +177,9 @@ async function run(hourJst, slowShadow = false, claimed = false, targeted = fals
   if (targeted) await new Promise(resolve => setTimeout(resolve, 60));
   const all = descendants(host);
   if(timeFitMode){
+    const brief=all.find(n=>n.dataset.aiActionBrief==='true');
+    assert.equal(brief.dataset.plannerJudgmentId,digest({feature:'daily_planner'}));
+    assert.equal(brief.dataset.plannerWorkId,'work-3');
     assert.equal(all.some(n=>n.textContent.includes('選んだ理由: 記録された資料準備を小さく区切る。')),true);
 
     assert.equal(all.some(n=>n.textContent.includes('元Work全体: 120分（Work正本） · 今回の一手: 30分（AI推定・未確定）')),true);
