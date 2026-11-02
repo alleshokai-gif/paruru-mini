@@ -14,6 +14,8 @@
     aiEngine: Object.freeze({ key: 'aiEngine', path: '/v2/read/ai-engine', action: 'kazOs.aiEngine.get' }),
     aiObservation: Object.freeze({ key: 'aiObservation', path: '/v2/ai-engine/progress', action: 'kazOs.progress.submit' }),
     aiProgressStatus: Object.freeze({ key: 'aiObservation', path: '/v2/ai-engine/progress/status', action: 'kazOs.progress.status' })
+    ,autonomousWork: Object.freeze({key:'autonomousWork',path:'/v2/read/autonomous-work',action:'kazOs.autonomousWork.get'})
+    ,autonomousReview: Object.freeze({key:'autonomousReview',path:'/v2/autonomous-work/review',action:'kazOs.autonomousWork.review'})
   });
 
   function codedError_(code, details) {
@@ -54,7 +56,9 @@
       developmentMetrics: requestedRoutes.developmentMetrics === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       context: requestedRoutes.context === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       aiEngine: requestedRoutes.aiEngine === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
-      aiObservation: requestedRoutes.aiObservation === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
+      aiObservation: requestedRoutes.aiObservation === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      autonomousWork: requestedRoutes.autonomousWork === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      autonomousReview: requestedRoutes.autonomousReview === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
     });
     return Object.freeze({ mode, baseUrl, v3BaseUrl, canaryCapability, routeModes });
   }
@@ -394,7 +398,7 @@
           controller = new AbortController();
           timer = setTimeout(function() { controller.abort(); }, timeoutMs);
           const baseUrl = route.key === 'dashboardV3' || route.key === 'inboxV3' || route.key === 'developmentMetrics'
-            || route.key === 'aiEngine'
+            || route.key === 'aiEngine' || route.key === 'autonomousWork'
             ? config.v3BaseUrl : config.baseUrl;
           const response = await fetchImpl(baseUrl + route.path, {
             method: 'GET',
@@ -564,6 +568,31 @@
       }
     }
 
+    async function autonomousReview_(payload) {
+      if(config.mode!==MODES.DIRECT_V2||config.routeModes.autonomousReview!==MODES.DIRECT_V2)
+        throw codedError_('FORBIDDEN');
+      if(!payload||Object.keys(payload).sort().join(',')!=='decision,observed_at,run_id,work_id'
+        ||!/^[a-f0-9]{64}$/.test(payload.run_id)||typeof payload.work_id!=='string'
+        ||!['approve','changes_requested','defer','reject'].includes(payload.decision)
+        ||!Number.isFinite(Date.parse(payload.observed_at)))throw codedError_('AUTONOMOUS_REVIEW_INPUT_INVALID');
+      const auth=await getAuthEnvelopeWithTimeout_(getAuthEnvelope,timeoutMs);
+      if(auth?.provider!=='firebase'||!auth.idToken)throw codedError_('AUTHENTICATION_REQUIRED');
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+      try{
+        const response=await fetchImpl(config.v3BaseUrl+ROUTES.autonomousReview.path,{
+          method:'POST',cache:'no-store',redirect:'error',signal:controller.signal,
+          headers:{Authorization:'Bearer '+auth.idToken,'Content-Type':'application/json',
+            'X-Paluru-Request-Id':String(diagnostics?.requestId?.()||'')},body:JSON.stringify(payload)});
+        if(!response.ok)throw codedError_('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');
+        const value=await response.json();
+        if(value?.schema_version!=='kaz-autonomous-review-receipt-v1'
+          ||!['saved','already_saved'].includes(value.status)||value.decision!==payload.decision
+          ||value.auto_apply_allowed!==false||value.canonical_writes!==0||value.provider_calls!==0)
+          throw codedError_('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');
+        return value;
+      }catch(error){throw error?.code?error:codedError_('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');}
+      finally{clearTimeout(timer);}
+    }
     return Object.freeze({
       mode: config.mode,
       projects: function() { return read_(ROUTES.projects, validateProjects_); },
@@ -578,7 +607,12 @@
       context: function() { return read_(ROUTES.context, validateContext_); },
       aiEngine: function() { return read_(ROUTES.aiEngine, validateAiEngine_); },
       aiObservation: submitObservation_,
-      aiProgressStatus: progressStatus_
+      aiProgressStatus: progressStatus_,
+      autonomousWork: function(){return read_(ROUTES.autonomousWork,value=>{
+        if(!root.KazAutonomousWork)throw codedError_('AUTONOMOUS_CONTRACT_INVALID');
+        return root.KazAutonomousWork.validate(value);
+      });},
+      autonomousReview: autonomousReview_
     });
   }
 

@@ -5,6 +5,7 @@
   let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, developmentMetricsApi = null, inboxAnswerApi = null, aiEngineApi = null, aiObservationApi = null, aiProgressStatusApi = null;
   let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0, todayClockTimer = null;
   let lastKazRoute = '#kaz-os/today';
+  let autonomousWorkApi=null,autonomousReviewApi=null;
   let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, contextEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
@@ -1399,6 +1400,9 @@
           todayClockTimer?.unref?.();
         }
         void appendAiJudgments(actionHost, selection.page, current, snapshot, brief);
+        if(selection.page==='today'&&globalThis.KazAutonomousWork)
+          void globalThis.KazAutonomousWork.append(briefHost,{read:autonomousWorkApi,
+            review:autonomousReviewApi,snapshot,current});
       } catch (error) {
         if (!current()) return;
         if (selection.page === 'metrics') {
@@ -1680,6 +1684,8 @@
     aiEngineApi = event.detail?.kazOsAiEngineApi || null;
     aiObservationApi = event.detail?.kazOsAiObservationApi || null;
     aiProgressStatusApi = event.detail?.kazOsAiProgressStatusApi || null;
+    autonomousWorkApi=event.detail?.kazOsAutonomousWorkApi||null;
+    autonomousReviewApi=event.detail?.kazOsAutonomousReviewApi||null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
     v3DashboardApi = event.detail?.kazOsV3DashboardApi || null;
     v3InboxApi = event.detail?.kazOsV3InboxApi || null;
@@ -1706,6 +1712,7 @@
     aiEngineApi = null;
     aiObservationApi = null;
     aiProgressStatusApi = null;
+    autonomousWorkApi=null;autonomousReviewApi=null;
     inboxAnswerApi = null;
     v3DashboardApi = null;
     v3InboxApi = null;
