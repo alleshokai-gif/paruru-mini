@@ -148,6 +148,18 @@ async function main() {
     assert.equal(status.status, 'not_recorded');
     assert.equal(statusCalls[0].url, 'https://v3.example.test/v2/ai-engine/progress/status');
     assert.deepEqual(statusCalls[0].body, statusPayload);
+    for (const timestamp of ['2026-10-21T17:14:22+09:00', '2026-10-20T17:14:22+09:00', 'invalid']) {
+      const savedClient = load(async () => response(200, {
+        schema_version: 'kaz-ai-engine-work-progress-status-v1', feature: payload.feature,
+        action: payload.action, status: 'saved', observed_at: timestamp,
+        work_updated: true, provider_calls: 0, raw_payload_stored: false,
+      })).create({ config: { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+        v3BaseUrl: 'https://v3.example.test', routeModes: { aiObservation: 'DIRECT_V2' } } });
+      if (timestamp.startsWith('2026-10-21'))
+        assert.equal((await savedClient.aiProgressStatus(statusPayload)).observed_at, timestamp);
+      else await assert.rejects(savedClient.aiProgressStatus(statusPayload),
+        error => error.code === 'AI_PROGRESS_STATUS_RECEIPT_INVALID');
+    }
     let attempts = 0;
     const unknown = load(async () => { attempts++; throw Error('network unavailable'); });
     const unknownClient = unknown.create({ config: { mode: 'DIRECT_V2',

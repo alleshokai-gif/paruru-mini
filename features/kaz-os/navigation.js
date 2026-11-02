@@ -112,6 +112,63 @@
     let rows = [], renderEpoch = 0, aiState = 'loading', aiError = '';
     let dashboard = snapshot, dailyPlan = plan;
     const progress = new Map();
+    const restored = new Map(), unresolvedProgress = new Set(), localProgress = new Set();
+    // Exact-key status reads reuse the existing permission boundary: no GCS list,
+    // mutation, Provider call, or retry is needed to restore a visible candidate.
+    async function restoreProgress(items) {
+      const ids = [...new Set(items.map(item => item?.id).filter(id => typeof id === 'string'))];
+      ids.slice(24).forEach(id => unresolvedProgress.add(id));
+      const pending = ids.slice(0, 24).filter(id => !restored.has(id)).map(id => {
+        let finish;
+        restored.set(id, new Promise(resolve => { finish = resolve; }));
+        return { id, finish };
+      });
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(4, pending.length) }, async () => {
+        while (cursor < pending.length) {
+          const { id, finish } = pending[cursor++];
+          const operation = (async () => {
+            const saved = [];
+            try {
+              if (!aiProgressStatusApi) throw Error('PROGRESS_UNAVAILABLE');
+              for (const action of ['on_track', 'delayed', 'blocked', 'done', 'carry_forward']) {
+                const status = await aiProgressStatusApi({ work_id: id, action,
+                  feature: action === 'carry_forward' ? 'night_review' : 'check_in',
+                  observed_at: observedAtJst() });
+                if (status.status === 'unknown') throw Error('PROGRESS_UNKNOWN');
+                if (status.status === 'saved') {
+                  if (!sameJstDay(status.observed_at) || Date.parse(status.observed_at) > Date.now() + 300000)
+                    throw Error('PROGRESS_TIME_INVALID');
+                  saved.push({ action, observed_at: status.observed_at });
+                }
+              }
+              saved.sort((a, b) => Date.parse(b.observed_at) - Date.parse(a.observed_at));
+              if (saved.length > 1 && Date.parse(saved[0].observed_at) === Date.parse(saved[1].observed_at))
+                throw Error('PROGRESS_AMBIGUOUS');
+              if (current() && !localProgress.has(id) && saved.length) {
+                progress.set(id, saved[0].action);
+                const label = { on_track: '継続中', delayed: '延期', blocked: 'ブロック',
+                  done: '完了', carry_forward: '明日への持ち越し' }[saved[0].action];
+                for (const row of controlsHost.querySelectorAll('.kai-observation-work')) {
+                  if (row.dataset.workItem !== id) continue;
+                  const output = row.querySelector('[role="status"]');
+                  if (output) output.textContent = `${label}を記録済みです。今日の候補へ反映しました。`;
+                  for (const button of row.querySelectorAll('.kai-observation-send'))
+                    button.disabled = ['done', 'carry_forward'].includes(saved[0].action)
+                      || button.dataset.progressAction === saved[0].action;
+                }
+              }
+            } catch (_) {
+              if (!localProgress.has(id)) unresolvedProgress.add(id);
+            }
+          })();
+          await operation;
+          finish();
+        }
+      });
+      await Promise.all(workers);
+      await Promise.all(ids.slice(0, 24).map(id => restored.get(id)));
+    }
     const activeWorkFor = value => new Map((value?.work || []).filter(item => item
       && typeof item.id === 'string' && !['DONE', 'CANCELLED'].includes(item.state))
       .map(item => [item.id, item]));
@@ -128,6 +185,7 @@
             next_policy_window: item.next_policy_window } : null)
         .filter((item, index, all) => item && !['DONE', 'CANCELLED'].includes(item.state)
           && !String(item.blocker || '').trim()
+          && !unresolvedProgress.has(item.id)
           && !['done', 'carry_forward', 'delayed', 'blocked'].includes(progress.get(item.id))
           && (name !== 'now' || (Date.parse(item.plan_start) <= Date.now() && Date.parse(item.plan_end) > Date.now()))
           && all.findIndex(other => other?.id === item.id) === index);
@@ -297,7 +355,12 @@
       for (const [feature, row] of latest) {
         if (row.status === 'review_pending') resolved.set(feature, await workForEvidence(row.evidence, dashboard));
       }
+      await restoreProgress([...observationCandidates(dashboard),
+        ...[...resolved.values()].map(match => match?.item)]);
       if (epoch !== renderEpoch || !current()) return;
+      if (unresolvedProgress.size) addText(section, 'p',
+        '一部の進捗を読み戻せません。該当Workの着手提案は保留しています。保存操作は再送していません。', 'kp-notice');
+      if (progress.size) addText(section, 'p', '保存済みの進捗を反映して、今日の候補を見直しました。', 'kai-progress-restored');
       addText(section, 'p', availableTime(now), 'kai-action-availability');
       const canonicalNow = lane('now')[0] || null;
       const dailyRow = latest.get('daily_planner');
@@ -310,6 +373,7 @@
         delete section.dataset.plannerWorkId;
       }
       const dailyTarget = dailyMatch?.item && !progress.has(dailyMatch.item.id)
+        && !unresolvedProgress.has(dailyMatch.item.id)
         && !String(dailyMatch.item.blocker || '').trim() ? dailyMatch.item : null;
       const stepFit = dailyTarget && globalThis.KazWorkTimeFit?.fit(dailyTarget,dailyRow,dashboard,dailyPlan,now);
       const plannedTarget = dailyTarget && [...lane('next'),...lane('scheduled')].find(w=>w.id===dailyTarget.id);
@@ -455,6 +519,8 @@
       if (nextPlan?.schema_version === 'kaz-today-plan-v2') dailyPlan = nextPlan;
       void update(rows, aiState, aiError);
     }, onProgress(itemId, action) {
+      localProgress.add(itemId);
+      unresolvedProgress.delete(itemId);
       progress.set(itemId, action);
       void update(rows, aiState, aiError);
     }, unavailable(error) {
