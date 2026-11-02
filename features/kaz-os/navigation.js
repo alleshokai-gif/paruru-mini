@@ -118,6 +118,7 @@
     async function restoreProgress(items) {
       const ids = [...new Set(items.map(item => item?.id).filter(id => typeof id === 'string'))];
       ids.slice(24).forEach(id => unresolvedProgress.add(id));
+      await Promise.all([...restored.values()]);
       const pending = ids.slice(0, 24).filter(id => !restored.has(id)).map(id => {
         let finish;
         restored.set(id, new Promise(resolve => { finish = resolve; }));
