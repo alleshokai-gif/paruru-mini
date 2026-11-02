@@ -49,8 +49,10 @@
     section.dataset.autonomousRun=view.run.run_id;
     text(section,'h2','AIが進めた仕事');
     const completed=view.run.items.filter(x=>x.substep_completed).length;
-    const pending=view.run.items.filter(x=>x.status==='review_pending'&&!x.review).length;
-    text(section,'p',`完了した調査 ${completed}件 · あなたの確認待ち ${pending}件`);
+    const counts=text(section,'p','');
+    const updateCounts=()=>{const pending=view.run.items.filter(x=>!x.review&&(x.status==='review_pending'||x.pr_url)).length;
+      counts.textContent=`完了した調査 ${completed}件 · あなたの確認待ち ${pending}件`;};
+    updateCounts();
     text(section,'p',`${view.run.night_day} 夜の記録。Workの完了や公開は自動確定していません。`,'kai-action-source');
     if(view.status==='stale')text(section,'p','以前の実行記録です。昨夜の新しい成果とは確認できていません。','kp-notice');
     for(const item of view.run.items){
@@ -67,12 +69,12 @@
       const output=text(card,'p',item.review?`${choices[item.review.decision]}を記録済みです。`:'');
       output.setAttribute('role','status');output.setAttribute('aria-live','polite');
       const buttons=[];
-      if(item.status!=='running'&&typeof review==='function'&&view.status==='current'){
+      if(item.status!=='running'&&item.pr_url&&typeof review==='function'&&view.status==='current'){
         text(card,'p','ここでの承認は確認結果の記録です。マージ・公開・Work更新は行いません。','kai-action-source');
         for(const [decision,label]of Object.entries(choices)){
           const button=text(card,'button',label,'kp-button kai-observation-send');button.type='button';
           button.dataset.autonomousDecision=decision;
-          button.disabled=item.review_read_status!=='current'||item.review?.decision===decision;
+          button.disabled=item.review_read_status!=='current'||!!item.review;
           button.addEventListener('click',async()=>{
             buttons.forEach(b=>{b.disabled=true;});output.textContent='確認結果を保存しています…';
             try{
@@ -86,7 +88,8 @@
               const saved=fresh.run?.run_id===view.run.run_id&&fresh.run.items.find(i=>i.work_id===item.work_id)?.review;
               if(!saved||saved.decision!==decision)throw Error('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');
               output.textContent=`${label}を保存し、読み戻せました。`;
-              buttons.forEach(b=>{b.disabled=b.dataset.autonomousDecision===decision;});
+              item.review=saved;updateCounts();
+              buttons.forEach(b=>{b.disabled=true;});
             }catch(_){if(current())output.textContent='保存結果を確認できません。再送せず、画面を読み直して状態を確認してください。';}
           });buttons.push(button);
         }

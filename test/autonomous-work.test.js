@@ -27,6 +27,8 @@ async function main(){
     const b=all(host).find(x=>x.dataset.autonomousDecision===decision);await b.listeners.click();
     assert.equal(calls,1);assert.ok(all(host).some(x=>x.textContent?.includes('読み戻せました')));
     assert.equal(v.run.status,'review_pending','review acknowledgement does not apply or merge');
+    assert.ok(all(host).filter(x=>x.tag==='button').every(x=>x.disabled),'one explicit immutable review per report');
+    assert.ok(all(host).some(x=>x.textContent?.includes('確認待ち 0件')));
   }
   const unavailable=fixture();unavailable.run.items[0].review_read_status='unavailable';
   const host=new Node('div');await feature.append(host,{read:async()=>unavailable,current:()=>true,review:async()=>{throw Error('must not submit')}});
