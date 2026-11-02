@@ -1076,6 +1076,8 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsAiEngineApi: callAuthenticatedKazOsAiEngine_,
       kazOsAiObservationApi: callAuthenticatedKazOsAiObservation_,
       kazOsAiProgressStatusApi: callAuthenticatedKazOsAiProgressStatus_,
+      kazOsAutonomousWorkApi: callAuthenticatedKazOsAutonomousWork_,
+      kazOsAutonomousReviewApi: callAuthenticatedKazOsAutonomousReview_,
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
       familyScheduleApi: callAuthenticatedFamilySchedule_,
@@ -5458,6 +5460,7 @@ async function callDirectKazOsRead_(kind, requestId) {
   if (kind === "developmentMetrics") return client.developmentMetrics();
   if (kind === "context") return client.context();
   if (kind === "aiEngine") return client.aiEngine();
+  if (kind === 'autonomousWork') return client.autonomousWork();
   throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
 }
 
@@ -5558,6 +5561,22 @@ async function callAuthenticatedKazOsAiProgressStatus_(payload) {
     retryDelayMs: KAZ_OS_READ_RETRY_DELAY_MS,
   });
   return client.aiProgressStatus(payload);
+}
+
+async function callAuthenticatedKazOsAutonomousWork_() {
+  if(!isViewAllowed_('kaz-os')||activeMembershipContext?.role!=='admin'
+    ||selectedKazOsReadTransport_('autonomousWork')!=='DIRECT_V2')throw createHomeControlError('FORBIDDEN');
+  return callDirectKazOsRead_('autonomousWork');
+}
+async function callAuthenticatedKazOsAutonomousReview_(payload) {
+  if(!isViewAllowed_('kaz-os')||activeMembershipContext?.role!=='admin'
+    ||selectedKazOsReadTransport_('autonomousReview')!=='DIRECT_V2')throw createHomeControlError('FORBIDDEN');
+  const adapter=globalThis.PALURUReadTransportV2;
+  if(!adapter?.create||!firebaseAuthService)throw createHomeControlError('DIRECT_READ_UNAVAILABLE');
+  return adapter.create({config:globalThis.PALURU_READ_TRANSPORT_V2_CONFIG,
+    fetchImpl:globalThis.fetch.bind(globalThis),getAuthEnvelope:refresh=>firebaseAuthService.getAuthEnvelope(refresh),
+    diagnostics:transportDiagnostics_(),timeoutMs:Math.max(KAZ_OS_READ_TIMEOUT_MS,20000),
+    retryDelayMs:KAZ_OS_READ_RETRY_DELAY_MS}).autonomousReview(payload);
 }
 
 async function callAuthenticatedKazOsV3Inbox_() {
