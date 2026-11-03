@@ -245,7 +245,9 @@
         else if (w.placement === 'ESTIMATE_REQUIRED') add('p', '所要時間未設定。INBOXで分数を答えると配置できます。', 'kp-notice', row);
         else if (w.placement === 'NO_AVAILABLE_SLOT') add('p', label === 'NEXT'
           ? '今日の時間配置とは独立した優先候補です。' : '今日は確定している空き時間に収まりません。', 'kp-notice', row);
-        else if (w.waiting_reason) add('p', `待ち理由: ${w.waiting_reason}`, 'kp-muted', row);
+        else if (w.waiting_reason) add('p', w.waiting_reason === 'BLOCKER_RECORDED'
+          ? '妨げる要因が記録されています。着手前にWorkの内容を確認してください。'
+          : `待ち理由: ${w.waiting_reason}`, 'kp-muted', row);
         if (label === 'NEXT' && w.next_policy_window?.availability_confirmed === false) {
           const window = w.next_policy_window;
           const date = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' }).format(new Date(window.start));

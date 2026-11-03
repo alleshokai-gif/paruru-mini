@@ -28,7 +28,8 @@
       developmentMetrics: 'DIRECT_V2',
       context: 'DIRECT_V2',
       aiEngine: 'DIRECT_V2',
-      aiObservation: 'DIRECT_V2'
+      aiObservation: 'DIRECT_V2',
+      autonomousWork: 'DIRECT_V2', autonomousReview: 'DIRECT_V2'
     })
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
