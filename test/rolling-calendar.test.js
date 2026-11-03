@@ -49,7 +49,7 @@ function element(selector) {
 const storage = new Map();
 const context = {
   console, Date, Intl, JSON, Math, Number, Object, Array, String, RegExp, Error,
-  Uint8Array, URL, Promise, AbortController, setTimeout, clearTimeout,
+  Uint8Array, URL, URLSearchParams, Promise, AbortController, setTimeout, clearTimeout,
   crypto: { randomUUID: () => '11111111-1111-4111-8111-111111111111', getRandomValues: (bytes) => bytes.fill(1) },
   localStorage: {
     getItem: (key) => storage.get(key) || null,
@@ -385,6 +385,34 @@ test('static regressions retain Inbox, Follow-up, Agent routing, Calendar sync a
   assert(appSource.includes('buildMemoCredentialPayload("syncCalendar")') && appSource.includes('fetchInboxItems'), 'Calendar or Inbox route removed');
   assert(appSource.includes('updateViaCache: "none"'), 'updateViaCache changed');
   assert(sw.includes('self.skipWaiting()') && sw.includes('self.clients.claim()') && sw.includes('networkFirst'), 'Service Worker lifecycle changed');
+});
+
+test('a successful zero keeps the original Home card visible with explicit empty status', () => {
+  call('renderNotificationCandidates', [], 0, true, []);
+  assert(!element('#todayParuru').classList.contains('is-hidden'), 'zero removed the personal schedule card');
+  assert(element('#todayParuru').dataset.state === 'loaded-empty', 'empty state missing');
+  assert(element('#todayParuru').dataset.calendarState === 'empty', 'Calendar zero is not explicit');
+  assert(element('#todayParuruList').innerHTML.includes('表示対象の予定・やることはありません'), 'empty message missing');
+  assert(element('#todayParuruLine').textContent.includes('今日・明日'), 'existing evening period missing');
+});
+
+test('Calendar failure with zero items is visible and cannot claim no schedules', () => {
+  call('renderNotificationCandidates', [], 0, true, ['calendar_events_unavailable']);
+  call('renderNotificationWarnings', ['calendar_events_unavailable']);
+  assert(!element('#todayParuru').classList.contains('is-hidden'), 'partial empty was hidden');
+  assert(element('#todayParuru').dataset.state === 'loaded-partial', 'partial state missing');
+  assert(element('#todayParuru').dataset.calendarState === 'unavailable', 'Calendar failure became empty');
+  assert(element('#todayParuruList').innerHTML.includes('予定なしとは確認できていません'), 'source failure message missing');
+});
+
+test('real Calendar-shaped candidates retain today/tomorrow grouping and a refresh failure is stale', () => {
+  const items = [{...timed('calendar-today', '2026-07-18 22:00', '2026-07-18 23:00'),title:'Synthetic today',reasons:[],rollingDay:'today'},
+    {...timed('calendar-tomorrow', '2026-07-19 09:00', '2026-07-19 10:00'),title:'Synthetic tomorrow',reasons:[],rollingDay:'tomorrow'}];
+  call('renderNotificationCandidates', items, 2, true, []);
+  assert(element('#todayParuru').dataset.calendarState === 'loaded', 'Calendar items not identified');
+  assert(element('#todayParuruList').innerHTML.includes('今日の残り') && element('#todayParuruList').innerHTML.includes('明日の予定'), 'period grouping lost');
+  call('renderNotificationCandidates', items, 2, true, ['notification_refresh_failed']);
+  assert(element('#todayParuru').dataset.state === 'loaded-stale' && element('#todayParuru').dataset.calendarState === 'stale', 'previous data claimed current');
 });
 
 let failures = 0;

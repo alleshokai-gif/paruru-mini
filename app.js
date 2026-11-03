@@ -22,6 +22,7 @@ const PET_HEALTH_DASHBOARD_SAFE_ERROR_CODES = new Set([
   "DATA_INTEGRITY_ERROR",
 ]);
 const NOTIFICATION_CACHE_MS = 5000;
+const NOTIFICATION_READ_TIMEOUT_MS = 60000;
 const NOTIFICATION_DISPLAY_LIMIT = 5;
 const TOKYO_TIME_ZONE = "Asia/Tokyo";
 const DEFAULT_TOMORROW_SCHEDULE_START_TIME = "18:00";
@@ -1075,6 +1076,8 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsAiEngineApi: callAuthenticatedKazOsAiEngine_,
       kazOsAiObservationApi: callAuthenticatedKazOsAiObservation_,
       kazOsAiProgressStatusApi: callAuthenticatedKazOsAiProgressStatus_,
+      kazOsAutonomousWorkApi: callAuthenticatedKazOsAutonomousWork_,
+      kazOsAutonomousReviewApi: callAuthenticatedKazOsAutonomousReview_,
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
       familyScheduleApi: callAuthenticatedFamilySchedule_,
@@ -2849,7 +2852,8 @@ async function loadNotificationCandidates(options = {}) {
     renderNotificationCandidates(
       displayItems,
       notificationCandidatesState.totalCount + (healthTask ? 1 : 0),
-      notificationCandidatesState.includeTomorrow
+      notificationCandidatesState.includeTomorrow,
+      notificationCandidatesState.warnings
     );
     renderNotificationWarnings(notificationCandidatesState.warnings);
     scheduleNotificationBoundary(notificationCandidatesState.items);
@@ -2874,7 +2878,8 @@ async function loadNotificationCandidates(options = {}) {
         renderNotificationCandidates(
           displayItems,
           notificationCandidatesState.totalCount + (healthTask ? 1 : 0),
-          notificationCandidatesState.includeTomorrow
+          notificationCandidatesState.includeTomorrow,
+          notificationCandidatesState.warnings
         );
         renderNotificationWarnings(notificationCandidatesState.warnings);
         scheduleNotificationBoundary(items);
@@ -2894,7 +2899,8 @@ async function loadNotificationCandidates(options = {}) {
         renderNotificationCandidates(
           displayItems,
           notificationCandidatesState.totalCount + (healthTaskCache ? 1 : 0),
-          notificationCandidatesState.includeTomorrow
+          notificationCandidatesState.includeTomorrow,
+          notificationCandidatesState.warnings
         );
         renderNotificationWarnings(notificationCandidatesState.warnings);
         scheduleNotificationBoundary(notificationCandidatesState.items);
@@ -2929,13 +2935,19 @@ async function fetchNotificationCandidates() {
     );
   }
 
-  const response = await postAuthenticatedApi_({
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), NOTIFICATION_READ_TIMEOUT_MS);
+  try {
+    const response = await postAuthenticatedApi_({
       ...buildMemoCredentialPayload("todayParuruContext"),
       selectedMemberKeys: resolveCalendarMemberKeysForServer(profile.selectedCalendarMemberKeys).join(","),
       includeUnknown: profile.includeUnknownCalendarEvents ? "true" : "false",
       tomorrowScheduleStartTime: getTomorrowScheduleStartTime(profile),
-  });
-  return parseApiResponse(response);
+    }, { signal: controller.signal });
+    return await parseApiResponse(response);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function fetchNotificationCandidatesForDate(profile, targetDate) {
@@ -3158,6 +3170,7 @@ function renderInboxError() {
 
 function renderNotificationLoading() {
   setNotificationViewState("loading");
+  todayParuru.dataset.calendarState = "loading";
   todayParuru.classList.remove("is-hidden");
   todayParuruLine.textContent = formatParuruLine_(PARURU_MESSAGES.notification.loadingLine);
   todayParuruLine.classList.remove("is-hidden");
@@ -3167,6 +3180,7 @@ function renderNotificationLoading() {
 
 function renderNotificationError() {
   setNotificationViewState("error");
+  todayParuru.dataset.calendarState = "unavailable";
   setParuruSpeech("error");
   todayParuru.classList.remove("is-hidden");
   todayParuruLine.classList.add("is-hidden");
@@ -3185,6 +3199,8 @@ function renderNotificationWarnings(warnings) {
   let text = "";
   if (values.includes("tomorrow_notifications_unavailable")) {
     text = "明日の予定だけ取得できんかった。今日の分は表示しとるで。";
+  } else if (values.includes("calendar_events_unavailable")) {
+    text = "Google Calendarの予定を取得できませんでした。予定なしとは確認できていません。";
   } else if (values.includes("notification_refresh_failed")) {
     text = "更新できんかったので、直前の内容を表示しとるで。";
   }
@@ -3197,20 +3213,25 @@ function renderNotificationWarnings(warnings) {
   `);
 }
 
-function renderNotificationCandidates(items, totalCount, includeTomorrow = false) {
+function renderNotificationCandidates(items, totalCount, includeTomorrow = false, warnings = []) {
   const visibleItems = selectRollingNotificationItems(items, NOTIFICATION_DISPLAY_LIMIT, includeTomorrow);
+  const unavailable = warnings.includes("calendar_events_unavailable") || warnings.includes("tomorrow_notifications_unavailable");
+  const stale = warnings.includes("notification_refresh_failed");
+  todayParuru.dataset.calendarState = unavailable ? "unavailable" : stale ? "stale" : items.some(isGoogleCalendarCandidate) ? "loaded" : "empty";
   if (visibleItems.length === 0) {
-    setNotificationViewState("loaded-empty");
-    setParuruSpeech("noNotifications");
-    todayParuru.classList.add("is-hidden");
-    todayParuruLine.classList.add("is-hidden");
-    todayParuruLine.textContent = "";
-    todayParuruList.innerHTML = "";
+    setNotificationViewState(unavailable ? "loaded-partial" : "loaded-empty");
+    setParuruSpeech(unavailable ? "error" : "noNotifications");
+    todayParuru.classList.remove("is-hidden");
+    todayParuruLine.classList.remove("is-hidden");
+    todayParuruLine.textContent = includeTomorrow ? "今日・明日の予定とやること" : "今日の予定とやること";
+    todayParuruList.innerHTML = `<p class="today-paruru-empty">${unavailable
+      ? "Google Calendarの予定は未確認です。取得できた範囲のやることはありません。"
+      : "表示対象の予定・やることはありません。"}</p>`;
     todayParuruAllButton.classList.add("is-hidden");
     return;
   }
 
-  setNotificationViewState("loaded-with-items");
+  setNotificationViewState(unavailable ? "loaded-partial" : stale ? "loaded-stale" : "loaded-with-items");
   todayParuru.classList.remove("is-hidden");
   setParuruSpeech("idle", buildNotificationSummarySpeech(totalCount || visibleItems.length));
   todayParuruLine.textContent = formatParuruLine_(PARURU_MESSAGES.notification.loadedLine);
@@ -5439,6 +5460,7 @@ async function callDirectKazOsRead_(kind, requestId) {
   if (kind === "developmentMetrics") return client.developmentMetrics();
   if (kind === "context") return client.context();
   if (kind === "aiEngine") return client.aiEngine();
+  if (kind === 'autonomousWork') return client.autonomousWork();
   throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
 }
 
@@ -5539,6 +5561,22 @@ async function callAuthenticatedKazOsAiProgressStatus_(payload) {
     retryDelayMs: KAZ_OS_READ_RETRY_DELAY_MS,
   });
   return client.aiProgressStatus(payload);
+}
+
+async function callAuthenticatedKazOsAutonomousWork_() {
+  if(!isViewAllowed_('kaz-os')||activeMembershipContext?.role!=='admin'
+    ||selectedKazOsReadTransport_('autonomousWork')!=='DIRECT_V2')throw createHomeControlError('FORBIDDEN');
+  return callDirectKazOsRead_('autonomousWork');
+}
+async function callAuthenticatedKazOsAutonomousReview_(payload) {
+  if(!isViewAllowed_('kaz-os')||activeMembershipContext?.role!=='admin'
+    ||selectedKazOsReadTransport_('autonomousReview')!=='DIRECT_V2')throw createHomeControlError('FORBIDDEN');
+  const adapter=globalThis.PALURUReadTransportV2;
+  if(!adapter?.create||!firebaseAuthService)throw createHomeControlError('DIRECT_READ_UNAVAILABLE');
+  return adapter.create({config:globalThis.PALURU_READ_TRANSPORT_V2_CONFIG,
+    fetchImpl:globalThis.fetch.bind(globalThis),getAuthEnvelope:refresh=>firebaseAuthService.getAuthEnvelope(refresh),
+    diagnostics:transportDiagnostics_(),timeoutMs:Math.max(KAZ_OS_READ_TIMEOUT_MS,20000),
+    retryDelayMs:KAZ_OS_READ_RETRY_DELAY_MS}).autonomousReview(payload);
 }
 
 async function callAuthenticatedKazOsV3Inbox_() {

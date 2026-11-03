@@ -42,6 +42,9 @@ function buildTodayParuruContextData_(params, actor, dependencies) {
     }), actor, sharedOptions)
     : null;
   const merged = mergeTodayParuruCandidates_(today, tomorrow, plan, now.getTime());
+  // A failed shared read supplies an empty array to both day aggregations.
+  // Preserve its warning even when neither per-day mapper throws.
+  merged.warnings = uniqueTodayParuruWarnings_(merged.warnings.concat(calendarWarnings));
   return {
     success: true,
     schemaVersion: PALURU_TODAY_PARURU_CONTEXT_SCHEMA_VERSION,
