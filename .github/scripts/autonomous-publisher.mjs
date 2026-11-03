@@ -11,6 +11,17 @@ try {
   requireThat(GITHUB_REPOSITORY === 'alleshokai-gif/paruru-mini', 'INVALID_REPOSITORY');
   requireThat(/^[0-9a-f]{40}$/.test(SOURCE_SHA ?? ''), 'INVALID_SOURCE_SHA');
   requireThat(/^[0-9a-f]{32}$/.test(RUN_KEY ?? ''), 'INVALID_RUN_KEY');
+  if (process.argv.includes('--verify-release')) {
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}/rules/branches/main`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    requireThat(response.ok, 'MAIN_PROTECTION_UNAVAILABLE');
+    const rules = await response.json();
+    const hasRule = (type, id) => rules.some((rule) => rule.type === type && rule.ruleset_id === id);
+    requireThat(Array.isArray(rules) && hasRule('update', 26426417) &&
+      hasRule('pull_request', 26426007) && hasRule('required_status_checks', 26426177),
+    'MAIN_RELEASE_RULES_INACTIVE');
+  }
   const repo = `https://github.com/${GITHUB_REPOSITORY}.git`;
   const main = 'refs/heads/main';
   const source = `refs/heads/staging/autonomous/${RUN_KEY}`;

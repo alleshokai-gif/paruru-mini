@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   verify:
-    if: github.repository == 'alleshokai-gif/paruru-mini' && github.ref == 'refs/heads/main'
+    if: github.repository == 'alleshokai-gif/paruru-mini' && github.ref == 'refs/heads/main' && vars.AUTONOMOUS_PUBLISHER_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -32,7 +32,7 @@ jobs:
         env:
           RUN_KEY: ${{ inputs.run_key }}
           SOURCE_SHA: ${{ inputs.source_sha }}
-        run: node .github/scripts/autonomous-publisher.mjs
+        run: node .github/scripts/autonomous-publisher.mjs --verify-release
   publish:
     needs: verify
     runs-on: ubuntu-24.04

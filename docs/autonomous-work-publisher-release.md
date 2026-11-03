@@ -38,6 +38,14 @@ creating PRs. Keep that setting; a repo-scoped PR identity and a verified
 staging/dispatch caller are still needed for unattended operation. Do not
 provide the Worker with the controller's GitHub credentials.
 
+Contents write can authorize GitHub's merge API. Ruleset 26426417 is staged
+disabled for exact `main`, with only the repository owner allowed to bypass
+the update restriction and only through PRs. Check the owner/maintainer release
+flow before enabling it. Keep the independent PR and CI rulesets in force.
+The Publisher requires the active update, PR and CI rules and explicit
+`AUTONOMOUS_PUBLISHER_ENABLED=true`. Confirm main updates are denied to the
+publisher on a disposable protected branch before setting the variable.
+
 ## Night cutover
 
 Keep 23:00 off until the installed controller routes the natural trigger to a
