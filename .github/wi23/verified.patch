@@ -1,0 +1,47 @@
+diff --git a/features/bus/home-route.js b/features/bus/home-route.js
+index 35c9f9a..2bbde7e 100644
+--- a/features/bus/home-route.js
++++ b/features/bus/home-route.js
+@@ -115,9 +115,13 @@
+       nodes.push(node(doc, 'h2', 'bus-home-route-title',
+         displayOnly.length ? `${title}（到着時刻判明分）` : title),
+         renderOption(doc, result.fastest, true));
+-      if (result.alternate) nodes.push(renderOption(doc, result.alternate, false));
+-      if (Number.isFinite(result.differenceMinutes)) nodes.push(node(doc, 'p', 'bus-home-route-difference',
+-        `${result.differenceMinutes}分差`));
++      if (result.alternate) {
++        const alternateCard = renderOption(doc, result.alternate, false);
++        if (Number.isFinite(result.fastest.homeArrivalAt) && Number.isFinite(result.alternate.homeArrivalAt) && Number.isFinite(result.differenceMinutes) && result.differenceMinutes >= 0) {
++          alternateCard.append(node(doc, 'p', 'bus-home-route-difference', `最速候補から${result.differenceMinutes}分差`));
++        }
++        nodes.push(alternateCard);
++      }
+     } else nodes.push(node(doc, 'p', 'bus-home-route-unavailable', '帰宅時刻を比較できません'));
+     if (displayOnly.length) {
+       nodes.push(node(doc, 'h2', 'bus-home-route-display-only-title',
+diff --git a/test/bus-home-route-ui.test.js b/test/bus-home-route-ui.test.js
+index 496bf28..6c0730b 100644
+--- a/test/bus-home-route-ui.test.js
++++ b/test/bus-home-route-ui.test.js
+@@ -287,3 +287,21 @@ test('PALURU Bus view mounts the accepted manual train selector with a productio
+   assert.match(preview, /window\.PALURUBusHomeRoute\?\.setActive\(true\)/);
+   assert.doesNotMatch(preview, /nav\.innerHTML/);
+ });
++
++
++test('arrival difference belongs to the alternate card and requires both known arrivals', () => {
++  const doc = fakeDocument(), mount = doc.createElement('div');
++  const fastest = {stationId:'noborito', stationLabel:'登戸', departureAt:epoch('18:10'),
++    provider:'kawasaki', routeLabel:'A', homeArrivalAt:epoch('18:20'), timingQuality:'static_only'};
++  const alternate = {...fastest, routeLabel:'B', homeArrivalAt:epoch('18:25')};
++  const render = (other, gap) => {
++    ui.renderDecision(doc,mount,{status:'available',fastest,alternate:other,differenceMinutes:gap});
++    return mount.children;
++  };
++  let children = render(alternate,5);
++  assert.doesNotMatch(renderedText(children[1]),/5分差/);
++  assert.match(renderedText(children[2]),/5分差/);
++  assert.equal(children.length,3);
++  assert.doesNotMatch(renderedText({children:render({...alternate,homeArrivalAt:null},5)}),/5分差/);
++  assert.doesNotMatch(renderedText({children:render(alternate,-1)}),/分差/);
++});
