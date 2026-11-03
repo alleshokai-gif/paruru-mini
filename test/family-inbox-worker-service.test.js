@@ -12,7 +12,7 @@ const inboxHeaders = [
   'mediaType', 'sizeBytes', 'originalRef', 'sha256', 'status', 'attemptCount',
   'processingStartedAt', 'processingCompletedAt', 'claimedBy', 'claimVersion',
   'leaseExpiresAt', 'retryable', 'nextAttemptAt', 'errorCode', 'duplicateOfInboxId',
-  'processingProfile',
+  'processingProfile', 'documentType',
 ];
 const candidateHeaders = [
   'schemaVersion', 'candidateId', 'inboxId', 'homeId', 'candidateType', 'revision',
@@ -46,13 +46,16 @@ class Range {
       for (let c = 0; c < this.columns; c += 1) this.sheet.values[this.row - 1 + r][this.column - 1 + c] = values[r][c];
     }
   }
+  setValue(value) { this.setValues([[value]]); }
 }
 
 class Sheet {
   constructor(name, headers, state) { this.name = name; this.values = [headers.slice()]; this.state = state; }
   getLastRow() { return this.values.length; }
   getLastColumn() { return this.values[0].length; }
-  getRange(row, column, rows, columns) { return new Range(this, row, column, rows, columns); }
+  getRange(row, column, rows = 1, columns = 1) { return new Range(this, row, column, rows, columns); }
+  getMaxColumns() { return this.getLastColumn(); }
+  insertColumnAfter(after) { this.values.forEach(row => row.splice(after, 0, '')); }
   appendRow(row) { this.values.push(row.slice()); }
 }
 
@@ -64,6 +67,11 @@ function bytesFor(mediaType = 'image/jpeg') {
 }
 function rowObject(headers, row) { return Object.fromEntries(headers.map((header, index) => [header, row[index]])); }
 function inboxRow(sheet, inboxId) { return sheet.values.slice(1).map((row) => rowObject(inboxHeaders, row)).find((row) => row.inboxId === inboxId); }
+function markLegacySchoolPrint(sheet, inboxId) {
+  const row = sheet.values.slice(1).find((r) => r[inboxHeaders.indexOf('inboxId')] === inboxId);
+  assert(row);
+  row[inboxHeaders.indexOf('processingProfile')] = 'school-v1';
+}
 
 function fixture(options = {}) {
   const state = { logs: [], files: new Map(), lockCount: 0, sheetOpenCount: 0, driveReadCount: 0, uuidCounter: 1, candidateWriteError: false, reviewItemWriteError: false, inboxWriteError: false };
@@ -81,6 +89,10 @@ function fixture(options = {}) {
     FAMILY_INBOX_LEDGER_SPREADSHEET_ID: 'ledger-id',
   }, options.properties || {});
   const context = {
+    ContentService: {
+      MimeType: { JSON: 'application/json' },
+      createTextOutput: (text) => ({ setMimeType: () => JSON.parse(text) }),
+    },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || '' }) },
     LockService: { getScriptLock: () => ({ waitLock: () => { state.lockCount += 1; }, releaseLock: () => {} }) },
     SpreadsheetApp: { openById: (id) => {
@@ -104,6 +116,7 @@ function fixture(options = {}) {
     },
     Utilities: {
       DigestAlgorithm: { SHA_256: 'SHA_256' },
+      Charset: { UTF_8: 'UTF-8' },
       base64Decode: (value) => Array.from(Buffer.from(value, 'base64')),
       base64Encode: (values) => Buffer.from(values).toString('base64'),
       computeDigest: (_, values) => Array.from(crypto.createHash('sha256').update(Buffer.from(values)).digest()),
@@ -120,20 +133,21 @@ function fixture(options = {}) {
     Logger: { log: (line) => state.logs.push(String(line)) },
     Date, Error, Object, Array, String, Number, RegExp, JSON, Math, isFinite,
   };
-  vm.createContext(context);
-  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js', 'FamilyInboxPcReviewService.js']) {
+  require('./fixtures/service-secret-test-double')(context); vm.createContext(context);
+  for (const file of ['FamilyInboxService.js', 'FamilyInboxWorkerService.js', 'FamilyInboxReviewService.js', 'FamilyInboxPcReviewService.js', 'FamilyInboxSchoolAutomation.js', 'Code.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas-family-inbox', file), 'utf8'), context);
   }
   return { api: context, state, inbox, candidates, reviewItems };
 }
 
-function submit(f, mediaType = 'image/jpeg', requestNumber = 10) {
+function submit(f, mediaType = 'image/jpeg', requestNumber = 10, documentType = '') {
   const bytes = bytesFor(mediaType);
   return f.api.familyInboxSubmit_({
     operation: 'familyInbox.submit', internalToken: 'mini-service-secret', clientRequestId: uuid(requestNumber),
     subjectMemberId: 'child-01', userNote: 'private note',
     file: { name: mediaType === 'application/pdf' ? 'school.pdf' : 'school.jpg', mediaType, base64: Buffer.from(bytes).toString('base64') },
     homeId: 'home-01', submittedByMemberId: 'parent-01', source: 'paluru', traceId: 'trace_submit01',
+    ...(documentType ? { documentType } : {}),
   });
 }
 function submitLong(f, requestNumber = 100) {
@@ -188,6 +202,39 @@ function longDigest(f, candidateList, reviewItems) {
 }
 function claimOne(f) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext')); }
 function claimTarget(f, inboxId) { return f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext', { inboxId })); }
+function claimSchoolKnowledge(f, inboxId) {
+  return f.api.familyInboxSchoolKnowledgeClaimNext_(workerBody('familyInbox.schoolKnowledge.claimNext', { inboxId }));
+}
+
+{
+  const f = fixture();
+  const unrelated = submit(f, 'image/jpeg', 109);
+  const created = submit(f, 'application/pdf', 110, 'school_print');
+  const claim = f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext', { subjectMemberId: 'child-01' }));
+  assert.strictEqual(claim.inboxId, created.inboxId, 'a subject-scoped worker must skip ordinary inbox records');
+  assert.strictEqual(inboxRow(f.inbox, unrelated.inboxId).status, 'pending');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'application/pdf', 110, 'school_print');
+  const initial = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(initial.processingProfile, 'school-v1-long');
+  assert.strictEqual(initial.subjectMemberHint, 'child-01');
+  expectCode(() => claimSchoolKnowledge(f, created.inboxId), 'INVALID_STATE');
+  const untargeted = f.api.familyInboxSchoolKnowledgeClaimNext_(workerBody('familyInbox.schoolKnowledge.claimNext'));
+  assert.strictEqual(untargeted.claimed, false);
+  expectCode(() => claimTarget(f, created.inboxId), 'INVALID_STATE');
+  assert.strictEqual(claimOne(f).claimed, false, 'an unscoped worker cannot apply a grade to a different child');
+  expectCode(() => f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext', { inboxId: created.inboxId, subjectMemberId: 'other-child' })), 'INVALID_STATE');
+  const claim = f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext', { inboxId: created.inboxId, subjectMemberId: 'child-01' }));
+  assert.strictEqual(claim.processingProfile, 'school-v1-long');
+  assert.strictEqual(claim.subjectMemberId, 'child-01');
+  assert.strictEqual(claim.documentType, 'school_print');
+  expectCode(() => f.api.familyInboxSchoolKnowledgeGetClaimedSource_(workerBody('familyInbox.schoolKnowledge.getClaimedSource', {
+    inboxId: claim.inboxId, claimVersion: claim.claimVersion,
+  })), 'INVALID_STATE');
+}
 function publishCandidates(f, created, candidates, requestNumber = 950) {
   const claim = claimOne(f);
   return f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates', {
@@ -286,6 +333,84 @@ function longReviewItemsFixture() {
   assert.strictEqual(claim.processingProfile, 'school-v1-long');
   assert.strictEqual(inboxRow(f.inbox, first.inboxId).status, 'pending');
   assert.strictEqual(inboxRow(f.inbox, target.inboxId).status, 'processing');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'application/pdf', 111, 'school_print');
+  markLegacySchoolPrint(f.inbox, created.inboxId);
+  const initial = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(initial.processingProfile, 'school-v1', 'legacy Family Inbox profile remains unchanged');
+  assert.strictEqual(initial.documentType, 'school_print');
+
+  assert.strictEqual(claimOne(f).claimed, false, 'legacy school-v1 worker must not claim School Print');
+  expectCode(() => claimTarget(f, created.inboxId), 'INVALID_STATE');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'pending');
+
+  const claim = claimSchoolKnowledge(f, created.inboxId);
+  assert.strictEqual(claim.claimed, true);
+  assert.strictEqual(claim.inboxId, created.inboxId);
+  assert.strictEqual(claim.documentType, 'school_print');
+  assert.strictEqual(Object.hasOwn(claim, 'processingProfile'), false, 'V3 claim contract is keyed by documentType only');
+
+  const source = f.api.familyInboxSchoolKnowledgeGetClaimedSource_(workerBody('familyInbox.schoolKnowledge.getClaimedSource', {
+    inboxId: claim.inboxId, claimVersion: claim.claimVersion,
+  }));
+  assert.strictEqual(source.documentType, 'school_print');
+  assert.strictEqual(source.sourceFileId, initial.originalRef);
+  assert.strictEqual(source.sha256, initial.sha256);
+  assert.strictEqual(source.base64, Buffer.from(bytesFor('application/pdf')).toString('base64'));
+
+  const completed = f.api.familyInboxSchoolKnowledgeComplete_(workerBody('familyInbox.schoolKnowledge.complete', {
+    inboxId: claim.inboxId, claimVersion: claim.claimVersion, sourceSha: source.sha256,
+    knowledgePath: 'school/2026/grade-3/2026-10/knowledge.md', gitCommitSha: 'c'.repeat(40),
+  }));
+  assert.strictEqual(completed.status, 'completed');
+  assert.strictEqual(completed.knowledgePath, 'school/2026/grade-3/2026-10/knowledge.md');
+  assert.strictEqual(completed.gitCommitSha, 'c'.repeat(40));
+  const final = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(final.status, 'completed');
+  assert.strictEqual(Object.hasOwn(final, 'knowledgePath'), false, 'V3 must not add metadata columns beyond documentType');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'application/pdf', 113, 'school_print');
+  markLegacySchoolPrint(f.inbox, created.inboxId);
+  const routed = f.api.doPost({ postData: { contents: JSON.stringify(workerBody(
+    'familyInbox.schoolKnowledge.claimNext', { inboxId: created.inboxId },
+  )) } });
+  assert.strictEqual(routed.success, true, `doPost must dispatch the V3 claim operation: ${JSON.stringify(routed)}`);
+  assert.strictEqual(routed.data.inboxId, created.inboxId);
+  assert.strictEqual(routed.data.documentType, 'school_print');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'application/pdf', 114, 'school_print');
+  markLegacySchoolPrint(f.inbox, created.inboxId);
+  const claim = claimSchoolKnowledge(f, created.inboxId);
+  const failed = f.api.familyInboxSchoolKnowledgeFail_(workerBody('familyInbox.schoolKnowledge.fail', {
+    inboxId: created.inboxId, claimVersion: claim.claimVersion,
+    errorCode: 'EVENTS_FACT_UPDATE_FAILED',
+    knowledgePath: 'school/2026/grade-3/2026-10/knowledge.md', gitCommitSha: 'd'.repeat(40),
+  }));
+  assert.strictEqual(failed.status, 'failed');
+  assert.strictEqual(failed.retryable, undefined);
+  assert.strictEqual(failed.errorCode, 'EVENTS_FACT_UPDATE_FAILED');
+  assert.match(failed.errorMessage, /Knowledgeは保存済み/);
+  const record = inboxRow(f.inbox, created.inboxId);
+  assert.strictEqual(record.status, 'failed');
+  assert.strictEqual(record.retryable, false);
+  assert.strictEqual(record.errorCode, 'EVENTS_FACT_UPDATE_FAILED');
+  assert.strictEqual(Object.hasOwn(record, 'knowledgePath'), false, 'no Inbox columns are added for P4');
+}
+
+{
+  const f = fixture();
+  const created = submit(f, 'application/pdf', 112);
+  expectCode(() => claimSchoolKnowledge(f, created.inboxId), 'INVALID_STATE');
+  assert.strictEqual(inboxRow(f.inbox, created.inboxId).status, 'pending');
 }
 
 {
@@ -524,6 +649,17 @@ console.log('PASS Family Inbox worker GAS claim, lease, bounded source, strict c
 
 {
   const f = fixture();
+  const created = submitLong(f, 119);
+  const index = f.inbox.values.findIndex(row => row[inboxHeaders.indexOf('inboxId')] === created.inboxId);
+  f.inbox.values[index][inboxHeaders.indexOf('status')] = 'needs_review';
+  const list = f.api.familyInboxListReviews_(reviewBody('familyInbox.listReviews'));
+  assert.strictEqual(list.items[0].candidateCount, 0);
+  assert.strictEqual(list.items[0].reviewChannel, 'pc');
+  assert.strictEqual(list.items[0].reviewStatus, 'pending', 'empty review groups must not be marked reviewed');
+}
+
+{
+  const f = fixture();
   const created = submit(f, 'image/jpeg', 100);
   publishCandidates(f, created, fiveCandidatesFixture(), 951);
   submit(f, 'image/jpeg', 101);
@@ -629,6 +765,11 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   assert.strictEqual(published.reviewItemIds.length, 9);
   assert.strictEqual(f.reviewItems.values.length, 10);
 
+  const mobileList = f.api.familyInboxListReviews_(reviewBody('familyInbox.listReviews'));
+  assert.strictEqual(mobileList.items[0].reviewChannel, 'pc');
+  assert.strictEqual(mobileList.items[0].candidateCount, 12, 'PC-only list includes canonical and review items');
+  assert.strictEqual(mobileList.items[0].reviewStatus, 'pending');
+
   const list = f.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list'));
   assert.strictEqual(list.batches.length, 1);
   assert.strictEqual(list.batches[0].profile, 'school-v1-long');
@@ -639,7 +780,25 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   assert.strictEqual(detail.items[0].origin, 'review_item', 'unresolved items must be exception-first');
   assert(!JSON.stringify(detail).includes('drive-secret-'));
 
+  const expectedProvenance = {
+    inboxId: created.inboxId,
+    publishRequestId,
+    payloadDigest: longDigest(f, candidates, reviewItems),
+    profile: 'school-v1-long',
+  };
+  const canonicalEvent = detail.items.find((item) => item.origin === 'canonical' && item.candidateType === 'schedule.event');
+  assert.deepStrictEqual(
+    Object.fromEntries(Object.keys(expectedProvenance).map((key) => [key, canonicalEvent[key]])),
+    expectedProvenance,
+    'PC Review canonical DTO must preserve current HEAD provenance fields unchanged',
+  );
+
   const fragment = detail.items.find((item) => item.origin === 'review_item' && item.candidateType === 'schedule.event');
+  assert.deepStrictEqual(
+    Object.fromEntries(Object.keys(expectedProvenance).map((key) => [key, fragment[key]])),
+    expectedProvenance,
+    'PC Review review-item DTO must preserve current HEAD provenance fields unchanged',
+  );
   assert.deepStrictEqual(JSON.parse(JSON.stringify(fragment.schoolMetadata)), { targetGrade: 3, dismissalTime: '14:25' });
   const correctedPayload = { ...fragment.payload, date: '2026-09-10' };
   const correctedSchoolMetadata = { targetGrade: 3, dismissalTime: '14:30' };
@@ -746,6 +905,10 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
     usage: { inputTokens: 1, outputTokens: 1 }, durationMs: 1,
   }));
   assert.strictEqual(accepted.candidateIds.length, 64);
+  const mobileList = long.api.familyInboxListReviews_(reviewBody('familyInbox.listReviews'));
+  assert.strictEqual(mobileList.items[0].reviewChannel, 'pc');
+  assert.strictEqual(mobileList.items[0].candidateCount, 64);
+  assert.strictEqual(mobileList.items[0].reviewStatus, 'pending');
 
   const overLimit = fixture();
   const overLimitCreated = submitLong(overLimit, 225);
@@ -891,4 +1054,36 @@ console.log('PASS Family Inbox Review list/detail, five-candidate integrity, cor
   expectCode(() => mixed.api.familyInboxPcReviewList_(pcReviewBody('familyInbox.pcReview.list')), 'CONFIGURATION_ERROR');
 }
 
-console.log('PASS Family Inbox PC Review dedicated auth, automatic single-home scope, long batch persistence, fragment promotion/recovery, canonical bulk approval, profile limits, safe logs, and zero Domain writes');
+{
+  const f=fixture();
+  const created=submit(f,'application/pdf',1900,'school_print');
+  const claim=f.api.familyInboxClaimNext_(workerBody('familyInbox.claimNext',{inboxId:created.inboxId,subjectMemberId:'child-01'}));
+  const candidates=candidatesFixture();
+  f.api.familyInboxPublishCandidates_(workerBody('familyInbox.publishCandidates',{
+    inboxId:created.inboxId,claimVersion:claim.claimVersion,publishRequestId:uuid(1901),
+    payloadDigest:longDigest(f,candidates,[]),candidates,reviewItems:[],usage:{inputTokens:1,outputTokens:1},durationMs:1,
+  }));
+  const pending=f.api.familyInboxSchoolAutomationNext_(workerBody('familyInbox.schoolAutomation.next',{subjectMemberId:'child-01'}));
+  assert.strictEqual(pending.items.length,2);
+  assert.strictEqual(crypto.createHash('sha256').update(Buffer.from(pending.originalBase64,'base64')).digest('hex'),pending.sourceSha256);
+  assert(!f.state.logs.some(log=>log.includes(pending.originalBase64)));
+  const manifest={schemaVersion:'school-knowledge-inbox/1.0',inboxId:created.inboxId,subjectMemberId:'child-01',
+    sourceSha256:pending.sourceSha256,period:'2026-08',targetGrade:3,knowledge:[{type:'document',payload:{title:'Fictional'}}],
+    decisions:pending.items.map((item,index)=>({itemId:item.itemId,revision:item.revision,disposition:index===0?'knowledge':'exception',reason:index===0?'document_metadata':'class_assignment_required'}))};
+  const projectionDigest=f.api.familyInboxSchoolAutomationHash_(manifest);
+  const body=workerBody('familyInbox.schoolAutomation.complete',{inboxId:created.inboxId,snapshotDigest:pending.snapshotDigest,manifest,projectionDigest,
+    receipt:{status:'APPLIED',projectionDigest,sourceInboxId:created.inboxId,sourceSha256:pending.sourceSha256,readback:{ok:true,otherRowsUnchanged:true}}});
+  expectCode(()=>f.api.familyInboxSchoolAutomationComplete_({...body,snapshotDigest:'stale'}),'CLAIM_CONFLICT');
+  const result=f.api.familyInboxSchoolAutomationComplete_(body);
+  assert.strictEqual(result.resolvedCount,1);
+  assert.strictEqual(f.candidates.values[1][candidateHeaders.indexOf('reviewStatus')],'resolved');
+  assert.strictEqual(f.candidates.values[2][candidateHeaders.indexOf('reviewStatus')],'pending');
+  assert.strictEqual(f.candidates.values[1][candidateHeaders.indexOf('reviewedByMemberId')],'');
+  assert.strictEqual(f.api.familyInboxOpenLedger_('ledger-id').headers.length,inboxHeaders.length+2);
+  assert.strictEqual(f.api.familyInboxSchoolAutomationNext_(workerBody('familyInbox.schoolAutomation.next',{subjectMemberId:'child-01'})).inboxId,null);
+  assert.strictEqual(f.api.familyInboxSchoolAutomationComplete_(body).replayed,true);
+  const before=f.candidates.values.length;
+  submit(f,'application/pdf',1902,'school_print');
+  assert.strictEqual(f.candidates.values.length,before);
+}
+console.log('PASS Family Inbox PC Review auth, private School automation receipts, exception-only pending, preserved history, append-only schema, idempotency and legacy contracts');

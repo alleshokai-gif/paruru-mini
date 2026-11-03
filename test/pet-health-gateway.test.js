@@ -130,7 +130,7 @@ function setup(options) {
     json_: (value) => value,
     verifyHomeControlDevicePairing_: () => ({ handled: true, authorized: true }),
   };
-  vm.createContext(context);
+  require('./fixtures/service-secret-test-double')(context); vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HomeMembershipService.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'HealthGatewayService.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'gas', 'PetHealthGatewayService.js'), 'utf8'), context);
@@ -380,7 +380,7 @@ test('PH-G27', 'Mini dispatch owns pet.health namespace', () => {
       createTextOutput: (text) => ({ text, setMimeType() { return this; } }),
     },
   };
-  vm.createContext(context);
+  require('./fixtures/service-secret-test-double')(context); vm.createContext(context);
   vm.runInContext(source, context);
   assert.deepStrictEqual(context.doPost({ postData: { contents: JSON.stringify(body) } }), { gateway: 'pet' });
   assert.deepStrictEqual(JSON.parse(JSON.stringify(dispatched)), body);

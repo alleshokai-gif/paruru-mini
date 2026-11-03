@@ -90,6 +90,7 @@ function load(fetchImpl, records = []) {
   };
   context.globalThis = context;
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(root,'features/kaz-os/time-fit.js'),'utf8'),context);
   vm.runInContext(source, context, { filename: 'features/transport/read-v2.js' });
   const diagnostics = {
     requestId: () => '12345678-1234-4234-8234-123456789abc',
@@ -147,6 +148,18 @@ async function main() {
     assert.equal(status.status, 'not_recorded');
     assert.equal(statusCalls[0].url, 'https://v3.example.test/v2/ai-engine/progress/status');
     assert.deepEqual(statusCalls[0].body, statusPayload);
+    for (const timestamp of ['2026-10-21T17:14:22+09:00', '2026-10-20T17:14:22+09:00', 'invalid']) {
+      const savedClient = load(async () => response(200, {
+        schema_version: 'kaz-ai-engine-work-progress-status-v1', feature: payload.feature,
+        action: payload.action, status: 'saved', observed_at: timestamp,
+        work_updated: true, provider_calls: 0, raw_payload_stored: false,
+      })).create({ config: { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+        v3BaseUrl: 'https://v3.example.test', routeModes: { aiObservation: 'DIRECT_V2' } } });
+      if (timestamp.startsWith('2026-10-21'))
+        assert.equal((await savedClient.aiProgressStatus(statusPayload)).observed_at, timestamp);
+      else await assert.rejects(savedClient.aiProgressStatus(statusPayload),
+        error => error.code === 'AI_PROGRESS_STATUS_RECEIPT_INVALID');
+    }
     let attempts = 0;
     const unknown = load(async () => { attempts++; throw Error('network unavailable'); });
     const unknownClient = unknown.create({ config: { mode: 'DIRECT_V2',
@@ -534,6 +547,13 @@ async function main() {
         action_origin: 'ai_generated', reason: '確認作業が記録されています。', estimate_min: null } }] };
     assert.deepEqual(await load(async () => response(200, actionView)).create({ config }).aiEngine(), actionView,
       'structured AI first steps must be readable while retaining their provenance');
+    const stepView={...actionView,judgments:[{...actionView.judgments[0],recommendation:{
+      first_step:'最初の項目の不明点を記録する',action_origin:'ai_generated',reason:'確認作業の一部から開始。',
+      estimate_min:120,estimate_origin:'work_record',estimate_reason:'最初の1項目に区切る。',
+      step_estimate_min:30,step_estimate_origin:'ai_estimated',step_kind:'substep'}}]};
+    assert.deepEqual(await load(async()=>response(200,stepView)).create({config}).aiEngine(),stepView);
+    const badStep=JSON.parse(JSON.stringify(stepView));badStep.judgments[0].recommendation.step_estimate_min=121;
+    await assert.rejects(load(async()=>response(200,badStep)).create({config}).aiEngine(),error=>error.code==='AI_ENGINE_CONTRACT_INVALID');
     for (const bad of [
       { ...row, judgment: 'RECURRENCE_REVIEW' },
       { ...row, raw_text: 'private text' },

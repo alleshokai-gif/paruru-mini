@@ -175,6 +175,14 @@ function sanitizeKazOsTodayV2_(data) {
     if (!v || typeof v !== 'object') fail();
     return {start:str(v.start,80),end:v.end == null ? null : str(v.end,80),time_zone:v.time_zone == null ? null : str(v.time_zone,80)};
   };
+  const policyWindow = function(v) {
+    if (v == null) return null;
+    if (!v || v.availability_confirmed !== false || typeof v.start !== 'string' || typeof v.end !== 'string'
+        || !/\+09:00$/.test(v.start) || !/\+09:00$/.test(v.end)
+        || !Number.isFinite(Date.parse(v.start)) || !Number.isFinite(Date.parse(v.end))
+        || Date.parse(v.end) <= Date.parse(v.start)) fail();
+    return {start:str(v.start,80),end:str(v.end,80),availability_confirmed:false};
+  };
   const item = function(w) {
     const id=str(w.id,80),projectId=str(w.project_id,80),state=enumeration(w.state,states);
     if (!/^[a-f0-9-]{36}$/i.test(id) || !/^[a-f0-9-]{36}$/i.test(projectId)) fail();
@@ -196,7 +204,8 @@ function sanitizeKazOsTodayV2_(data) {
       priority:priority,estimate_min:estimate,deadline:dateValue(w.deadline),scheduled:dateValue(w.scheduled),
       action_type:actionType,next_action:str(w.next_action),blocker:str(w.blocker),source:sourceName,source_revision:str(w.source_revision,80),
       planning_preference:preference,planning_domain:planningDomain,planning_reason:planningReason,
-      plan_start:planStart,plan_end:planEnd,placement:placement,waiting_reason:waitingReason};
+      plan_start:planStart,plan_end:planEnd,placement:placement,waiting_reason:waitingReason,
+      ...(w.next_policy_window === undefined ? {} : {next_policy_window:policyWindow(w.next_policy_window)})};
   };
   const freeWindow = function(v) {
     if (!v || typeof v !== 'object' || typeof v.start !== 'string' || typeof v.end !== 'string') fail();
@@ -273,6 +282,33 @@ function sanitizeKazOsTodayV2_(data) {
   });
   const limitations=array(data.today.limitations,20,function(x){return str(x,100);});
   if (typeof data.today.needs_input !== 'boolean') fail();
+  const context = {};
+  if (data.today.work_time !== undefined) {
+    const v=data.today.work_time;
+    if (!v || typeof v.company_hours_configured !== 'boolean') fail();
+    context.work_time={company_hours_configured:v.company_hours_configured,
+      company_day_kind:enumeration(v.company_day_kind,['unconfigured','non_working_day','working_day']),
+      company_hours:array(v.company_hours,8,function(row){
+        if (!row || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(row.start)
+            || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(row.end) || row.start>=row.end) fail();
+        return {start:row.start,end:row.end};
+      }),next_company_window:policyWindow(v.next_company_window)};
+    if (v.company_hours_configured !== (v.company_hours.length>0)
+        || (v.company_day_kind==='unconfigured') === v.company_hours_configured) fail();
+  }
+  if (data.today.candidate_diagnostics !== undefined) {
+    const v=data.today.candidate_diagnostics, d={};
+    if (!v || v.dependency_status!=='not_in_work_projection') fail();
+    ['total_count','eligible_count','terminal_count','waiting_state_count','adopted_schedule_count',
+      'deferred_preference_count','not_actionable_state_count','estimate_required_count','no_slot_count',
+      'unassigned_count','placed_count','deadline_count','scheduled_count','blocker_text_count'].forEach(function(key){d[key]=count(v[key]);});
+    ['state_counts','domain_counts','eligible_domain_counts'].forEach(function(key){
+      const allowed=key==='state_counts'?states:['company','personal','unclassified'];
+      if (!v[key] || typeof v[key]!=='object' || Object.keys(v[key]).some(function(k){return allowed.indexOf(k)<0;})) fail();
+      d[key]={};Object.keys(v[key]).forEach(function(k){d[key][k]=count(v[key][k]);});
+    });
+    d.dependency_status='not_in_work_projection';context.candidate_diagnostics=d;
+  }
 
   return {schema_version:'kaz-today-plan-v2',origin:'real_operational_sources',mode:'read_only',fixture_only:false,
     planning_date:str(data.planning_date,20),timezone:'Asia/Tokyo',
@@ -288,7 +324,7 @@ function sanitizeKazOsTodayV2_(data) {
       preference_count:count(data.today.preference_count),daily_estimate_count:count(data.today.daily_estimate_count),
       missing_estimate_count:count(data.today.missing_estimate_count),
       active_count:count(data.today.active_count),done_count:count(data.today.done_count),
-      cancelled_count:count(data.today.cancelled_count),needs_input:data.today.needs_input,limitations:limitations},
+      cancelled_count:count(data.today.cancelled_count),needs_input:data.today.needs_input,limitations:limitations,...context},
     writes:{notion:0,calendar:0,context:0}};
 }
 

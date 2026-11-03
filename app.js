@@ -22,6 +22,7 @@ const PET_HEALTH_DASHBOARD_SAFE_ERROR_CODES = new Set([
   "DATA_INTEGRITY_ERROR",
 ]);
 const NOTIFICATION_CACHE_MS = 5000;
+const NOTIFICATION_READ_TIMEOUT_MS = 60000;
 const NOTIFICATION_DISPLAY_LIMIT = 5;
 const TOKYO_TIME_ZONE = "Asia/Tokyo";
 const DEFAULT_TOMORROW_SCHEDULE_START_TIME = "18:00";
@@ -344,6 +345,7 @@ const refreshInboxButton = document.querySelector("#refreshInboxButton");
 const familyInboxForm = document.querySelector("#familyInboxForm");
 const familyInboxFile = document.querySelector("#familyInboxFile");
 const familyInboxSubjectMember = document.querySelector("#familyInboxSubjectMember");
+let familyInboxSubjectsReady = false;
 const familyInboxNote = document.querySelector("#familyInboxNote");
 const familyInboxSchoolPrint = document.querySelector("#familyInboxSchoolPrint");
 const familyInboxSubmit = document.querySelector("#familyInboxSubmit");
@@ -1074,8 +1076,11 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsAiEngineApi: callAuthenticatedKazOsAiEngine_,
       kazOsAiObservationApi: callAuthenticatedKazOsAiObservation_,
       kazOsAiProgressStatusApi: callAuthenticatedKazOsAiProgressStatus_,
+      kazOsAutonomousWorkApi: callAuthenticatedKazOsAutonomousWork_,
+      kazOsAutonomousReviewApi: callAuthenticatedKazOsAutonomousReview_,
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
+      familyScheduleApi: callAuthenticatedFamilySchedule_,
       nurseOkanCommentApi: callNurseOkanComment_,
       petHealthApi: callAuthenticatedPetHealth_,
       petHealthDashboardCache: petHealthDashboardCacheFacade_(),
@@ -1084,6 +1089,9 @@ const activateMembershipContext_ = function(membershipContext) {
   if (/^#kaz-os(?:\/|$)/.test(globalThis.location?.hash || "")) activeView = "kaz-os";
   const restoredView = consumeViewAfterControllerChange_();
   if (restoredView) activeView = restoredView;
+  if ((globalThis.location?.hash === "#family-schedules"
+      || new URLSearchParams(globalThis.location?.search || "").get("familyScheduleSignage") === "1")
+      && isViewAllowed_("family-schedules")) activeView = "family-schedules";
   const initialViewLoad = switchView(activeView);
   void scheduleAuthenticatedBackgroundReads_(membershipContext, initialViewLoad);
   return initialViewLoad;
@@ -1440,6 +1448,10 @@ familyInboxForm.addEventListener("submit", async (event) => {
     setFamilyInboxStatus_("家族情報を確認できませんでした。再読み込みしてな。", "error");
     return;
   }
+  if (!familyInboxSubjectsReady || familyInboxSubjectMember.selectedOptions[0]?.disabled) {
+    setFamilyInboxStatus_("登録できる家族を確認して、もう一度選んでな。", "error");
+    return;
+  }
 
   familyInboxSubmit.disabled = true;
   familyInboxSubmit.textContent = "アップロード中…";
@@ -1455,7 +1467,11 @@ familyInboxForm.addEventListener("submit", async (event) => {
       file: { name: file.name, mediaType: file.type, base64 },
     });
     if (isSchoolPrint) {
-      setFamilyInboxStatus_("学校プリントをDrive inboxに受け付けたで。ローカルworkerが整理するで。", "success");
+      if (data.idempotency?.replayed && ["failed", "rejected"].includes(data.status)) {
+        setFamilyInboxStatus_("同じ書類は登録済みやけど、処理に失敗してるで。管理者に確認してな。", "error");
+        return;
+      }
+      setFamilyInboxStatus_(data.idempotency?.replayed ? "同じ書類はすでに預かってるで。" : "学校プリントを預かったで。処理を待ってるで。", "success");
     } else {
       const duplicateText = data.status === "duplicate" ? "（同じ内容を検知）" : "";
       setFamilyInboxStatus_(`預かったで。${data.inboxId} / ${data.status}${duplicateText}`, "success");
@@ -1516,6 +1532,7 @@ function setFamilyInboxStatus_(text, state) {
 
 function familyInboxErrorMessage_(code) {
   const normalized = String(code || "");
+  if (normalized === "DUPLICATE_REQUEST") return "同じ書類が別のメモなどで登録済みやで。内容を確認してな。";
   if (["INVALID_INPUT", "UNSUPPORTED_MEDIA_TYPE", "FILE_TOO_LARGE", "INVALID_FILE_SIGNATURE", "INVALID_MEMBER"].includes(normalized)) return "ファイルか対象の家族を確認して、もう一度送ってな。";
   if (normalized === "FORBIDDEN") return "この端末では送信できません。端末登録を確認してな。";
   if (normalized === "CONFIGURATION_ERROR") return "保存先の準備がまだできていません。管理者に確認してな。";
@@ -1759,6 +1776,10 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
+  if (resolvedView === "family-schedules" || globalThis.location?.hash === "#family-schedules") {
+    const hash = resolvedView === "family-schedules" ? "#family-schedules" : "";
+    globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}${hash}`);
+  }
   if (resolvedView !== "kaz-os" && /^#kaz-os(?:\/|$)/.test(String(globalThis.location?.hash || ""))) {
     const cleanUrl = `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}` || "./";
     globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", cleanUrl);
@@ -1776,6 +1797,14 @@ async function switchView(viewName) {
     ? `kaz-${String(globalThis.location?.hash || "").split("/")[1] || "today"}`
     : resolvedView);
   showMessage("", "");
+
+  if (resolvedView === "family-schedules") {
+    const pending = [];
+    document.dispatchEvent(new CustomEvent("family-schedules:opened", {detail:{waitUntil(promise){pending.push(promise);}}}));
+    await Promise.allSettled(pending);
+    window.scrollTo({top:0,behavior:"instant"});
+    return;
+  }
 
   if (resolvedView === "kaz-os") {
     const initialReads = [];
@@ -1839,8 +1868,23 @@ async function loadInbox(options = {}) {
 
 async function loadInboxView_(options = {}) {
   const inboxLoaded = await loadInbox(options);
+  await loadFamilyInboxSubjects_();
   await loadFamilyInboxReviews_();
   return inboxLoaded;
+}
+
+async function loadFamilyInboxSubjects_() {
+  if (!hasMembershipCapability_("family.inbox.submit")) return;
+  familyInboxSubjectsReady = false;
+  try {
+    const data = await callHomeControlApi({ ...buildMemoCredentialPayload("familyInbox.listSubjects") });
+    if (!Array.isArray(data.subjects)) throw new Error("INVALID_SUBJECTS");
+    const available = new Set(data.subjects.map((member) => String(member.memberUserId || "")));
+    Array.from(familyInboxSubjectMember.options).forEach((option) => { option.disabled = !available.has(option.value); });
+    familyInboxSubjectsReady = true;
+  } catch (_) {
+    setFamilyInboxStatus_("登録できる家族を確認できへんかった。受信箱を更新してな。", "error");
+  }
 }
 
 async function loadFamilyInboxReviews_() {
@@ -1884,6 +1928,10 @@ function renderFamilyInboxReviewList_() {
   familyInboxReviewList.innerHTML = familyInboxReviews.map((item) => {
     const reviewed = item.reviewStatus === "reviewed";
     const memberLabel = familyInboxReviewMemberLabel_(item.subjectMemberId);
+    if (item.reviewChannel === "pc") {
+      const hasReviewData = Number(item.candidateCount) > 0;
+      return `<article class="family-inbox-review-card"><div class="family-inbox-review-card-header"><div><h3>${escapeHtml(familyInboxReviewDocumentLabel_(item.candidateTypes))}</h3><p class="family-inbox-review-card-meta">${escapeHtml(memberLabel)}・確認対象 ${Number(item.candidateCount) || 0}件・${escapeHtml(formatFamilyInboxReviewDate_(item.receivedAt))}受付</p></div><span class="family-inbox-review-status">${hasReviewData ? (reviewed ? "確認済み" : "PCで確認") : "確認が必要"}</span></div><p>${hasReviewData ? "長い書類はPC Reviewで確認してな。" : "解析結果がないで。管理者に確認してな。"}</p></article>`;
+    }
     return `
       <article class="family-inbox-review-card">
         <div class="family-inbox-review-card-header">
@@ -2804,7 +2852,8 @@ async function loadNotificationCandidates(options = {}) {
     renderNotificationCandidates(
       displayItems,
       notificationCandidatesState.totalCount + (healthTask ? 1 : 0),
-      notificationCandidatesState.includeTomorrow
+      notificationCandidatesState.includeTomorrow,
+      notificationCandidatesState.warnings
     );
     renderNotificationWarnings(notificationCandidatesState.warnings);
     scheduleNotificationBoundary(notificationCandidatesState.items);
@@ -2829,7 +2878,8 @@ async function loadNotificationCandidates(options = {}) {
         renderNotificationCandidates(
           displayItems,
           notificationCandidatesState.totalCount + (healthTask ? 1 : 0),
-          notificationCandidatesState.includeTomorrow
+          notificationCandidatesState.includeTomorrow,
+          notificationCandidatesState.warnings
         );
         renderNotificationWarnings(notificationCandidatesState.warnings);
         scheduleNotificationBoundary(items);
@@ -2849,7 +2899,8 @@ async function loadNotificationCandidates(options = {}) {
         renderNotificationCandidates(
           displayItems,
           notificationCandidatesState.totalCount + (healthTaskCache ? 1 : 0),
-          notificationCandidatesState.includeTomorrow
+          notificationCandidatesState.includeTomorrow,
+          notificationCandidatesState.warnings
         );
         renderNotificationWarnings(notificationCandidatesState.warnings);
         scheduleNotificationBoundary(notificationCandidatesState.items);
@@ -2884,13 +2935,19 @@ async function fetchNotificationCandidates() {
     );
   }
 
-  const response = await postAuthenticatedApi_({
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), NOTIFICATION_READ_TIMEOUT_MS);
+  try {
+    const response = await postAuthenticatedApi_({
       ...buildMemoCredentialPayload("todayParuruContext"),
       selectedMemberKeys: resolveCalendarMemberKeysForServer(profile.selectedCalendarMemberKeys).join(","),
       includeUnknown: profile.includeUnknownCalendarEvents ? "true" : "false",
       tomorrowScheduleStartTime: getTomorrowScheduleStartTime(profile),
-  });
-  return parseApiResponse(response);
+    }, { signal: controller.signal });
+    return await parseApiResponse(response);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function fetchNotificationCandidatesForDate(profile, targetDate) {
@@ -3113,6 +3170,7 @@ function renderInboxError() {
 
 function renderNotificationLoading() {
   setNotificationViewState("loading");
+  todayParuru.dataset.calendarState = "loading";
   todayParuru.classList.remove("is-hidden");
   todayParuruLine.textContent = formatParuruLine_(PARURU_MESSAGES.notification.loadingLine);
   todayParuruLine.classList.remove("is-hidden");
@@ -3122,6 +3180,7 @@ function renderNotificationLoading() {
 
 function renderNotificationError() {
   setNotificationViewState("error");
+  todayParuru.dataset.calendarState = "unavailable";
   setParuruSpeech("error");
   todayParuru.classList.remove("is-hidden");
   todayParuruLine.classList.add("is-hidden");
@@ -3140,6 +3199,8 @@ function renderNotificationWarnings(warnings) {
   let text = "";
   if (values.includes("tomorrow_notifications_unavailable")) {
     text = "明日の予定だけ取得できんかった。今日の分は表示しとるで。";
+  } else if (values.includes("calendar_events_unavailable")) {
+    text = "Google Calendarの予定を取得できませんでした。予定なしとは確認できていません。";
   } else if (values.includes("notification_refresh_failed")) {
     text = "更新できんかったので、直前の内容を表示しとるで。";
   }
@@ -3152,20 +3213,25 @@ function renderNotificationWarnings(warnings) {
   `);
 }
 
-function renderNotificationCandidates(items, totalCount, includeTomorrow = false) {
+function renderNotificationCandidates(items, totalCount, includeTomorrow = false, warnings = []) {
   const visibleItems = selectRollingNotificationItems(items, NOTIFICATION_DISPLAY_LIMIT, includeTomorrow);
+  const unavailable = warnings.includes("calendar_events_unavailable") || warnings.includes("tomorrow_notifications_unavailable");
+  const stale = warnings.includes("notification_refresh_failed");
+  todayParuru.dataset.calendarState = unavailable ? "unavailable" : stale ? "stale" : items.some(isGoogleCalendarCandidate) ? "loaded" : "empty";
   if (visibleItems.length === 0) {
-    setNotificationViewState("loaded-empty");
-    setParuruSpeech("noNotifications");
-    todayParuru.classList.add("is-hidden");
-    todayParuruLine.classList.add("is-hidden");
-    todayParuruLine.textContent = "";
-    todayParuruList.innerHTML = "";
+    setNotificationViewState(unavailable ? "loaded-partial" : "loaded-empty");
+    setParuruSpeech(unavailable ? "error" : "noNotifications");
+    todayParuru.classList.remove("is-hidden");
+    todayParuruLine.classList.remove("is-hidden");
+    todayParuruLine.textContent = includeTomorrow ? "今日・明日の予定とやること" : "今日の予定とやること";
+    todayParuruList.innerHTML = `<p class="today-paruru-empty">${unavailable
+      ? "Google Calendarの予定は未確認です。取得できた範囲のやることはありません。"
+      : "表示対象の予定・やることはありません。"}</p>`;
     todayParuruAllButton.classList.add("is-hidden");
     return;
   }
 
-  setNotificationViewState("loaded-with-items");
+  setNotificationViewState(unavailable ? "loaded-partial" : stale ? "loaded-stale" : "loaded-with-items");
   todayParuru.classList.remove("is-hidden");
   setParuruSpeech("idle", buildNotificationSummarySpeech(totalCount || visibleItems.length));
   todayParuruLine.textContent = formatParuruLine_(PARURU_MESSAGES.notification.loadedLine);
@@ -5293,6 +5359,9 @@ function saveUserProfileFromForm() {
 }
 
 function isViewAllowed_(viewName) {
+  // A read-only child of the existing Home permission, with the same API roles.
+  if (viewName === "family-schedules") return isViewAllowed_("home")
+    && ["admin", "guardian", "self_record"].includes(activeMembershipContext?.role);
   if (viewName === "kaz-os" && activeMembershipContext?.role !== "admin") return false;
   return appAuthenticationState === "active_member"
     && Array.isArray(activeMembershipContext?.allowedViews)
@@ -5391,7 +5460,31 @@ async function callDirectKazOsRead_(kind, requestId) {
   if (kind === "developmentMetrics") return client.developmentMetrics();
   if (kind === "context") return client.context();
   if (kind === "aiEngine") return client.aiEngine();
+  if (kind === 'autonomousWork') return client.autonomousWork();
   throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
+}
+
+async function callAuthenticatedFamilySchedule_(payload) {
+  if (appAuthenticationState !== "active_member"
+      || !["admin", "guardian", "self_record"].includes(activeMembershipContext?.role)) {
+    throw createHomeControlError("FORBIDDEN");
+  }
+  const auth = await firebaseAuthService.getAuthEnvelope(false);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(globalThis.PALURU_READ_TRANSPORT_V2_CONFIG.familySchedulesBaseUrl + "/v2/read/family-schedules", {
+      method: "POST", cache: "no-store", redirect: "error", signal: controller.signal,
+      headers: { Authorization: "Bearer " + auth.idToken, "Content-Type": "application/json", "X-Paluru-Request-Id": crypto.randomUUID() },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      let code = "FAMILY_SCHEDULE_UNAVAILABLE";
+      try { if ((await response.json())?.error?.code === "FAMILY_SCHEDULE_NOT_PUBLISHED") code = "FAMILY_SCHEDULE_NOT_PUBLISHED"; } catch (_) {}
+      throw createHomeControlError(code);
+    }
+    return await response.json();
+  } finally { clearTimeout(timer); }
 }
 
 async function callAuthenticatedKazOsV3Dashboard_() {
@@ -5468,6 +5561,22 @@ async function callAuthenticatedKazOsAiProgressStatus_(payload) {
     retryDelayMs: KAZ_OS_READ_RETRY_DELAY_MS,
   });
   return client.aiProgressStatus(payload);
+}
+
+async function callAuthenticatedKazOsAutonomousWork_() {
+  if(!isViewAllowed_('kaz-os')||activeMembershipContext?.role!=='admin'
+    ||selectedKazOsReadTransport_('autonomousWork')!=='DIRECT_V2')throw createHomeControlError('FORBIDDEN');
+  return callDirectKazOsRead_('autonomousWork');
+}
+async function callAuthenticatedKazOsAutonomousReview_(payload) {
+  if(!isViewAllowed_('kaz-os')||activeMembershipContext?.role!=='admin'
+    ||selectedKazOsReadTransport_('autonomousReview')!=='DIRECT_V2')throw createHomeControlError('FORBIDDEN');
+  const adapter=globalThis.PALURUReadTransportV2;
+  if(!adapter?.create||!firebaseAuthService)throw createHomeControlError('DIRECT_READ_UNAVAILABLE');
+  return adapter.create({config:globalThis.PALURU_READ_TRANSPORT_V2_CONFIG,
+    fetchImpl:globalThis.fetch.bind(globalThis),getAuthEnvelope:refresh=>firebaseAuthService.getAuthEnvelope(refresh),
+    diagnostics:transportDiagnostics_(),timeoutMs:Math.max(KAZ_OS_READ_TIMEOUT_MS,20000),
+    retryDelayMs:KAZ_OS_READ_RETRY_DELAY_MS}).autonomousReview(payload);
 }
 
 async function callAuthenticatedKazOsV3Inbox_() {

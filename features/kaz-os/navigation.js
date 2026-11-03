@@ -5,6 +5,7 @@
   let context = null, projectsApi = null, workApi = null, capaApi = null, todayApi = null, inboxApi = null, contextApi = null, developmentMetricsApi = null, inboxAnswerApi = null, aiEngineApi = null, aiObservationApi = null, aiProgressStatusApi = null;
   let v3DashboardApi = null, v3InboxApi = null, previewEpoch = 0, todayClockTimer = null;
   let lastKazRoute = '#kaz-os/today';
+  let autonomousWorkApi=null,autonomousReviewApi=null;
   let projectEpoch = 0, workEpoch = 0, capaEpoch = 0, todayEpoch = 0, inboxEpoch = 0, contextEpoch = 0, projectExpiry = null, workExpiry = null, capaExpiry = null, todayExpiry = null, inboxExpiry = null;
   let targetViewHashChangePending = false;
   const allowed = () => context?.role === 'admin' && context.allowedViews?.includes('kaz-os');
@@ -86,6 +87,8 @@
         || !snapshot?.work || !globalThis.crypto?.subtle || !globalThis.TextEncoder) return null;
     const todayIds = new Set(['now', 'next', 'scheduled'].flatMap(lane =>
       (snapshot.today?.[lane] || []).map(row => row?.id)));
+    for(const lane of ['not_fit_today','waiting'])for(const row of snapshot.today?.[lane]||snapshot.component_data?.today?.today?.[lane]||[])
+      if(['DOING','READY','SCHEDULED'].includes(row?.state))todayIds.add(row.id);
     for (const item of snapshot.work) {
       if (!item || typeof item.id !== 'string' || ['DONE', 'CANCELLED'].includes(item.state)) continue;
       if (!todayIds.has(item.id)) continue;
@@ -110,13 +113,85 @@
     let rows = [], renderEpoch = 0, aiState = 'loading', aiError = '';
     let dashboard = snapshot, dailyPlan = plan;
     const progress = new Map();
+    const restored = new Map(), unresolvedProgress = new Set(), localProgress = new Set();
+    // Exact-key status reads reuse the existing permission boundary: no GCS list,
+    // mutation, Provider call, or retry is needed to restore a visible candidate.
+    async function restoreProgress(items) {
+      const ids = [...new Set(items.map(item => item?.id).filter(id => typeof id === 'string'))];
+      ids.slice(24).forEach(id => unresolvedProgress.add(id));
+      await Promise.all([...restored.values()]);
+      const pending = ids.slice(0, 24).filter(id => !restored.has(id)).map(id => {
+        let finish;
+        restored.set(id, new Promise(resolve => { finish = resolve; }));
+        return { id, finish };
+      });
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(4, pending.length) }, async () => {
+        while (cursor < pending.length) {
+          const { id, finish } = pending[cursor++];
+          const operation = (async () => {
+            const saved = [];
+            try {
+              if (!aiProgressStatusApi) throw Error('PROGRESS_UNAVAILABLE');
+              for (const action of ['on_track', 'delayed', 'blocked', 'done', 'carry_forward']) {
+                const status = await aiProgressStatusApi({ work_id: id, action,
+                  feature: action === 'carry_forward' ? 'night_review' : 'check_in',
+                  observed_at: observedAtJst() });
+                if (status.status === 'unknown') throw Error('PROGRESS_UNKNOWN');
+                if (status.status === 'saved') {
+                  if (!sameJstDay(status.observed_at) || Date.parse(status.observed_at) > Date.now() + 300000)
+                    throw Error('PROGRESS_TIME_INVALID');
+                  saved.push({ action, observed_at: status.observed_at });
+                }
+              }
+              saved.sort((a, b) => Date.parse(b.observed_at) - Date.parse(a.observed_at));
+              if (saved.length > 1 && Date.parse(saved[0].observed_at) === Date.parse(saved[1].observed_at))
+                throw Error('PROGRESS_AMBIGUOUS');
+              if (current() && !localProgress.has(id) && saved.length) {
+                progress.set(id, saved[0].action);
+                const label = { on_track: '継続中', delayed: '延期', blocked: 'ブロック',
+                  done: '完了', carry_forward: '明日への持ち越し' }[saved[0].action];
+                for (const row of controlsHost.querySelectorAll('.kai-observation-work')) {
+                  if (row.dataset.workItem !== id) continue;
+                  const output = row.querySelector('[role="status"]');
+                  if (output) output.textContent = `${label}を記録済みです。今日の候補へ反映しました。`;
+                  for (const button of row.querySelectorAll('.kai-observation-send'))
+                    button.disabled = ['done', 'carry_forward'].includes(saved[0].action)
+                      || button.dataset.progressAction === saved[0].action;
+                }
+              }
+            } catch (_) {
+              if (!localProgress.has(id)) unresolvedProgress.add(id);
+            }
+          })();
+          await operation;
+          finish();
+        }
+      });
+      await Promise.all(workers);
+      await Promise.all(ids.slice(0, 24).map(id => restored.get(id)));
+    }
     const activeWorkFor = value => new Map((value?.work || []).filter(item => item
       && typeof item.id === 'string' && !['DONE', 'CANCELLED'].includes(item.state))
       .map(item => [item.id, item]));
     let activeWork = activeWorkFor(snapshot);
-    const lane = name => (dashboard.today?.[name] || []).map(item => activeWork.get(item?.id))
-      .filter((item, index, all) => item && !['done', 'carry_forward', 'delayed', 'blocked'].includes(progress.get(item.id))
-        && all.findIndex(other => other?.id === item.id) === index);
+    const lane = name => {
+      const source = dailyPlan?.sources?.work_items;
+      const live = dailyPlan?.schema_version === 'kaz-today-plan-v2' && source?.status === 'ok'
+        && source.complete === true && Date.parse(source.valid_until) > Date.now()
+        && Array.isArray(dailyPlan.today?.[name]?.items);
+      const rows = live ? dailyPlan.today[name].items : dashboard.today?.[name] || [];
+      return rows.map(item => live ? item : activeWork.has(item?.id)
+        ? { ...activeWork.get(item.id), plan_start: item.plan_start, plan_end: item.plan_end,
+            placement: item.placement, planning_preference: item.planning_preference,
+            next_policy_window: item.next_policy_window } : null)
+        .filter((item, index, all) => item && !['DONE', 'CANCELLED'].includes(item.state)
+          && !String(item.blocker || '').trim()
+          && !unresolvedProgress.has(item.id)
+          && !['done', 'carry_forward', 'delayed', 'blocked'].includes(progress.get(item.id))
+          && (name !== 'now' || (Date.parse(item.plan_start) <= Date.now() && Date.parse(item.plan_end) > Date.now()))
+          && all.findIndex(other => other?.id === item.id) === index);
+    };
     const addText = (parent, tag, value, className = '') => {
       const node = document.createElement(tag);
       node.className = className;
@@ -163,6 +238,12 @@
         }
       } else addText(parent, 'p', '次の行動は未記録です。Workの詳細を確認してください。');
       addText(parent, 'p', source, 'kai-action-source');
+      if (item.next_policy_window?.availability_confirmed === false) {
+        const window = item.next_policy_window;
+        const day = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' }).format(new Date(window.start));
+        const clock = value => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+        addText(parent, 'p', `次の作業時間候補: ${day} ${clock(window.start)}–${clock(window.end)} JST（予定・BUSY確認前）`, 'kai-action-fit');
+      }
       if (progress.get(item.id) === 'delayed')
         addText(parent, 'p', '延期を記録済み。次の提案更新に反映します。', 'kai-action-source');
       else if (progress.get(item.id) === 'blocked')
@@ -171,34 +252,11 @@
         addText(parent, 'p', '継続中と記録済み。次の提案更新に反映します。', 'kai-action-source');
     };
     const calendarWindows = now => {
-      const calendar = dailyPlan?.sources?.calendar;
-      const hasPlan = dailyPlan?.schema_version === 'kaz-today-plan-v2';
-      const planValid = hasPlan
-        && calendar?.status === 'ok' && calendar?.complete === true
-        && (calendar.valid_until == null || Date.parse(calendar.valid_until) > now)
-        && Array.isArray(dailyPlan.today?.calendar_free_windows);
-      const dashboardValid = !hasPlan && dashboard?.sources?.calendar?.status === 'current';
-      const windows = planValid ? dailyPlan.today.calendar_free_windows
-        : dashboardValid ? dashboard.today?.kaz_free_windows || [] : [];
-      return { confirmed: planValid || dashboardValid, windows };
+      return globalThis.KazWorkTimeFit?.availability(dashboard, dailyPlan, 'personal', now)
+        || { confirmed: false, windows: [] };
     };
-    const companyWindows = now => {
-      const planValid = dailyPlan?.schema_version === 'kaz-today-plan-v2'
-        && dailyPlan.sources?.calendar?.status === 'ok'
-        && dailyPlan.sources?.calendar?.complete === true
-        && dailyPlan.sources?.work_busy?.status === 'ok'
-        && !(dailyPlan.today?.limitations || []).includes('company_work_hours_unconfigured')
-        && (dailyPlan.sources.calendar.valid_until == null
-          || Date.parse(dailyPlan.sources.calendar.valid_until) > now)
-        && Array.isArray(dailyPlan.today?.company_free_windows);
-      const dashboardValid = dailyPlan?.schema_version !== 'kaz-today-plan-v2'
-        && dashboard?.sources?.calendar?.status === 'current'
-        && dashboard?.sources?.work_busy?.status === 'current'
-        && Array.isArray(dashboard.today?.company_free_windows);
-      return { confirmed: planValid || dashboardValid,
-        windows: planValid ? dailyPlan.today.company_free_windows
-          : dashboardValid ? dashboard.today.company_free_windows : [] };
-    };
+    const companyWindows = now => globalThis.KazWorkTimeFit?.availability(
+      dashboard, dailyPlan, 'company', now) || { confirmed: false, windows: [] };
     const planningDomain = item => {
       const area = (dashboard?.projects || []).find(project => project?.id === item?.project_id)?.area;
       if (area === 'WORK') return 'company';
@@ -299,20 +357,70 @@
       for (const [feature, row] of latest) {
         if (row.status === 'review_pending') resolved.set(feature, await workForEvidence(row.evidence, dashboard));
       }
+      await restoreProgress([...observationCandidates(dashboard),
+        ...[...resolved.values()].map(match => match?.item)]);
       if (epoch !== renderEpoch || !current()) return;
+      if (unresolvedProgress.size) addText(section, 'p',
+        '一部の進捗を読み戻せません。該当Workの着手提案は保留しています。保存操作は再送していません。', 'kp-notice');
+      if (progress.size) addText(section, 'p', '保存済みの進捗を反映して、今日の候補を見直しました。', 'kai-progress-restored');
       addText(section, 'p', availableTime(now), 'kai-action-availability');
-      const nowCandidate = lane('now')[0] || null;
+      const canonicalNow = lane('now')[0] || null;
+      const dailyRow = latest.get('daily_planner');
+      const dailyMatch = resolved.get('daily_planner');
+      if (dailyMatch?.item && /^[a-f0-9]{64}$/.test(dailyRow?.judgment_id || '')) {
+        section.dataset.plannerJudgmentId = dailyRow.judgment_id;
+        section.dataset.plannerWorkId = dailyMatch.item.id;
+      } else {
+        delete section.dataset.plannerJudgmentId;
+        delete section.dataset.plannerWorkId;
+      }
+      const dailyTarget = dailyMatch?.item && !progress.has(dailyMatch.item.id)
+        && !unresolvedProgress.has(dailyMatch.item.id)
+        && !String(dailyMatch.item.blocker || '').trim() ? dailyMatch.item : null;
+      const stepFit = dailyTarget && globalThis.KazWorkTimeFit?.fit(dailyTarget,dailyRow,dashboard,dailyPlan,now);
+      const plannedTarget = dailyTarget && [...lane('next'),...lane('scheduled')].find(w=>w.id===dailyTarget.id);
+      const useStepNow = stepFit && globalThis.KazWorkTimeFit.precedes(
+        {...dailyTarget,planning_preference:plannedTarget?.planning_preference},canonicalNow,now);
+      const nowCandidate = useStepNow ? dailyTarget : canonicalNow;
+      const renderStep = (target, recommendation, fit) => {
+        const origin = {work_record:'Work正本',daily_estimate:'本人の日次見積り',ai_estimated:'AI推定・未確定',unknown:'未推定'};
+        addText(section,'p',`最初の一手（${recommendation.step_kind==='substep'?'元Workの分割提案':recommendation.action_origin==='work_record'?'Work記録':'AI具体化・未確定'}）: ${recommendation.first_step}`,'kai-action-first-step');
+        addText(section,'p',`選んだ理由: ${recommendation.reason}`,'kai-action-reason');
+        addText(section,'p',`元Work全体: ${recommendation.estimate_min===null?'不明':recommendation.estimate_min+'分'}（${origin[recommendation.estimate_origin]}） · 今回の一手: ${recommendation.step_estimate_min===null?'不明':recommendation.step_estimate_min+'分（AI推定・未確定）'}`,'kai-action-fit');
+        if(recommendation.estimate_reason)addText(section,'p',`見積りの根拠: ${recommendation.estimate_reason}`,'kai-action-source');
+        if(Number.isFinite(dailyRow?.confidence))addText(section,'p',`一手の時間は概算です（提案全体のAI確度 ${Math.round(dailyRow.confidence*100)}%）。完了実績ではありません。`,'kai-action-source');
+        if(fit){
+          if (fit.availability_origin === 'snapshot') {
+            const at = new Intl.DateTimeFormat('ja-JP', {timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(fit.availability_as_of));
+            addText(section,'p',`時間枠は${at}時点の確認済み予定に基づきます。予定変更直後は再読込してください。`,'kai-action-source');
+          }
+          const clock=value=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
+          addText(section,'p',`${fit.domain==='company'?'会社':'家庭・個人'}の確認済み空き枠に適合: ${clock(fit.start)}–${clock(fit.end)} JST（実行提案・予定への保存なし）`,'kai-action-fit');
+        }else addText(section,'p','今の空き枠に収まることは確認できていません。NEXTの一手として保持します。','kai-action-source');
+        addText(section,'p','一手の実施は元Work全体の完了ではありません。途中の進捗は「継続中」とメモで記録できます。','kai-action-source');
+      };
       addText(section, 'h3', 'NOW · 今やること（確認済み情報から選定）');
       if (nowCandidate) {
-        addWork(section, nowCandidate, '決定的Plannerの現在候補 · Calendar・Work状態を反映', { prominentAction: true });
-        timeFit(section, nowCandidate, now);
+        addWork(section, nowCandidate, useStepNow?'時間枠に収まる一手のAI提案 · 元Workの見積りは変更していません':'決定的Plannerの現在候補 · Calendar・Work状態を反映', { prominentAction: !useStepNow });
+        if(useStepNow)renderStep(dailyTarget,dailyRow.recommendation,stepFit);
+        else {
+          addText(section,'p',`選んだ理由: ${globalThis.KazWorkTimeFit?.reason?.(nowCandidate) || '確認済みのWork順から選定'}`,'kai-action-reason');
+          timeFit(section, nowCandidate, now);
+        }
         addProgressButton(section, nowCandidate);
       } else {
         addText(section, 'p', '現在時刻に実行可能と確認できたWorkはありません。', 'kai-action-source');
       }
+      if(dailyTarget && Object.hasOwn(dailyRow?.recommendation||{},'estimate_origin') && !useStepNow){
+        addText(section,'h3','NEXT · 今回の一手（AI提案・未確定）');
+        addWork(section,dailyTarget,'元Workに紐づく提案 · 優先順と現在の実行枠は別に確認',{prominentAction:false});
+        renderStep(dailyTarget,dailyRow.recommendation,null);
+        addProgressButton(section,dailyTarget);
+      }
       const row = [...latest.values()].sort((a, b) => Date.parse(b.as_of) - Date.parse(a.as_of))[0] || null;
       const match = row ? resolved.get(row.feature) : null;
-      const target = match?.item && !progress.has(match.item.id) ? match.item : null;
+      const target = match?.item && !progress.has(match.item.id)
+        && !String(match.item.blocker || '').trim() ? match.item : null;
       const nextCandidate = [...new Map([...lane('next'), ...lane('scheduled')]
         .filter(item => !nowCandidate || item.id !== nowCandidate.id)
         .map(item => [item.id, item])).values()][0] || null;
@@ -344,6 +452,8 @@
           addText(section, 'p', 'AIから個別のWork提案は出ていません。', 'kai-action-source');
         } else if (target) {
           const recommendation = row.feature === 'daily_planner' ? row.recommendation : null;
+          const stepAlreadyShown = row === dailyRow && dailyTarget?.id === target.id
+            && Object.hasOwn(recommendation || {}, 'estimate_origin');
           const sameAsNow = nowCandidate?.id === target.id;
           if (sameAsNow) {
             addText(section, 'p', 'AI Plannerの対象はNOW候補と一致しています。', 'kai-action-source');
@@ -354,17 +464,17 @@
               : '時点不明';
             addText(section, 'p', `AI Planner（${timestamp}）は別のWorkを推薦しています。NOWは「${nowTitle}」です。推薦は生成時点の判断で、現在の実行順を上書きしません。`, 'kp-notice');
           }
-          if (recommendation?.first_step) {
+          if (recommendation?.first_step && !Object.hasOwn(recommendation,'estimate_origin')) {
             const source = recommendation.action_origin === 'work_record'
               ? 'Work記録' : 'AI生成（根拠はWork記録）';
             addText(section, 'p', `最初の一手（${source}）: ${recommendation.first_step}`,
               'kai-action-first-step');
           }
-          if (!sameAsNow) addWork(section, target,
+          if (!sameAsNow && !stepAlreadyShown) addWork(section, target,
             `AI判断が参照したWork · ${row.feature === 'daily_planner' ? 'Daily Planner' : 'Check-in'}（NOWとは別）`,
             { prominentAction: !recommendation });
-          const fitShown = timeFit(section, target, now);
-          if (planningDomain(target) === 'personal' && !fitShown
+          const fitShown = stepAlreadyShown || timeFit(section, target, now);
+          if (!Object.hasOwn(recommendation||{},'estimate_origin') && planningDomain(target) === 'personal' && !fitShown
               && recommendation?.estimate_min !== null && recommendation?.estimate_min !== undefined) {
             addText(section, 'p', `所要時間の目安: ${recommendation.estimate_min}分（Work見積り）`,
               'kai-action-fit');
@@ -376,7 +486,9 @@
             const body = document.createElement('p'); body.textContent = match.quote;
             evidence.append(summary, body); section.appendChild(evidence);
           }
-          if (!sameAsNow) addProgressButton(section, target);
+          if (!sameAsNow && !stepAlreadyShown) addProgressButton(section, target);
+        } else if (match?.item && String(match.item.blocker || '').trim()) {
+          addText(section,'p','このWorkには妨げる要因が記録されています。通常の着手候補から外し、Workの内容確認を優先します。','kp-notice');
         } else if (match?.item && progress.has(match.item.id)) {
           addText(section, 'p', '進み具合を記録しました。次は確認済みのWork順から選び直しています。', 'kai-action-source');
         } else {
@@ -384,8 +496,9 @@
         }
       }
       if (!target && nextCandidate) {
-        addText(section, 'h3', '次に取り組む候補（確認済みのWork順）', 'kai-action-next-heading');
+        addText(section, 'h3', 'NEXT · 次に取り組む候補（Workの優先順）', 'kai-action-next-heading');
         addWork(section, nextCandidate, '決定的Plannerの候補 · 新しいAI判断ではありません', { prominentAction: true });
+        addText(section,'p',`候補の理由: ${globalThis.KazWorkTimeFit?.reason?.(nextCandidate) || '確認済みのWork順から選定'}`,'kai-action-reason');
         timeFit(section, nextCandidate, now);
         addProgressButton(section, nextCandidate);
       }
@@ -408,6 +521,8 @@
       if (nextPlan?.schema_version === 'kaz-today-plan-v2') dailyPlan = nextPlan;
       void update(rows, aiState, aiError);
     }, onProgress(itemId, action) {
+      localProgress.add(itemId);
+      unresolvedProgress.delete(itemId);
       progress.set(itemId, action);
       void update(rows, aiState, aiError);
     }, unavailable(error) {
@@ -1285,6 +1400,9 @@
           todayClockTimer?.unref?.();
         }
         void appendAiJudgments(actionHost, selection.page, current, snapshot, brief);
+        if(selection.page==='today'&&globalThis.KazAutonomousWork)
+          void globalThis.KazAutonomousWork.append(briefHost,{read:autonomousWorkApi,
+            review:autonomousReviewApi,snapshot,current});
       } catch (error) {
         if (!current()) return;
         if (selection.page === 'metrics') {
@@ -1566,6 +1684,8 @@
     aiEngineApi = event.detail?.kazOsAiEngineApi || null;
     aiObservationApi = event.detail?.kazOsAiObservationApi || null;
     aiProgressStatusApi = event.detail?.kazOsAiProgressStatusApi || null;
+    autonomousWorkApi=event.detail?.kazOsAutonomousWorkApi||null;
+    autonomousReviewApi=event.detail?.kazOsAutonomousReviewApi||null;
     inboxAnswerApi = event.detail?.kazOsInboxAnswerApi || null;
     v3DashboardApi = event.detail?.kazOsV3DashboardApi || null;
     v3InboxApi = event.detail?.kazOsV3InboxApi || null;
@@ -1592,6 +1712,7 @@
     aiEngineApi = null;
     aiObservationApi = null;
     aiProgressStatusApi = null;
+    autonomousWorkApi=null;autonomousReviewApi=null;
     inboxAnswerApi = null;
     v3DashboardApi = null;
     v3InboxApi = null;

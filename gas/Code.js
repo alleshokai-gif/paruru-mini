@@ -1499,6 +1499,13 @@ function parseCalendarMemberTag_(title) {
 
 function normalizeCalendarMemberToken_(value) {
   const token = String(value || '').trim();
+  // Reuse the approved family roster rather than maintaining a second tag map.
+  if (typeof HOME_MEMBER_POLICY !== 'undefined') {
+    const matched = Object.keys(HOME_MEMBER_POLICY).find(function(key) {
+      return String(HOME_MEMBER_POLICY[key].calendarSuffix || '').replace(/[（()）\s]/g, '') === token;
+    });
+    if (matched) return matched;
+  }
   const aliases = {
     '父': 'father',
     '父ちゃん': 'father',

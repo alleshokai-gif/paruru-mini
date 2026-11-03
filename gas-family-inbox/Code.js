@@ -2,6 +2,11 @@ function doPost(e) {
   try {
     const body = familyInboxParseBody_(e);
     const operation = String(body.operation || '').trim();
+    if(operation==='familyInbox.familySchedule.next'||operation==='familyInbox.familySchedule.complete')return familyInboxJson_({success:true,schemaVersion:FAMILY_INBOX_SCHEMA_VERSION,data:operation.endsWith('.next')?familyInboxFamilyScheduleNext_(body):familyInboxFamilyScheduleComplete_(body)});
+    if (operation === 'familyInbox.schoolAutomation.next' || operation === 'familyInbox.schoolAutomation.complete') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION,
+        data: operation.endsWith('.next') ? familyInboxSchoolAutomationNext_(body) : familyInboxSchoolAutomationComplete_(body) });
+    }
     if (operation.indexOf('familyInbox.acceptance.') === 0) {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxAcceptance_(body) });
     }
@@ -58,6 +63,18 @@ function doPost(e) {
     }
     if (operation === 'familyInbox.failClaim') {
       return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxFailClaim_(body) });
+    }
+    if (operation === 'familyInbox.schoolKnowledge.claimNext') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxSchoolKnowledgeClaimNext_(body) });
+    }
+    if (operation === 'familyInbox.schoolKnowledge.getClaimedSource') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxSchoolKnowledgeGetClaimedSource_(body) });
+    }
+    if (operation === 'familyInbox.schoolKnowledge.complete') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxSchoolKnowledgeComplete_(body) });
+    }
+    if (operation === 'familyInbox.schoolKnowledge.fail') {
+      return familyInboxJson_({ success: true, schemaVersion: FAMILY_INBOX_SCHEMA_VERSION, data: familyInboxSchoolKnowledgeFail_(body) });
     }
     throw familyInboxError_('INVALID_INPUT');
   } catch (error) {

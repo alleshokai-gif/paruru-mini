@@ -16,6 +16,7 @@
     mode: 'DIRECT_V2',
     baseUrl: phase2Canary ? phase2CanaryBaseUrl : stableBaseUrl,
     v3BaseUrl: v3PreviewBaseUrl,
+    familySchedulesBaseUrl: 'https://family---kaz-os-v3-shadow-preview-jwnmkrlyha-an.a.run.app',
     canaryCapability: '',
     routeModes: Object.freeze({
       projects: 'DIRECT_V2',
@@ -27,7 +28,8 @@
       developmentMetrics: 'DIRECT_V2',
       context: 'DIRECT_V2',
       aiEngine: 'DIRECT_V2',
-      aiObservation: 'DIRECT_V2'
+      aiObservation: 'DIRECT_V2',
+      autonomousWork: 'DIRECT_V2', autonomousReview: 'DIRECT_V2'
     })
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

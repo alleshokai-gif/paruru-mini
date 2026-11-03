@@ -30,7 +30,10 @@ function event(options) {
     getStartTime: () => new Date(value.start),
     getEndTime: () => new Date(value.end),
     isAllDayEvent: () => value.allDay === true,
+    getAllDayStartDate: () => new Date(value.allDayStart || value.start),
+    getAllDayEndDate: () => new Date(value.allDayEnd || value.end),
     getId: () => value.id || '',
+    getVisibility: () => value.visibility || 'DEFAULT',
     isCancelled: () => value.cancelled === true,
     getDescription: () => { throw new Error('description must not be read'); },
     getLocation: () => { throw new Error('location must not be read'); },
@@ -53,10 +56,11 @@ const context = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: (name) => properties[name] || '' }) },
   ScriptApp: { getOAuthToken: () => 'fake-google-oauth-token' },
   UrlFetchApp: { fetch: (url, options) => {
-    if (!url.includes('/secrets/PALURU_CALENDAR_API_TOKEN/versions/latest:access')) throw new Error('unexpected fetch');
+    const isHome = url.includes('/secrets/KAZ_OS_PROGRESS_OWNER_HOME_ID/versions/latest:access');
+    if (!isHome && !url.includes('/secrets/PALURU_CALENDAR_API_TOKEN/versions/latest:access')) throw new Error('unexpected fetch');
     if (options.headers.Authorization !== 'Bearer fake-google-oauth-token') throw new Error('bad oauth');
     return { getResponseCode: () => 200, getContentText: () => JSON.stringify({
-      payload: { data: Buffer.from(fixtureToken).toString('base64') }
+      payload: { data: Buffer.from(isHome ? 'home_test' : fixtureToken).toString('base64') }
     }) };
   } },
   ContentService: {
@@ -66,7 +70,7 @@ const context = {
   CalendarApp: { getCalendarById: () => null },
 };
 vm.createContext(context);
-['Code.js', 'CalendarReadService.js', 'InternalCalendarApi.js', 'InternalWeatherApi.js'].forEach((name) => {
+['HomeMemberPolicy.js', 'Code.js', 'CalendarReadService.js', 'InternalCalendarApi.js', 'InternalWeatherApi.js'].forEach((name) => {
   new vm.Script(fs.readFileSync(path.join(gas, name), 'utf8'), { filename: name }).runInContext(context);
 });
 vm.runInContext('this.CalendarReadServiceTest = CalendarReadService', context);
@@ -270,6 +274,99 @@ test('notification and Home Agent wrappers preserve legacy shapes', () => {
 });
 
 let failures = 0;
+test('shared service admits all six without app membership and preserves full shared Calendar titles', () => {
+  const original = context.getHomeMember_;
+  context.getHomeMember_ = () => { throw new Error('app enrollment must not be consulted'); };
+  const roster = ['father','mother','eldest_son','eldest_daughter','second_son','youngest_daughter'];
+  const tags = ['父','母','理','は','ふ','り'];
+  const candidates = tags.map((tag, i) => event({title:'（'+tag+'）学校',id:'safe-'+i,start:'2026-07-19T09:00:00+09:00',end:'2026-07-19T10:00:00+09:00'}));
+  for (const [title,visibility] of [['（母）仕事','PRIVATE'],['（理）仕事の通院','DEFAULT'],['（父）社外秘の仕事','PUBLIC'],['（は）不明な私用','DEFAULT']]) {
+    candidates.push(event({title,visibility,id:title,start:'2026-07-19T09:00:00+09:00',end:'2026-07-19T10:00:00+09:00'}));
+  }
+  try {
+    for (const id of roster) {
+      const input = context.validateInternalCalendarInput_({action:'calendarContextInternal',service:'kurobe_line',homeId:'home_test',audience:'line_group',requesterMemberId:id,period:'tomorrow',scope:'family'});
+      assert(input.serviceId === 'kurobe_line' && !input.actor, 'principal must be a service');
+      const result = callRead({...input,now:'2026-07-18T12:00:00+09:00'},candidates);
+      assert(result.data.events.length === candidates.length && result.data.events.every(e => typeof e.title === 'string'), 'shared result leaked or depended on caller');
+      const mine = callRead({...input,scope:'mine',now:'2026-07-18T12:00:00+09:00'},candidates);
+      assert(mine.data.events.length === candidates.filter(e => context.parseCalendarMemberTag_(e.getTitle()).memberKey === id).length && mine.data.events.every(e => e.memberId === id), 'mine crossed person');
+    }
+  } finally { context.getHomeMember_ = original; }
+});
+test('shared service cannot bypass token, household, audience, identity or mine boundaries', () => {
+  const base = {action:'calendarContextInternal',internalToken:fixtureToken,service:'kurobe_line',homeId:'home_test',audience:'line_group',requesterMemberId:'mother',period:'tomorrow',scope:'family'};
+  let calls=0; const dependencies={calendarReadService:{readContext:()=>{calls++; return {data:{},warnings:[]};}}};
+  for (const change of [
+    {internalToken:'wrong'}, {homeId:'another_home'}, {audience:'authenticated_member'},
+    {service:'other'}, {requesterMemberId:'unknown'}, {requesterMemberId:'constructor'},
+    {targetMemberId:'__proto__'}, {targetMemberId:'toString'}, {period:'next_7_days'},
+    {actor:internalActor}, {snapshot:true}, {scope:'mine',targetMemberId:'eldest_son'}
+  ]) {
+    const value=parse(context.calendarContextInternal_({...base,...change},'POST',dependencies));
+    assert(value.success === false && ['INVALID_INPUT','UNAUTHORIZED'].includes(value.error.code), 'invalid service input accepted');
+  }
+  assert(calls===0, 'invalid request reached Calendar');
+  assert(parse(context.calendarContextInternal_(base,'POST',dependencies)).success===true && calls===1,'authenticated valid service failed');
+  const legacy=parse(context.calendarContextInternal_({action:'calendarContextInternal',internalToken:fixtureToken,actor:{homeId:'home_test',memberUserId:'mother'},period:'today',scope:'mine'},'POST',dependencies));
+  assert(legacy.success===false && legacy.error.code==='UNAUTHORIZED', 'app membership gate weakened');
+});
+test('fixed family policy contains all six identities independent of app enrollment', () => {
+  const original = context.getHomeMember_;
+  let calls = 0;
+  context.getHomeMember_ = () => { calls++; return null; };
+  try {
+    for (const id of ['father','mother','eldest_son','eldest_daughter','second_son','youngest_daughter']) {
+      assert(context.findHomeMemberPolicy_(id).memberUserId === id, 'fixed policy lacks an identity');
+    }
+    assert(calls === 0, 'fixed roster unexpectedly depends on app enrollment');
+  } finally { context.getHomeMember_ = original; }
+});
+test('LINE all-day dates do not carry yesterday into tomorrow across calendar timezones', () => {
+  const result = callRead({period:'tomorrow', scope:'family', actor, audience:'line_group', now:'2026-07-18T12:00:00+09:00'}, [
+    event({title:'（り）学校', id:'yesterday-end', allDay:true, start:'2026-07-18T09:00:00+09:00', end:'2026-07-19T09:00:00+09:00', allDayStart:'2026-07-18T00:00:00+09:00', allDayEnd:'2026-07-19T00:00:00+09:00'}),
+    event({title:'（り）学校', id:'tomorrow', allDay:true, start:'2026-07-19T09:00:00+09:00', end:'2026-07-20T09:00:00+09:00', allDayStart:'2026-07-19T00:00:00+09:00', allDayEnd:'2026-07-20T00:00:00+09:00'})
+  ]);
+  assert(result.data.events.length === 1 && result.data.events[0].startAt === '2026-07-19', 'wrong all-day date');
+});
+test('LINE includes all shared Calendar categories and original titles without keyword or visibility filtering', () => {
+  const base = {start: '2026-07-18T13:00:00+09:00', end: '2026-07-18T14:00:00+09:00'};
+  const result = callRead({period:'today', scope:'family', actor, audience:'line_group', now:'2026-07-18T12:00:00+09:00'}, [
+    event({...base, title:'（り）学校', id:'school'}),
+    event({...base, title:'（父）仕事', visibility:'PRIVATE', id:'private'}),
+    event({...base, title:'（父）仕事の健康診察', id:'medical'}),
+    event({...base, title:'（母）未分類の秘密', id:'unknown'}),
+  ]);
+  assert(result.data.audience === 'line_group' && result.data.events.length === 4, 'shared Calendar events disappeared');
+  const row = result.data.events[0];
+  assert(row.memberId === 'youngest_daughter' && row.title === '（り）学校', 'wrong member/category');
+  assert(!('description' in row) && !('rawEventId' in row) && !('category' in row), 'title escaped to LINE DTO');
+});
+test('LINE target filter does not impersonate the target member', () => {
+  const input = context.validateInternalCalendarInput_({action:'calendarContextInternal', period:'tomorrow', scope:'family', actor:internalActor, audience:'line_group', targetMemberId:'youngest_daughter'});
+  assert(input.actor.memberUserId === 'father' && input.targetMemberId === 'youngest_daughter', 'actor was replaced');
+  let rejected = false;
+  try { context.validateInternalCalendarInput_({action:'calendarContextInternal', period:'today', scope:'mine', actor:internalActor, audience:'line_group', targetMemberId:'youngest_daughter'}); } catch(e) { rejected = e.code === 'UNAUTHORIZED'; }
+  assert(rejected, 'mine query crossed actor boundary');
+});
+test('LINE today includes ended plans; upcoming differs and app today stays unchanged', () => {
+  const now='2026-07-18T12:00:00+09:00';
+  const candidates=[event({title:'（父）私用',id:'past',start:'2026-07-18T09:00:00+09:00',end:'2026-07-18T10:00:00+09:00'}),event({title:'（父）家族行事',id:'future',start:'2026-07-18T14:00:00+09:00',end:'2026-07-18T15:00:00+09:00'})];
+  const input={period:'today',scope:'mine',actor,audience:'line_group',now};
+  assert(callRead(input,candidates).data.events.length===2,'today lost ended plans');
+  assert(callRead({...input,period:'upcoming'},candidates).data.events.length===1,'upcoming includes ended plans');
+  assert(callRead({...input,audience:''},candidates).data.events.length===1,'app contract changed');
+});
+test('LINE family includes untagged plans, but mine never guesses their owner', () => {
+  const candidates=[event({title:'家族の行事',id:'common',start:'2026-07-18T09:00:00+09:00',end:'2026-07-18T10:00:00+09:00'})];
+  const input={period:'today',scope:'family',actor,audience:'line_group',now:'2026-07-18T12:00:00+09:00'};
+  assert(callRead(input,candidates).data.events[0].memberId==='unassigned','untagged family plan lost');
+  assert(callRead({...input,scope:'mine'},candidates).data.events.length===0,'owner guessed');
+});
+test('invalid source entries are marked partial rather than a complete empty day', () => {
+  const result=callRead({period:'today',scope:'family',actor,audience:'line_group',now:'2026-07-18T12:00:00+09:00'},[event({title:'invalid',start:'bad',end:'bad'})]);
+  assert(result.data.status==='partial' && result.data.events.length===0,'invalid source represented as empty');
+});
 for (const item of tests) {
   try { item.fn(); console.log('PASS ' + item.name); }
   catch (error) { failures += 1; console.error('FAIL ' + item.name + ': ' + error.message); }
