@@ -52,7 +52,7 @@ function createHarness(){
     LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
     ContentService:{MimeType:{JSON:'application/json'},createTextOutput:(text)=>({text,setMimeType(){return this;},getContent(){return this.text;}})}
   };
-  vm.createContext(context);
+  require('./fixtures/service-secret-test-double')(context); vm.createContext(context);
   ['HealthSetup.js','HealthSecurity.js','HealthRuleService.js','HealthDataService.js','PetHealthSecurity.js','PetHealthDataService.js','PetHealthIdempotency.js','PetHealthSummaryService.js','Code.js'].forEach((file)=>vm.runInContext(fs.readFileSync(`gas-health/${file}`,'utf8'),context));
   context.setupHealthSchema_();
   return {context,spreadsheet};

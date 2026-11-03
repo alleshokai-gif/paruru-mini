@@ -4,13 +4,26 @@ const PALURU_WORK_BUSY_SHEET_NAME = 'WorkBusy';
 const PALURU_WORK_BUSY_HEADERS = ['source', 'generated_at', 'date', 'start', 'end'];
 const PALURU_WORK_BUSY_MAX_DAYS_AHEAD = 30;
 const PALURU_WORK_BUSY_TIME_ZONE = 'Asia/Tokyo';
+const PALURU_WORK_BUSY_ZERO_NOTE = 'KAZ_OS_WORK_BUSY_ZERO_V1|';
+
+function parseWorkBusyZeroNote_(text) {
+  const value = String(text || '');
+  if (!value.startsWith(PALURU_WORK_BUSY_ZERO_NOTE)) return null;
+  const fields = value.slice(PALURU_WORK_BUSY_ZERO_NOTE.length).split('|');
+  if (fields.length !== 2 || !Number.isFinite(Date.parse(fields[0]))
+      || !/^\d{10,15}$/.test(fields[1])) {
+    throw workBusyImportError_('STORAGE_METADATA_ERROR');
+  }
+  return { generated_at: fields[0], source_sent_at: Number(fields[1]) };
+}
 
 function importLatestWorkBusyEmailV1(dependencies) {
   const result = importLatestWorkBusyEmail_(dependencies);
+  if (!result.changed) return Object.assign({}, result, { v3_rebuild: { status: 'unchanged' } });
   let rebuild;
   try {
     const correlation = 'workbusy-sha256:' + kazOsSha256_(
-      result.generated_at + '\u0000' + JSON.stringify(result.intervals));
+      result.source_sent_at + '\u0000' + JSON.stringify(result.intervals));
     const request = dependencies && dependencies.rebuildRequest || requestKazOsV3Rebuild_;
     rebuild = request('WORK_BUSY_IMPORT', 'work_busy', correlation);
   } catch (_) {
@@ -26,7 +39,9 @@ function importLatestWorkBusyEmail_(dependencies) {
   const gmailApp = deps.gmailApp || GmailApp;
   const message = readLatestWorkBusyMessage_(gmailApp);
   const parsed = parseWorkBusyBody_(message.body);
-  if (!parsed.length) throw workBusyImportError_('INVALID_PAYLOAD');
+  if (!parsed.length && !/^WEEKLY_BUSY\s*$/m.test(String(message.body).split(/\r?\n/, 1)[0])) {
+    throw workBusyImportError_('INVALID_PAYLOAD');
+  }
 
   const today = Utilities.formatDate(now, PALURU_WORK_BUSY_TIME_ZONE, 'yyyy-MM-dd');
   const latestDate = addWorkBusyDays_(today, PALURU_WORK_BUSY_MAX_DAYS_AHEAD);
@@ -49,16 +64,62 @@ function importLatestWorkBusyEmail_(dependencies) {
   try {
     const sheet = ensureWorkBusySheet_(spreadsheet);
     const existing = readWorkBusyRows_(sheet);
-    const merged = mergeWorkBusyIntervals_(existing.concat(eligible), now);
+    const noteCell = sheet.getRange(1, 1);
+    const previousNote = String(noteCell.getNote() || '');
+    const zeroNote = parseWorkBusyZeroNote_(previousNote);
+    // The latest successful email is the canonical set. An older row must not
+    // survive a cancellation or an updated BUSY interval.
+    const merged = mergeWorkBusyIntervals_(eligible, now);
+    const same = existing.length === merged.length && merged.every(function(item, index) {
+      return item.date === existing[index].date && item.start === existing[index].start
+        && item.end === existing[index].end;
+    });
+    const lastImport = existing[0] ? Date.parse(existing[0].generated_at)
+      : zeroNote ? Date.parse(zeroNote.generated_at) : NaN;
+    if (same && (existing.length || zeroNote) && message.sent_at <= lastImport) return {
+      source: PALURU_WORK_BUSY_SOURCE,
+      generated_at: existing[0] ? existing[0].generated_at : zeroNote.generated_at,
+      source_sent_at: message.sent_at,
+      intervals: merged,
+      changed: false
+    };
     const generatedAt = Utilities.formatDate(now, PALURU_WORK_BUSY_TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ssXXX");
-    writeWorkBusyRows_(sheet, merged, generatedAt);
-    const readBack = readWorkBusyRows_(sheet);
-    if (!workBusyReadBackMatches_(merged, readBack, generatedAt)) {
-      throw workBusyImportError_('READBACK_MISMATCH');
+    const nextNote = merged.length ? (zeroNote ? '' : previousNote)
+      : PALURU_WORK_BUSY_ZERO_NOTE + generatedAt + '|' + message.sent_at;
+    if (!merged.length && previousNote && !zeroNote) {
+      throw workBusyImportError_('STORAGE_METADATA_CONFLICT');
+    }
+    let readBack;
+    try {
+      writeWorkBusyRows_(sheet, merged, generatedAt);
+      readBack = readWorkBusyRows_(sheet);
+      if (!workBusyReadBackMatches_(merged, readBack, generatedAt)) {
+        throw workBusyImportError_('READBACK_MISMATCH');
+      }
+      if (nextNote !== previousNote) noteCell.setNote(nextNote);
+      if (String(noteCell.getNote() || '') !== nextNote) {
+        throw workBusyImportError_('READBACK_MISMATCH');
+      }
+    } catch (error) {
+      // Sheets has no multi-range transaction. Restore the verified prior rows
+      // after a partial write; never request a rebuild for an unverified write.
+      try {
+        writeWorkBusyRows_(sheet, existing, existing[0] ? existing[0].generated_at : generatedAt);
+        if (String(noteCell.getNote() || '') !== previousNote) noteCell.setNote(previousNote);
+        if (JSON.stringify(readWorkBusyRows_(sheet)) !== JSON.stringify(existing)
+            || String(noteCell.getNote() || '') !== previousNote) {
+          throw workBusyImportError_('STORAGE_ROLLBACK_FAILED');
+        }
+      } catch (_) {
+        throw workBusyImportError_('STORAGE_ROLLBACK_FAILED');
+      }
+      throw error;
     }
     return {
       source: PALURU_WORK_BUSY_SOURCE,
       generated_at: generatedAt,
+      source_sent_at: message.sent_at,
+      changed: true,
       intervals: readBack.map(function(item) {
         return { date: item.date, start: item.start, end: item.end };
       })
@@ -103,7 +164,7 @@ function readLatestWorkBusyMessage_(gmailApp) {
     throw workBusyImportError_('SOURCE_UNAVAILABLE');
   }
   if (!body) throw workBusyImportError_('INVALID_PAYLOAD');
-  return { body: body };
+  return { body: body, sent_at: latestTimestamp };
 }
 
 function parseWorkBusyBody_(body) {

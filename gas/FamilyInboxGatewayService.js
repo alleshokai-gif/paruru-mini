@@ -8,6 +8,7 @@ const FAMILY_INBOX_GATEWAY_MEDIA = Object.freeze({
 });
 const FAMILY_INBOX_GATEWAY_CAPABILITIES = Object.freeze({
   'familyInbox.submit': 'family.inbox.submit',
+  'familyInbox.listSubjects': 'family.inbox.submit',
   'familyInbox.getStatus': 'family.inbox.read',
   'familyInbox.listReviews': 'family.inbox.review',
   'familyInbox.getReview': 'family.inbox.review',
@@ -37,10 +38,14 @@ function familyInboxGateway_(body) {
     if (!capability) throw familyInboxGatewayError_('FORBIDDEN');
     const actor = resolveFirebaseAuthenticatedActor_(input);
     authorizeCapability_(actor, capability);
+    if (operation === 'familyInbox.listSubjects') {
+      if (!familyInboxGatewayPlainObject_(input) || Object.keys(input).some(function(key) { return ['action', 'auth'].indexOf(key) < 0; })) throw familyInboxGatewayError_('INVALID_INPUT');
+      return json_({ success: true, schemaVersion: FAMILY_INBOX_GATEWAY_SCHEMA_VERSION, data: { subjects: familyInboxGatewayListSubjects_(actor.homeId) }, error: null, message: 'ok' });
+    }
     const trusted = familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId);
-    const result = trusted.documentType === 'school_print'
-      ? schoolPrintDriveSubmit_(trusted)
-      : familyInboxGatewayCallService_(trusted, operation);
+    const longSchoolSubject = String(PropertiesService.getScriptProperties().getProperty('FAMILY_INBOX_SCHOOL_LONG_TARGET_MEMBER_ID') || '').trim();
+    const useLegacySchoolRoute = trusted.documentType === 'school_print' && (!longSchoolSubject || trusted.subjectMemberId !== longSchoolSubject);
+    const result = useLegacySchoolRoute ? schoolPrintDriveSubmit_(trusted) : familyInboxGatewayCallService_(trusted, operation);
     familyInboxGatewayLog_({ traceId: traceId, operation: operation, stage: 'completed', status: result.status, mediaType: trusted.file && trusted.file.mediaType, sizeBytes: trusted.file && trusted.file.sizeBytes, durationMs: Date.now() - startedAt });
     return json_({ success: true, schemaVersion: FAMILY_INBOX_GATEWAY_SCHEMA_VERSION, data: result, error: null, message: 'ok' });
   } catch (error) {
@@ -51,9 +56,24 @@ function familyInboxGateway_(body) {
   }
 }
 
+function familyInboxGatewayListSubjects_(homeId) {
+  const sheet = getRequiredHomeMembershipSheet_(HOME_MEMBERS_SHEET_NAME, HOME_MEMBERS_HEADERS);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const index = headers.reduce(function(out, name, i) { out[name] = i; return out; }, {});
+  const seen = {};
+  return values.slice(1).filter(function(row) {
+    const member = { homeId: String(row[index.homeId] || ''), memberUserId: String(row[index.memberUserId] || ''), displayName: String(row[index.displayName] || ''), status: String(row[index.status] || '') };
+    if (member.homeId !== String(homeId) || !member.memberUserId) return false;
+    if (seen[member.memberUserId]) throw familyInboxGatewayError_('DATA_INTEGRITY_ERROR');
+    seen[member.memberUserId] = true;
+    return member.status === 'active' && isHomeMemberPolicyMatch_(member);
+  }).map(function(row) { return { memberUserId: String(row[index.memberUserId]), displayName: String(row[index.displayName]) }; });
+}
+
 function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId) {
   if (operation === 'familyInbox.submit') {
-    const allowed = { action: true, auth: true, clientRequestId: true, subjectMemberId: true, userNote: true, file: true, documentType: true };
+    const allowed = { action: true, auth: true, clientRequestId: true, subjectMemberId: true, userNote: true, file: true, documentType: true, scheduleContext:true };
     if (!familyInboxGatewayPlainObject_(input) || Object.keys(input).some(function(key) { return !allowed[key]; })) throw familyInboxGatewayError_('INVALID_INPUT');
     const subjectMemberId = String(input.subjectMemberId || '').trim();
     const subject = getHomeMember_(actor.homeId, subjectMemberId);
@@ -61,7 +81,7 @@ function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId
     const file = familyInboxGatewayValidateFile_(input.file);
     const hasDocumentType = Object.prototype.hasOwnProperty.call(input, 'documentType');
     const documentType = hasDocumentType ? String(input.documentType || '').trim() : '';
-    if (hasDocumentType && documentType !== 'school_print') throw familyInboxGatewayError_('INVALID_INPUT');
+    if (hasDocumentType && !['school_print','family_schedule'].includes(documentType)) throw familyInboxGatewayError_('INVALID_INPUT');
     if (documentType === 'school_print' && file.mediaType !== 'application/pdf') throw familyInboxGatewayError_('UNSUPPORTED_MEDIA_TYPE');
     const clientRequestId = String(input.clientRequestId || '').trim();
     const userNote = String(input.userNote || '').trim();
@@ -78,6 +98,8 @@ function familyInboxGatewayBuildTrustedRequest_(input, actor, operation, traceId
       traceId: traceId,
     };
     if (documentType) trusted.documentType = documentType;
+    if(documentType==='family_schedule')trusted.scheduleContext=familyInboxGatewayScheduleContext_(input.scheduleContext);
+    else if(input.scheduleContext!==undefined)throw familyInboxGatewayError_('INVALID_INPUT');
     return trusted;
   }
 
@@ -158,7 +180,7 @@ function familyInboxGatewayValidateFile_(file) {
 function familyInboxGatewayCallService_(trusted, operation) {
   const properties = PropertiesService.getScriptProperties();
   const url = String(properties.getProperty('FAMILY_INBOX_WEBAPP_URL') || '').trim();
-  const serviceToken = String(properties.getProperty('FAMILY_INBOX_SERVICE_TOKEN') || '');
+  const serviceToken = getServiceSecret_('FAMILY_INBOX_SERVICE_TOKEN');
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url) || !serviceToken) throw familyInboxGatewayError_('CONFIGURATION_ERROR');
   const forwarded = Object.assign({}, trusted, { internalToken: serviceToken });
   if (trusted.file) forwarded.file = { name: trusted.file.name, mediaType: trusted.file.mediaType, base64: trusted.file.base64 };
@@ -173,8 +195,11 @@ function familyInboxGatewayCallService_(trusted, operation) {
   try { envelope = JSON.parse(String(response.getContentText() || '')); } catch (_) { throw familyInboxGatewayError_('INTERNAL_ERROR'); }
   if (!envelope || envelope.success !== true) throw familyInboxGatewayError_(familyInboxGatewayBackendError_(envelope));
   if (envelope.schemaVersion !== FAMILY_INBOX_GATEWAY_SCHEMA_VERSION || !familyInboxGatewayPlainObject_(envelope.data)) throw familyInboxGatewayError_('INTERNAL_ERROR');
+  retireLegacyServiceSecret_('FAMILY_INBOX_SERVICE_TOKEN');
   if (operation === 'familyInbox.submit') {
-    if (!/^inb_[0-9a-f]{32}$/i.test(String(envelope.data.inboxId || '')) || ['pending', 'duplicate', 'rejected'].indexOf(envelope.data.status) < 0 || !familyInboxGatewayPlainObject_(envelope.data.idempotency) || typeof envelope.data.idempotency.replayed !== 'boolean') throw familyInboxGatewayError_('INTERNAL_ERROR');
+    if (!/^inb_[0-9a-f]{32}$/i.test(String(envelope.data.inboxId || '')) || !familyInboxGatewayPlainObject_(envelope.data.idempotency) || typeof envelope.data.idempotency.replayed !== 'boolean') throw familyInboxGatewayError_('INTERNAL_ERROR');
+    const allowedStatuses = envelope.data.idempotency.replayed ? ['pending', 'duplicate', 'rejected', 'processing', 'candidate_ready', 'needs_review', 'completed', 'failed'] : ['pending', 'duplicate', 'rejected'];
+    if (allowedStatuses.indexOf(envelope.data.status) < 0) throw familyInboxGatewayError_('INTERNAL_ERROR');
     return { inboxId: envelope.data.inboxId, status: envelope.data.status, idempotency: { replayed: envelope.data.idempotency.replayed }, duplicateOfInboxId: String(envelope.data.duplicateOfInboxId || '') };
   }
   if (operation === 'familyInbox.listReviews') {
@@ -193,8 +218,9 @@ function familyInboxGatewayCallService_(trusted, operation) {
 }
 
 function familyInboxGatewayReviewListItem_(value) {
-  const allowed = { inboxId: true, receivedAt: true, subjectMemberId: true, originalName: true, candidateCount: true, candidateTypes: true, reviewStatus: true };
-  if (!familyInboxGatewayExactKeys_(value, allowed) || !/^inb_[0-9a-f]{32}$/i.test(String(value.inboxId || '')) || !Number.isInteger(Number(value.candidateCount)) || Number(value.candidateCount) < 0 || Number(value.candidateCount) > 8 || !Array.isArray(value.candidateTypes) || ['pending', 'reviewed'].indexOf(String(value.reviewStatus || '')) < 0) throw familyInboxGatewayError_('INTERNAL_ERROR');
+  const pcReview = value && value.reviewChannel === 'pc';
+  const allowed = { inboxId: true, receivedAt: true, subjectMemberId: true, originalName: true, candidateCount: true, candidateTypes: true, reviewStatus: true, ...(pcReview ? { reviewChannel: true } : {}) };
+  if (!familyInboxGatewayExactKeys_(value, allowed) || (Object.prototype.hasOwnProperty.call(value, 'reviewChannel') && !pcReview) || !/^inb_[0-9a-f]{32}$/i.test(String(value.inboxId || '')) || !Number.isInteger(Number(value.candidateCount)) || Number(value.candidateCount) < 0 || Number(value.candidateCount) > (pcReview ? 128 : 8) || !Array.isArray(value.candidateTypes) || ['pending', 'reviewed'].indexOf(String(value.reviewStatus || '')) < 0) throw familyInboxGatewayError_('INTERNAL_ERROR');
   return {
     inboxId: String(value.inboxId),
     receivedAt: String(value.receivedAt || ''),
@@ -203,6 +229,7 @@ function familyInboxGatewayReviewListItem_(value) {
     candidateCount: Number(value.candidateCount),
     candidateTypes: value.candidateTypes.map(String),
     reviewStatus: String(value.reviewStatus),
+    ...(pcReview ? { reviewChannel: 'pc' } : {}),
   };
 }
 
@@ -287,4 +314,12 @@ function familyInboxGatewayLog_(metadata) {
     if (Object.prototype.hasOwnProperty.call(metadata || {}, key) && metadata[key] !== undefined && metadata[key] !== '') safe[key] = metadata[key];
   });
   try { Logger.log('[PALURU_FAMILY_INBOX] ' + JSON.stringify(safe)); } catch (_) {}
+}
+
+function familyInboxGatewayScheduleContext_(value) {
+  const keys=['organizationId','organizationName','schoolType','category','period'];
+  if(!familyInboxGatewayPlainObject_(value)||Object.keys(value).length!==keys.length||Object.keys(value).some(k=>!keys.includes(k))||
+    !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(value.organizationId||'')||typeof value.organizationName!=='string'||!value.organizationName.trim()||value.organizationName.length>100||
+    !['elementary','junior_high','high_school','university','other'].includes(value.schoolType)||!['club','school','university','other'].includes(value.category)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(value.period||''))throw familyInboxGatewayError_('INVALID_INPUT');
+  return {organizationId:value.organizationId,organizationName:value.organizationName.trim(),schoolType:value.schoolType,category:value.category,period:value.period};
 }

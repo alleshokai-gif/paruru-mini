@@ -17,14 +17,19 @@ const CalendarReadService = (function() {
     const input = options || {};
     const period = String(input.period || '');
     const scope = String(input.scope || '');
-    if (!PERIODS[period] || !SCOPES[scope]) throw calendarReadError_('INVALID_INPUT');
-    const actorKey = resolveActorMemberKey_(input.actor);
+    const lineAudience = input.audience === 'line_group';
+    if ((!PERIODS[period] && !(lineAudience && period === 'upcoming')) || !SCOPES[scope]) throw calendarReadError_('INVALID_INPUT');
+    const actorKey = resolveActorMemberKey_(input.audience === 'line_group' && input.serviceId === 'kurobe_line'
+      ? { memberUserId: input.requesterMemberId } : input.actor);
     const now = input.now instanceof Date ? new Date(input.now.getTime()) : new Date();
     const range = buildPeriodRange_(period, now);
+    // Explicit day/week questions include ended occurrences. Only "upcoming"
+    // is time-filtered; retain the app/Home-card contract for other audiences.
+    if (lineAudience && period !== 'upcoming') range.from = range.queryFrom;
     const startedAt = Date.now();
     let normalized;
     try {
-      normalized = readNormalizedRange_(range.queryFrom, range.to, input.calendar);
+      normalized = readNormalizedRange_(range.queryFrom, range.to, input.calendar, input.audience === 'line_group');
     } catch (error) {
       throw calendarReadError_('UPSTREAM_ERROR');
     }
@@ -34,17 +39,22 @@ const CalendarReadService = (function() {
 
     const filtered = deduplicateOccurrences_(normalized.filter(function(event) {
       if (scope === 'mine' && event.memberKey !== actorKey) return false;
-      if (event.allDay) return event.end.getTime() > range.queryFrom.getTime();
+      if (input.audience === 'line_group') {
+        if (input.targetMemberId && event.memberKey !== input.targetMemberId) return false;
+        if (!projectLineCalendarEvent_(event)) return false;
+      }
+      if (event.allDay && !lineAudience) return event.end.getTime() > range.queryFrom.getTime();
       return event.end.getTime() > range.from.getTime();
     })).sort(compareEvents_);
     const totalEvents = filtered.length;
     const returned = filtered.slice(0, MAX_CONTEXT_EVENTS);
     const truncated = totalEvents > returned.length;
     if (truncated) warnings.push('events_truncated');
-    const events = returned.map(toPublicEvent_);
+    const events = returned.map(input.audience === 'line_group' ? projectLineCalendarEvent_ : toPublicEvent_);
     return {
       data: {
-        status: 'current', period: period, scope: scope,
+        status: normalized.incomplete ? 'partial' : 'current', period: period, scope: scope,
+        audience: input.audience === 'line_group' ? 'line_group' : 'authenticated_member',
         from: formatDateTime_(range.from), to: formatDateTime_(range.to),
         events: events,
         summary: {
@@ -77,20 +87,34 @@ const CalendarReadService = (function() {
     return readNormalizedRange_(start, end, calendar);
   }
 
-  function readNormalizedRange_(start, end, suppliedCalendar) {
+  function readNormalizedRange_(start, end, suppliedCalendar, normalizeAllDayDates) {
     const calendar = suppliedCalendar || getCalendarByConfig_(getCalendarConfig_('family'));
-    return (calendar.getEvents(start, end) || []).filter(function(event) {
+    const source = calendar.getEvents(start, end);
+    if (!Array.isArray(source)) throw calendarReadError_('UPSTREAM_ERROR');
+    let invalid = 0;
+    const events = source.filter(function(event) {
       return !isCancelled_(event);
-    }).map(normalizeEvent_).filter(function(event) {
+    }).map(function(event) {
+      const normalized = normalizeEvent_(event, normalizeAllDayDates === true);
+      if (!normalized) invalid += 1;
+      return normalized;
+    }).filter(function(event) {
       return event && overlapsRange_(event, start, end);
     });
+    events.incomplete = invalid > 0;
+    return events;
   }
 
-  function normalizeEvent_(event) {
+  function normalizeEvent_(event, normalizeAllDayDates) {
     if (!event || typeof event.getStartTime !== 'function' || typeof event.getEndTime !== 'function') return null;
-    const start = event.getStartTime();
-    const end = event.getEndTime();
-    if (!(start instanceof Date) || !(end instanceof Date) || end.getTime() <= start.getTime()) return null;
+    const allDay = Boolean(event.isAllDayEvent && event.isAllDayEvent());
+    // LINE emits date-only values in script JST. Calendar getStart/EndTime may
+    // use a different calendar timezone; prefer the actual all-day dates.
+    const useDates = normalizeAllDayDates === true && allDay
+      && typeof event.getAllDayStartDate === 'function' && typeof event.getAllDayEndDate === 'function';
+    const start = useDates ? event.getAllDayStartDate() : event.getStartTime();
+    const end = useDates ? event.getAllDayEndDate() : event.getEndTime();
+    if (!(start instanceof Date) || !(end instanceof Date) || !isFinite(start.getTime()) || !isFinite(end.getTime()) || end.getTime() <= start.getTime()) return null;
     const legacyRawTitle = String(event.getTitle ? event.getTitle() : '');
     const rawTitle = sanitizeTitle_(legacyRawTitle);
     const member = parseCalendarMemberTag_(legacyRawTitle);
@@ -101,9 +125,10 @@ const CalendarReadService = (function() {
       memberKey: String(member.memberKey || 'unknown'),
       personLabel: sanitizePersonLabel_(member.memberLabel),
       matched: member.matched === true,
+      visibility: typeof event.getVisibility === 'function' ? String(event.getVisibility()).toLowerCase() : 'unknown',
       start: new Date(start.getTime()),
       end: new Date(end.getTime()),
-      allDay: Boolean(event.isAllDayEvent && event.isAllDayEvent()),
+      allDay: allDay,
       rawEventId: event.getId ? String(event.getId() || '') : ''
     };
   }

@@ -1,2 +1,2 @@
-// Kaz OS Context Observatory read-only dashboard.
-globalThis.BUILD_ID = "v20261012-bus-home-route-unknown-arrival-v1";
+// Family Inbox school print release.
+globalThis.BUILD_ID = "v20261103-autonomous-owner-review-v1";

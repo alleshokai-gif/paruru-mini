@@ -35,6 +35,11 @@ function fakeSheet() {
   return {
     headers: [],
     rows: [],
+    note: '',
+    failNoteWriteOnce: false,
+    failRowWriteOnce: false,
+    corruptNextRowReadAfterWrite: false,
+    corruptReadbackOnce: false,
     frozenRows: 0,
     getLastRow() { return this.headers.length ? this.rows.length + 1 : 0; },
     getLastColumn() { return this.headers.length; },
@@ -42,6 +47,15 @@ function fakeSheet() {
     getRange(row, column, rowCount, columnCount) {
       const sheet = this;
       return {
+        getNote() { return sheet.note; },
+        setNote(value) {
+          if (sheet.failNoteWriteOnce) {
+            sheet.failNoteWriteOnce = false;
+            throw new Error('injected note write failure');
+          }
+          sheet.note = String(value || '');
+          return this;
+        },
         setValues(values) {
           if (row === 1) {
             for (let index = 0; index < values[0].length; index += 1) {
@@ -49,17 +63,30 @@ function fakeSheet() {
             }
             return this;
           }
+          if (sheet.failRowWriteOnce) {
+            sheet.failRowWriteOnce = false;
+            throw new Error('injected row write failure');
+          }
           for (let index = 0; index < rowCount; index += 1) {
             sheet.rows[row - 2 + index] = values[index].slice(0, columnCount);
+          }
+          if (sheet.corruptNextRowReadAfterWrite) {
+            sheet.corruptNextRowReadAfterWrite = false;
+            sheet.corruptReadbackOnce = true;
           }
           return this;
         },
         getValues() {
           if (row === 1) return [sheet.headers.slice(column - 1, column - 1 + columnCount)];
-          return Array.from({ length: rowCount }, (_, index) => {
+          const values = Array.from({ length: rowCount }, (_, index) => {
             const value = sheet.rows[row - 2 + index] || [];
             return Array.from({ length: columnCount }, (__, cell) => value[column - 1 + cell] ?? '');
           });
+          if (sheet.corruptReadbackOnce) {
+            sheet.corruptReadbackOnce = false;
+            values[0][sheet.headers.indexOf('end')] = 'INVALID';
+          }
+          return values;
         },
         clearContent() {
           sheet.rows = sheet.rows.slice(0, row - 2);
@@ -301,6 +328,196 @@ test('reimporting the same latest message does not multiply canonical intervals'
   assert.equal(sheet.rows[0][2], '2026-10-03');
   assert.equal(sheet.rows[0][3], '09:00');
   assert.equal(sheet.rows[0][4], '10:00');
+  assert.equal(first.changed, true);
+  assert.equal(second.changed, false);
+});
+
+test('previous email future BUSY survives midnight, while a date with no BUSY has zero intervals', () => {
+  const sheet = fakeSheet();
+  const spreadsheet = fakeSpreadsheet(sheet);
+  const gmailApp = fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00').gmailApp;
+  const deps = { now: new Date('2026-10-02T18:00:00+09:00'), gmailApp, spreadsheet };
+  assert.equal(importLatest(deps).intervals.length, 1);
+  deps.now = new Date('2026-10-03T05:48:00+09:00');
+  const morning = importLatest(deps);
+  assert.deepEqual(JSON.parse(JSON.stringify(morning.intervals)),
+    [{date:'2026-10-03',start:'09:00',end:'10:00'}]);
+  assert.equal(morning.changed, false);
+  assert.equal(sheet.rows[0][1], '2026-10-02T18:00:00+09:00');
+  deps.now = new Date('2026-10-04T05:48:00+09:00');
+  const noBusy = importLatest(deps);
+  assert.deepEqual(JSON.parse(JSON.stringify(noBusy.intervals)), []);
+  assert.equal(noBusy.changed, true);
+});
+
+test('latest email replaces cancelled and changed BUSY rows instead of merging stale rows', () => {
+  const sheet = fakeSheet(), spreadsheet = fakeSpreadsheet(sheet);
+  const deps = {now:new Date('2026-10-02T08:00:00+09:00'), spreadsheet,
+    gmailApp:fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00 DATE=2026-10-04 BUSY=12:00-13:00').gmailApp};
+  importLatest(deps);
+  deps.gmailApp=fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=10:00-11:00').gmailApp;
+  const changed=importLatest(deps);
+  assert.deepEqual(JSON.parse(JSON.stringify(changed.intervals)),
+    [{date:'2026-10-03',start:'10:00',end:'11:00'}]);
+  assert.equal(sheet.rows.length,1);
+});
+
+test('newer email with unchanged BUSY refreshes acquisition time, while duplicate does not', () => {
+  const sheet=fakeSheet(), spreadsheet=fakeSpreadsheet(sheet), calls=[];
+  const body='WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00';
+  const previousHash=context.kazOsSha256_;
+  context.kazOsSha256_=value=>crypto.createHash('sha256').update(value).digest('hex');
+  const deps={now:new Date('2026-10-02T08:00:00+09:00'),spreadsheet,
+    gmailApp:fakeGmail(body).gmailApp,
+    rebuildRequest(...args){calls.push(args);return {status:'requested'}}};
+  try {
+    const first=context.importLatestWorkBusyEmailV1(deps);
+    assert.equal(first.changed,true);
+    const same=context.importLatestWorkBusyEmailV1(deps);
+    assert.equal(same.changed,false);
+    assert.equal(calls.length,1);
+    deps.now=new Date('2026-10-02T10:00:00+09:00');
+    deps.gmailApp=fakeGmailApp([[makeMessage('PALURU_AVAILABILITY',
+      '2026-10-02T00:00:00Z',body,'')]]).gmailApp;
+    const renewed=context.importLatestWorkBusyEmailV1(deps);
+    assert.equal(renewed.changed,true);
+    assert.notEqual(renewed.generated_at,first.generated_at);
+    assert.equal(calls.length,2);
+    assert.notEqual(calls[0][2],calls[1][2],
+      'a later email refreshes the server-side source observation');
+  } finally {
+    if(previousHash===undefined) delete context.kazOsSha256_;
+    else context.kazOsSha256_=previousHash;
+  }
+});
+
+test('valid WEEKLY_BUSY zero rows differs from malformed payload and Gmail failure', () => {
+  const sheet=fakeSheet(), spreadsheet=fakeSpreadsheet(sheet);
+  const deps={now:new Date('2026-10-02T08:00:00+09:00'),spreadsheet,
+    gmailApp:fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00').gmailApp};
+  importLatest(deps);
+  deps.gmailApp=fakeGmail('WEEKLY_BUSY\nSynthetic disclaimer').gmailApp;
+  const zero=importLatest(deps);
+  assert.deepEqual(JSON.parse(JSON.stringify(zero.intervals)),[]);
+  assert.equal(zero.changed,true);
+  assert.equal(sheet.rows.length,0);
+  assert.match(sheet.note,/^KAZ_OS_WORK_BUSY_ZERO_V1\|2026-10-02T08:00:00\+09:00\|\d+$/);
+  deps.gmailApp=fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=INVALID').gmailApp;
+  assert.throws(()=>importLatest(deps),error=>error.code==='INVALID_PAYLOAD');
+  deps.gmailApp={search(){throw Error('injected Gmail failure')}};
+  assert.throws(()=>importLatest(deps),error=>error.code==='SOURCE_UNAVAILABLE');
+  assert.equal(sheet.rows.length,0);
+});
+
+test('all-zero email keeps a five-column zero marker and duplicate import is unchanged', () => {
+  const sheet=fakeSheet(), spreadsheet=fakeSpreadsheet(sheet), calls=[];
+  const previousHash=context.kazOsSha256_;
+  context.kazOsSha256_=value=>crypto.createHash('sha256').update(value).digest('hex');
+  const deps={now:new Date('2026-10-02T08:00:00+09:00'),spreadsheet,
+    gmailApp:fakeGmail('WEEKLY_BUSY\nNo busy interval').gmailApp,
+    rebuildRequest(...args){calls.push(args);return {status:'requested'}}};
+  try {
+    const first=context.importLatestWorkBusyEmailV1(deps);
+    assert.equal(first.changed,true);
+    assert.equal(sheet.headers.length,5);
+    assert.equal(sheet.rows.length,0);
+    const note=sheet.note;
+    const same=context.importLatestWorkBusyEmailV1(deps);
+    assert.equal(same.changed,false);
+    assert.equal(sheet.note,note);
+    assert.equal(calls.length,1);
+    deps.gmailApp={search(){throw Error('injected Gmail failure')}};
+    assert.throws(()=>context.importLatestWorkBusyEmailV1(deps),error=>error.code==='SOURCE_UNAVAILABLE');
+    assert.equal(sheet.note,note);
+  } finally {
+    if(previousHash===undefined) delete context.kazOsSha256_;
+    else context.kazOsSha256_=previousHash;
+  }
+});
+
+test('zero marker clears after BUSY returns and note failure restores rows', () => {
+  const sheet=fakeSheet(), spreadsheet=fakeSpreadsheet(sheet);
+  const deps={now:new Date('2026-10-02T08:00:00+09:00'),spreadsheet,
+    gmailApp:fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00').gmailApp};
+  importLatest(deps);
+  const prior=sheet.rows.map(row=>row.slice());
+  sheet.failNoteWriteOnce=true;
+  deps.gmailApp=fakeGmail('WEEKLY_BUSY\nNo busy interval').gmailApp;
+  assert.throws(()=>importLatest(deps),/injected note write failure/);
+  assert.deepEqual(sheet.rows,prior);
+  assert.equal(sheet.note,'');
+  importLatest(deps);
+  assert.equal(sheet.rows.length,0);
+  assert.match(sheet.note,/^KAZ_OS_WORK_BUSY_ZERO_V1\|/);
+  deps.gmailApp=fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=10:00-11:00').gmailApp;
+  importLatest(deps);
+  assert.equal(sheet.rows.length,1);
+  assert.equal(sheet.note,'');
+});
+
+test('foreign A1 note is preserved and zero import fails before changing rows', () => {
+  const sheet=fakeSheet(), spreadsheet=fakeSpreadsheet(sheet);
+  const deps={now:new Date('2026-10-02T08:00:00+09:00'),spreadsheet,
+    gmailApp:fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00').gmailApp};
+  importLatest(deps);
+  const prior=sheet.rows.map(row=>row.slice());
+  sheet.note='Existing operator note';
+  deps.gmailApp=fakeGmail('WEEKLY_BUSY\nNo busy interval').gmailApp;
+  assert.throws(()=>importLatest(deps),error=>error.code==='STORAGE_METADATA_CONFLICT');
+  assert.deepEqual(sheet.rows,prior);
+  assert.equal(sheet.note,'Existing operator note');
+});
+
+test('write failure restores the previous five-column rows before any rebuild', () => {
+  const sheet=fakeSheet(), spreadsheet=fakeSpreadsheet(sheet), calls=[];
+  const deps={now:new Date('2026-10-02T08:00:00+09:00'),spreadsheet,
+    gmailApp:fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00').gmailApp,
+    rebuildRequest(...args){calls.push(args);return {status:'requested'}}};
+  const previousHash=context.kazOsSha256_;
+  context.kazOsSha256_=value=>crypto.createHash('sha256').update(value).digest('hex');
+  try {
+    context.importLatestWorkBusyEmailV1(deps);
+    const prior=sheet.rows.map(row=>row.slice());
+    sheet.failRowWriteOnce=true;
+    deps.gmailApp=fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=10:00-11:00').gmailApp;
+    assert.throws(()=>context.importLatestWorkBusyEmailV1(deps),/injected row write failure/);
+    assert.deepEqual(sheet.rows,prior);
+    assert.equal(calls.length,1);
+  } finally {
+    if(previousHash===undefined) delete context.kazOsSha256_;
+    else context.kazOsSha256_=previousHash;
+  }
+});
+
+test('rebuild request failure keeps verified rows for existing reconciliation', () => {
+  const sheet=fakeSheet(), spreadsheet=fakeSpreadsheet(sheet);
+  const previousHash=context.kazOsSha256_;
+  context.kazOsSha256_=value=>crypto.createHash('sha256').update(value).digest('hex');
+  try {
+    const result=context.importLatestWorkBusyEmailV1({
+      now:new Date('2026-10-02T08:00:00+09:00'), spreadsheet,
+      gmailApp:fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00').gmailApp,
+      rebuildRequest(){throw Error('injected rebuild failure')}
+    });
+    assert.equal(result.v3_rebuild.status,'request_failed');
+    assert.equal(sheet.rows.length,1);
+    assert.equal(sheet.rows[0][3],'09:00');
+  } finally {
+    if(previousHash===undefined) delete context.kazOsSha256_;
+    else context.kazOsSha256_=previousHash;
+  }
+});
+
+test('corrupt read-back restores the previous rows and skips rebuild', () => {
+  const sheet=fakeSheet(), spreadsheet=fakeSpreadsheet(sheet);
+  const deps={now:new Date('2026-10-02T08:00:00+09:00'),spreadsheet,
+    gmailApp:fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=09:00-10:00').gmailApp};
+  importLatest(deps);
+  const prior=sheet.rows.map(row=>row.slice());
+  sheet.corruptNextRowReadAfterWrite=true;
+  deps.gmailApp=fakeGmail('WEEKLY_BUSY DATE=2026-10-03 BUSY=10:00-11:00').gmailApp;
+  assert.throws(()=>importLatest(deps),error=>error.code==='STORAGE_DATA_ERROR');
+  assert.deepEqual(sheet.rows,prior);
 });
 
 test('verified WorkBusy import requests one rebuild; failed import requests none', () => {

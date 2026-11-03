@@ -776,7 +776,7 @@ function publicMiniAgentTrace_(trace) {
   };
 }
 
-const PALURU_MINI_BUILD_ID = 'mini-20261005-school-print-v3-drive-inbox';
+const PALURU_MINI_BUILD_ID = 'mini-20261031-family-schedules-v1';
 
 function logMiniAgentTrace_(event, trace, details) {
   const source = details || {};

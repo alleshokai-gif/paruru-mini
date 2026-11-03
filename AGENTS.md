@@ -18,6 +18,14 @@ AIは修正対象以外を変更してはならない。修正範囲を広げる
 
 # PALURU Mini Rules
 
+## Secret settings inspection
+
+- Apps Script settings can expose plaintext Script Properties in accessibility/DOM snapshots. Never emit an unfiltered settings AX tree, DOM text, input values, screenshot, or raw response. Select the exact allowed property names first and return only their names and presence booleans. Do not return prefixes, lengths, hashes, or other value-derived fields by default.
+- Credential rotation diagnostics may hold authorized values in process memory, but must emit only service aliases, success/error codes and verification booleans. Do not place values in command arguments, temporary plaintext files, Git, exception messages or test failure output.
+- Before a GAS deployment, inspect both current HEAD and the currently published version, including the manifest and Web App settings. Preserve unrelated HEAD work and published access/scopes; pull alone does not prove the published configuration.
+- Family Inbox / Health service credentials are cloud-managed. Do not restore plaintext token properties or ask a person to copy them. For these receivers, preserve live HEAD in a separate deployment directory and run `scripts/render-service-token-verifier.mjs` there before publishing; the Git template intentionally fails closed. Keep its pinned version aligned with Mini's `ServiceSecretManager.js`, and never commit or print a rendered production verifier.
+- Browser credential entry/save must be handed to the user when required by the browser policy. Prepare the bounded overlap and verification first; do not add an anonymous admin endpoint or change Cloud projects to avoid this boundary.
+
 ## 禁止事項
 
 - Agentの仕様を勝手に変更しない
@@ -61,6 +69,10 @@ deploy（GAS Web Appのdeployment作成・更新のみユーザー本人。そ�
 - ユーザーが明示指定した値はAI解析結果より優先する
 - APIキー、Calendar ID、個人メモ本文を通常ログへ出さない
 - Android PWAのService Worker更新経路を壊さない
+
+## 開発実績の自動記録
+
+開発タスクの最終報告に `開発成果ステータス: 完了|未完了|失敗|unknown` を含める。単一で明確なPRまたはcommitが作業を識別する場合は `開発成果GitHub: https://github.com/owner/repo/pull/123`（またはcommit URL）も含める。`完了` は客観的なGitHub証拠で確認できる場合だけ使い、それ以外で未完了・失敗を確認できない場合は `unknown` とする。これらはcollectorが端末上でenum化する信号であり、プロンプト・コード・パス・秘密情報を報告や計測データへ追加しない。
 
 ## v1.0のデータ方針
 

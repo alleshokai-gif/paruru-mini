@@ -9,7 +9,13 @@
     inbox: Object.freeze({ key: 'inbox', path: '/poc/read-v2/inbox', action: 'kazOs.inbox.get' }),
     dashboardV3: Object.freeze({ key: 'dashboardV3', path: '/v3/dashboard', action: 'kazOs.v3.dashboard.get' }),
     inboxV3: Object.freeze({ key: 'inboxV3', path: '/v3/inbox', action: 'kazOs.v3.inbox.get' }),
-    context: Object.freeze({ key: 'context', path: '/v2/read/context', action: 'kazOs.context.get' })
+    developmentMetrics: Object.freeze({ key: 'developmentMetrics', path: '/v3/development-metrics', action: 'kazOs.developmentMetrics.get' }),
+    context: Object.freeze({ key: 'context', path: '/v2/read/context', action: 'kazOs.context.get' }),
+    aiEngine: Object.freeze({ key: 'aiEngine', path: '/v2/read/ai-engine', action: 'kazOs.aiEngine.get' }),
+    aiObservation: Object.freeze({ key: 'aiObservation', path: '/v2/ai-engine/progress', action: 'kazOs.progress.submit' }),
+    aiProgressStatus: Object.freeze({ key: 'aiObservation', path: '/v2/ai-engine/progress/status', action: 'kazOs.progress.status' })
+    ,autonomousWork: Object.freeze({key:'autonomousWork',path:'/v2/read/autonomous-work',action:'kazOs.autonomousWork.get'})
+    ,autonomousReview: Object.freeze({key:'autonomousReview',path:'/v2/autonomous-work/review',action:'kazOs.autonomousWork.review'})
   });
 
   function codedError_(code, details) {
@@ -47,7 +53,12 @@
       inbox: requestedRoutes.inbox === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       dashboardV3: requestedRoutes.dashboardV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
       inboxV3: requestedRoutes.inboxV3 === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
-      context: requestedRoutes.context === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
+      developmentMetrics: requestedRoutes.developmentMetrics === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      context: requestedRoutes.context === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      aiEngine: requestedRoutes.aiEngine === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      aiObservation: requestedRoutes.aiObservation === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      autonomousWork: requestedRoutes.autonomousWork === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS,
+      autonomousReview: requestedRoutes.autonomousReview === MODES.DIRECT_V2 ? MODES.DIRECT_V2 : MODES.GAS
     });
     return Object.freeze({ mode, baseUrl, v3BaseUrl, canaryCapability, routeModes });
   }
@@ -150,6 +161,19 @@
     return value;
   }
 
+  function validateDevelopmentMetrics_(value) {
+    if (!value || !['kaz-development-metrics-view-0.1', 'kaz-development-metrics-view-0.2', 'kaz-development-metrics-view-0.3', 'kaz-development-metrics-view-0.4'].includes(value.schema_version)
+        || !value.totals || typeof value.totals !== 'object'
+        || !Array.isArray(value.sessions) || value.sessions.length > 30
+        || !value.api_ledger || value.api_ledger.status !== 'unknown'
+        || (value.schema_version === 'kaz-development-metrics-view-0.3'
+          && !Array.isArray(value.context_comparison))
+        || (value.schema_version === 'kaz-development-metrics-view-0.4'
+          && (!Array.isArray(value.context_comparison) || !Array.isArray(value.tasks))))
+      throw codedError_('DEVELOPMENT_METRICS_RESPONSE_INVALID', { transportClassification: 'parse' });
+    return value;
+  }
+
   function validateInbox_(value) {
     const sources = value && value.sources;
     const sourceKeys = ['inbox', 'projects', 'tasks', 'calendar', 'resolution'];
@@ -171,6 +195,60 @@
           || (item.kind === 'generic_candidate_review'
             && !validCandidateReview_(item, value.sources)))) {
       throw codedError_('INBOX_CONTRACT_INVALID', { transportClassification: 'parse' });
+    }
+    return value;
+  }
+
+  function validateAiEngine_(value) {
+    const features = new Set(['daily_planner', 'check_in', 'night_review',
+      'gardener', 'feedback', 'capa']);
+    const codes = {
+      daily_planner: ['FOCUS_REVIEW', 'BLOCKER_REVIEW', 'NO_ADVICE'],
+      check_in: ['REPLAN_REVIEW', 'PROGRESS_REVIEW', 'NEEDS_INPUT', 'NO_ADVICE'],
+      night_review: ['CARRY_FORWARD_REVIEW', 'LESSON_REVIEW', 'NO_ADVICE'],
+      gardener: ['DUPLICATE_REVIEW', 'CONFLICT_REVIEW', 'NO_ADVICE'],
+      feedback: ['CONTEXT_GAP_REVIEW', 'WORKFLOW_REVIEW', 'NO_ADVICE'],
+      capa: ['RECURRENCE_REVIEW', 'EFFECTIVENESS_REVIEW', 'NO_ADVICE']
+    };
+    const rows = value && value.judgments;
+    if (!value || value.schema_version !== 'kaz-ai-engine-shadow-day-v1'
+        || value.raw_payload_stored !== false
+        || !/^\d{4}-\d{2}-\d{2}$/.test(String(value.day || ''))
+        || !Array.isArray(rows) || rows.length > 60
+        || rows.some(row => !row || row.schema_version !== 'kaz-ai-engine-judgment-v1'
+          || !features.has(row.feature) || !codes[row.feature].includes(row.judgment)
+          || row.auto_apply_allowed !== false || row.raw_payload_stored !== false
+          || Object.keys(row).sort().join(',') !== [
+            'as_of', 'auto_apply_allowed', 'confidence', 'cost_basis', 'cost_usd',
+            'evidence', 'feature', 'input_tokens', 'judgment', 'judgment_id',
+            'latency_ms', 'model', 'output_tokens', 'raw_payload_stored',
+            'schema_version', 'status',
+            ...(Object.prototype.hasOwnProperty.call(row, 'reason') ? ['reason'] : []),
+            ...(Object.prototype.hasOwnProperty.call(row, 'recommendation') ? ['recommendation'] : [])].sort().join(',')
+          || (Object.prototype.hasOwnProperty.call(row, 'reason')
+            && (typeof row.reason !== 'string' || row.reason.length > 1000))
+          || (Object.prototype.hasOwnProperty.call(row, 'recommendation')
+            && row.recommendation !== null
+            && (!row.recommendation || typeof row.recommendation !== 'object'
+              || Object.keys(row.recommendation).sort().join(',')
+                !== 'action_origin,estimate_min,first_step,reason'
+                && !(root.KazWorkTimeFit?.validateProposal(row.recommendation)
+                  && Object.hasOwn(row.recommendation, 'estimate_origin'))
+              || typeof row.recommendation.first_step !== 'string'
+              || row.recommendation.first_step.length > 300
+              || !['work_record', 'ai_generated'].includes(row.recommendation.action_origin)
+              || typeof row.recommendation.reason !== 'string'
+              || row.recommendation.reason.length > 500
+              || (row.recommendation.estimate_min !== null
+                && (!Number.isInteger(row.recommendation.estimate_min)
+                  || row.recommendation.estimate_min < 1
+                  || row.recommendation.estimate_min > 1440))
+              || row.feature !== 'daily_planner'))
+          || !['review_pending', 'no_advice'].includes(row.status)
+          || typeof row.confidence !== 'number' || row.confidence < 0
+          || row.confidence > 1 || !Number.isFinite(Date.parse(row.as_of))
+          || !/^[a-f0-9]{64}$/.test(String(row.judgment_id || '')))) {
+      throw codedError_('AI_ENGINE_CONTRACT_INVALID', { transportClassification: 'parse' });
     }
     return value;
   }
@@ -206,7 +284,6 @@
           || today.confirmations.length > 30
           || today.confirmations.some(item => !item || !humanKinds.has(item.kind)
             || item.decision_status !== 'pending')
-          || today.company_free_windows.length !== 0
           || ['kaz_free_windows', 'company_free_windows', 'personal_free_windows'].some(key =>
             today[key].some(window => !window
               || typeof window.start !== 'string' || !Number.isFinite(Date.parse(window.start))
@@ -312,13 +389,16 @@
         const startedAt = Date.now();
         let controller = null;
         let timer = null;
+        let stage = 'AUTHENTICATION';
         try {
           const auth = await getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs);
           const token = String(auth && auth.provider === 'firebase' && auth.idToken || '');
           if (!token) throw codedError_('AUTHENTICATION_REQUIRED', { transportClassification: 'business' });
+          stage = 'HTTP_REQUEST';
           controller = new AbortController();
           timer = setTimeout(function() { controller.abort(); }, timeoutMs);
-          const baseUrl = route.key === 'dashboardV3' || route.key === 'inboxV3'
+          const baseUrl = route.key === 'dashboardV3' || route.key === 'inboxV3' || route.key === 'developmentMetrics'
+            || route.key === 'aiEngine' || route.key === 'autonomousWork'
             ? config.v3BaseUrl : config.baseUrl;
           const response = await fetchImpl(baseUrl + route.path, {
             method: 'GET',
@@ -330,6 +410,7 @@
             },
             signal: controller.signal
           });
+          stage = 'HTTP_RESPONSE';
           const timings = parseTiming_(response.headers && response.headers.get('Server-Timing'));
           if (!response.ok) {
             let code = response.status === 401 ? 'AUTHENTICATION_REQUIRED'
@@ -341,9 +422,12 @@
             throw codedError_(code, { httpStatus: response.status, transportClassification: 'http' });
           }
           let value;
+          stage = 'JSON_PARSE';
           try { value = await response.json(); }
           catch (cause) { throw codedError_('DIRECT_READ_RESPONSE_INVALID', { httpStatus: response.status, cause, transportClassification: 'parse' }); }
+          stage = 'CONTRACT_VALIDATION';
           value = validator(value);
+          stage = 'COMPLETE';
           if (diagnostics && diagnostics.record) diagnostics.record(diagnostic, {
             attempt: attempt + 1,
             elapsedMs: Date.now() - startedAt,
@@ -367,7 +451,7 @@
             elapsedMs: Date.now() - startedAt,
             classification: diagnostics.classifyError ? diagnostics.classifyError(lastError) : 'unknown',
             httpStatus: Number.isFinite(lastError.httpStatus) ? lastError.httpStatus : null,
-            backendStage: 'DIRECT_RESPONSE',
+            backendStage: `DIRECT_${stage}`,
             transportType: MODES.DIRECT_V2,
             outcome: shouldRetry ? 'retry' : 'unresolved',
             errorCode: lastError.code || null
@@ -381,6 +465,134 @@
       throw lastError || codedError_('DIRECT_READ_FAILED', { transportClassification: 'unknown' });
     }
 
+    async function submitObservation_(payload) {
+      if (config.mode !== MODES.DIRECT_V2 || config.routeModes.aiObservation !== MODES.DIRECT_V2)
+        throw codedError_('AI_OBSERVATION_NOT_SELECTED');
+      if (!payload || !['check_in', 'night_review'].includes(payload.feature)
+          || typeof payload.work_id !== 'string' || typeof payload.observed_at !== 'string'
+          || typeof payload.note !== 'string' || payload.note.length > 300
+          || !({ check_in: ['on_track', 'delayed', 'blocked', 'done'],
+            night_review: ['carry_forward'] }[payload.feature] || []).includes(payload.action))
+        throw codedError_('AI_PROGRESS_INVALID');
+      const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');
+      if (!requestId) throw codedError_('DIRECT_READ_REQUEST_ID_UNAVAILABLE');
+      const auth = await getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs);
+      const token = String(auth && auth.provider === 'firebase' && auth.idToken || '');
+      if (!token) throw codedError_('AUTHENTICATION_REQUIRED');
+      const controller = new AbortController();
+      const timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+      try {
+        // Deliberately no retry: a timeout may follow a durable save or Job run.
+        const response = await fetchImpl(config.v3BaseUrl + ROUTES.aiObservation.path, {
+          method: 'POST', cache: 'no-store', redirect: 'error',
+          headers: { Authorization: 'Bearer ' + token,
+            'X-Paluru-Request-Id': requestId, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload), signal: controller.signal
+        });
+        if (!response.ok) {
+          let code = 'AI_PROGRESS_UNAVAILABLE';
+          try {
+            const body = await response.clone().json();
+            if (/^[A-Z0-9_]{1,80}$/.test(String(body?.error?.code || ''))) code = body.error.code;
+          } catch (_) {}
+          throw codedError_(code, { httpStatus: response.status });
+        }
+        const value = await response.json();
+        if (!value || value.schema_version !== 'kaz-ai-engine-progress-receipt-v1'
+              || value.feature !== payload.feature || value.action !== payload.action
+              || !['saved', 'already_saved'].includes(value.status)
+              || value.work_updated !== ['done', 'carry_forward'].includes(payload.action)
+              || value.provider_calls !== 0
+              || value.raw_payload_stored !== false)
+            throw codedError_('AI_PROGRESS_RECEIPT_INVALID');
+        return value;
+      } catch (error) {
+        if (error?.code) throw error;
+        throw codedError_('AI_PROGRESS_RESULT_UNKNOWN');
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function progressStatus_(payload) {
+      if (config.mode !== MODES.DIRECT_V2 || config.routeModes.aiObservation !== MODES.DIRECT_V2)
+        throw codedError_('AI_OBSERVATION_NOT_SELECTED');
+      if (!payload || !['check_in', 'night_review'].includes(payload.feature)
+          || typeof payload.work_id !== 'string' || typeof payload.observed_at !== 'string'
+          || Object.keys(payload).some(key => !['feature', 'work_id', 'observed_at', 'action'].includes(key))
+          || !({ check_in: ['on_track', 'delayed', 'blocked', 'done'],
+            night_review: ['carry_forward'] }[payload.feature] || []).includes(payload.action))
+        throw codedError_('AI_PROGRESS_STATUS_INVALID');
+      const requestId = String(diagnostics && diagnostics.requestId ? diagnostics.requestId() : '');
+      if (!requestId) throw codedError_('DIRECT_READ_REQUEST_ID_UNAVAILABLE');
+      const auth = await getAuthEnvelopeWithTimeout_(getAuthEnvelope, timeoutMs);
+      const token = String(auth && auth.provider === 'firebase' && auth.idToken || '');
+      if (!token) throw codedError_('AUTHENTICATION_REQUIRED');
+      const controller = new AbortController();
+      const timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+      try {
+        const response = await fetchImpl(config.v3BaseUrl + ROUTES.aiProgressStatus.path, {
+          method: 'POST', cache: 'no-store', redirect: 'error',
+          headers: { Authorization: 'Bearer ' + token,
+            'X-Paluru-Request-Id': requestId, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feature: payload.feature, work_id: payload.work_id,
+            action: payload.action, observed_at: payload.observed_at }), signal: controller.signal
+        });
+        if (!response.ok) {
+          let code = 'AI_PROGRESS_STATUS_UNAVAILABLE';
+          try {
+            const body = await response.clone().json();
+            if (/^[A-Z0-9_]{1,80}$/.test(String(body?.error?.code || ''))) code = body.error.code;
+          } catch (_) {}
+          throw codedError_(code, { httpStatus: response.status });
+        }
+        const value = await response.json();
+        if (!value || value.schema_version !== 'kaz-ai-engine-work-progress-status-v1'
+            || value.feature !== payload.feature || value.action !== payload.action
+            || !['saved', 'not_recorded', 'unknown'].includes(value.status)
+            || value.work_updated !== (value.status === 'saved'
+              && ['done', 'carry_forward'].includes(payload.action))
+            || value.provider_calls !== 0 || value.raw_payload_stored !== false
+            || (Object.hasOwn(value, 'observed_at') && (value.status === 'saved'
+              ? !Number.isFinite(Date.parse(value.observed_at))
+                || new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Tokyo'}).format(new Date(value.observed_at))
+                  !== new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Tokyo'}).format(new Date(payload.observed_at))
+              : value.observed_at !== null)))
+          throw codedError_('AI_PROGRESS_STATUS_RECEIPT_INVALID');
+        return value;
+      } catch (error) {
+        if (error?.code) throw error;
+        throw codedError_('AI_PROGRESS_STATUS_UNAVAILABLE');
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function autonomousReview_(payload) {
+      if(config.mode!==MODES.DIRECT_V2||config.routeModes.autonomousReview!==MODES.DIRECT_V2)
+        throw codedError_('FORBIDDEN');
+      if(!payload||Object.keys(payload).sort().join(',')!=='decision,observed_at,run_id,work_id'
+        ||!/^[a-f0-9]{64}$/.test(payload.run_id)||typeof payload.work_id!=='string'
+        ||!['approve','changes_requested','defer','reject'].includes(payload.decision)
+        ||!Number.isFinite(Date.parse(payload.observed_at)))throw codedError_('AUTONOMOUS_REVIEW_INPUT_INVALID');
+      const auth=await getAuthEnvelopeWithTimeout_(getAuthEnvelope,timeoutMs);
+      if(auth?.provider!=='firebase'||!auth.idToken)throw codedError_('AUTHENTICATION_REQUIRED');
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+      try{
+        const response=await fetchImpl(config.v3BaseUrl+ROUTES.autonomousReview.path,{
+          method:'POST',cache:'no-store',redirect:'error',signal:controller.signal,
+          headers:{Authorization:'Bearer '+auth.idToken,'Content-Type':'application/json',
+            'X-Paluru-Request-Id':String(diagnostics?.requestId?.()||'')},body:JSON.stringify(payload)});
+        if(!response.ok)throw codedError_('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');
+        const value=await response.json();
+        if(value?.schema_version!=='kaz-autonomous-review-receipt-v1'
+          ||!['saved','already_saved'].includes(value.status)||value.decision!==payload.decision
+          ||value.auto_apply_allowed!==false||value.canonical_writes!==0||value.provider_calls!==0)
+          throw codedError_('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');
+        return value;
+      }catch(error){throw error?.code?error:codedError_('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');}
+      finally{clearTimeout(timer);}
+    }
     return Object.freeze({
       mode: config.mode,
       projects: function() { return read_(ROUTES.projects, validateProjects_); },
@@ -391,7 +603,16 @@
         value => validateSnapshotV3_(value, 'kaz-os-dashboard-v3', ['work', 'projects', 'capa'])); },
       inboxV3: function() { return read_(ROUTES.inboxV3,
         value => validateSnapshotV3_(value, 'kaz-os-inbox-v3', ['inbox_items'])); },
-      context: function() { return read_(ROUTES.context, validateContext_); }
+      developmentMetrics: function() { return read_(ROUTES.developmentMetrics, validateDevelopmentMetrics_); },
+      context: function() { return read_(ROUTES.context, validateContext_); },
+      aiEngine: function() { return read_(ROUTES.aiEngine, validateAiEngine_); },
+      aiObservation: submitObservation_,
+      aiProgressStatus: progressStatus_,
+      autonomousWork: function(){return read_(ROUTES.autonomousWork,value=>{
+        if(!root.KazAutonomousWork)throw codedError_('AUTONOMOUS_CONTRACT_INVALID');
+        return root.KazAutonomousWork.validate(value);
+      });},
+      autonomousReview: autonomousReview_
     });
   }
 

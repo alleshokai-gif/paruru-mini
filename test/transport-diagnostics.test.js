@@ -74,9 +74,17 @@ assert.deepEqual(Object.keys(saved), [
 ]);
 assert.equal(saved.requestIdSuffix, '5678abcd');
 assert.equal(saved.outcome, 'retry');
+const todayRender = cold.api.start('kaz_read', 'kazOs.today.render');
+assert(cold.api.record(todayRender, { attempt: 1, elapsedMs: 0, classification: 'none',
+  backendStage: 'TODAY_RENDER_COMPLETE', outcome: 'success' }),
+'TODAY render-stage metadata must be retained by the existing safe diagnostics panel');
+const dashboardRead = cold.api.start('kaz_read', 'kazOs.v3.dashboard.get');
+assert(cold.api.record(dashboardRead, { attempt: 1, elapsedMs: 12, classification: 'parse',
+  backendStage: 'DIRECT_CONTRACT_VALIDATION', outcome: 'unresolved', errorCode: 'V3_SNAPSHOT_CONTRACT_INVALID' }),
+'dashboard transport diagnostics must distinguish its response contract from /v1/today');
 const serialized = JSON.stringify(shared);
 assert(!JSON.stringify(saved).includes('secret') && !JSON.stringify(saved).includes('private'), 'safe record leaked private input');
-assert.equal(cold.events.length, 1, 'diagnostic update event missing');
+assert.equal(cold.events.length, 3, 'diagnostic update events missing');
 
 (async function verifyFingerprints() {
   const questionId = 'decision-c8443ab12e611951c1a86506';
@@ -103,7 +111,7 @@ assert.equal(cold.events.length, 1, 'diagnostic update event missing');
     'unexpected transport must not create fingerprint records');
 
   const warm = load(shared);
-  assert.equal(warm.api.list().length, 2, 'warm start did not retain cold-start diagnostics');
+  assert.equal(warm.api.list().length, 4, 'warm start did not retain cold-start diagnostics');
   assert.equal(warm.api.list()[0].requestIdSuffix, '5678abcd');
 
   for (let index = 0; index < 70; index += 1) {

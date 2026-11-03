@@ -6,13 +6,48 @@ const { create } = require('./fixtures/kaz-v3-component-parity');
 
 async function main() {
   const pair = create();
+  pair.dashboard.today.company_free_windows = [{
+    start: '2026-10-07T09:00:00+09:00', end: '2026-10-07T10:00:00+09:00',
+    duration_min: 60, suggestions: [{ id: 'fixture-company-work', title: '会社Work',
+      estimate_min: 30, planning_domain: 'company' }],
+  }];
+  pair.dashboard.today.scheduled = [
+    { id: 'fixture-company-work', work_id: 'FX-COMPANY', planning_domain: 'company',
+      plan_start: '2026-10-07T09:00:00+09:00', plan_end: '2026-10-07T10:00:00+09:00' },
+    { id: 'fixture-personal-work', work_id: 'FX-PERSONAL', planning_domain: 'personal',
+      plan_start: '2026-10-07T10:00:00+09:00', plan_end: '2026-10-07T11:00:00+09:00' },
+  ];
+  pair.dashboard.today.unassigned = [{
+    id: 'fixture-unassigned-company-work', title: 'Fixture company work', work_id: 'FX-COMPANY',
+    planning_domain: 'company', planning_reason: 'WORKING_HOURS_UNAVAILABLE',
+  }];
+  const projectedToday = componentData.dashboard(pair.dashboard, 'today',
+    Date.parse('2026-10-07T09:30:00+09:00')).today;
+  assert.deepEqual(projectedToday.company_free_windows, pair.dashboard.today.company_free_windows,
+    'company windows come from the validated snapshot rather than being erased by the UI');
+  assert.equal(projectedToday.unassigned, pair.dashboard.today.unassigned,
+    'unclassified Work remains visible instead of being assigned to a time lane');
+  assert.equal(projectedToday.now.items[0].planning_domain, 'company',
+    'NOW follows the current timed Work');
+  assert.equal(projectedToday.next.items[0].planning_domain, 'personal',
+    'NEXT follows the next timed Work');
+  const later = componentData.dashboard(pair.dashboard, 'today',
+    Date.parse('2026-10-07T10:30:00+09:00')).today;
+  assert.equal(later.now.items[0].planning_domain, 'personal');
+  assert.deepEqual(projectedToday.unassigned, pair.dashboard.today.unassigned,
+    'Work that has no compatible authoritative time lane remains visible as unassigned');
   const listeners = new Map();
   const rendered = [];
-  const calls = { dashboard: 0, inbox: 0, v2: 0, context: 0, answer: 0 };
+  const aiSections = [];
+  const calls = { dashboard: 0, inbox: 0, v2: 0, context: 0, answer: 0, metrics: 0 };
   const on = (name, fn) => listeners.set(name, [...(listeners.get(name) || []), fn]);
   const emit = (name, detail) => (listeners.get(name) || []).forEach(fn => fn({ detail }));
   const nav = { hidden: true };
-  const host = { textContent: '', replaceChildren() {} };
+  const host = { textContent: '', replaceChildren(...nodes) { this.children = nodes; }, children: [],
+    appendChild(node) { this.children.push(node); aiSections.push(node); },
+    prepend(node) { this.children.unshift(node); aiSections.push(node); },
+    append(...nodes) { this.children.push(...nodes); aiSections.push(...nodes); },
+    querySelector() { return null; } };
   const anchors = ['today', 'work', 'projects', 'capa', 'context', 'inbox'].map(page => ({
     dataset: { kazPage: page }, setAttribute() {}, removeAttribute() {},
   }));
@@ -26,10 +61,22 @@ async function main() {
   const context = vm.createContext({
     location: { hash: '#kaz-os/v3' },
     document: { hidden: false, getElementById: id => elements[id] || null,
+      createElement: tag => ({ tag, textContent: '', className: '', children: [], dataset: {}, open: false,
+        appendChild(node) { this.children.push(node); aiSections.push(node); },
+        append(...nodes) { this.children.push(...nodes); aiSections.push(...nodes); },
+        prepend(node) { this.children.unshift(node); aiSections.push(node); },
+        querySelector() { return null; }, querySelectorAll() { return []; },
+        addEventListener() {}, setAttribute() {},
+        replaceChildren(...nodes) { this.children = nodes; },
+        after(node) { aiSections.push(node); } }),
       querySelectorAll: selector => selector === '#kazOsNav a' ? anchors : [],
       addEventListener: on },
     window: { addEventListener() {}, scrollTo() {} },
     clearTimeout, setTimeout,
+    Date: class FixtureDate extends Date {
+      constructor(...args) { super(...(args.length ? args : [pair.dashboard.generated_at])); }
+      static now() { return Date.parse(pair.dashboard.generated_at); }
+    },
     KazV3ComponentData: componentData,
     PALURU_KAZ_OS_V3_PREVIEW_ENABLED: true,
     KazInboxView: { dispose() {} },
@@ -44,22 +91,25 @@ async function main() {
     kazOsTodayApi: async () => { calls.v2++; return pair.dashboard.component_data.today; },
     kazOsV3DashboardApi: async () => { calls.dashboard++; return pair.dashboard; },
     kazOsV3InboxApi: async () => { calls.inbox++; return pair.inbox; },
+    kazOsDevelopmentMetricsApi: async () => { calls.metrics++; return { source: { status: 'empty' }, totals: {}, models: [] }; },
     kazOsContextApi: async () => { calls.context++; return { schema_version: 'kaz-context-observatory-v1', mode: 'read_only', totals: { raw: 1 }, source: { status: 'ok', complete: true } }; },
+    kazOsAiEngineApi: async () => ({ judgments: [{ feature: 'daily_planner',
+      judgment: 'FOCUS_REVIEW', status: 'review_pending' }] }),
     kazOsInboxAnswerApi: async answer => { calls.answer++; return { answer, inbox: pair.inbox }; },
   });
   const pending = [];
   emit('kaz-os:opened', { waitUntil: promise => pending.push(promise) });
   await Promise.all(pending);
   assert.equal(nav.hidden, false);
-  assert.equal(calls.v2, 0);
+  assert.equal(calls.v2, 2, 'TODAY loads the separate planning projection on each open');
   assert.equal(calls.inbox, 0);
   assert.equal(calls.dashboard, 2); // Authentication render plus opened render.
   assert.equal(rendered.at(-1).selection.page, 'today');
   assert.equal(typeof rendered.at(-1).options.answerApi, 'function');
-  assert.deepEqual(rendered.at(-1).data.today, {
-    ...pair.dashboard.component_data.today.today,
-    confirmations: pair.dashboard.today.confirmations,
-  });
+  assert(aiSections.some(section => section.className === 'kp-card kai-action-brief'
+    && JSON.stringify(section).includes('今、何をする？')));
+  assert.deepEqual(rendered.at(-1).data, pair.dashboard.component_data.today,
+    'TODAY uses the existing deterministic daily-plan projection rather than re-deriving it in the UI');
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.dataset.kazPage),
     ['today', 'work', 'projects', 'capa', 'context']);
   for (const page of ['work', 'projects', 'capa', 'context']) {
@@ -77,11 +127,26 @@ async function main() {
     await Promise.all(normalReads);
     assert.equal(rendered.at(-1).selection.page, page);
   }
-  assert.deepEqual(rendered.at(-5).data.today.confirmations, pair.dashboard.today.confirmations);
+  assert.equal(rendered.at(-5).data.schema_version, pair.dashboard.component_data.today.schema_version,
+    'normal TODAY route keeps the daily planning contract after navigation');
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.dataset.kazPage),
     ['today', 'work', 'projects', 'capa', 'context']);
   assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.href),
     ['today', 'work', 'projects', 'capa', 'context'].map(page => `#kaz-os/${page}`));
+  context.location.hash = '#kaz-os/v3/metrics';
+  const metricsReads = [];
+  emit('kaz-os:opened', { waitUntil: promise => metricsReads.push(promise) });
+  await Promise.all(metricsReads);
+  assert.equal(calls.metrics, 1);
+  assert.deepEqual(anchors.filter(anchor => !anchor.hidden).map(anchor => anchor.href),
+    ['today', 'work', 'projects', 'capa', 'context'].map(page => `#kaz-os/${page}`),
+    'development metrics must leave the five-tab navigation on normal routes');
+  assert.equal(host.children[0].tag, 'h2', 'metrics share the Kaz OS page heading');
+  assert.equal(host.children[1].className, 'development-metrics-dashboard');
+  assert.equal(host.children[2].className, 'development-metrics-details');
+  assert.equal(host.children[2].open, false, 'technical details start collapsed');
+  assert.equal(anchors.some(anchor => anchor.className === 'development-metrics-return'), false,
+    'the shared five-tab navigation replaces the standalone return link');
   assert.equal(calls.context, 2);
   console.log('PASS hidden and normal five-tab routes keep Snapshot pages and Context projection separate');
 }

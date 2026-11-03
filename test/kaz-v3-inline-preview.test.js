@@ -50,10 +50,14 @@ assert.throws(() => componentData.dashboard({ ...dashboard, component_data: null
 const navigation = fs.readFileSync(path.join(__dirname, '..', 'features/kaz-os/navigation.js'), 'utf8');
 const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const config = fs.readFileSync(path.join(__dirname, '..', 'features/transport/read-v2-config.js'), 'utf8');
+const transport = fs.readFileSync(path.join(__dirname, '..', 'features/transport/read-v2.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 assert.match(navigation, /KazV3ComponentData\.dashboard/);
 assert.match(navigation, /KazV3ComponentData\.inbox/);
-assert.match(navigation, /KazPersonalView\.render\(host, selection, data, Date\.now\(\), options\)/);
+assert.match(navigation, /KazPersonalView\.render\(plannerHost, selection, data, Date\.now\(\), options\)/,
+  'TODAY may render the existing daily planner projection in its dedicated plan host');
+assert.match(navigation, /dailyPlan\?\.schema_version === 'kaz-today-plan-v2'/,
+  'TODAY only substitutes a validated existing Dynamic Daily Planning v2 response');
 assert.match(navigation, /selection\.page === 'today' \? \{[\s\S]*answerApi:/,
   'V3 TODAY must receive the shared Human Answer API');
 const personalSource = fs.readFileSync(path.join(__dirname, '..', 'features/kaz-os/personal.js'), 'utf8');
@@ -66,6 +70,20 @@ assert(navigation.includes('const cutover = /^#kaz-os'),
   'normal Kaz OS routes must select the Snapshot branch');
 assert.match(config, /dashboardV3: 'DIRECT_V2'/,
   'normal Kaz OS must use the authenticated v3 HTTP route');
+assert.match(config, /developmentMetrics: 'DIRECT_V2'/,
+  'development metrics must not silently fall back to TODAY/GAS');
+assert.match(navigation, /const metricsOnly = location\.hash === '#kaz-os\/v3\/metrics'/,
+  'the metrics page must open without the general v3 preview flag');
+assert.match(navigation, /if \(!globalThis\.PALURU_KAZ_OS_V3_PREVIEW_ENABLED\) return;[\s\S]*const anchor = event\.target\.closest/,
+  'metrics-only access must not rewrite normal tab links to unavailable V3 preview routes');
+assert.match(navigation, /最終収集/);
+assert.match(navigation, /収集状態/);
+assert.match(navigation, /GitHub成果の明示リンク/);
+assert.match(navigation, /context_comparison/);
+assert.match(navigation, /resolve_context記録/);
+assert.match(navigation, /GitHub識別子で束ねたタスク/);
+assert.match(navigation, /最終報告の自己申告/);
+assert.match(transport, /kaz-development-metrics-view-0\.4/);
 const dashboardGate = app.slice(app.indexOf('async function callAuthenticatedKazOsV3Dashboard_()'),
   app.indexOf('async function callAuthenticatedKazOsV3Inbox_()'));
 assert(dashboardGate.includes('isViewAllowed_("kaz-os")')

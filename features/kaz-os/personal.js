@@ -78,7 +78,7 @@
     const doc = host.ownerDocument;
     const el = (tag, text = '', cls = '') => { const n = doc.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
     const add = (tag, text, cls, parent = host) => { const n = el(tag, text, cls); parent.append(n); return n; };
-    const part = title => { const s = add('section', '', 'kp-section'); add('h2', title, '', s); return s; };
+    const part = (title, parent = host) => { const s = add('section', '', 'kp-section', parent); add('h2', title, '', s); return s; };
     const link = (text, page, id, cls = '') => { const a = el('a', text, cls); a.href = `#kaz-os/${page}${id ? '/' + encodeURIComponent(id) : ''}`; return a; };
     const fold = (text, parent = host) => { const d = add('details', '', 'kp-detail', parent); add('summary', text, '', d); return d; };
     const fmt = value => Number.isFinite(stamp(value)) ? new Date(value).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) : '時刻未確認';
@@ -92,8 +92,30 @@
       return status;
     }
     const projects = list(data?.projects), work = list(data?.work_items), capa = list(data?.capa_items);
+    const progressUi = data?.progress_ui?.schema_version === 'kaz-project-work-progress-v1' ? data.progress_ui : null;
+    const inRecordedOrder = (rows, ids) => {
+      if (!rows || !Array.isArray(ids) || ids.length !== rows.length) return rows;
+      const byId = new Map(rows.map(row => [row.id, row]));
+      return new Set(ids).size === rows.length && ids.every(id => byId.has(id))
+        ? ids.map(id => byId.get(id)) : rows;
+    };
     const project = id => projects?.find(p => p.id === id);
     const wi = id => work?.find(w => w.id === id);
+    const detailOf = row => data?.page_details?.[row?.id];
+    const detailText = (row, key) => detailOf(row)?.status === 'current'
+      ? detailOf(row)[key] || '未記録'
+      : detailOf(row)?.status === 'unavailable' ? '本文を取得できません' : '未記録';
+    function workLink(w, parent) {
+      const row = link('', 'work', w.id, 'kp-work-row kp-work-link');
+      row.dataset.workItem = w.id;
+      const top = el('div', '', 'kp-project-head');
+      top.append(el('strong', w.title), el('span', w.state, 'kp-badge kp-' + String(w.state).toLowerCase()));
+      if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
+      row.append(top, el('span', `${w.project_name || 'Project未確認'} · ${w.work_id || 'ID未確認'}`, 'kp-muted'));
+      row.append(el('span', w.state === 'DONE' ? '進捗: 完了' : '進捗率: 未記録', 'kp-muted'));
+      parent.append(row);
+      return row;
+    }
     function workDetail(w, parent) {
       const d = fold(`${w.title} · ${w.state} · ${estimate(w.estimate_min)}`, parent);
       d.dataset.workItem = w.id;
@@ -121,14 +143,85 @@
     if (selection.page === 'today') {
       const head = part('TODAY');
       const v3 = data?.schema_version === 'kaz-os-dashboard-v3-component';
-      add('p', v3
-        ? 'WorkBusyとFamily Calendarの（父）予定を統合し、ワイの空き時間を表示します。'
-        : 'WorkBusyとFamily Calendarの空き時間を別々に表示。枠に収まるWork候補を確認できます。', 'kp-subtitle', head);
+      if (!v3) add('p', 'WorkBusyとFamily Calendarの空き時間を別々に表示。枠に収まるWork候補を確認できます。', 'kp-subtitle', head);
       const workHealth = notice('work_items', head);
       if (data?.origin === 'notion_official_api' && data?.sources?.work_items) {
         const source = data.sources.work_items;
         const fetched = Number.isFinite(stamp(source.fetched_at)) ? new Date(source.fetched_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST' : '取得時刻未確認';
         add('p', `実データ · Notion / READ-ONLY · ${source.fetch_status} · ${fetched}`, 'kp-muted', head);
+      }
+      // Keep a previous-day projection out of today's plan. WorkBusy freshness
+      // is advisory: the server already generated the windows from known BUSY.
+      if (v3) {
+        const dayJst = value => {
+          const ms = typeof value === 'number' ? value : stamp(value);
+          return Number.isFinite(ms) ? new Date(ms + 9 * 3600000).toISOString().slice(0, 10) : null;
+        };
+        const todayHealth = health(data.sources?.today, now);
+        const calendarHealth = health(data.sources?.calendar, now);
+        const busySource = data.sources?.work_busy;
+        const reportedBusyHealth = busySource?.snapshot_status === 'current' ? 'ok'
+          : ['stale', 'failed', 'not_connected'].includes(busySource?.snapshot_status)
+            ? busySource.snapshot_status : 'not_connected';
+        const busyDeadline = stamp(busySource?.snapshot_valid_until);
+        const busyHealth = reportedBusyHealth === 'ok'
+          && (!Number.isFinite(busyDeadline) || busyDeadline <= now)
+          ? 'stale' : reportedBusyHealth;
+        const snapshotDay = dayJst(data.v3_snapshot?.generated_at);
+        const safeToday = (data.v3_snapshot?.status === 'CURRENT'
+            || (data.v3_snapshot?.status === 'DEGRADED' && busyHealth !== 'ok'))
+          && todayHealth === 'ok' && workHealth === 'ok'
+          && calendarHealth === 'ok'
+          && snapshotDay !== null && snapshotDay === dayJst(now) && !!data.today;
+        if (safeToday && busyHealth !== 'ok') {
+          const observedAt = stamp(busySource?.snapshot_updated_at);
+          const observed = Number.isFinite(observedAt)
+            ? new Date(observedAt).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',
+                month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST'
+            : '時刻未確認';
+          add('p', `WorkBusy ${busyHealth.toUpperCase()} · 会社のBUSYは最終取得 ${observed} 時点の情報です。空き時間は予定上の目安です。`, 'kp-notice', head);
+        }
+        if (!safeToday) {
+          add('p', 'TODAY未確定 · 更新結果が揃っていないため、現在の空き時間・NOW・NEXT・時間付き配置は表示しません。', 'kp-notice', head);
+          add('p', `保存Snapshot: ${Number.isFinite(stamp(data.v3_snapshot?.generated_at)) ? fmt(data.v3_snapshot.generated_at) + ' JST / ' + snapshotDay : '時刻未確認'} · TODAY ${todayHealth.toUpperCase()} · Work ${workHealth.toUpperCase()} · Calendar ${calendarHealth.toUpperCase()} · WorkBusy ${busyHealth.toUpperCase()}`, 'kp-muted', head);
+          const saved = part('Work情報（最終保存値・現在とは限りません）');
+          const catalog = data.last_known_work;
+          const recordedAt = Number.isFinite(stamp(catalog?.generated_at))
+            ? new Date(catalog.generated_at).toLocaleString('ja-JP', {timeZone: 'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) + ' JST'
+            : '時刻未確認';
+          add('p', `Work source更新 ${recordedAt} · 読み取り専用 · Work状態も変わっている可能性があります。`, 'kp-muted', saved);
+          if (!Array.isArray(catalog?.items) || !catalog.items.length) {
+            add('p', '表示できる最終保存Work情報はありません。', 'kp-muted', saved);
+          } else {
+            catalog.items.forEach(item => {
+              const row = add('article', '', 'kp-work-row', saved);
+              add('strong', String(item.title || 'タイトル未確認'), '', row);
+              add('p', `${item.work_id || 'ID未確認'} · ${item.project_name || 'Project未確認'} · 保存時状態: ${item.state || '不明'}`, 'kp-muted', row);
+            });
+            if (Number.isInteger(catalog.total) && catalog.total > catalog.items.length) {
+              add('p', `保存Work ${catalog.total}件のうち${catalog.items.length}件を表示。最新情報はWORKタブで確認してください。`, 'kp-muted', saved);
+            }
+          }
+          const savedProjects = part('Projects情報（最終保存値・現在とは限りません）');
+          const projectsCatalog = data.last_known_projects;
+          const projectsAt = Number.isFinite(stamp(projectsCatalog?.generated_at))
+            ? new Date(projectsCatalog.generated_at).toLocaleString('ja-JP', {timeZone: 'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) + ' JST'
+            : '時刻未確認';
+          add('p', `Projects source更新 ${projectsAt} · 読み取り専用 · Project状態も変わっている可能性があります。`, 'kp-muted', savedProjects);
+          if (!Array.isArray(projectsCatalog?.items) || !projectsCatalog.items.length) {
+            add('p', '表示できる最終保存Projects情報はありません。', 'kp-muted', savedProjects);
+          } else {
+            projectsCatalog.items.forEach(item => {
+              const row = add('article', '', 'kp-work-row', savedProjects);
+              add('strong', String(item.title || 'タイトル未確認'), '', row);
+              add('p', `保存時状態: ${item.status || '不明'}`, 'kp-muted', row);
+            });
+            if (Number.isInteger(projectsCatalog.total) && projectsCatalog.total > projectsCatalog.items.length) {
+              add('p', `保存Projects ${projectsCatalog.total}件のうち${projectsCatalog.items.length}件を表示。最新情報はPROJECTSタブで確認してください。`, 'kp-muted', savedProjects);
+            }
+          }
+          return;
+        }
       }
       if (workHealth !== 'ok' || !data?.today) return;
 
@@ -137,22 +230,44 @@
         const row = add('article', '', 'kp-work-row kp-today-row', parent);
         row.dataset.workItem = w.id;
         const top = add('div', '', 'kp-project-head', row);
-        top.append(el('strong', w.title));
+        const title = String(w.title || '名称未設定のWork');
+        top.append(el('strong', title));
         top.append(el('span', w.state, 'kp-badge kp-' + String(w.state || '').toLowerCase()));
         if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
         if (w.planning_preference) top.append(el('span', w.planning_preference, 'kp-badge kp-planning-preference'));
+        if (Array.from(title).length > 72) {
+          const titleDetail = fold('タイトル全文', row);
+          add('p', title, 'kp-muted', titleDetail);
+        }
         add('p', `${w.project_name} · ${w.work_id} · ${estimate(w.estimate_min)}`, 'kp-muted', row);
-        if (w.plan_start && w.plan_end) add('p', `${fmt(w.plan_start)}–${fmt(w.plan_end)} · ${w.placement || '配置済み'}`, 'kp-muted', row);
+        if (w.plan_start && w.plan_end && (!v3 || label === 'SCHEDULED'))
+          add('p', `${fmt(w.plan_start)}–${fmt(w.plan_end)} · ${w.placement || '配置候補'}`, 'kp-muted', row);
         else if (w.placement === 'ESTIMATE_REQUIRED') add('p', '所要時間未設定。INBOXで分数を答えると配置できます。', 'kp-notice', row);
-        else if (w.placement === 'NO_AVAILABLE_SLOT') add('p', '今日は確定している空き時間に収まりません。', 'kp-notice', row);
-        else if (w.waiting_reason) add('p', `待ち理由: ${w.waiting_reason}`, 'kp-muted', row);
-        if (w.next_action) add('p', `${label} ${w.next_action}`, 'kp-next', row);
-        if (w.blocker) add('p', `BLOCKER ${w.blocker}`, 'kp-blocker', row);
+        else if (w.placement === 'NO_AVAILABLE_SLOT') add('p', label === 'NEXT'
+          ? '今日の時間配置とは独立した優先候補です。' : '今日は確定している空き時間に収まりません。', 'kp-notice', row);
+        else if (w.waiting_reason) add('p', w.waiting_reason === 'BLOCKER_RECORDED'
+          ? '妨げる要因が記録されています。着手前にWorkの内容を確認してください。'
+          : `待ち理由: ${w.waiting_reason}`, 'kp-muted', row);
+        if (label === 'NEXT' && w.next_policy_window?.availability_confirmed === false) {
+          const window = w.next_policy_window;
+          const date = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' }).format(new Date(window.start));
+          add('p', `次の作業時間候補: ${date} ${fmt(window.start)}–${fmt(window.end)} JST（設定と既知の拘束から算出。予定・BUSYの確認前）`, 'kp-notice', row);
+        }
+        if (w.next_action) {
+          const sentence = w.next_action.split(/[。\n]/, 1)[0];
+          const excerpt = Array.from(sentence).slice(0, 72).join('');
+          const action = fold(`${label} · ${excerpt}${excerpt.length < sentence.length || sentence.length < w.next_action.length ? '… 詳細' : ''}`, row);
+          add('p', w.next_action, 'kp-next', action);
+        }
+        if (w.blocker) {
+          const blocker = fold('Blockerを確認', row);
+          add('p', w.blocker, 'kp-blocker', blocker);
+        }
       };
 
       const focusCount=(t.now?.items?.length||0)+(t.next?.items?.length||0);
-      const renderFreeWindows = (title, windows, emptyMessage) => {
-        const section = part(title);
+      const renderFreeWindows = (title, windows, emptyMessage, parent = host, includeSuggestions = true, compact = false) => {
+        const section = part(title, parent);
         section.classList.add('kp-free-section');
         const visible = (windows || []).map(window => {
           if (!v3) return window;
@@ -164,12 +279,16 @@
             ...window,
             start: new Date(startMs).toISOString(),
             duration_min: durationMin,
-            suggestions: (window.suggestions || []).filter(w =>
+            suggestions: includeSuggestions ? (window.suggestions || []).filter(w =>
               Number.isFinite(w.estimate_min) && w.estimate_min <= durationMin
-            ),
+            ) : [],
           };
         }).filter(Boolean);
         if (!visible.length) { add('p', emptyMessage, 'kp-muted', section); return; }
+        if (compact) {
+          visible.forEach(window => add('p', `${fmt(window.start)}–${fmt(window.end)} · ${window.duration_min}分`, 'kp-calendar-compact', section));
+          return;
+        }
         visible.forEach(window => {
           const slot = add('article', '', 'kp-free-window', section);
           add('h3', `${fmt(window.start)}–${fmt(window.end)}　${window.duration_min}分`, 'kp-free-time', slot);
@@ -182,11 +301,61 @@
           });
         });
       };
+      const companyState = t.work_time;
+      const companyEmptyMessage = companyState?.company_day_kind === 'non_working_day'
+        ? '会社の勤務時間は設定済みですが、今日は勤務対象曜日ではありません。'
+        : companyState?.company_hours_configured === false || t.limitations?.includes('company_work_hours_unconfigured')
+          || t.unassigned?.some(row => row.planning_reason === 'WORKING_HOURS_UNAVAILABLE')
+          ? '会社の勤務時間が設定されていないため、会社の空き時間は表示していません。'
+          : data.sources?.work_busy?.status !== 'ok'
+            ? `${companyState?.company_hours_configured === true ? '会社の勤務時間は設定済みですが、' : ''}BUSY予定を確認できないため会社の空き枠は未確認です。`
+            : companyState?.company_hours_configured === true
+              ? '会社の勤務時間は設定済みです。今日の確認済み空き枠はありません。'
+              : '今日の会社の確認済み空き枠はありません。';
+      if (companyState?.company_hours_configured) {
+        add('p', `会社勤務時間: 月〜金 ${companyState.company_hours.map(r => `${r.start}–${r.end}`).join('、')} · JST`, 'kp-muted');
+        const window = companyState.next_company_window;
+        if (window) {
+          const day = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' }).format(new Date(window.start));
+          add('p', `次の会社作業時間候補: ${day} ${fmt(window.start)}–${fmt(window.end)} JST（予定・BUSY確認前）`, 'kp-muted');
+        }
+      }
+      const diagnostics = t.candidate_diagnostics;
+      if (diagnostics) {
+        add('p', `Work ${diagnostics.total_count}件 · 優先候補 ${diagnostics.eligible_count}件 · 今日配置 ${diagnostics.placed_count}件`, 'kp-muted');
+        const detail = fold('候補の選定・除外理由');
+        add('p', `完了・取消 ${diagnostics.terminal_count}件、状態待ち ${diagnostics.waiting_state_count}件、未着手対象外 ${diagnostics.not_actionable_state_count}件、意向による保留 ${diagnostics.deferred_preference_count}件、確定配置 ${diagnostics.adopted_schedule_count}件。`, 'kp-muted', detail);
+        add('p', `候補のうち所要時間未設定 ${diagnostics.estimate_required_count}件、今日の空き枠なし ${diagnostics.no_slot_count}件、時間帯未確認 ${diagnostics.unassigned_count}件。依存関係はこのWork投影に含まれず、未解決の状態やBlocker記録を別途確認します。`, 'kp-muted', detail);
+      }
       if (v3) {
-        add('p', '今日の現在時刻から日付の終わりまで · JST', 'kp-muted', head);
-        renderFreeWindows('🟢 ワイの空き時間', t.kaz_free_windows,
-          '今日の残りに確定できる空き時間はありません。');
-        const confirmations = part('確認');
+        const overview = part('今日の予定・空き時間');
+        overview.dataset.todayOverview = 'true';
+        add('p', '既存Calendarと個人作業時間の設定を重ねた候補です。会社の作業時間とは分けて表示します。 · JST', 'kp-muted', overview);
+        renderFreeWindows('🏢 会社の空き時間', t.company_free_windows,
+          companyEmptyMessage, overview, false, true);
+        const currentWindows = (t.kaz_free_windows || []).filter(window =>
+          Number.isFinite(stamp(window.start)) && Number.isFinite(stamp(window.end))
+          && stamp(window.end) > now && stamp(window.start) < stamp(window.end));
+        renderFreeWindows('🏠 家庭・個人の作業候補時間', currentWindows.slice(0, 2),
+          '設定済みの個人作業時間と予定が重なる空き枠はありません。', overview, false, true);
+        if (currentWindows.length > 2) {
+          const remainingWindows = fold(`ほかの空き時間 ${currentWindows.length - 2}件`, overview);
+          renderFreeWindows('追加の家庭・個人の作業時間', currentWindows.slice(2),
+            '追加の空き時間はありません。', remainingWindows, false, true);
+        }
+        if (t.unassigned?.length) {
+          const unassigned = fold('時間帯を確認できないWork', overview);
+          t.unassigned.slice(0, 20).forEach(item => {
+            const reason = item.planning_reason === 'WORKING_HOURS_UNAVAILABLE'
+              ? '会社の勤務時間が未設定です。'
+              : item.planning_reason === 'COMPANY_BUSY_UNCONFIRMED'
+                ? '会社のBUSY予定を確認できません。' : 'ProjectのAreaが未分類です。';
+            add('p', `${item.title || item.work_id} · ${reason}`, 'kp-muted', unassigned);
+          });
+        }
+        if (t.calendar_state?.unknown_count)
+          add('p', `未分類/不明のCalendar予定 ${t.calendar_state.unknown_count}件は空き時間扱いしていません。`, 'kp-notice', overview);
+        const confirmations = fold('確認待ち');
         if (!(t.confirmations || []).length) add('p', '確認待ちはありません。', 'kp-muted', confirmations);
         else (t.confirmations || []).forEach(item => {
           const row = add('article', '', 'kp-work-row', confirmations);
@@ -225,34 +394,47 @@
         });
         add('p', `今日の3つ · ${focusCount}/3`, 'kp-muted');
       } else if (v2) {
-        add('p', '今日の現在時刻から日付の終わりまで · JST', 'kp-muted', head);
-        const busyStatus=data.sources?.work_busy?.status || 'not_connected';
+        add('p', '確認済みの予定と、設定済みの作業可能時間を重ねて表示 · JST', 'kp-muted', head);
         renderFreeWindows('🏢 会社の空き時間', t.company_free_windows,
-          busyStatus === 'ok' ? '今日の残りに会社の空き枠はありません。'
-          : busyStatus === 'empty' ? 'WorkBusyにデータがありません。'
-          : busyStatus === 'not_connected' ? 'WorkBusyは未接続です。'
-          : 'WorkBusyを読み取れませんでした。');
-        renderFreeWindows('🏠 予定の空き時間', t.calendar_free_windows,
+          companyEmptyMessage);
+        renderFreeWindows('🏠 家庭・個人の作業候補時間', t.calendar_free_windows,
           t.calendar_state?.unknown?.some(value => value.reason === 'TIME_UNRESOLVED')
             ? '時刻不明の予定があるため空き枠を確定できません。'
-            : '今日の残りにCalendarの空き枠はありません。');
+            : '設定済みの作業可能時間と予定が重なる空き枠はありません。');
+        if (t.unassigned?.length) {
+          const unassigned = part('時間帯を確認できないWork');
+          (t.unassigned || []).slice(0, 20).forEach(item => {
+            const reason = item.planning_reason === 'WORKING_HOURS_UNAVAILABLE'
+              ? '会社の勤務時間が未設定です。'
+              : item.planning_reason === 'COMPANY_BUSY_UNCONFIRMED'
+                ? '会社のBUSY予定を確認できません。'
+              : 'ProjectのAreaが未分類です。';
+            const row = document.createElement('p');
+            row.textContent = `${item.title || item.work_id} · ${reason}`;
+            unassigned.appendChild(row);
+          });
+        }
         add('p', `今日の3つ · ${focusCount}/3`, 'kp-muted');
       }
 
-      const nowSection = part('NOW');
-      if (t.now?.kind === 'none') add('p', (v2 || v3) ? 'いま着手する項目はありません。' : 'DOINGのWork Itemはありません。', 'kp-muted', nowSection);
-      else (t.now?.items || []).forEach(w => renderCandidate(w, nowSection, 'NOW'));
+      if (!v3) {
+        const nowSection = part('NOW');
+        if (t.now?.kind === 'none') add('p', v2 ? 'いま着手する項目はありません。' : 'DOINGのWork Itemはありません。', 'kp-muted', nowSection);
+        else (t.now?.items || []).forEach(w => renderCandidate(w, nowSection, 'NOW'));
 
-      const nextSection = part('NEXT');
-      if (t.next?.kind === 'none') add('p', '次候補はありません。', 'kp-muted', nextSection);
-      else (t.next?.items || []).forEach(w => renderCandidate(w, nextSection, 'NEXT'));
+        const nextSection = part('NEXT');
+        add('p', '次に優先するWorkです。現在実行できるNOWや、確定した実行予定とは別です。', 'kp-muted', nextSection);
+        if (t.next?.kind === 'none') add('p', '次候補はありません。', 'kp-muted', nextSection);
+        else (t.next?.items || []).forEach(w => renderCandidate(w, nextSection, 'NEXT'));
+      }
 
       if (v2 || v3) {
-        const scheduled = part('SCHEDULED');
+        const scheduled = v3 ? fold('Work配置案 · Calendarの確定予定とは別') : part('SCHEDULED');
+        if (v3) add('p', 'Workの優先順から作られた配置候補です。Calendar上の実行予定としては扱いません。', 'kp-muted', scheduled);
         if (!(t.scheduled || []).length) add('p', '今日の時間付き配置はありません。', 'kp-muted', scheduled);
         else (t.scheduled || []).forEach(w => renderCandidate(w, scheduled, 'SCHEDULED'));
 
-        const waiting = part('WAITING');
+        const waiting = v3 ? fold('WAITING · 状態待ち') : part('WAITING');
         add('p', `${t.waiting_count}件 · Human/state/Estimate待ち`, 'kp-muted', waiting);
         if (!(t.waiting || []).length) add('p', '待ち項目はありません。', 'kp-muted', waiting);
         else (t.waiting || []).forEach(w => renderCandidate(w, waiting, 'WAITING'));
@@ -305,29 +487,48 @@
       }
       if (!['ok', 'partial'].includes(workHealth)) return;
       if (!work) { add('p', 'Work Items一覧を確認できません。重複・欠落を解消してください。', 'kp-notice'); return; }
-      add('p', `${work.length} Work Items · 表示順はOperational state順。UIで独自priority scoreは付けません。`, 'kp-muted', head);
+      if (selection.id) {
+        head.prepend(link('← WORK', 'work', null, 'kp-back'));
+        const w = wi(selection.id);
+        if (!w) { add('p', 'この取得範囲にWorkが見つかりません。'); return; }
+        add('h3', w.title, 'kp-project-title');
+        add('p', `${w.state} · ${w.priority || 'Priority未設定'} · ${w.work_id || 'ID未確認'}`, 'kp-muted');
+        add('p', `作業の目的: ${detailText(w, 'purpose')}`);
+        for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', '進捗記録']])
+          if (detailOf(w)?.status === 'current' && detailOf(w)[key]) add('p', `${label}: ${detailOf(w)[key]}`);
+        add('p', w.state === 'DONE' ? '進捗: NotionでDONEと記録済み。' : '進捗率: 未記録。状態から割合は推測しません。', 'kp-muted');
+        add('p', `実施済み: ${detailText(w, 'completed')}`);
+        add('p', `残作業: ${detailText(w, 'remaining')}`);
+        add('p', `次の行動: ${w.next_action || '未記録'}`);
+        add('p', `ブロッカー: ${w.blocker || '未記録'}`);
+        const updated = Number.isFinite(stamp(w.source_revision))
+          ? new Date(w.source_revision).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST'
+          : '未確認';
+        add('p', `更新日時: ${updated}`, 'kp-muted');
+        if (w.project_id && project(w.project_id)) host.append(link(`所属Project: ${w.project_name}`, 'projects', w.project_id, 'kp-back'));
+        else add('p', `所属Project: ${w.project_name || '未確認'}`, 'kp-muted');
+        if (w.work_id === 'WI-53' && data.wi53_progress?.schema_version === 'wi53-progress-summary-v1') {
+          const summary = data.wi53_progress, totals = summary.totals, statuses = summary.statuses;
+          const ledger = part('WI-53 台帳');
+          add('p', `全${totals.all_registry_entries}項目 · Secret関連${totals.credential_and_legacy_entries}項目`, '', ledger);
+          add('p', `移行済み ${statuses.migrated} · 作業中 ${statuses.in_progress} · 未移行 ${statuses.not_migrated} · 人間判断待ち ${statuses.human_decision} · 保留 ${statuses.deferred}`, '', ledger);
+          add('p', `兄弟の判断待ち: ${summary.human_decisions}件 · 台帳時点 ${summary.as_of}`, 'kp-muted', ledger);
+          add('p', '台帳上の進捗です。Secret値や認証情報は表示しません。', 'kp-muted', ledger);
+        }
+        return;
+      }
+      add('p', `${work.length} Work Items · ${progressUi ? 'Notion Priority順 · 完了/取消は末尾' : '取得順'}`, 'kp-muted', head);
       if (!work.length) { add('p', 'この取得範囲のWork Itemは0件です。'); return; }
       const rows = add('div', '', 'kp-work-list');
       const terminal = [];
-      work.forEach(w => {
+      inRecordedOrder(work, progressUi?.work_order).forEach(w => {
         if (!WORK_STATES.includes(w.state)) return;
         if (['DONE','CANCELLED'].includes(w.state)) { terminal.push(w); return; }
-        const row = add('article', '', 'kp-work-row', rows); row.dataset.workItem = w.id;
-        const top = add('div', '', 'kp-project-head', row);
-        top.append(el('strong', w.title));
-        top.append(el('span', w.state, 'kp-badge kp-' + w.state.toLowerCase()));
-        if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
-        add('p', `${w.project_name} · ${w.work_id} · ${estimate(w.estimate_min)}`, 'kp-muted', row);
-        if (w.next_action) add('p', `NEXT ${w.next_action}`, 'kp-next', row);
-        if (w.blocker || w.state === 'BLOCKED') add('p', `BLOCKER ${w.blocker || '理由は未確認'}`, 'kp-blocker', row);
+        workLink(w, rows);
       });
       if (terminal.length) {
         const closed = fold(`終了した項目 ${terminal.length}件`);
-        terminal.forEach(w => {
-          const row = add('div', '', 'kp-work-row', closed); row.dataset.workItem = w.id;
-          add('strong', w.title, '', row);
-          add('p', `${w.project_name} · ${w.work_id} · ${w.state}`, 'kp-muted', row);
-        });
+        terminal.forEach(w => workLink(w, closed));
       }
       return;
     }
@@ -394,10 +595,20 @@
         const p = project(selection.id);
         if (!p) { add('p', 'この取得範囲にProjectが見つかりません。'); return; }
         add('h3', p.title, 'kp-project-title'); host.append(badge(state(p.status)));
-        add('p', `FOCUS ${p.current_focus || '未設定'}`);
+        add('p', `目的: ${detailText(p, 'purpose')}`);
+        for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', '進捗記録']])
+          if (detailOf(p)?.status === 'current' && detailOf(p)[key]) add('p', `${label}: ${detailOf(p)[key]}`);
+        add('p', `現在の焦点: ${p.current_focus || '未記録'}`);
         progressRow(p, host, current);
-        add('p', `NEXT ${p.next_action || '未設定'}`);
-        if (p.blocker || p.status === 'BLOCKED') add('p', `BLOCKER ${p.blocker || '未確認'}`);
+        const projectProgress = progressUi?.projects?.[p.id];
+        const completed = projectProgress?.completed_work_ids?.map(id => wi(id)?.title).filter(Boolean);
+        add('p', `完了事項: ${detailText(p, 'completed')}`);
+        add('p', `完了Work: ${completed ? completed.length ? completed.join(' / ') : '該当Workなし' : '取得範囲では未確認'}`);
+        add('p', `残件: ${Number.isInteger(projectProgress?.remaining_work_count) ? `${projectProgress.remaining_work_count} Work` : '未確認'}`);
+        if (projectProgress?.state_counts) add('p', `Work状態: ${Object.entries(projectProgress.state_counts).map(([name, count]) => `${name} ${count}`).join(' · ')}`, 'kp-muted');
+        add('p', `残作業の記録: ${detailText(p, 'remaining')}`);
+        add('p', `次の行動: ${p.next_action || '未記録'}`);
+        add('p', `ブロッカー: ${p.blocker || '未記録'}`);
         const proof = fold('Milestoneの定義とAcceptance');
         if (Array.isArray(p.milestones)) p.milestones.forEach(m => add('p', `${m.id} · ${m.accepted ? 'Acceptance参照 ' + (m.evidence_ref || '未取得') : '未完了'}`, 'kp-muted', proof));
         else add('p', p.milestones_done != null ? 'NotionのDone / Total集計値。個別MilestoneのAcceptance Evidenceは未取得。' : 'milestone未定義', 'kp-muted', proof);
@@ -408,11 +619,12 @@
         }
         const items = part('Work Items'); const h = notice('tasks', items);
         if (!work || !['ok', 'partial'].includes(h)) return;
-        const members = work.filter(w => w.project_id === p.id);
+        const members = inRecordedOrder(work.filter(w => w.project_id === p.id), projectProgress?.work_ids);
         add('p', `${members.length}件 · 取得範囲内`, 'kp-muted', items);
         const terminal = members.filter(w => ['DONE', 'CANCELLED'].includes(w.state));
-        members.filter(w => !terminal.includes(w)).forEach(w => workDetail(w, items));
-        if (terminal.length) { const closed = fold(`終了した項目 ${terminal.length}件`, items); terminal.forEach(w => workDetail(w, closed)); }
+        const activeRows = add('div', '', 'kp-work-list', items);
+        members.filter(w => !terminal.includes(w)).forEach(w => workLink(w, activeRows));
+        if (terminal.length) { const closed = fold(`終了した項目 ${terminal.length}件`, items); terminal.forEach(w => workLink(w, closed)); }
         return;
       }
       const summary = projectSummary(data, now);
@@ -420,21 +632,18 @@
         const kpis = add('div', '', 'kp-kpis', head);
         Object.entries(summary).forEach(([key, count]) => { const n = add('div', '', '', kpis); n.dataset.projectKpi = key; add('strong', String(count), '', n); add('span', key === 'MOVED' ? 'moved this week' : key, '', n); });
       }
-      add('p', `${projects.length} Projects · ${current ? data.sources.projects.scope : '部分取得'}`, 'kp-muted', head);
+      add('p', `${projects.length} Projects · ${progressUi ? '残Workの優先度順' : '取得順'} · ${current ? data.sources.projects.scope : '部分取得'}`, 'kp-muted', head);
       if (!projects.length) { add('p', 'この取得範囲のProjectは0件です。'); return; }
       const rows = add('div', '', 'kp-projects');
-      projects.forEach(p => {
+      inRecordedOrder(projects, progressUi?.project_order).forEach(p => {
         const row = link('', 'projects', p.id, 'kp-project-row'); row.dataset.projectId = p.id;
         const title = el('div', '', 'kp-project-head'); title.append(el('strong', p.title), badge(state(p.status))); title.title = p.title; row.append(title);
-        const focus = add('div', p.current_focus || '未設定', 'kp-focus', row); focus.title = p.current_focus || '未設定';
         const footer = add('div', '', 'kp-project-footer', row);
         progressRow(p, footer, current, true);
-        const blocked = p.status === 'BLOCKED' || Boolean(p.blocker);
-        const action = blocked ? p.blocker || '理由は未確認' : p.next_action || '未設定';
-        const next = add('div', '', blocked ? 'kp-blocker' : 'kp-next', footer);
-        next.title = `${blocked ? 'Blocker' : '次の行動'}: ${action}`; next.setAttribute('aria-label', next.title);
-        const icon = el('span', blocked ? '⚠' : '⏭'); icon.setAttribute('aria-hidden', 'true');
-        next.append(icon, el('span', action, 'kp-project-action-text'));
+        const priority = progressUi?.projects?.[p.id]?.priority;
+        if (priority) add('span', priority, 'kp-badge kp-priority', footer);
+        const remaining = progressUi?.projects?.[p.id]?.remaining_work_count;
+        add('span', `残Work ${Number.isInteger(remaining) ? `${remaining}件` : '未確認'}`, 'kp-muted', footer);
         rows.append(row);
       });
       return;

@@ -154,6 +154,19 @@ test('Agent internal Today Paruru rejects a missing period', () => {
   assert(response.success === false && response.error.code === 'INVALID_INPUT', 'missing period was accepted');
 });
 
+test('a failed shared Calendar read remains unavailable even when both supplied day arrays are empty', () => {
+  const original = context.CalendarReadService.readNormalizedDateRange;
+  context.CalendarReadService.readNormalizedDateRange = () => { throw new Error('synthetic Calendar failure'); };
+  try {
+    const result = run('2026-07-18T18:00:00+09:00', {});
+    assert(result.count === 0, 'unexpected fabricated item');
+    assert(result.warnings.includes('calendar_events_unavailable'), 'shared Calendar failure was converted into healthy zero');
+    assert(result.warnings.filter(value => value === 'calendar_events_unavailable').length === 1, 'warning duplicated');
+  } finally {
+    context.CalendarReadService.readNormalizedDateRange = original;
+  }
+});
+
 let failures = 0;
 tests.forEach((item) => {
   try { item.fn(); console.log('PASS ' + item.name); }

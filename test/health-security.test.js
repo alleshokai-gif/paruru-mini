@@ -1,2 +1,15 @@
 'use strict';
-const assert=require('assert'),fs=require('fs'),vm=require('vm');let value='';const ctx={PropertiesService:{getScriptProperties:()=>({getProperty:()=>value})},Error,String,Array,Object};vm.createContext(ctx);vm.runInContext(fs.readFileSync('gas-health/HealthSecurity.js','utf8'),ctx);assert.throws(()=>ctx.healthToken_({serviceToken:'x'}),e=>e.code==='UNAUTHORIZED');value='expected';assert.throws(()=>ctx.healthToken_({serviceToken:'wrong'}),e=>e.code==='UNAUTHORIZED');assert.doesNotThrow(()=>ctx.healthToken_({serviceToken:'expected'}));console.log('PASS Health service token missing, mismatch, and match');
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto');
+const current='synthetic-current-token-012345678901234567890123';
+const previous='synthetic-previous-token-01234567890123456789012';
+const properties={HEALTH_SERVICE_TOKEN:previous,UNRELATED:'preserve'};
+const ctx={PropertiesService:{getScriptProperties:()=>({getProperty:key=>properties[key]??null,deleteProperty:key=>{delete properties[key];}})},Utilities:{DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},computeDigest:(_,value)=>Array.from(crypto.createHash('sha256').update(value).digest())}};
+vm.createContext(ctx);
+const verifier=fs.readFileSync('gas-health/ServiceTokenVerifier.js','utf8').replace('__SERVICE_TOKEN_SHA256__',crypto.createHash('sha256').update(current).digest('hex'));
+vm.runInContext(verifier,ctx);vm.runInContext(fs.readFileSync('gas-health/HealthSecurity.js','utf8'),ctx);
+for(const token of ['',previous,'wrong',current.slice(0,-1)+'x'])assert.throws(()=>ctx.healthToken_({serviceToken:token}),e=>e.code==='UNAUTHORIZED');
+assert.equal(properties.HEALTH_SERVICE_TOKEN,previous,'Unauthenticated requests cannot change configuration');
+ctx.healthToken_({serviceToken:current});assert.equal(properties.HEALTH_SERVICE_TOKEN,undefined);assert.equal(properties.UNRELATED,'preserve');
+assert.doesNotThrow(()=>ctx.healthToken_({serviceToken:current}));
+assert.throws(()=>ctx.healthToken_({serviceToken:previous}),e=>e.code==='UNAUTHORIZED');
+console.log('PASS Health verifier rejects old token and selectively retires legacy setting');

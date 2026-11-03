@@ -17,7 +17,7 @@ const context = {
   SpreadsheetApp:{openById:()=>spreadsheet}, LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
   ContentService:{MimeType:{JSON:'application/json'},createTextOutput:(text)=>({text,setMimeType(){return this;},getContent(){return this.text;}})},
 };
-vm.createContext(context);
+require('./fixtures/service-secret-test-double')(context); vm.createContext(context);
 ['HealthSetup.js','HealthSecurity.js','HealthRuleService.js','HealthDataService.js'].forEach((file)=>vm.runInContext(fs.readFileSync(`gas-health/${file}`,'utf8'),context));
 vm.runInContext(fs.readFileSync('gas-health/Code.js','utf8'),context);
 context.setupHealthSchema_();

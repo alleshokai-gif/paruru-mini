@@ -18,6 +18,8 @@ steps:
         assert.equal(PREORIGIN_EVALUATOR_SCHEDULE.cron, '10 9 * * 1-5');
         const config=preoriginEvaluatorConfig({PALURU_BUS_OBSERVATION_SPREADSHEET_ID:'A'.repeat(24)});
         assert.equal(config.sourceJob, 'paluru-bus-preorigin-observer');
+        const [major, minor, patch] = process.versions.node.split('.').map(Number);
+        assert.ok(major > 24 || (major === 24 && (minor > 22 || (minor === 22 && patch >= 1))), 'Node.js must be >=24.22.1');
         console.log(JSON.stringify({status:'PREORIGIN_EVALUATOR_IMAGE_SMOKE_PASS',nodeVersion:process.versions.node}));
 images: ['${_IMAGE}']
 options:

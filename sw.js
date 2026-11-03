@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261012-bus-home-route-unknown-arrival-v1");
-// Release: v20261012-bus-home-route-unknown-arrival-v1
+importScripts("./build.js?v=v20261103-autonomous-owner-review-v1");
+// Release: v20261103-autonomous-owner-review-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -13,6 +13,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/transport/read-v2-config.js"),
   versioned("features/transport/read-v2.js"),
   versioned("app.js"),
+  versioned("features/family-schedules/page.js"),
+  versioned("features/family-schedules/view.css"),
   versioned("features/auth/firebase-auth.js"),
   versioned("features/auth/firebase-auth-runtime.js"),
   versioned("features/navigation/config.js"),
@@ -32,6 +34,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/kaz-os/personal.js"),
   versioned("features/kaz-os/personal.css"),
   versioned("features/kaz-os/navigation.js"),
+  versioned("features/kaz-os/autonomous-work.js"),
+  versioned("features/kaz-os/time-fit.js"),
   versioned("features/kaz-os/v3-component-data.js"),
   "manifest.json",
 ];

@@ -164,6 +164,37 @@ test('Gateway failure returns only the requested safe INBOX diagnostics',()=>{
   const serialized=JSON.stringify(r);for(const forbidden of ['private-calendar-id','private-calendar-name','synthetic-reader-token','BODY_MUST_NOT_BE_READ','inbox_items'])assert(!serialized.includes(forbidden));
 });
 
+test('503 logs allowlisted upstream code but never arbitrary provider text',()=>{
+  value=snapshot();
+  h.props.KAZ_OS_INBOX_READ_URL='https://reader.invalid/v1/inbox';
+  h.ctx.getKazOsProgressReadToken_=()=> 'synthetic-reader-token-01234567890123456789';
+  h.ctx.CalendarApp={EventTransparency:{TRANSPARENT:'TRANSPARENT'}};
+  h.ctx.getCalendarConfig_=()=>({calendarId:'private-calendar-id'});
+  h.ctx.getCalendarByConfig_=()=>({getName:()=> 'ファミリー',getEvents:()=>[]});
+  h.ctx.Utilities.formatDate=(date,_zone,format)=>format==='yyyy-MM-dd'
+    ?new Date(date).toISOString().slice(0,10):new Date(date).toISOString();
+  const logs=[];
+  h.ctx.Logger={log:entry=>logs.push(entry)};
+  h.ctx.UrlFetchApp.fetch=()=>({getResponseCode:()=>503,getContentText:()=>JSON.stringify({
+    error:{code:'WORK_ITEMS_SOURCE_UNAVAILABLE'}
+  })});
+  const failed=call();
+  assert.equal(failed.error.code,'KAZ_SOURCE_FAILED');
+  let entry=logs.filter(line=>line.startsWith('[KAZ_OS_INBOX_TRACE] ')).map(line=>
+    JSON.parse(line.slice('[KAZ_OS_INBOX_TRACE] '.length))).find(item=>item.stage==='GATEWAY_RESPONSE');
+  assert.equal(entry.error_code,'WORK_ITEMS_SOURCE_UNAVAILABLE');
+  assert.equal(entry.http_status,503);
+  logs.length=0;
+  h.ctx.UrlFetchApp.fetch=()=>({getResponseCode:()=>503,getContentText:()=>JSON.stringify({
+    error:{code:'PRIVATE_SECRET_123456789012345678901234567890'}
+  })});
+  call();
+  entry=logs.filter(line=>line.startsWith('[KAZ_OS_INBOX_TRACE] ')).map(line=>
+    JSON.parse(line.slice('[KAZ_OS_INBOX_TRACE] '.length))).find(item=>item.stage==='GATEWAY_RESPONSE');
+  assert.equal(entry.error_code,'UPSTREAM_CODE_UNRECOGNIZED');
+  assert(!logs.join('\n').includes('PRIVATE_SECRET_'));
+});
+
 test('Calendar failure records only the safe failed stage and never calls the gateway',()=>{
   const logs=[];h.ctx.Logger={log:line=>logs.push(line)};let gatewayCalls=0;
   h.ctx.getCalendarByConfig_=()=>({getName:()=> 'ファミリー',getEvents:()=>{throw Error('PRIVATE CALENDAR FAILURE');}});

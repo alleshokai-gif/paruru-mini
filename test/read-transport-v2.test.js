@@ -90,6 +90,7 @@ function load(fetchImpl, records = []) {
   };
   context.globalThis = context;
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(root,'features/kaz-os/time-fit.js'),'utf8'),context);
   vm.runInContext(source, context, { filename: 'features/transport/read-v2.js' });
   const diagnostics = {
     requestId: () => '12345678-1234-4234-8234-123456789abc',
@@ -112,6 +113,63 @@ function load(fetchImpl, records = []) {
 
 async function main() {
   {
+    const payload = { feature: 'check_in', work_id: 'work-1', action: 'done',
+      observed_at: '2026-10-21T18:00:00+09:00', note: '' };
+    const progressCalls = [];
+    const progressHarness = load(async (url, options) => {
+      const request = JSON.parse(options.body);
+      progressCalls.push(request);
+      return response(200, { schema_version: 'kaz-ai-engine-progress-receipt-v1',
+        feature: request.feature, action: request.action, status: 'saved',
+        work_updated: ['done', 'carry_forward'].includes(request.action),
+        provider_calls: 0, raw_payload_stored: false });
+    });
+    const progressClient = progressHarness.create({ config: { mode: 'DIRECT_V2',
+      baseUrl: 'https://reader.example.test', v3BaseUrl: 'https://v3.example.test',
+      routeModes: { aiObservation: 'DIRECT_V2' } } });
+    const progress = { ...payload, action: 'done', note: '' };
+    assert.equal((await progressClient.aiObservation(progress)).work_updated, true);
+    assert.deepEqual(progressCalls, [progress]);
+    const blocked = { ...payload, action: 'blocked', note: '' };
+    assert.equal((await progressClient.aiObservation(blocked)).work_updated, false);
+    assert.deepEqual(progressCalls, [progress, blocked]);
+    const statusCalls = [];
+    const statusClient = load(async (url, options) => {
+      statusCalls.push({ url, body: JSON.parse(options.body) });
+      return response(200, { schema_version: 'kaz-ai-engine-work-progress-status-v1',
+        feature: payload.feature, action: payload.action, status: 'not_recorded',
+        work_updated: false, provider_calls: 0, raw_payload_stored: false });
+    }).create({ config: { mode: 'DIRECT_V2',
+      baseUrl: 'https://reader.example.test', v3BaseUrl: 'https://v3.example.test',
+      routeModes: { aiObservation: 'DIRECT_V2' } } });
+    const statusPayload = { feature: payload.feature, work_id: payload.work_id,
+      action: payload.action, observed_at: payload.observed_at };
+    const status = await statusClient.aiProgressStatus(statusPayload);
+    assert.equal(status.status, 'not_recorded');
+    assert.equal(statusCalls[0].url, 'https://v3.example.test/v2/ai-engine/progress/status');
+    assert.deepEqual(statusCalls[0].body, statusPayload);
+    for (const timestamp of ['2026-10-21T17:14:22+09:00', '2026-10-20T17:14:22+09:00', 'invalid']) {
+      const savedClient = load(async () => response(200, {
+        schema_version: 'kaz-ai-engine-work-progress-status-v1', feature: payload.feature,
+        action: payload.action, status: 'saved', observed_at: timestamp,
+        work_updated: true, provider_calls: 0, raw_payload_stored: false,
+      })).create({ config: { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+        v3BaseUrl: 'https://v3.example.test', routeModes: { aiObservation: 'DIRECT_V2' } } });
+      if (timestamp.startsWith('2026-10-21'))
+        assert.equal((await savedClient.aiProgressStatus(statusPayload)).observed_at, timestamp);
+      else await assert.rejects(savedClient.aiProgressStatus(statusPayload),
+        error => error.code === 'AI_PROGRESS_STATUS_RECEIPT_INVALID');
+    }
+    let attempts = 0;
+    const unknown = load(async () => { attempts++; throw Error('network unavailable'); });
+    const unknownClient = unknown.create({ config: { mode: 'DIRECT_V2',
+      baseUrl: 'https://reader.example.test',
+      routeModes: { aiObservation: 'DIRECT_V2' } } });
+    await assert.rejects(unknownClient.aiObservation(payload),
+      error => error.code === 'AI_PROGRESS_RESULT_UNKNOWN');
+    assert.equal(attempts, 1, 'uncertain write must not retry');
+  }
+  {
     const context = { globalThis: null, Object };
     context.globalThis = context;
     vm.createContext(context);
@@ -126,6 +184,7 @@ async function main() {
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.today, 'GAS');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.inbox, 'DIRECT_V2');
     assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.context, 'DIRECT_V2');
+    assert.equal(context.PALURU_READ_TRANSPORT_V2_CONFIG.routeModes.aiObservation, 'DIRECT_V2');
 
     const canaryContext = { globalThis: null, Object,
       location: { search: '?paluru_read_transport_phase2_canary=1' } };
@@ -395,6 +454,8 @@ async function main() {
     const invalid = load(async () => response(200, { ...dashboard, today: null }));
     await assert.rejects(invalid.create({ config }).dashboardV3(),
       error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+    assert.equal(invalid.records.at(-1).values.backendStage, 'DIRECT_CONTRACT_VALIDATION',
+      'safe transport diagnostics must distinguish schema validation failure from network/auth failure');
     const missingConfirmations = { ...dashboard, today: { ...dashboard.today } };
     delete missingConfirmations.today.confirmations;
     await assert.rejects(load(async () => response(200, missingConfirmations))
@@ -411,9 +472,8 @@ async function main() {
       .create({ config }).dashboardV3(), withWindow);
     const pseudoCompanyFree = { ...withWindow, today: { ...withWindow.today,
       company_free_windows: [validWindow] } };
-    await assert.rejects(load(async () => response(200, pseudoCompanyFree))
-      .create({ config }).dashboardV3(),
-    error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+    assert.deepEqual(await load(async () => response(200, pseudoCompanyFree))
+      .create({ config }).dashboardV3(), pseudoCompanyFree);
     for (const broken of [
       { ...validWindow, suggestions: undefined },
       { ...validWindow, suggestions: [{ title: '資料確認', estimate_min: 45 }] },
@@ -459,6 +519,54 @@ async function main() {
   'INBOX must use production DIRECT_V2 while TODAY retains its explicit canary gate');
   const answer = appSource.slice(appSource.indexOf('async function callAuthenticatedKazOsInboxAnswer_'), appSource.indexOf('function applyMembershipCapabilityVisibility_'));
   assert(answer.includes('callHomeControlApi') && !answer.includes('callDirectKazOsRead_'), 'write path must remain on GAS');
+
+  {
+    const row = { schema_version: 'kaz-ai-engine-judgment-v1',
+      judgment_id: 'a'.repeat(64), feature: 'daily_planner',
+      as_of: '2026-10-21T12:00:00+09:00', judgment: 'NO_ADVICE',
+      confidence: 0.8, evidence: null, model: 'gpt-6-luna',
+      input_tokens: 20, output_tokens: 5, latency_ms: 50,
+      cost_usd: null, cost_basis: 'provider_invoice_unknown',
+      status: 'no_advice', auto_apply_allowed: false,
+      raw_payload_stored: false };
+    const view = { schema_version: 'kaz-ai-engine-shadow-day-v1',
+      day: '2026-10-21', judgments: [row], raw_payload_stored: false };
+    const config = { mode: 'DIRECT_V2', baseUrl: 'https://reader.example.test',
+      v3BaseUrl: 'https://shadow.example.test', routeModes: { aiEngine: 'DIRECT_V2' } };
+    const urls = [];
+    const reader = load(async url => { urls.push(url); return response(200, view); });
+    assert.deepEqual(await reader.create({ config }).aiEngine(), view);
+    assert.deepEqual(urls, ['https://shadow.example.test/v2/read/ai-engine']);
+    const reasonView = { ...view, judgments: [{ ...row, reason: '次の予定までに終えられる項目から着手する判断です。' }] };
+    assert.deepEqual(await load(async () => response(200, reasonView)).create({ config }).aiEngine(), reasonView,
+      'bounded AI reason summaries must be readable for the TODAY home card');
+    const actionView = { ...view, judgments: [{ ...row, status: 'review_pending',
+      evidence: { source: 'work', source_ref_hash: 'b'.repeat(64),
+        source_revision: 'c'.repeat(64), quote_hash: 'd'.repeat(64), start: 0, end: 8 },
+      recommendation: { first_step: 'Work内容を開いて確認する',
+        action_origin: 'ai_generated', reason: '確認作業が記録されています。', estimate_min: null } }] };
+    assert.deepEqual(await load(async () => response(200, actionView)).create({ config }).aiEngine(), actionView,
+      'structured AI first steps must be readable while retaining their provenance');
+    const stepView={...actionView,judgments:[{...actionView.judgments[0],recommendation:{
+      first_step:'最初の項目の不明点を記録する',action_origin:'ai_generated',reason:'確認作業の一部から開始。',
+      estimate_min:120,estimate_origin:'work_record',estimate_reason:'最初の1項目に区切る。',
+      step_estimate_min:30,step_estimate_origin:'ai_estimated',step_kind:'substep'}}]};
+    assert.deepEqual(await load(async()=>response(200,stepView)).create({config}).aiEngine(),stepView);
+    const badStep=JSON.parse(JSON.stringify(stepView));badStep.judgments[0].recommendation.step_estimate_min=121;
+    await assert.rejects(load(async()=>response(200,badStep)).create({config}).aiEngine(),error=>error.code==='AI_ENGINE_CONTRACT_INVALID');
+    for (const bad of [
+      { ...row, judgment: 'RECURRENCE_REVIEW' },
+      { ...row, raw_text: 'private text' },
+      { ...row, reason: { raw: 'private text' } },
+      { ...row, reason: 'x'.repeat(1001) },
+      { ...row, recommendation: { first_step: 'x', action_origin: 'guessed', reason: '', estimate_min: null } },
+      { ...row, auto_apply_allowed: true },
+    ]) {
+      const invalid = load(async () => response(200, { ...view, judgments: [bad] }));
+      await assert.rejects(invalid.create({ config }).aiEngine(),
+        error => error.code === 'AI_ENGINE_CONTRACT_INVALID');
+    }
+  }
 
   
 (function testGithubCandidateWithPaluruMetadataStillUsesGithubContract() {

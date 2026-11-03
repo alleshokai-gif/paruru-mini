@@ -11,6 +11,7 @@
 .kp-kpis{display:flex;gap:20px;margin:14px 0 10px;flex-wrap:wrap}.kp-kpis>div{display:flex;flex-direction:column;gap:2px}
 .kp-kpis strong{font-size:26px;font-weight:750;font-variant-numeric:tabular-nums;line-height:1.1}.kp-kpis span{font-size:10px;letter-spacing:.025em}
 .kp-work-list{border-top:1px solid #d9e1df}.kp-work-row{padding:10px 0;border-bottom:1px solid #d9e1df;background:transparent}.kp-work-row p{margin:4px 0}.kp-work-row .kp-project-head{align-items:center}.kp-priority{background:#eef2f1;color:#46534e}.kp-work-row .kp-next,.kp-work-row .kp-blocker{white-space:normal;overflow:visible;text-overflow:clip}
+.kp-work-link{display:block;min-height:48px;min-width:0;color:inherit;text-decoration:none}.kp-work-link .kp-project-head>strong{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
 .kp-free-section{margin-bottom:24px}.kp-free-window{padding:12px;margin:8px 0;border:1px solid #d9e5dc;border-radius:10px;background:#f7faf7;min-width:0}
 .kp-free-time{margin:0 0 8px;font-size:18px;font-weight:750;line-height:1.35;font-variant-numeric:tabular-nums;white-space:nowrap;color:#174b3b}
 .kp-free-suggestion{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-top:1px solid #e2eae3;min-width:0}
@@ -18,6 +19,7 @@
 .kp-free-work-meta{color:#52665a;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
 .kp-projects{border-top:1px solid #d9e1df}.kp-project-row{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;gap:3px;padding:9px 0;color:inherit;text-decoration:none;border-bottom:1px solid #d9e1df;background:transparent;min-height:48px}
 .kp-project-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.kp-project-head>strong{font-size:16px;line-height:1.4;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kp-project-row .kp-project-head>strong{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
 .kp-badge{display:inline-block;flex-shrink:0;border-radius:4px;padding:3px 5px;font-size:10px;font-weight:750;line-height:1.3;letter-spacing:.02em}
 .kp-badge:before{content:'●';margin-right:4px;font-size:8px}.kp-active,.kp-done{background:#dcefe4;color:#185c3f}.kp-review{background:#fff0c8;color:#78500b}.kp-blocked{background:#ffe1d9;color:#9c3525}.kp-backlog,.kp-unknown{background:#e8eceb;color:#58645e}
 .kp-reopen{background:#ffe1d9;color:#9c3525}.kp-corrective-action{background:#ffe9d1;color:#8a4b12}.kp-preventive-action{background:#fff0c8;color:#78500b}.kp-monitoring{background:#e2edf5;color:#295b7a}.kp-effective{background:#dcefe4;color:#185c3f}.kp-captured{background:#e8eceb;color:#58645e}
@@ -39,7 +41,7 @@
 .kp-action-row>strong{font-size:16px;line-height:1.45;min-width:0}.kp-action-time{font-size:17px;font-weight:700;white-space:nowrap}.kp-action-meta{grid-column:1/-1;font-size:12px;color:#65726c}
 [data-lane=now]{padding:12px;background:#e8f1ea;border-radius:8px}[data-lane=now] h2{font-size:12px;color:#437b62}[data-lane=now] .kp-action-row{border-bottom:0;padding-bottom:0}[data-lane=now] .kp-action-row>strong{font-size:20px}
 .kp-sleep{font-size:13px;line-height:1.6}.kp-day-row{padding:5px 0;border-bottom:1px solid #eef1ef}
-.kp-nav a:focus-visible,.kp-project-row:focus-visible,.kp-action-row:focus-visible,.kp-detail summary:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
+.kp-nav a:focus-visible,.kp-project-row:focus-visible,.kp-work-link:focus-visible,.kp-action-row:focus-visible,.kp-detail summary:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
 #kazOsDiagnosticsEntry{display:flex;flex-direction:column;align-items:flex-start;text-align:left;min-height:48px;margin:16px 0;width:100%}#kazOsDiagnosticsStatus{font-size:12px;font-weight:400}
 #kazOsDiagnosticsEntry[hidden],#kazOsNav[hidden],#kazPersonalContent[hidden],#kazOsContent[hidden],#kazOsRefresh[hidden]{display:none}
 @media(min-width:650px){.kp-project-head>strong{font-size:17px}.kp-focus,.kp-next,.kp-blocker{font-size:13px}}
@@ -73,6 +75,15 @@
 .ki-candidate-row>.ki-row{border-bottom:0}.ki-candidate-row>.kiq-submit{width:100%;margin:0 0 9px}
 .ki-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:5px}.ki-pager .kp-muted{margin-right:auto}.ki-button{min-height:48px;padding:8px 12px;font-size:16px;border:1px solid #afc4b8;border-radius:6px;background:transparent;color:#285e49;cursor:pointer}.ki-button:disabled{color:#7e8983;cursor:default;opacity:.65}
 .ki-field{display:flex;flex-direction:column;gap:5px;font-size:13px;margin:14px 0}.ki-field select,.ki-field textarea{font:inherit;font-size:16px;min-height:48px;width:100%;min-width:0;padding:8px;border:1px solid #b9c9c0;border-radius:6px;background:#fff;color:#263e35}.ki-field textarea{resize:vertical}.ki-detail-title{font-size:20px;line-height:1.4;margin:8px 0}.ki-reason{font-size:14px;line-height:1.5}.ki-form{margin-top:20px}.ki-form h4{font-size:15px;margin:0 0 8px}.ki-checks{border:0;padding:0;margin:16px 0}.ki-checks legend{font-size:13px;margin-bottom:6px}.ki-check{display:flex;gap:8px;align-items:center;min-height:48px;font-size:14px}.ki-check input{width:20px;height:20px;flex-shrink:0}.ki-proposal{margin-top:12px;overflow-wrap:anywhere}.ki-proposal-status{font-weight:700;font-size:14px}.ki-health[hidden]{display:none}.ki-row:focus-visible,.ki-button:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
+.kai-observation-field{display:flex;flex-direction:column;gap:5px;margin:12px 0;min-width:0}.kai-observation-field select,.kai-observation-field input,.kai-observation-field textarea{box-sizing:border-box;width:100%;min-width:0;min-height:48px;padding:9px;font-size:16px;border:1px solid #b9c9c0;border-radius:6px}.kai-observation button[type=submit]{min-height:48px;font-size:16px}.kai-observation [role=status]{overflow-wrap:anywhere}
+.kai-observation{margin-bottom:12px}.kai-observation h2{margin:0 0 6px}.kai-observation>p{margin:5px 0 10px}
+.kai-observation-work{padding:9px 0;border-top:1px solid #dce4df}.kai-observation-work>strong{display:block;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
+.kai-observation-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}
+.kai-observation-actions button{min-height:48px;min-width:0;padding:6px 3px;font-size:16px;white-space:normal}
+.kai-observation details{margin-top:10px}.kai-observation summary{min-height:48px;display:flex;align-items:center;color:#2e715b;cursor:pointer}
+.kai-observation textarea{box-sizing:border-box;width:100%;min-height:72px;padding:9px;font-size:16px;border:1px solid #b9c9c0;border-radius:6px}
+.kai-night-review button{min-height:48px;font-size:16px}.kai-observation [role=status]{min-height:1.5em;overflow-wrap:anywhere}
+.kai-action-brief{min-width:0}.kai-action-brief>h2{margin-bottom:4px}.kai-action-row{min-width:0;margin-top:12px;padding:10px 12px;border-left:3px solid #4b8967;background:#f4f8f5;border-radius:0 8px 8px 0}.kai-action-row h3{font-size:16px;margin:0 0 4px}.kai-action-row p{font-size:14px;line-height:1.5;margin:4px 0;overflow-wrap:anywhere}.kai-action-source{color:#52695e}.kai-action-link{display:flex;align-items:center;min-height:48px;font-size:16px;font-weight:650;line-height:1.4;color:#245e48;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}.kai-action-link:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
 /* Bounded TODAY batch: overview first, answer inline, evidence on demand. */
 .kiq-header{margin-bottom:8px}.kiq-header .ki-heading{font-size:17px;letter-spacing:.02em}.kiq-header .kt-origin{margin:3px 0;font-size:11px}
 .kiq-progress{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap;margin-top:5px;font-size:13px}.kiq-progress>strong{font-size:14px;font-variant-numeric:tabular-nums}.kiq-progress>span{color:#55695e}
@@ -131,3 +142,41 @@
 .kc-feedback-row:first-of-type{margin-top:8px}
 .kc-feedback-row:focus-visible{outline:3px solid rgba(44,120,91,.22);outline-offset:2px;border-radius:8px}
 .kc-feedback-row .kp-project-head{margin-bottom:3px}
+
+/* TODAY dashboard: five fixed destinations, with metrics in the heading. */
+#kazOsView .kaz-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+#kazOsView .kaz-heading h1{min-width:0}
+#kazOsView .kaz-metrics-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 48px;width:48px;height:48px;border:1px solid #c9d7cf;border-radius:8px;color:#245e48;text-decoration:none;font-size:23px}
+#kazOsView .kaz-metrics-link:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
+#kazOsView .kaz-metrics-link[aria-current=page]{background:#eaf2ec}
+#kazOsView .kaz-metrics-link svg{width:22px;height:22px;display:block}
+#kazOsView #kazOsNav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;min-width:0;overflow:visible}
+#kazOsView #kazOsNav a{min-width:0;padding:0 2px;white-space:nowrap;letter-spacing:-.035em}
+#kazOsView #kazOsNav a[hidden]{display:none}
+#kazOsView #kazPersonalContent{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
+#kazOsView #kazPersonalContent [data-today-overview] .kp-project-head>strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow:hidden;text-overflow:ellipsis;overflow-wrap:anywhere}
+#kazOsView #kazPersonalContent .kai-action-brief details>summary,
+#kazOsView #kazPersonalContent .kai-ai-judgments details>summary,
+#kazOsView #kazPersonalContent .kai-observation-review>summary,
+#kazOsView #kazPersonalContent .kai-observation-work>summary,
+#kazOsView #kazPersonalContent [data-today-overview] details>summary{display:flex;align-items:center;min-height:48px;cursor:pointer;line-height:1.4;overflow-wrap:anywhere;color:#2e715b}
+#kazOsView #kazPersonalContent .kai-calendar-window{font-size:16px;font-variant-numeric:tabular-nums;font-weight:650;color:#245e48}
+#kazOsView #kazPersonalContent .kp-calendar-compact{margin:4px 0;font-size:15px;line-height:1.45;font-weight:650;font-variant-numeric:tabular-nums;color:#245e48}
+#kazOsView #kazPersonalContent .kai-observation-review{margin-top:8px}
+#kazOsView #kazPersonalContent .kai-observation-work{min-width:0}
+#kazOsView #kazPersonalContent .kai-ai-judgment{border-top:1px solid #dce4df;padding:2px 0}
+#kazOsView #kazPersonalContent .kai-ai-judgment p,
+#kazOsView #kazPersonalContent .kai-action-detail p{margin:5px 0;line-height:1.5;overflow-wrap:anywhere}
+@media(max-width:600px){#kazOsView #kazPersonalContent .kai-action-brief{padding:12px}}
+@media(max-width:360px){#kazOsView #kazOsNav a{font-size:10px;letter-spacing:-.06em;padding-inline:0}}
+
+#kazPersonalContent .development-metrics-dashboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr));gap:12px;margin:12px 0 18px}
+#kazPersonalContent .development-metrics-card{min-width:0;padding:14px;border:1px solid #d9e1df;border-radius:12px;background:#fff}
+#kazPersonalContent .development-metrics-card h3{margin:0 0 8px;font-size:13px;color:#566763}
+#kazPersonalContent .development-metrics-card strong{display:block;font-size:20px;line-height:1.25;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:#154d42}
+#kazPersonalContent .development-metrics-card p{margin:8px 0 0;font-size:12px;line-height:1.5;color:#566763;overflow-wrap:anywhere}
+#kazPersonalContent .development-metrics-details{margin:16px 0;border-top:1px solid #d9e1df}
+#kazPersonalContent .development-metrics-details>summary,#kazPersonalContent .kai-action-details>summary{min-height:48px;display:flex;align-items:center;color:#245e48;font-weight:700;cursor:pointer}
+#kazPersonalContent .development-metrics-table-wrap{max-width:100%;overflow-x:auto}
+#kazPersonalContent .kai-action-details{margin:10px 0}
+#kazPersonalContent .kai-action-details p{margin:6px 0;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
