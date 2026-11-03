@@ -115,9 +115,13 @@
       nodes.push(node(doc, 'h2', 'bus-home-route-title',
         displayOnly.length ? `${title}（到着時刻判明分）` : title),
         renderOption(doc, result.fastest, true));
-      if (result.alternate) nodes.push(renderOption(doc, result.alternate, false));
-      if (Number.isFinite(result.differenceMinutes)) nodes.push(node(doc, 'p', 'bus-home-route-difference',
-        `${result.differenceMinutes}分差`));
+      if (result.alternate) {
+        const alternateCard = renderOption(doc, result.alternate, false);
+        if (Number.isFinite(result.fastest.homeArrivalAt) && Number.isFinite(result.alternate.homeArrivalAt) && Number.isFinite(result.differenceMinutes) && result.differenceMinutes >= 0) {
+          alternateCard.append(node(doc, 'p', 'bus-home-route-difference', `最速候補から${result.differenceMinutes}分差`));
+        }
+        nodes.push(alternateCard);
+      }
     } else nodes.push(node(doc, 'p', 'bus-home-route-unavailable', '帰宅時刻を比較できません'));
     if (displayOnly.length) {
       nodes.push(node(doc, 'h2', 'bus-home-route-display-only-title',
