@@ -8,11 +8,13 @@
 2. Obtain the owner's Pages release decision. The repo publishes `main:/`
    and merging #175 can build Pages even though the CI workflow does not
    deploy anything. Keep the existing PR-only main protection active.
-3. After merge, verify the Pages deployment and the published build. For each
-   existing open PR, check its current merge ref for the exact required check.
-   If the check is missing, refresh the PR event with the author's cooperation
-   and inspect the new run. A rerun of an old head cannot add a workflow that
-   was absent from that head's event.
+3. After merge, verify the Pages deployment and the published build. Run
+   `node .github/scripts/paluru-ci-readiness.mjs` from this branch. It reports
+   the required GitHub Actions check for each open main PR, using the test
+   merge commit when it has a check and the PR head otherwise. Keep the rule
+   disabled if a check is missing, pending, ambiguous or failed.
+   Refresh affected PR events with a normal branch update or a controlled
+   reopen after coordinating with the PR owner. Keep existing drafts as drafts.
 4. Enable the staged ruleset after confirming current check coverage and
    resolving genuine test failures. Keep strict up-to-date enforcement off.
    Keep #176 in Draft until device verification and owner review.
@@ -31,12 +33,13 @@ and the corresponding test file for this pilot.
 
 The workflow never runs the proposed commit in a write-token job. GitHub creates
 a fresh repository-scoped Contents token per job. There is no merge or deploy
-step. PR creation and CI are separate from branch publication. The controller
-must link a Draft PR, its exact head and CI evidence before reporting published
-work. The repository's Actions setting currently disallows Actions from
-creating PRs. Keep that setting; a repo-scoped PR identity and a verified
-staging/dispatch caller are still needed for unattended operation. Do not
-provide the Worker with the controller's GitHub credentials.
+step. The Windows controller uses a separate GitHub App installation scoped
+to this repository to stage the verified commit, dispatch this workflow and
+open a Draft PR after reading back the review branch. A PR opened by this App
+uses the normal pull-request CI event. Keep the existing repository setting
+that disallows Actions itself from creating or approving PRs. The controller
+requires the Draft PR and the successful CI job for its exact head before
+publishing the TODAY owner decision. The Worker gets neither token nor App key.
 
 Contents write can authorize GitHub's merge API. Ruleset 26426417 is staged
 disabled for exact `main`, with only the repository owner allowed to bypass
@@ -48,9 +51,19 @@ publisher on a disposable protected branch before setting the variable.
 
 ## Night cutover
 
-Keep 23:00 off until the installed controller routes the natural trigger to a
-verified implementation handoff, with one Work per night, existing reservation
-and duplicate checks, and exact draft/CI/result readback. The current 23:00 route
-uses the older night executor. The separate WI-23 implementation PoC does not
-exercise that scheduled path. Confirm the verified result survives GCS readback
-and appears in the next morning's TODAY view. Unknown reservations remain held.
+Keep 23:00 off until the App, protected main, required CI and readback are
+verified together. Configure the App installation for PALURU only, with Contents
+write (staging), Actions write (dispatch and CI reads), Pull requests write
+(Draft creation), and Variables read (release switch). Give it no ruleset
+bypass or administration permission. Store the PEM in the trusted Windows
+controller's private directory, outside Worker input and run directories.
+
+Set the controller's local `paluru_publisher` configuration with `app_id`,
+`installation_id`, `private_key_path`, and `openssl_path` (the existing Git
+for Windows OpenSSL binary is suitable). Keep the PEM itself out of config,
+GCS, GitHub and logs. Test staging, exact Draft/head/CI readback and the morning
+TODAY projection using a previously verified result. Preserve WI-23 and all
+unknown reservations. The initial scheduled implementation recipe is limited
+to the verified comparative bus card change. If no eligible unused recipe
+matches, the Controller skips the model. Before enabling nightly operation,
+register another eligible Work recipe with a bounded validator.
