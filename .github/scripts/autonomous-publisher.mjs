@@ -39,13 +39,18 @@ try {
   const files = git('diff-tree', '--no-commit-id', '--no-renames', '-r', '--name-status',
     parent[1], SOURCE_SHA).split('\n');
   const paths = files.map((entry) => entry.split('\t')[1]);
+  const scopes = [
+    { source: ['features/bus/home-route.js', 'features/bus/home-route.css'], test: 'test/bus-home-route-ui.test.js' },
+    { source: ['features/family-schedules/page.js', 'features/family-schedules/view.css'], test: 'test/family-schedule-page.test.js' },
+  ];
   const familyInboxTest = 'test/family-inbox-acceptance.test.js';
-  const allowed = paths.length === 1 && paths[0] === familyInboxTest
-    ? new Set([familyInboxTest])
-    : new Set(['features/bus/home-route.js', 'test/bus-home-route-ui.test.js']);
-  requireThat(files.length > 0 && files.every((entry) => {
+  const scopeAllowed = paths.length === 1 && paths[0] === familyInboxTest ||
+    scopes.some(({ source, test }) => paths.includes(test) &&
+      source.some((path) => paths.includes(path)) &&
+      paths.every((path) => path === test || source.includes(path)));
+  requireThat(scopeAllowed && files.every((entry) => {
     const [status, path] = entry.split('\t');
-    return status === 'M' && allowed.has(path) &&
+    return status === 'M' &&
       git('ls-tree', SOURCE_SHA, '--', path).startsWith('100644 blob ');
   }), 'SOURCE_SCOPE_REJECTED');
   git('diff', '--check', parent[1], SOURCE_SHA);
