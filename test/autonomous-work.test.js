@@ -14,7 +14,12 @@ function fixture(){return {schema_version:'kaz-autonomous-view-v1',as_of:new Dat
     finished_at:new Date().toISOString(),canonical_writes:0,provider_api_calls:0,auto_apply_allowed:false,raw_payload_stored:false,
     items:[{work_id:'w',title:'Synthetic audit',status:'review_pending',summary:'Observed facts',review_question:'Review the result?',
       review_estimate_min:null,pr_url:'https://github.com/owner/repo/pull/1',substep_completed:true,ci_status:'unknown',
-      review_read_status:'current',review:null,validation:'observed_git_facts',area:'PERSONAL'}]}};}
+      review_read_status:'current',review:null,validation:'observed_git_facts',area:'PERSONAL',
+      review_state:'owner_decision',owner_decision:{kind:'priority_tradeoff',background:'Both reports are ready.',
+        cause:'One reviewer is available.',verified_facts:'Both artifacts were read back.',
+        remaining:'Choose the report to review first.',recommended_option:'Review the urgent fix.',
+        alternative_option:'Review the audit.',recommendation_reason:'The fix has a nearer deadline.',
+        owner_reason:'The owner decides which deadline matters more.'}}]}};}
 async function main(){
   const empty=new Node('div');await feature.append(empty,{read:async()=>({schema_version:'kaz-autonomous-view-v1',status:'no_results',run:null,raw_payload_stored:false}),current:()=>true});
   assert.equal(empty.children.length,0,'no false result card on an empty night');
@@ -24,11 +29,22 @@ async function main(){
       calls++;assert.equal(payload.decision,decision);v.run.items[0].review={decision,observed_at:payload.observed_at};
       return {schema_version:'kaz-autonomous-review-receipt-v1',status:'saved',decision,observed_at:payload.observed_at,
         auto_apply_allowed:false,canonical_writes:0,provider_calls:0};}});
-    const b=all(host).find(x=>x.dataset.autonomousDecision===decision);await b.listeners.click();
+    const b=all(host).find(x=>x.dataset.autonomousDecision===decision);
+    assert.match(b.textContent,/優先順/);
+    assert.ok(all(host).some(x=>x.textContent==='あなたの判断が必要な理由'));
+    await b.listeners.click();
     assert.equal(calls,1);assert.ok(all(host).some(x=>x.textContent?.includes('読み戻せました')));
     assert.equal(v.run.status,'review_pending','review acknowledgement does not apply or merge');
     assert.ok(all(host).filter(x=>x.tag==='button').every(x=>x.disabled),'one explicit immutable review per report');
-    assert.ok(all(host).some(x=>x.textContent?.includes('確認待ち 0件')));
+    assert.ok(all(host).some(x=>x.textContent?.includes('判断待ち 0件')));
+  }
+  for(const change of [{status:'failed'},{owner_decision:null},{review_state:'investigation_pending'},
+      {validation:'tracking_ref_stale'}]){
+    const failure=fixture(), failureHost=new Node('div');Object.assign(failure.run.items[0],change);
+    await feature.append(failureHost,{read:async()=>failure,current:()=>true,review:async()=>{throw Error('must not submit')}});
+    assert.equal(all(failureHost).filter(x=>x.tag==='button').length,0);
+    assert.ok(all(failureHost).some(x=>x.textContent?.includes('自動調査・再評価待ち 1件')));
+    assert.ok(all(failureHost).some(x=>x.textContent==='詳細資料（任意）'));
   }
   const unavailable=fixture();unavailable.run.items[0].review_read_status='unavailable';
   const host=new Node('div');await feature.append(host,{read:async()=>unavailable,current:()=>true,review:async()=>{throw Error('must not submit')}});

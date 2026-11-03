@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261103-autonomous-work-v01");
-// Release: v20261103-autonomous-work-v01
+importScripts("./build.js?v=v20261103-autonomous-owner-review-v1");
+// Release: v20261103-autonomous-owner-review-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

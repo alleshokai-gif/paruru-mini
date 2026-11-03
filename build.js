@@ -1,2 +1,2 @@
 // Family Inbox school print release.
-globalThis.BUILD_ID = "v20261103-autonomous-work-v01";
+globalThis.BUILD_ID = "v20261103-autonomous-owner-review-v1";
