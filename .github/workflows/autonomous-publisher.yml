@@ -1,0 +1,51 @@
+name: Publish verified Autonomous Work branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_key:
+        description: Stable publication key from the verified result
+        required: true
+        type: string
+      source_sha:
+        description: Verified staging commit SHA
+        required: true
+        type: string
+
+permissions: {}
+concurrency:
+  group: autonomous-publisher-${{ inputs.run_key }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'alleshokai-gif/paruru-mini' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify the staged source
+        env:
+          RUN_KEY: ${{ inputs.run_key }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node .github/scripts/autonomous-publisher.mjs
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Create and read back the review branch
+        env:
+          RUN_KEY: ${{ inputs.run_key }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/autonomous-publisher.mjs --publish

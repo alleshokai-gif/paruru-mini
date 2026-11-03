@@ -1,0 +1,48 @@
+# Autonomous Work publication release
+
+## CI rollout
+
+1. Confirm the #175 head and its `PALURU bus UI tests` check from GitHub Actions
+   (integration 15368). It uses `pull_request` against `main`, with no path
+   filter. Keep required-check ruleset 26426177 disabled for the migration.
+2. Obtain the owner's Pages release decision. The repo publishes `main:/`
+   and merging #175 can build Pages even though the CI workflow does not
+   deploy anything. Keep the existing PR-only main protection active.
+3. After merge, verify the Pages deployment and the published build. For each
+   existing open PR, check its current merge ref for the exact required check.
+   If the check is missing, refresh the PR event with the author's cooperation
+   and inspect the new run. A rerun of an old head cannot add a workflow that
+   was absent from that head's event.
+4. Enable the staged ruleset after confirming current check coverage and
+   resolving genuine test failures. Keep strict up-to-date enforcement off.
+   Keep #176 in Draft until device verification and owner review.
+
+## Publisher
+
+The independent verifier stages one reviewed commit, based on current main, in
+`staging/autonomous/<run_key>`. Use a stable 32-character lowercase hexadecimal
+publication key derived from the existing reservation. Pass the exact staged
+commit SHA to the workflow on `main`. The workflow validates the immutable
+commit and permitted files and creates `review/autonomous/<run_key>` with a
+create-only Git lease. A retry with the same SHA reads back the existing branch.
+A different SHA for the same key is a conflict. If main moves before initial
+publication, return to the verifier. Use only approved PALURU Bus changes
+and the corresponding test file for this pilot.
+
+The workflow never runs the proposed commit in a write-token job. GitHub creates
+a fresh repository-scoped Contents token per job. There is no merge or deploy
+step. PR creation and CI are separate from branch publication. The controller
+must link a Draft PR, its exact head and CI evidence before reporting published
+work. The repository's Actions setting currently disallows Actions from
+creating PRs. Keep that setting; a repo-scoped PR identity and a verified
+staging/dispatch caller are still needed for unattended operation. Do not
+provide the Worker with the controller's GitHub credentials.
+
+## Night cutover
+
+Keep 23:00 off until the installed controller routes the natural trigger to a
+verified implementation handoff, with one Work per night, existing reservation
+and duplicate checks, and exact draft/CI/result readback. The current 23:00 route
+uses the older night executor. The separate WI-23 implementation PoC does not
+exercise that scheduled path. Confirm the verified result survives GCS readback
+and appears in the next morning's TODAY view. Unknown reservations remain held.
