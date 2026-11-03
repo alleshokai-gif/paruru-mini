@@ -18,3 +18,5 @@ jobs:
           persist-credentials: false
       - name: Run the bus UI suite
         run: node --test test/bus-home-route-ui.test.js
+      - name: Run the Family Inbox acceptance suite
+        run: node --test test/family-inbox-acceptance.test.js

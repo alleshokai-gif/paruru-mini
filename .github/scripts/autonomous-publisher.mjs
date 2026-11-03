@@ -38,7 +38,11 @@ try {
 
   const files = git('diff-tree', '--no-commit-id', '--no-renames', '-r', '--name-status',
     parent[1], SOURCE_SHA).split('\n');
-  const allowed = new Set(['features/bus/home-route.js', 'test/bus-home-route-ui.test.js']);
+  const paths = files.map((entry) => entry.split('\t')[1]);
+  const familyInboxTest = 'test/family-inbox-acceptance.test.js';
+  const allowed = paths.length === 1 && paths[0] === familyInboxTest
+    ? new Set([familyInboxTest])
+    : new Set(['features/bus/home-route.js', 'test/bus-home-route-ui.test.js']);
   requireThat(files.length > 0 && files.every((entry) => {
     const [status, path] = entry.split('\t');
     return status === 'M' && allowed.has(path) &&
