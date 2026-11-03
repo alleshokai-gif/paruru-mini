@@ -2,8 +2,9 @@ import { execFileSync } from 'node:child_process';
 
 const { GITHUB_REPOSITORY, SOURCE_SHA, RUN_KEY, GH_TOKEN, GITHUB_STEP_SUMMARY } = process.env;
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+class PublisherError extends Error {}
 const requireThat = (condition, code) => {
-  if (!condition) throw new Error(code);
+  if (!condition) throw new PublisherError(code);
 };
 
 try {
@@ -50,6 +51,6 @@ try {
   console.log(prior ? 'review_branch_already_present' : process.argv.includes('--publish')
     ? 'review_branch_created' : 'source_verified');
 } catch (error) {
-  console.error(error.code ? 'PUBLISHER_GIT_FAILED' : error.message);
+  console.error(error instanceof PublisherError ? error.message : 'PUBLISHER_OPERATION_FAILED');
   process.exitCode = 1;
 }
