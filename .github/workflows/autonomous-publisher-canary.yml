@@ -1,0 +1,48 @@
+name: Verify Autonomous Work branch publisher
+on:
+  push:
+    branches: [automation/autonomous-publisher-canary]
+permissions: {}
+env:
+  RUN_KEY: 73e50598eb6545818f397e8df385c790
+  SOURCE_SHA: 94948588d90fde64aa077b14b4abdda119c9a108
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: node .github/scripts/autonomous-publisher.mjs
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          set -euo pipefail
+          result="$(node .github/scripts/autonomous-publisher.mjs --publish)"
+          printf '%s\n' "$result" | tail -1 | grep -Fx review_branch_created
+        env:
+          GH_TOKEN: ${{ github.token }}
+  replay:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          set -euo pipefail
+          node .github/scripts/autonomous-publisher.mjs --publish | grep -Fx review_branch_already_present
