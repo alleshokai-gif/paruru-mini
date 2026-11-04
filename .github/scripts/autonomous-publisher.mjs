@@ -44,13 +44,19 @@ try {
     { source: ['features/family-schedules/page.js', 'features/family-schedules/view.css'], test: 'test/family-schedule-page.test.js' },
   ];
   const familyInboxTest = 'test/family-inbox-acceptance.test.js';
+  const feature = /^features\/(?!auth\/|transport\/)(?:[a-z0-9_-]+\/)*[a-z0-9_-]+\.(?:js|css)$/;
+  const regression = /^test\/[a-z0-9_-]+\.test\.js$/;
+  const repositoryScope = paths.length >= 2 && paths.length <= 5 &&
+    paths.filter(path => regression.test(path)).length === 1 &&
+    paths.every(path => feature.test(path) || regression.test(path));
   const scopeAllowed = paths.length === 1 && paths[0] === familyInboxTest ||
-    scopes.some(({ source, test }) => paths.includes(test) &&
+    repositoryScope || scopes.some(({ source, test }) => paths.includes(test) &&
       source.some((path) => paths.includes(path)) &&
       paths.every((path) => path === test || source.includes(path)));
   requireThat(scopeAllowed && files.every((entry) => {
     const [status, path] = entry.split('\t');
     return status === 'M' &&
+      git('ls-tree', parent[1], '--', path).startsWith('100644 blob ') &&
       git('ls-tree', SOURCE_SHA, '--', path).startsWith('100644 blob ');
   }), 'SOURCE_SCOPE_REJECTED');
   git('diff', '--check', parent[1], SOURCE_SHA);
