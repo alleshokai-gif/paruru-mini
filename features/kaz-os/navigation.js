@@ -1475,7 +1475,8 @@
     const body = document.createElement('div');
     section.append(body);
     const show = (v, format) => Number.isFinite(v) ? format(v) : 'unknown';
-    const rate = v => show(v, n => `${Math.round(n * 100)}%`);
+    const percent = new Intl.NumberFormat('ja-JP', { style: 'percent', maximumFractionDigits: 2 });
+    const rate = v => show(v, n => percent.format(n));
     const number = v => show(v, n => n.toLocaleString('ja-JP'));
     const elapsed = v => show(v, n => n < 60000 ? `${Math.round(n / 1000)}秒` : `${Math.round(n / 60000)}分`);
     const status = {complete:'完走', failed:'失敗確定', in_progress:'進行中', incomplete:'未完了',

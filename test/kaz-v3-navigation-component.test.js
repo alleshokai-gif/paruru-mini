@@ -94,7 +94,7 @@ async function main() {
     kazOsDevelopmentMetricsApi: async () => {
       calls.metrics++;
       const period = {
-        summary: { works: 1, outcomes: { partial: 1 } }, linked_sessions: 1, sessions: 2,
+        summary: { works: 1, outcomes: { partial: 1 } }, linked_sessions: 1, sessions: 448,
         models: [{ model: 'unknown', reasoning_level: 'unknown', works: 1,
           api_cost_usd: { value: null, known: 0, total: 1 } }],
         works: [{ work_id: 'WI-15', outcome: 'partial', github_links: [] }], trend: {},
@@ -155,7 +155,7 @@ async function main() {
   assert.equal(host.children[0].tag, 'h2', 'metrics share the Kaz OS page heading');
   assert.equal(host.children[1].className, 'development-productivity');
   assert.match(JSON.stringify(host.children[1]), /API費用 unknown/);
-  assert.match(JSON.stringify(host.children[1]), /Work紐付け 1\/2/);
+  assert.match(JSON.stringify(host.children[1]), /Work紐付け 1\/448 セッション（0\.22%）/);
   assert.equal(host.children[2].className, 'development-metrics-details');
   assert.equal(host.children[2].children[1].className, 'development-metrics-dashboard');
   assert.equal(host.children[2].open, false, 'technical details start collapsed');
