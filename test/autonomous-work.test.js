@@ -46,7 +46,12 @@ async function main(){
         auto_apply_allowed:false,canonical_writes:0,provider_calls:0};}});
     const b=all(host).find(x=>x.dataset.autonomousDecision===decision);
     assert.match(b.textContent,/優先順/);
-    assert.ok(all(host).some(x=>x.textContent==='あなたの判断が必要な理由'));
+    const card=all(host).find(x=>x.dataset.autonomousWork==='w');
+    assert.deepEqual(card.children.filter(x=>x.tag==='h4').map(x=>x.textContent),
+      ['何が進んだか','AIの推奨','あなたにお願いしたい判断']);
+    assert.equal(all(card.children.find(x=>x.tag==='details')).some(x=>x.textContent==='原因'),true);
+    assert.deepEqual(all(host).find(x=>x.className==='kai-review-actions').children.map(x=>x.dataset.autonomousDecision),
+      ['approve','changes_requested','defer','reject']);
     await b.listeners.click();
     assert.equal(calls,1);assert.ok(all(host).some(x=>x.textContent?.includes('読み戻せました')));
     assert.equal(v.run.status,'review_pending','review acknowledgement does not apply or merge');
@@ -59,7 +64,7 @@ async function main(){
     await feature.append(failureHost,{read:async()=>failure,current:()=>true,review:async()=>{throw Error('must not submit')}});
     assert.equal(all(failureHost).filter(x=>x.tag==='button').length,0);
     assert.ok(all(failureHost).some(x=>x.textContent?.includes('自動調査・再評価待ち 1件')));
-    assert.ok(all(failureHost).some(x=>x.textContent==='詳細資料（任意）'));
+    assert.ok(all(failureHost).some(x=>x.textContent==='根拠資料（任意）'));
   }
   const unavailable=fixture();unavailable.run.items[0].review_read_status='unavailable';
   const host=new Node('div');await feature.append(host,{read:async()=>unavailable,current:()=>true,review:async()=>{throw Error('must not submit')}});

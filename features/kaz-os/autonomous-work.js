@@ -94,7 +94,7 @@
     const internal=view.run.items.filter(x=>!ready(x)&&x.status!=='complete'&&x.status!=='running').length;
     const counts=text(section,'p','');
     const updateCounts=()=>{const pending=view.run.items.filter(x=>ready(x)&&!x.review).length;
-      counts.textContent=`あなたの判断待ち ${pending}件 · 自動調査・再評価待ち ${internal}件 · 完了した調査 ${completed}件`;};
+      counts.textContent=`あなたの判断待ち ${pending}件 · 自動調査・再評価待ち ${internal}件 · 完了した一手 ${completed}件`;};
     updateCounts();
     text(section,'p',`${view.run.night_day} 夜の記録。Workの完了や公開は自動確定していません。`,'kai-action-source');
     if(view.status==='stale')text(section,'p','以前の実行記録です。昨夜の新しい成果とは確認できていません。','kp-notice');
@@ -102,35 +102,47 @@
       const card=document.createElement('article');card.dataset.autonomousWork=item.work_id;
       const eligible=ready(item);
       const heading=eligible ? (item.review?'判断を記録済み':'あなたの判断待ち')
-        : item.status==='complete'?'調査完了':item.status==='running'?'実行中':'自動調査・再評価待ち';
+        : item.status==='complete'?(item.substep_completed?'部分成果完了':'調査完了')
+          :item.status==='running'?'実行中':'自動調査・再評価待ち';
       text(card,'h3',`${item.title} · ${heading}`);
+      let details;
       if(eligible){
         const d=item.owner_decision;
-        const sections={background:'背景と問題',cause:'原因',verified_facts:'確認済みの事実',
-          remaining:'残っていること',recommended_option:'AIの推奨案',recommendation_reason:'推奨する理由',
-          alternative_option:'別案',owner_reason:'あなたの判断が必要な理由'};
-        for(const [key,label] of Object.entries(sections)){
+        for(const [label,value] of [['何が進んだか',item.summary||d.verified_facts],
+          ['AIの推奨',d.recommended_option],['あなたにお願いしたい判断',d.owner_reason]]){
           text(card,'h4',label);
-          text(card,'p',d[key]);
+          text(card,'p',value);
+        }
+        details=document.createElement('details');
+        text(details,'summary','背景・検証・別案を確認');
+        for(const [key,label] of Object.entries({background:'背景',cause:'原因',verified_facts:'検証結果',
+          remaining:'残っていること',recommendation_reason:'推奨の根拠',alternative_option:'別案'})){
+          text(details,'h4',label);
+          text(details,'p',d[key]);
         }
       }else{
         if(item.summary)text(card,'p',item.summary);
+        if(item.status==='complete'&&item.substep_completed)
+          text(card,'p','Work全体は未完了です。今は本人の判断は不要です。','kai-action-source');
         if(heading==='自動調査・再評価待ち')
           text(card,'p','判断をお願いできる段階まで調査できていません。今は操作不要です。','kp-notice');
       }
       const slot=eligible&&!item.review&&view.status==='current' ? reviewWindow(snapshot,item):null;
       if(slot){const clock=x=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(x));
         text(card,'p',`次の確認済み空き枠: ${clock(slot.start)}〜${clock(slot.end)}。確認時間が未推定のため、予定への割当はしていません。`);}
-      const output=text(card,'p',item.review?`${choices[item.review.decision]}を記録済みです。`:'');
+      const output=text(card,'p',eligible&&item.review?`${choices[item.review.decision]}を記録済みです。`:'');
       output.setAttribute('role','status');output.setAttribute('aria-live','polite');
       const buttons=[];
-      if(eligible&&typeof review==='function'&&view.status==='current'){
+      if(eligible&&!item.review&&typeof review==='function'&&view.status==='current'){
         const topic=topics[item.owner_decision.kind];
-        text(card,'p',`選んだ${topic}の方針を記録します。実装・公開・Work更新は別の手続きです。保留・見送りは自動作業の候補選定にも反映します。`,'kai-action-source');
+        text(card,'p','選んだ判断だけを保存します。PRのマージ・公開・Work更新は別操作です。別案・保留・見送りは次回の候補選定に反映します。','kai-action-source');
+        const group=text(card,'div','','kai-review-actions');
+        group.setAttribute('role','group');
+        group.setAttribute('aria-label',`${topic}の判断`);
         const actions={approve:`推奨の${topic}を記録`,changes_requested:`別の${topic}の検討を記録`,
           defer:`${topic}の判断を保留`,reject:`${topic}の提案を見送る`};
         for(const [decision,label]of Object.entries(actions)){
-          const button=text(card,'button',label,'kp-button kai-observation-send');button.type='button';
+          const button=text(group,'button',label,'kp-button');button.type='button';
           button.dataset.autonomousDecision=decision;
           button.disabled=item.review_read_status!=='current'||!!item.review;
           button.addEventListener('click',async()=>{
@@ -153,13 +165,15 @@
         }
       }
       if(eligible&&item.review_read_status!=='current')text(card,'p','確認結果の読戻しが未確認のため、操作を保留しています。','kp-notice');
-      if(item.pr_url){
-        const details=document.createElement('details');
-        text(details,'summary','詳細資料（任意）');
-        const a=text(details,'a','GitHubで調査記録を見る','kp-button');
-        a.href=item.pr_url;a.target='_blank';a.rel='noopener noreferrer';
-        card.appendChild(details);
+      if(item.pr_url&&!details){
+        details=document.createElement('details');
+        text(details,'summary','根拠資料（任意）');
       }
+      if(item.pr_url){
+        const a=text(details,'a','GitHubで検証記録を見る','kp-button');
+        a.href=item.pr_url;a.target='_blank';a.rel='noopener noreferrer';
+      }
+      if(details)card.appendChild(details);
       section.appendChild(card);
     }
     if(current())host.prepend(section);
