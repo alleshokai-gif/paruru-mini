@@ -185,3 +185,11 @@
 .kai-review-actions>[data-autonomous-decision="approve"]:not(:disabled){color:#fff;background:#245e48;border-color:#245e48;font-weight:700}
 .kai-review-actions>[data-autonomous-decision="defer"]:not(:disabled){border-style:dashed}
 .kai-review-actions>[data-autonomous-decision="reject"]:not(:disabled){color:#8b2c32;background:#fff}
+.development-productivity{min-width:0;overflow-wrap:anywhere}
+.development-productivity label{display:inline-block;margin:0 12px 10px 0}
+.development-productivity select{min-height:44px;max-width:100%;font-size:16px}
+.development-productivity h4,.development-productivity h5{margin:12px 0 6px}
+.development-productivity-point{display:grid;gap:4px;margin:8px 0;padding:8px;border:1px solid #d8e1dc;border-radius:8px}
+.development-productivity-point meter{width:100%;height:10px}
+.development-productivity .development-metrics-card{margin:6px 0}
+.development-productivity .development-metrics-card a{display:inline-block;margin-right:10px}

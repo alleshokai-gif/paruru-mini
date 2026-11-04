@@ -1442,6 +1442,131 @@
     if (allowed()) document.dispatchEvent(new CustomEvent('paruru:view-request', { detail: { viewName: 'kaz-os' } }));
   }
 
+  function renderProductivity(host, value) {
+    const periods = value?.schema_version === 'kaz-development-productivity-v1' && value.periods;
+    const section = document.createElement('section');
+    section.className = 'development-productivity';
+    const add = (parent, tag, label) => {
+      const node = document.createElement(tag);
+      node.textContent = label;
+      parent.append(node);
+      return node;
+    };
+    add(section, 'h3', 'AI開発の生産性');
+    if (!periods || !['7', '30', '90', 'all'].every(key => periods[key]?.summary
+        && Array.isArray(periods[key].works) && Array.isArray(periods[key].models))) {
+      add(section, 'p', 'Work単位の計測は取得できていません。');
+      host.append(section);
+      return;
+    }
+    function select(label, options, initial) {
+      const field = add(section, 'label', label);
+      const input = document.createElement('select');
+      for (const [value, caption] of options) {
+        const option = add(input, 'option', caption);
+        option.value = value;
+      }
+      input.value = initial;
+      field.append(input);
+      return input;
+    }
+    const range = select('集計期間 ', [['7', '7日'], ['30', '30日'], ['90', '90日'], ['all', '全期間']], '30');
+    const grain = select('推移の単位 ', [['day', '日'], ['week', '週'], ['month', '月']], 'week');
+    const body = document.createElement('div');
+    section.append(body);
+    const show = (v, format) => Number.isFinite(v) ? format(v) : 'unknown';
+    const rate = v => show(v, n => `${Math.round(n * 100)}%`);
+    const number = v => show(v, n => n.toLocaleString('ja-JP'));
+    const elapsed = v => show(v, n => n < 60000 ? `${Math.round(n / 1000)}秒` : `${Math.round(n / 60000)}分`);
+    const status = {complete:'完走', failed:'失敗確定', in_progress:'進行中', incomplete:'未完了',
+      partial:'部分完了', unknown:'判定不能'};
+    const evidence = {acceptance:'Acceptance確認', deployment_acceptance:'本番反映とAcceptance確認',
+      final_failure:'失敗確定記録', owner_progress:'本人の進捗記録', test_ci:'技術検証・CI',
+      controller_run:'Controller実行記録', github_work_binding:'GitHubの明示Work ID', explicit_work:'明示Work ID'};
+    const labels = [['一発完走率', 'one_shot_rate', rate], ['完走率', 'completion_rate', rate],
+      ['完走時間の中央値', 'elapsed_ms', elapsed], ['人間介入回数の中央値', 'human_interventions', number],
+      ['手戻り率', 'rework_rate', rate], ['判定カバレッジ', 'coverage', rate]];
+    const metric = (stat, format) => `${format(stat?.value)}（算定 ${stat?.known ?? 'unknown'}/${stat?.total ?? 'unknown'}件）`;
+    function render() {
+      const data = periods[range.value];
+      body.replaceChildren();
+      const summary = data.summary;
+      const cards = add(body, 'div', '');
+      cards.className = 'development-metrics-dashboard';
+      for (const [label, key, format] of labels) {
+        const card = add(cards, 'section', '');
+        card.className = 'development-metrics-card';
+        add(card, 'h4', label);
+        add(card, 'strong', format(summary[key]?.value));
+        const stat = summary[key];
+        add(card, 'p', key === 'coverage'
+          ? `判定確定 ${summary.completion_rate?.known ?? 'unknown'} / ${summary.works}件`
+          : `算定 ${stat?.known ?? 'unknown'} / ${stat?.total ?? 'unknown'}件`);
+      }
+      add(body, 'p', `Work紐付け ${data.linked_sessions}/${data.sessions} セッション（${rate(data.sessions ? data.linked_sessions / data.sessions : null)}）`);
+      add(body, 'p', Object.entries(status).map(([key, label]) => `${label} ${summary.outcomes?.[key] ?? 'unknown'}件`).join(' · '));
+      add(body, 'p', '完走時間は初回Attempt開始から確認まで。記録できた実行時間の中央値は '
+        + metric(summary.execution_ms, elapsed) + '。');
+      add(body, 'h4', '推移');
+      const points = data.trend?.[grain.value] || [];
+      if (!points.length) add(body, 'p', '期間内に紐付け済みの観測がありません。');
+      const trendFields = [['完走率','completion_rate',rate],['人間介入','human_interventions',number],
+        ['完走時間','elapsed_ms',elapsed]];
+      const maxima = Object.fromEntries(trendFields.map(([,key]) => [key, key === 'completion_rate'
+        ? 1 : Math.max(1, ...points.map(point => point[key]?.value ?? 0))]));
+      for (const point of points) {
+        const row = add(body, 'div', '');
+        row.className = 'development-productivity-point';
+        add(row, 'strong', `${point.period} · ${point.works} Work`);
+        for (const [label, key, format] of trendFields) {
+          const stat = point[key];
+          const text = `${label} ${metric(stat, format)}`;
+          add(row, 'span', text);
+          if (Number.isFinite(stat?.value)) {
+            const meter = document.createElement('meter');
+            meter.max = maxima[key];
+            meter.value = stat.value;
+            meter.setAttribute('aria-label', text);
+            row.append(meter);
+          }
+        }
+      }
+      add(body, 'h4', 'モデル別比較');
+      if (!data.models.length) add(body, 'p', '比較できるWorkがありません。');
+      for (const model of data.models) {
+        const card = add(body, 'section', '');
+        card.className = 'development-metrics-card';
+        add(card, 'h5', `${model.model} / ${model.reasoning_level} · ${model.works} Work`);
+        for (const [label, key, format] of labels.slice(0, 5)) add(card, 'p', `${label} ${metric(model[key], format)}`);
+        add(card, 'p', `入力 ${metric(model.input_tokens, number)} · 出力 ${metric(model.output_tokens, number)} · cached ${metric(model.cached_input_tokens, number)}`);
+        add(card, 'p', `API費用 ${metric(model.api_cost_usd, n => '$' + n.toFixed(4))}`);
+      }
+      add(body, 'h4', 'Work別実績');
+      if (!data.works.length) add(body, 'p', '紐付け済みのWorkがありません。');
+      if (summary.works > data.works.length) add(body, 'p', `直近 ${data.works.length} 件を表示。`);
+      for (const work of data.works) {
+        const card = add(body, 'section', '');
+        card.className = 'development-metrics-card';
+        add(card, 'h5', `${work.work_id} · ${status[work.outcome] || '判定不能'}`);
+        add(card, 'p', `${work.model} / ${work.reasoning_level} · Attempt ${number(work.attempt_count)} · ${work.session_count} セッション`);
+        add(card, 'p', `完走 ${elapsed(work.elapsed_ms)} · 実行 ${elapsed(work.execution_ms)} · ${evidence[work.evidence] || '根拠 unknown'}`);
+        if (work.self_reported_complete) add(card, 'p', 'Codexの完了報告あり');
+        for (const link of work.github_links || []) {
+          if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(link.repository || '')) continue;
+          if (link.kind === 'pull_request' && Number.isSafeInteger(link.number) && link.number > 0) {
+            add(card, 'a', `PR #${link.number}`).href = `https://github.com/${link.repository}/pull/${link.number}`;
+          } else if (link.kind === 'commit' && /^[a-f0-9]{40}$/.test(link.sha || '')) {
+            add(card, 'a', `commit ${link.sha.slice(0, 8)}`).href = `https://github.com/${link.repository}/commit/${link.sha}`;
+          }
+        }
+      }
+    }
+    range.addEventListener('change', render);
+    grain.addEventListener('change', render);
+    render();
+    host.append(section);
+  }
+
   function renderDevelopmentMetrics(host, value) {
     host.replaceChildren();
     const returnLink = document.createElement('a');
@@ -1630,7 +1755,6 @@
       list.append(row);
     }
     host.append(list);
-    host.append(list);
     host.querySelector('.development-metrics-return')?.remove();
     const nodes = Array.from(host.children);
     const titleIndex = nodes.findIndex(node => node.tag === 'h2' || node.tagName?.toLowerCase() === 'h2');
@@ -1665,10 +1789,13 @@
     const disclosure = document.createElement('details');
     disclosure.className = 'development-metrics-details';
     const disclosureTitle = document.createElement('summary');
-    disclosureTitle.textContent = '集計について・詳細データ';
+    disclosureTitle.textContent = '既存の詳細Metrics';
     disclosure.appendChild(disclosureTitle);
+    disclosure.appendChild(dashboard);
     supportingDetails.forEach(node => disclosure.appendChild(node));
-    host.replaceChildren(title, dashboard, disclosure);
+    host.replaceChildren(title);
+    renderProductivity(host, value.productivity);
+    host.append(disclosure);
   }
 
   document.addEventListener('paruru:authenticated', event => {
