@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          fetch-depth: 2
       - name: Run the required suites without network or runner credentials
         shell: bash
         run: |
@@ -23,8 +24,16 @@ jobs:
           source_dir="$(mktemp -d)"
           git archive HEAD | tar -x -C "$source_dir"
           chmod 755 "$source_dir"
+          tests=(test/bus-home-route-ui.test.js test/family-inbox-acceptance.test.js test/family-schedule-page.test.js)
+          changed_tests="$(mktemp)"
+          git diff --name-only -z --diff-filter=AM HEAD^1 HEAD -- test/ > "$changed_tests"
+          while IFS= read -r -d '' path; do
+            if [[ "$path" =~ ^test/[a-z0-9_-]+\.test\.js$ && " ${tests[*]} " != *" $path "* ]]; then
+              tests+=("$path")
+            fi
+          done < "$changed_tests"
           docker run --rm --network none --read-only --cap-drop ALL \
             --security-opt no-new-privileges --user 65534:65534 --memory 384m --pids-limit 64 \
             --mount "type=bind,source=$source_dir,target=/src,readonly" -w /src \
             node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 \
-            node --test test/bus-home-route-ui.test.js test/family-inbox-acceptance.test.js test/family-schedule-page.test.js
+            node --test "${tests[@]}"
