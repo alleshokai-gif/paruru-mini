@@ -1539,7 +1539,7 @@
         add(card, 'h5', `${model.model} / ${model.reasoning_level} · ${model.works} Work`);
         for (const [label, key, format] of labels.slice(0, 5)) add(card, 'p', `${label} ${metric(model[key], format)}`);
         add(card, 'p', `入力 ${metric(model.input_tokens, number)} · 出力 ${metric(model.output_tokens, number)} · cached ${metric(model.cached_input_tokens, number)}`);
-        add(card, 'p', `API費用 ${metric(model.api_cost_usd, n => '$' + n.toFixed(4))}`);
+        add(card, 'p', `API費用 ${metric(model.api_cost_usd, v => show(v, n => '$' + n.toFixed(4)))}`);
       }
       add(body, 'h4', 'Work別実績');
       if (!data.works.length) add(body, 'p', '紐付け済みのWorkがありません。');

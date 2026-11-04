@@ -91,7 +91,18 @@ async function main() {
     kazOsTodayApi: async () => { calls.v2++; return pair.dashboard.component_data.today; },
     kazOsV3DashboardApi: async () => { calls.dashboard++; return pair.dashboard; },
     kazOsV3InboxApi: async () => { calls.inbox++; return pair.inbox; },
-    kazOsDevelopmentMetricsApi: async () => { calls.metrics++; return { source: { status: 'empty' }, totals: {}, models: [] }; },
+    kazOsDevelopmentMetricsApi: async () => {
+      calls.metrics++;
+      const period = {
+        summary: { works: 1, outcomes: { partial: 1 } }, linked_sessions: 1, sessions: 2,
+        models: [{ model: 'unknown', reasoning_level: 'unknown', works: 1,
+          api_cost_usd: { value: null, known: 0, total: 1 } }],
+        works: [{ work_id: 'WI-15', outcome: 'partial', github_links: [] }], trend: {},
+      };
+      return { source: { status: 'current' }, totals: {}, models: [],
+        productivity: { schema_version: 'kaz-development-productivity-v1',
+          periods: Object.fromEntries(['7', '30', '90', 'all'].map(key => [key, period])) } };
+    },
     kazOsContextApi: async () => { calls.context++; return { schema_version: 'kaz-context-observatory-v1', mode: 'read_only', totals: { raw: 1 }, source: { status: 'ok', complete: true } }; },
     kazOsAiEngineApi: async () => ({ judgments: [{ feature: 'daily_planner',
       judgment: 'FOCUS_REVIEW', status: 'review_pending' }] }),
@@ -143,6 +154,8 @@ async function main() {
     'development metrics must leave the five-tab navigation on normal routes');
   assert.equal(host.children[0].tag, 'h2', 'metrics share the Kaz OS page heading');
   assert.equal(host.children[1].className, 'development-productivity');
+  assert.match(JSON.stringify(host.children[1]), /API費用 unknown/);
+  assert.match(JSON.stringify(host.children[1]), /Work紐付け 1\/2/);
   assert.equal(host.children[2].className, 'development-metrics-details');
   assert.equal(host.children[2].children[1].className, 'development-metrics-dashboard');
   assert.equal(host.children[2].open, false, 'technical details start collapsed');
