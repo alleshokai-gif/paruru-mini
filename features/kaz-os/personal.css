@@ -180,3 +180,8 @@
 #kazPersonalContent .development-metrics-table-wrap{max-width:100%;overflow-x:auto}
 #kazPersonalContent .kai-action-details{margin:10px 0}
 #kazPersonalContent .kai-action-details p{margin:6px 0;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+.kai-review-actions{display:grid;gap:12px;margin:12px 0 16px}
+.kai-review-actions>.kp-button{box-sizing:border-box;min-height:48px;margin:0;font-size:16px;white-space:normal}
+.kai-review-actions>[data-autonomous-decision="approve"]:not(:disabled){color:#fff;background:#245e48;border-color:#245e48;font-weight:700}
+.kai-review-actions>[data-autonomous-decision="defer"]:not(:disabled){border-style:dashed}
+.kai-review-actions>[data-autonomous-decision="reject"]:not(:disabled){color:#8b2c32;background:#fff}
