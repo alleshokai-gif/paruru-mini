@@ -23,6 +23,21 @@ function fixture(){return {schema_version:'kaz-autonomous-view-v1',as_of:new Dat
 async function main(){
   const empty=new Node('div');await feature.append(empty,{read:async()=>({schema_version:'kaz-autonomous-view-v1',status:'no_results',run:null,raw_payload_stored:false}),current:()=>true});
   assert.equal(empty.children.length,0,'no false result card on an empty night');
+  const partial={work_label:'WI-51',title:'Context Feedback',status:'partial_completed',work_done:false,
+    completed_at:new Date().toISOString(),summary:'利用結果を記録',next_action:'参照方針の見直し',
+    decision_required:false,evidence_refs:[`https://github.com/alleshokai-gif/kaz-context/blob/${'b'.repeat(40)}/intermediate/context-feedback.json`]};
+  const partialHost=new Node('div');
+  await feature.append(partialHost,{read:async()=>({schema_version:'kaz-autonomous-view-v1',status:'no_results',
+    run:null,raw_payload_stored:false,partial_progress:[partial]}),current:()=>true});
+  assert.ok(all(partialHost).some(x=>x.dataset.autonomousPartial==='WI-51'));
+  assert.ok(all(partialHost).some(x=>x.textContent?.includes('Work全体は未完了')));
+  assert.ok(all(partialHost).some(x=>x.textContent==='参照方針の見直し'));
+  assert.ok(all(partialHost).some(x=>x.textContent==='今は本人の判断は不要です。'));
+  assert.equal(all(partialHost).filter(x=>x.tag==='button').length,0);
+  const both=new Node('div');await feature.append(both,{read:async()=>({...fixture(),partial_progress:[partial]}),
+    current:()=>true,review:async()=>{throw Error('must not submit')}});
+  assert.ok(all(both).some(x=>x.dataset.autonomousPartial==='WI-51'));
+  assert.equal(all(both).filter(x=>x.tag==='button').length,4);
   for(const decision of ['approve','changes_requested','defer','reject']){
     const host=new Node('div'),v=fixture();let calls=0;
     await feature.append(host,{read:async()=>v,current:()=>true,review:async payload=>{
