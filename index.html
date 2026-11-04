@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="./features/bus/home-route.css?v=v20261012-bus-home-route-unknown-arrival-v1">
     <link rel="stylesheet" href="./features/kaz-os/personal.css?v=v20261104-work-productivity-v3">
     <link rel="stylesheet" href="./features/family-schedules/view.css?v=v20261101-work-time-fit-v3">
+    <link rel="stylesheet" href="./features/shopping/view.css?v=v20261105-family-shopping-v1">
   </head>
   <body>
     <div id="splash" class="splash" aria-label="Loading">
@@ -140,6 +141,26 @@
         </section>
       </section>
 
+      <section id="shoppingView" class="app-view" data-view="shopping" hidden>
+        <header class="view-header"><h1>家族の買い物リスト</h1></header>
+        <p>家族LINEのくろべーと共有しています。</p>
+        <form id="shoppingAdd" class="shopping-form">
+          <label>商品名<input name="name" required maxlength="60" autocomplete="off" placeholder="例：牛乳"></label>
+          <div class="shopping-fields">
+            <label>数量<input name="quantity" type="number" min="1" max="999" step="1" value="1" required inputmode="numeric"></label>
+            <label>単位<input name="unit" maxlength="12" autocomplete="off" placeholder="例：本"></label>
+          </div>
+          <details><summary>必要日・メモ（任意）</summary>
+            <label>必要日<input name="due_date" type="date"></label>
+            <label>メモ<input name="memo" maxlength="160" autocomplete="off"></label>
+          </details>
+          <button type="submit">追加</button>
+        </form>
+        <p id="shoppingStatus" role="status" aria-live="polite"></p>
+        <div class="shopping-section"><h2>未購入</h2><button id="shoppingReload" type="button" class="secondary-button">再読み込み</button></div>
+        <div id="shoppingPending"></div>
+        <details class="shopping-history"><summary>購入履歴 <span id="shoppingHistoryCount"></span></summary><div id="shoppingHistory"></div></details>
+      </section>
       <section id="familySchedulesView" class="app-view" data-view="family-schedules" hidden>
         <div class="view-header">
           <h1>家族予定</h1>
@@ -505,8 +526,8 @@
       <div id="familyInboxReviewCandidates" class="family-inbox-review-candidates"></div>
     </dialog>
 
-    <script src="./build.js?v=v20261104-work-productivity-v3" defer></script>
-    <script src="./features/navigation/config.js?v=v20260925-navigation-final-v8" defer></script>
+    <script src="./build.js?v=v20261105-family-shopping-v1" defer></script>
+    <script src="./features/navigation/config.js?v=v20261105-family-shopping-v1" defer></script>
     <script src="./features/transport/diagnostics.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/transport/read-v2-config.js?v=v20261104-work-productivity-v3" defer></script>
     <script src="./features/kaz-os/autonomous-work.js?v=v20261104-work-productivity-v3" defer></script>
@@ -515,7 +536,8 @@
     <script src="./features/auth/firebase-auth.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/auth/firebase-auth-runtime.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/nurse-okan/health-routine.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
-    <script src="./app.js?v=v20261104-work-productivity-v3" defer></script>
+    <script src="./app.js?v=v20261105-family-shopping-v1" defer></script>
+    <script src="./features/shopping/page.js?v=v20261105-family-shopping-v1" defer></script>
     <script src="./features/family-schedules/page.js?v=v20261101-work-time-fit-v3" defer></script>
     <script src="./features/nurse-okan/nurse-okan.js?v=v20260925-navigation-final-v8" defer></script>
     <script src="./features/popio-health/popio-health.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>

@@ -1081,6 +1081,7 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
       familyScheduleApi: callAuthenticatedFamilySchedule_,
+      shoppingApi: callAuthenticatedShopping_,
       nurseOkanCommentApi: callNurseOkanComment_,
       petHealthApi: callAuthenticatedPetHealth_,
       petHealthDashboardCache: petHealthDashboardCacheFacade_(),
@@ -1092,6 +1093,7 @@ const activateMembershipContext_ = function(membershipContext) {
   if ((globalThis.location?.hash === "#family-schedules"
       || new URLSearchParams(globalThis.location?.search || "").get("familyScheduleSignage") === "1")
       && isViewAllowed_("family-schedules")) activeView = "family-schedules";
+  if (globalThis.location?.hash === "#shopping" && isViewAllowed_("shopping")) activeView = "shopping";
   const initialViewLoad = switchView(activeView);
   void scheduleAuthenticatedBackgroundReads_(membershipContext, initialViewLoad);
   return initialViewLoad;
@@ -1776,8 +1778,8 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
-  if (resolvedView === "family-schedules" || globalThis.location?.hash === "#family-schedules") {
-    const hash = resolvedView === "family-schedules" ? "#family-schedules" : "";
+  if (["family-schedules", "shopping"].includes(resolvedView) || ["#family-schedules", "#shopping"].includes(globalThis.location?.hash)) {
+    const hash = ["family-schedules", "shopping"].includes(resolvedView) ? "#" + resolvedView : "";
     globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}${hash}`);
   }
   if (resolvedView !== "kaz-os" && /^#kaz-os(?:\/|$)/.test(String(globalThis.location?.hash || ""))) {
@@ -1801,6 +1803,13 @@ async function switchView(viewName) {
   if (resolvedView === "family-schedules") {
     const pending = [];
     document.dispatchEvent(new CustomEvent("family-schedules:opened", {detail:{waitUntil(promise){pending.push(promise);}}}));
+    await Promise.allSettled(pending);
+    window.scrollTo({top:0,behavior:"instant"});
+    return;
+  }
+  if (resolvedView === "shopping") {
+    const pending = [];
+    document.dispatchEvent(new CustomEvent("shopping:opened", {detail:{waitUntil(promise){pending.push(promise);}}}));
     await Promise.allSettled(pending);
     window.scrollTo({top:0,behavior:"instant"});
     return;
@@ -5360,7 +5369,7 @@ function saveUserProfileFromForm() {
 
 function isViewAllowed_(viewName) {
   // A read-only child of the existing Home permission, with the same API roles.
-  if (viewName === "family-schedules") return isViewAllowed_("home")
+  if (viewName === "family-schedules" || viewName === "shopping") return isViewAllowed_("home")
     && ["admin", "guardian", "self_record"].includes(activeMembershipContext?.role);
   if (viewName === "kaz-os" && activeMembershipContext?.role !== "admin") return false;
   return appAuthenticationState === "active_member"
@@ -5462,6 +5471,24 @@ async function callDirectKazOsRead_(kind, requestId) {
   if (kind === "aiEngine") return client.aiEngine();
   if (kind === 'autonomousWork') return client.autonomousWork();
   throw createHomeControlError("DIRECT_READ_ROUTE_INVALID");
+}
+
+async function callAuthenticatedShopping_(operation, requestId) {
+  if (!isViewAllowed_("shopping") || !firebaseAuthService) throw createHomeControlError("FORBIDDEN");
+  const auth = await firebaseAuthService.getAuthEnvelope(false);
+  if (!auth?.idToken || !isViewAllowed_("shopping")) throw createHomeControlError("FORBIDDEN");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 18000);
+  try {
+    const response = await fetch(globalThis.PALURU_READ_TRANSPORT_V2_CONFIG.v3BaseUrl + "/v2/family/shopping", {
+      method: "POST", cache: "no-store", redirect: "error", signal: controller.signal,
+      headers: { Authorization: "Bearer " + auth.idToken, "Content-Type": "application/json", "X-Paluru-Request-Id": crypto.randomUUID() },
+      body: JSON.stringify({ operation, ...(requestId ? { request_id: requestId } : {}) }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw createHomeControlError(body?.error?.code || "SHOPPING_UNAVAILABLE");
+    return body;
+  } finally { clearTimeout(timer); }
 }
 
 async function callAuthenticatedFamilySchedule_(payload) {
