@@ -34,6 +34,28 @@ async function main(){
   assert.ok(all(partialHost).some(x=>x.textContent==='参照方針の見直し'));
   assert.ok(all(partialHost).some(x=>x.textContent==='今は本人の判断は不要です。'));
   assert.equal(all(partialHost).filter(x=>x.tag==='button').length,0);
+  const asOf='2026-11-05T08:00:00+09:00';
+  const lastNight={...partial,work_label:'WI-50',title:'Last night result',completed_at:'2026-11-04T23:15:00+09:00'};
+  const older={...partial,work_label:'WI-48',title:'Old result',completed_at:'2026-11-03T13:00:00+09:00'};
+  const nightlyHost=new Node('div');
+  await feature.append(nightlyHost,{read:async()=>({schema_version:'kaz-autonomous-view-v1',
+    as_of:asOf,status:'no_results',run:null,raw_payload_stored:false,
+    partial_progress:[older,lastNight]}),current:()=>true});
+  const recentBox=all(nightlyHost).find(x=>x.className==='kai-autonomous-latest');
+  const historyBox=all(nightlyHost).find(x=>x.className==='kai-autonomous-history');
+  assert.ok(recentBox&&historyBox,'latest and history are separate');
+  assert.ok(all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-50'));
+  assert.ok(!all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-48'));
+  assert.ok(all(historyBox).some(x=>x.dataset.autonomousPartial==='WI-48'));
+  assert.ok(all(recentBox).some(x=>x.textContent==='新しい部分成果 1件 · 判断待ち 0件'));
+  const oldRun=fixture();oldRun.as_of=asOf;oldRun.run.night_day='2026-11-03';
+  const oldRunHost=new Node('div');
+  await feature.append(oldRunHost,{read:async()=>oldRun,current:()=>true});
+  const oldRunRecent=all(oldRunHost).find(x=>x.className==='kai-autonomous-latest');
+  const oldRunHistory=all(oldRunHost).find(x=>x.className==='kai-autonomous-history');
+  assert.ok(all(oldRunRecent).some(x=>x.textContent==='新しい部分成果 0件 · 判断待ち 0件'));
+  assert.ok(all(oldRunHistory).some(x=>x.dataset.autonomousWork==='w'));
+
   const both=new Node('div');await feature.append(both,{read:async()=>({...fixture(),partial_progress:[partial]}),
     current:()=>true,review:async()=>{throw Error('must not submit')}});
   assert.ok(all(both).some(x=>x.dataset.autonomousPartial==='WI-51'));
