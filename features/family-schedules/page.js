@@ -53,7 +53,7 @@
       const notes=String(event.changeNote||'').split('・');
       const kind=university?'大学':event.schoolType==='elementary'?'小学校':event.category==='school_event'?'学校':['club_activity','competition','preparation','rest'].includes(event.category)?'部活':'予定';
       const badge=make('span',kind);badge.className='family-schedule-kind';row.append(badge,make('h3',event.title));
-      const time=university&&notes.includes('終日')?'終日':event.timeStatus==='undecided'?'時間未定':event.startTime?`${event.startTime}${event.endTime?'〜'+event.endTime:''}`:event.endTime?`${event.schoolType==='elementary'?'下校 ':''}${event.endTime}`:'時刻の記載なし';
+      const time=university&&(event.allDay===true||notes.includes('終日'))?'終日':event.timeStatus==='undecided'?'時間未定':event.startTime?`${event.startTime}${event.endTime?'〜'+event.endTime:''}`:event.endTime?`${event.schoolType==='elementary'?'下校 ':''}${event.endTime}`:'時刻の記載なし';
       const state=event.status==='cancelled'?(university?'休講':'中止'):event.status==='off'?(university&&notes.includes('ポータル掲載終了')?'掲載終了':'休み'):'';
       const change=university?notes.filter(note=>!['終日','休講','ポータル掲載終了'].includes(note)).join('・'):event.changeNote;
       const universityWarning=university&&last.universityStaleMonths.has(event.date.slice(0,7))?'大学ポータルの前回取得分':'';
