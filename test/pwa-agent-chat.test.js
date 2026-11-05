@@ -1249,6 +1249,26 @@ test('TOP leaves plain registration unchanged and asks before ambiguous mixed in
   assert(h.requests.length === before && h.element('#homeIntentConfirmSwitch').textContent === '入力を見直す', 'ambiguous clause was silently dropped');
 });
 
+test('Inbox shopping entries open the same shared form with a product and due date', async () => {
+  const h = shoppingHarness();
+  h.run('switchView = async view => { activeView = view; };');
+  h.run('inboxItems = [{id:"legacy-shopping", type:"shopping", title:"寝癖直し", memo:"個人メモ", dueDate:"2026-11-06"}]; openDetail("legacy-shopping");');
+  assert(!h.element('#inboxShareShopping').hidden, 'shared shopping button missing');
+  await h.handlers.get('#inboxShareShopping:click')();
+  assert(h.run('activeView') === 'shopping', 'Inbox did not open the shared form');
+  assert(h.element('#shoppingAdd input[name="name"]').value === '寝癖直し', 'product was not staged');
+  assert(h.element('#shoppingAdd input[name="due_date"]').value === '2026-11-06', 'due date was not staged');
+  assert(h.requests.length === 0, 'Inbox entry was shared before the user submitted the form');
+});
+
+test('TOP shows the shared form shortcut when its existing AI classifies a memo as shopping', async () => {
+  const h = shoppingHarness();
+  h.run('showSuccessResult({item:{type:"shopping", title:"牛乳"}});');
+  assert(!h.element('#homeShareShopping').hidden, 'shopping shortcut missing');
+  h.run('showSuccessResult({item:{type:"note", title:"鍵"}});');
+  assert(h.element('#homeShareShopping').hidden, 'non-shopping memo offered to share');
+});
+
 test('I JavaScript syntax and J cache versions', () => {
   new vm.Script(appSource, { filename: 'app.js' });
   new vm.Script(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'), { filename: 'sw.js' });
