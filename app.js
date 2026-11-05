@@ -317,6 +317,8 @@ const homeIntentConfirmSwitch = document.querySelector("#homeIntentConfirmSwitch
 const homeIntentConfirmKeep = document.querySelector("#homeIntentConfirmKeep");
 const homeIntentConfirmCancel = document.querySelector("#homeIntentConfirmCancel");
 const message = document.querySelector("#message");
+const homeShareShopping = document.querySelector("#homeShareShopping");
+const inboxShareShopping = document.querySelector("#inboxShareShopping");
 const splash = document.querySelector("#splash");
 const authLock = document.querySelector("#authLock");
 const authLockMessage = document.querySelector("#authLockMessage");
@@ -430,6 +432,7 @@ let pendingHomeAgentActionCandidate = null;
 let pendingHomeAgentRetry = null;
 let pendingHomeInputIntentConfirmation = null;
 let pendingHomeShopping = null;
+let homeShoppingDraft = null;
 let activeMembershipContext = null;
 let healthTaskCache = null;
 
@@ -808,6 +811,8 @@ function showAuthenticationState(message, state = "locked") {
     try { globalThis.PALURUBusHomeRoute?.setActive(false); } catch { /* Route decision must not block authentication. */ }
     activeMembershipContext = null;
     pendingHomeShopping = null;
+    homeShoppingDraft = null;
+    if (homeShareShopping) homeShareShopping.hidden = true;
     if (pendingHomeInputIntentConfirmation?.shopping) hideHomeInputIntentConfirmation();
     inboxItems = [];
     familyInboxReviews = [];
@@ -1169,6 +1174,8 @@ priorityInputs.forEach((input) => {
 });
 
 memoInput.addEventListener("input", () => {
+  homeShoppingDraft = null;
+  if (homeShareShopping) homeShareShopping.hidden = true;
   if (pendingHomeInputIntentConfirmation) {
     hideHomeInputIntentConfirmation();
   }
@@ -1190,6 +1197,33 @@ askPaluruButton.addEventListener("click", async () => {
 saveToPaluruButton.addEventListener("click", async () => {
   await submitHomeInput("register");
 });
+
+homeShareShopping?.addEventListener("click", () => openShoppingDraft(homeShoppingDraft));
+inboxShareShopping?.addEventListener("click", () => {
+  if (normalizeType(editType.value) !== "shopping") return;
+  const draft = { title: editTitle.value, dueDate: buildEditUpdatePayload({dueDate: originalEditDueDate}).dueDate };
+  if (!draft.title.trim() || !isViewAllowed_("shopping")) return;
+  detailDialog.close();
+  return openShoppingDraft(draft);
+});
+
+async function openShoppingDraft(item) {
+  if (!item || !isViewAllowed_("shopping")) return;
+  const name = String(item.title || "").trim();
+  if (!name || Array.from(name).length > 60) return;
+  const input = document.querySelector('#shoppingAdd input[name="name"]');
+  const due = document.querySelector('#shoppingAdd input[name="due_date"]');
+  if (!input || !due) return;
+  const member = activeMembershipContext?.memberUserId;
+  await switchView("shopping");
+  if (member !== activeMembershipContext?.memberUserId || !isViewAllowed_("shopping")) return;
+  document.querySelector("#shoppingAdd").reset();
+  input.value = name;
+  due.value = normalizeDateInputValue(item.dueDate);
+  const details = due.closest("details");
+  if (details) details.open = Boolean(due.value);
+  input.focus();
+}
 
 homeIntentConfirmSwitch.addEventListener("click", async () => {
   const pending = pendingHomeInputIntentConfirmation;
@@ -3796,6 +3830,7 @@ function updateEditFormVisibility() {
   const type = normalizeType(editType.value);
   const isShopping = type === "shopping";
   const isTask = type === "task";
+  if (inboxShareShopping) inboxShareShopping.hidden = !(isShopping && isViewAllowed_("shopping"));
   editShoppingPanel.hidden = !isShopping;
   editDuePanel.hidden = !(isTask || (isShopping && editShoppingTiming.value === "custom"));
   editDueDateField.hidden = !(isTask || (isShopping && editShoppingTiming.value === "custom"));
@@ -3927,6 +3962,8 @@ function isElementMostlyVisible(element) {
 
 function showSuccessResult(result) {
   const item = result?.item;
+  homeShoppingDraft = item && normalizeType(item.type) === "shopping" && isViewAllowed_("shopping") ? item : null;
+  if (homeShareShopping) homeShareShopping.hidden = !homeShoppingDraft;
   const followupQuestion = item?.followupQuestion;
   setParuruState("success", { showStatus: true });
 
