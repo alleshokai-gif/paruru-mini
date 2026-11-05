@@ -1,2 +1,2 @@
 // Family Inbox school print release.
-globalThis.BUILD_ID = "v20261105-university-schedule-v1";
+globalThis.BUILD_ID = "v20261106-family-schedule-refresh-v1";
