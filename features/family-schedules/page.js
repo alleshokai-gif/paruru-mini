@@ -49,10 +49,15 @@
       if(day!==event.date){day=event.date;const heading=make('h2',new Date(day+'T12:00:00+09:00').toLocaleDateString('ja-JP',{timeZone:'Asia/Tokyo',month:'long',day:'numeric',weekday:'short'}));heading.className='family-schedule-day';list.append(heading);}
       const row=make('article');row.className='family-schedule-event';
       row.dataset.eventId=event.eventId;row.dataset.sourceId=event.sourceId;row.dataset.revision=String(event.revision);
-      const kind=event.schoolType==='elementary'?'小学校':event.category==='school_event'?'学校':['club_activity','competition','preparation','rest'].includes(event.category)?'部活':'予定';
+      const university=event.schoolType==='university';
+      const notes=String(event.changeNote||'').split('・');
+      const kind=university?'大学':event.schoolType==='elementary'?'小学校':event.category==='school_event'?'学校':['club_activity','competition','preparation','rest'].includes(event.category)?'部活':'予定';
       const badge=make('span',kind);badge.className='family-schedule-kind';row.append(badge,make('h3',event.title));
-      const time=event.timeStatus==='undecided'?'時間未定':event.startTime?`${event.startTime}${event.endTime?'〜'+event.endTime:''}`:event.endTime?`${event.schoolType==='elementary'?'下校 ':''}${event.endTime}`:'時刻の記載なし';
-      row.append(make('p',[orgs.get(event.organizationId),time,event.location,event.status==='cancelled'?'中止':event.status==='off'?'休み':'',event.changeNote,event.needsReview?'要確認':''].filter(Boolean).join(' · ')));
+      const time=university&&notes.includes('終日')?'終日':event.timeStatus==='undecided'?'時間未定':event.startTime?`${event.startTime}${event.endTime?'〜'+event.endTime:''}`:event.endTime?`${event.schoolType==='elementary'?'下校 ':''}${event.endTime}`:'時刻の記載なし';
+      const state=event.status==='cancelled'?(university?'休講':'中止'):event.status==='off'?(university&&notes.includes('ポータル掲載終了')?'掲載終了':'休み'):'';
+      const change=university?notes.filter(note=>!['終日','休講','ポータル掲載終了'].includes(note)).join('・'):event.changeNote;
+      const universityWarning=university&&last.universityStaleMonths.has(event.date.slice(0,7))?'大学ポータルの前回取得分':'';
+      row.append(make('p',[orgs.get(event.organizationId),time,event.location,state,change,universityWarning,event.needsReview?'要確認':''].filter(Boolean).join(' · ')));
       const details=make('details');details.append(make('summary','詳細・更新情報'));
       details.append(make('p',`第${event.revision}版 · 更新 ${new Date(event.updatedAt).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})}`));
       if(event.reviewReason)details.append(make('p','未確定の情報は原本または変更連絡の確認が必要です。'));
@@ -79,8 +84,13 @@
       }));if(current!==sequence)return;
       const forbidden=results.find(r=>r.status==='rejected'&&['FORBIDDEN','UNAUTHENTICATED','INVALID_SNAPSHOT'].includes(r.reason.code||r.reason.message));if(forbidden)throw forbidden.reason;
       const good=results.filter(r=>r.status==='fulfilled').map(r=>r.value),missing=periods.filter((p,i)=>results[i].status==='rejected');
+      const universityStaleMonths=new Set(good.filter(d=>{
+        if(!d.universityCoverage)return false;
+        const age=Date.now()-Date.parse(d.universityCoverage.lastSuccessAt);
+        return !Number.isFinite(age)||age>36*3600000;
+      }).map(d=>d.period));
       const orgs=new Map(),events=new Map();good.forEach(d=>{d.organizations.forEach(o=>orgs.set(o.organizationId,o));d.events.forEach(e=>{const old=events.get(e.eventId);if(!old||e.revision>old.revision)events.set(e.eventId,e);});});
-      last={key:loadKey,receivedAt:Date.now(),validUntil:good.map(d=>d.validUntil).sort()[0],window,organizations:[...orgs.values()],events:[...events.values()],missing,unregistered:good.filter(d=>!d.sources.length).map(d=>d.period),
+      last={key:loadKey,receivedAt:Date.now(),validUntil:good.map(d=>d.validUntil).sort()[0],window,organizations:[...orgs.values()],events:[...events.values()],missing,universityStaleMonths,unregistered:good.filter(d=>!d.sources.length).map(d=>d.period),
         freshness:missing.length?'unavailable':good.some(d=>d.freshness==='updating')?'updating':good.some(d=>d.freshness==='stale')?'stale':'current',
         generatedAt:good.map(d=>d.generatedAt).sort()[0]};
       const labels=new Map(Array.from(document.querySelectorAll('#familyInboxSubjectMember option')).map(o=>[o.value,o.textContent]));

@@ -33,8 +33,20 @@ test('home authentication performs no family read; opening page loads once, filt
  const elements=new Map(['Panel','Period','MonthControl','Month','Status','List','Member','Organization','Reload','Back'].map(n=>['familySchedule'+n,new El()]));const listeners={};
  const document={getElementById:id=>elements.get(id),createElement:()=>new El(),querySelectorAll:()=>[{value:'child-a',textContent:'Child A'},{value:'child-b',textContent:'Child B'}],addEventListener:(n,f)=>listeners[n]=f,dispatchEvent(){}};
  let calls=0,clock=Date.now();const c={document,Date:class extends Date{static now(){return clock;}},URLSearchParams,Option:class{constructor(label,value){this.textContent=label;this.value=value;}},location:{search:'?scheduleMonth=2026-11'},localStorage:{getItem:()=>'',setItem(){}},CustomEvent:class{constructor(type,{detail}){this.type=type;this.detail=detail;}}};vm.createContext(c);vm.runInContext(source,c);
- listeners['paruru:authenticated']({detail:{familyScheduleApi:async()=>{calls++;return data();}}});assert.equal(calls,0);
+ listeners['paruru:authenticated']({detail:{familyScheduleApi:async()=>{
+   calls++;
+   const snapshot=data();
+   snapshot.universityCoverage={lastSuccessAt:'2026-01-01T00:00:00Z'};
+   snapshot.events.push({...snapshot.events[2],eventId:'exam',title:'Exam',schoolType:'university',
+     status:'cancelled',changeNote:'終日・試験・休講',timeStatus:'not_listed'});
+   snapshot.events.push({...snapshot.events[2],eventId:'extra-class',title:'Extra Class',schoolType:'university',
+     status:'planned',changeNote:'授業・補講',startTime:'09:00',endTime:'10:30',timeStatus:'specified'});
+   return snapshot;
+ }}});assert.equal(calls,0);
  const pending=[];listeners['family-schedules:opened']({detail:{waitUntil:p=>pending.push(p)}});await Promise.all(pending);assert.equal(calls,1);
+ const article=id=>elements.get('familyScheduleList').children.find(row=>row.dataset.eventId===id);
+ assert.match(article('exam').children[2].textContent,/終日.*休講.*大学ポータルの前回取得分/);
+ assert.match(article('extra-class').children[2].textContent,/09:00〜10:30.*補講/);
  listeners['family-schedules:opened']({detail:{waitUntil:p=>pending.push(p)}});await Promise.all(pending);assert.equal(calls,1);
  clock+=61000;listeners['family-schedules:opened']({detail:{waitUntil:p=>pending.push(p)}});await Promise.all(pending);assert.equal(calls,2);
  elements.get('familyScheduleMember').value='child-a';elements.get('familyScheduleMember').listeners.change();assert.equal(calls,2);assert.equal(elements.get('familyScheduleList').children.filter(e=>e.className==='family-schedule-event').length,2);
