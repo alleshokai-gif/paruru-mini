@@ -180,7 +180,7 @@
       const slot=eligible&&!item.review&&view.status==='current' ? reviewWindow(snapshot,item):null;
       if(slot){const clock=x=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(x));
         text(card,'p',`次の確認済み空き枠: ${clock(slot.start)}〜${clock(slot.end)}。確認時間が未推定のため、予定への割当はしていません。`);}
-      const output=text(card,'p',eligible&&item.review?`${choices[item.review.decision]}を記録済みです。`:'');
+      const output=text(card,'p',item.review?`${choices[item.review.decision]}を記録済みです。`:'');
       output.setAttribute('role','status');output.setAttribute('aria-live','polite');
       const buttons=[];
       if(eligible&&!item.review&&typeof review==='function'&&view.status==='current'){

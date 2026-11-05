@@ -60,6 +60,17 @@ async function main(){
   const oldRunHistory=all(oldRunHost).find(x=>x.className==='kai-autonomous-history');
   assert.ok(all(oldRunRecent).some(x=>x.textContent==='新しい部分成果 0件 · 判断待ち 0件'));
   assert.ok(all(oldRunHistory).some(x=>x.dataset.autonomousWork==='w'));
+  const reviewed=fixture();reviewed.as_of=asOf;reviewed.run.night_day='2026-11-03';
+  reviewed.run.status='complete';
+  Object.assign(reviewed.run.items[0],{status:'complete',review_state:'completed',owner_decision:null,
+    review:{decision:'defer',observed_at:'2026-11-04T09:00:00+09:00'}});
+  const reviewedHost=new Node('div');
+  await feature.append(reviewedHost,{read:async()=>reviewed,current:()=>true,
+    review:async()=>{throw Error('must not submit');}});
+  const reviewedHistory=all(reviewedHost).find(x=>x.className==='kai-autonomous-history');
+  assert.ok(all(reviewedHistory).some(x=>x.textContent==='判断を保留を記録済みです。'));
+  assert.equal(all(reviewedHistory).filter(x=>x.tag==='button').length,0);
+
 
   const unread=new Node('div');
   await feature.append(unread,{read:async()=>({schema_version:'kaz-autonomous-view-v1',as_of:asOf,
