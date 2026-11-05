@@ -545,7 +545,21 @@ if ("serviceWorker" in navigator) {
         });
         logServiceWorkerState(registration);
         updateServiceWorker(registration);
-        registration.update();
+        let lastUpdateCheck = 0;
+        const checkForAppUpdate = () => {
+          const now = Date.now();
+          if (now - lastUpdateCheck < 60_000) return;
+          lastUpdateCheck = now;
+          void registration.update().catch((error) => {
+            recordServiceWorkerDiagnostic_("service_worker.update", "UPDATE_CHECK_FAILED", "unresolved", error);
+          });
+        };
+        checkForAppUpdate();
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible" && activeView === "family-schedules") {
+            checkForAppUpdate();
+          }
+        });
       })
       .catch((error) => {
         recordServiceWorkerDiagnostic_("service_worker.register", "REGISTRATION_FAILED", "unresolved", error);
