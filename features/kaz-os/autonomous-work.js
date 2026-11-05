@@ -59,14 +59,16 @@
     return (windows||[]).filter(x=>Number.isFinite(Date.parse(x.start))&&Date.parse(x.end)>now)
       .sort((a,b)=>Date.parse(a.start)-Date.parse(b.start))[0]||null;
   }
-  function nightDay(value) {
+  function nightDay(value, resultTime=false) {
     const d=new Date(value);
     if(!Number.isFinite(d.getTime()))return null;
     const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Tokyo',
       year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'})
       .formatToParts(d).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
     const date=parts.year+'-'+parts.month+'-'+parts.day;
-    if(Number(parts.hour)>=18)return date;
+    const hour=Number(parts.hour);
+    if(hour>=18)return date;
+    if(resultTime&&hour>=7)return null;
     const yesterday=new Date(date+'T00:00:00Z');
     yesterday.setUTCDate(yesterday.getUTCDate()-1);
     return yesterday.toISOString().slice(0,10);
@@ -77,22 +79,30 @@
     try{view=validate(await read());}catch(_){
       if(current())text(host,'p','AIの作業結果を読み戻せません。予定と進捗の表示は続けます。','kp-notice');return;
     }
-    if(!current()||(view.status==='no_results'&&!view.partial_progress?.length&&!view.partial_progress_unavailable))return;
+    if(!current())return;
     const section=document.createElement('section');section.className='kp-card kai-autonomous-work';
-    const todayNight=nightDay(view.as_of||new Date().toISOString());
+    const asOf=Date.parse(view.as_of);
+    const now=Number.isFinite(asOf)?asOf:Date.now();
+    const todayNight=nightDay(now);
     const partials=view.partial_progress||[];
-    const recent=partials.filter(i=>nightDay(i.completed_at)===todayNight);
-    const history=partials.filter(i=>nightDay(i.completed_at)!==todayNight);
-    const recentRun=view.status!=='no_results'&&view.run.night_day===todayNight;
+    const isRecent=i=>Date.parse(i.completed_at)<=now&&nightDay(i.completed_at,true)===todayNight;
+    const recent=partials.filter(isRecent);
+    const history=partials.filter(i=>!isRecent(i));
+    const recentRun=view.status==='current'&&view.run.night_day===todayNight;
     text(section,'h2','AIが進めた仕事');
     const report=document.createElement('div');
     report.className='kai-autonomous-latest';
     text(report,'h3',todayNight+' 夜の作業');
     const completedRecent=recent.length+(recentRun?view.run.items.filter(i=>i.substep_completed).length:0);
-    const reviewRecent=recentRun?view.run.items.filter(i=>ready(i)&&!i.review).length:0;
-    text(report,'p',`新しい部分成果 ${completedRecent}件 · 判断待ち ${reviewRecent}件`,'kai-action-source');
-    if(!completedRecent&&!reviewRecent)
-      text(report,'p','この夜の新しい成果はありません。過去の成果は下にまとめています。','kp-notice');
+    const summary=text(report,'p','','kai-action-source');
+    const empty=text(report,'p','この夜の新しい成果はありません。','kp-notice');
+    const updateSummary=()=>{
+      const pending=recentRun?view.run.items.filter(i=>ready(i)&&!i.review).length:0;
+      const completed=view.partial_progress_unavailable?'集計できません':completedRecent+'件';
+      summary.textContent=`新しい部分成果 ${completed} · 判断待ち ${pending}件`;
+      empty.hidden=Boolean(view.partial_progress_unavailable||completedRecent||pending);
+    };
+    updateSummary();
     section.appendChild(report);
     function renderPartial(parent,item){
       const card=document.createElement('article');card.dataset.autonomousPartial=item.work_label;
@@ -115,7 +125,8 @@
       if(!archive){
         archive=document.createElement('details');
         archive.className='kai-autonomous-history';
-        text(archive,'summary','過去の成果・実行記録を見る');
+        const historyCount=history.length+(view.status!=='no_results'&&!recentRun?view.run.items.length:0);
+        text(archive,'summary',`過去の成果・実行記録を見る（${historyCount}件）`);
         section.appendChild(archive);
       }
       return archive;
@@ -132,11 +143,11 @@
     const completed=view.run.items.filter(x=>x.substep_completed).length;
     const internal=view.run.items.filter(x=>!ready(x)&&x.status!=='complete'&&x.status!=='running').length;
     const counts=text(runParent,'p','');
-    const updateCounts=()=>{const pending=view.run.items.filter(x=>ready(x)&&!x.review).length;
+    const updateCounts=()=>{updateSummary();const pending=view.run.items.filter(x=>ready(x)&&!x.review).length;
       counts.textContent=`あなたの判断待ち ${pending}件 · 自動調査・再評価待ち ${internal}件 · 完了した一手 ${completed}件`;};
     updateCounts();
     text(runParent,'p',`${view.run.night_day} 夜の実行記録。Workの完了や公開は自動確定していません。`,'kai-action-source');
-    if(view.status==='stale')text(section,'p','以前の実行記録です。昨夜の新しい成果とは確認できていません。','kp-notice');
+    if(view.status==='stale')text(runParent,'p','以前の実行記録です。','kp-notice');
     for(const item of [...view.run.items].sort((a,b)=>Number(!!ready(b))-Number(!!ready(a)))){
       const card=document.createElement('article');card.dataset.autonomousWork=item.work_id;
       const eligible=ready(item);

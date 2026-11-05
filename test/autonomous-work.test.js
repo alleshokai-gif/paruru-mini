@@ -22,7 +22,8 @@ function fixture(){return {schema_version:'kaz-autonomous-view-v1',as_of:new Dat
         owner_reason:'The owner decides which deadline matters more.'}}]}};}
 async function main(){
   const empty=new Node('div');await feature.append(empty,{read:async()=>({schema_version:'kaz-autonomous-view-v1',status:'no_results',run:null,raw_payload_stored:false}),current:()=>true});
-  assert.equal(empty.children.length,0,'no false result card on an empty night');
+  assert.ok(all(empty).some(x=>x.textContent==='新しい部分成果 0件 · 判断待ち 0件'));
+  assert.equal(all(empty).filter(x=>x.tag==='article').length,0,'no false result on an empty night');
   const partial={work_label:'WI-51',title:'Context Feedback',status:'partial_completed',work_done:false,
     completed_at:new Date().toISOString(),summary:'利用結果を記録',next_action:'参照方針の見直し',
     decision_required:false,evidence_refs:[`https://github.com/alleshokai-gif/kaz-context/blob/${'b'.repeat(40)}/intermediate/context-feedback.json`]};
@@ -37,16 +38,20 @@ async function main(){
   const asOf='2026-11-05T08:00:00+09:00';
   const lastNight={...partial,work_label:'WI-50',title:'Last night result',completed_at:'2026-11-04T23:15:00+09:00'};
   const older={...partial,work_label:'WI-48',title:'Old result',completed_at:'2026-11-03T13:00:00+09:00'};
+  const daytime={...partial,completed_at:'2026-11-05T07:00:00+09:00'};
   const nightlyHost=new Node('div');
   await feature.append(nightlyHost,{read:async()=>({schema_version:'kaz-autonomous-view-v1',
     as_of:asOf,status:'no_results',run:null,raw_payload_stored:false,
-    partial_progress:[older,lastNight]}),current:()=>true});
+    partial_progress:[older,lastNight,daytime]}),current:()=>true});
   const recentBox=all(nightlyHost).find(x=>x.className==='kai-autonomous-latest');
   const historyBox=all(nightlyHost).find(x=>x.className==='kai-autonomous-history');
   assert.ok(recentBox&&historyBox,'latest and history are separate');
   assert.ok(all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-50'));
   assert.ok(!all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-48'));
   assert.ok(all(historyBox).some(x=>x.dataset.autonomousPartial==='WI-48'));
+  assert.ok(all(historyBox).some(x=>x.dataset.autonomousPartial==='WI-51'));
+  assert.ok(!all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-51'));
+  assert.ok(!historyBox.open,'history starts collapsed');
   assert.ok(all(recentBox).some(x=>x.textContent==='新しい部分成果 1件 · 判断待ち 0件'));
   const oldRun=fixture();oldRun.as_of=asOf;oldRun.run.night_day='2026-11-03';
   const oldRunHost=new Node('div');
@@ -56,12 +61,18 @@ async function main(){
   assert.ok(all(oldRunRecent).some(x=>x.textContent==='新しい部分成果 0件 · 判断待ち 0件'));
   assert.ok(all(oldRunHistory).some(x=>x.dataset.autonomousWork==='w'));
 
+  const unread=new Node('div');
+  await feature.append(unread,{read:async()=>({schema_version:'kaz-autonomous-view-v1',as_of:asOf,
+    status:'no_results',run:null,raw_payload_stored:false,partial_progress_unavailable:true}),current:()=>true});
+  assert.ok(all(unread).some(x=>x.textContent?.includes('集計できません')));
+
   const both=new Node('div');await feature.append(both,{read:async()=>({...fixture(),partial_progress:[partial]}),
     current:()=>true,review:async()=>{throw Error('must not submit')}});
   assert.ok(all(both).some(x=>x.dataset.autonomousPartial==='WI-51'));
   assert.equal(all(both).filter(x=>x.tag==='button').length,4);
   for(const decision of ['approve','changes_requested','defer','reject']){
     const host=new Node('div'),v=fixture();let calls=0;
+    v.as_of=asOf;v.run.night_day='2026-11-04';
     await feature.append(host,{read:async()=>v,current:()=>true,review:async payload=>{
       calls++;assert.equal(payload.decision,decision);v.run.items[0].review={decision,observed_at:payload.observed_at};
       return {schema_version:'kaz-autonomous-review-receipt-v1',status:'saved',decision,observed_at:payload.observed_at,
@@ -78,7 +89,7 @@ async function main(){
     assert.equal(calls,1);assert.ok(all(host).some(x=>x.textContent?.includes('読み戻せました')));
     assert.equal(v.run.status,'review_pending','review acknowledgement does not apply or merge');
     assert.ok(all(host).filter(x=>x.tag==='button').every(x=>x.disabled),'one explicit immutable review per report');
-    assert.ok(all(host).some(x=>x.textContent?.includes('判断待ち 0件')));
+    assert.ok(all(host).some(x=>x.textContent==='新しい部分成果 1件 · 判断待ち 0件'));
   }
   for(const change of [{status:'failed'},{owner_decision:null},{review_state:'investigation_pending'},
       {validation:'tracking_ref_stale'}]){
