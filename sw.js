@@ -15,6 +15,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("app.js"),
   versioned("features/family-schedules/page.js"),
   versioned("features/family-schedules/view.css"),
+  versioned("features/shopping/page.js"),
+  versioned("features/shopping/view.css"),
   versioned("features/auth/firebase-auth.js"),
   versioned("features/auth/firebase-auth-runtime.js"),
   versioned("features/navigation/config.js"),
