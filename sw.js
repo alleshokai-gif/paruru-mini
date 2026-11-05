@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261105-autonomous-history-v1");
-// Release: v20261105-autonomous-history-v1
+importScripts("./build.js?v=v20261105-family-shopping-v1");
+// Release: v20261105-family-shopping-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -15,6 +15,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("app.js"),
   versioned("features/family-schedules/page.js"),
   versioned("features/family-schedules/view.css"),
+  versioned("features/shopping/page.js"),
+  versioned("features/shopping/view.css"),
   versioned("features/auth/firebase-auth.js"),
   versioned("features/auth/firebase-auth-runtime.js"),
   versioned("features/navigation/config.js"),

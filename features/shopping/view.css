@@ -1,0 +1,15 @@
+#shoppingView {min-width:0;overflow-wrap:anywhere}
+#shoppingView h1 {font-size:1.45rem}
+#shoppingView h2 {font-size:1.14rem;margin:0}
+.shopping-form,.shopping-row,.shopping-history {display:grid;gap:10px;min-width:0;margin:12px 0;padding:12px;border:1px solid #d9deec;border-radius:14px;background:#fff}
+.shopping-fields,.shopping-actions {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+#shoppingView label {display:grid;gap:4px;min-width:0}
+#shoppingView input,#shoppingView button {min-height:48px;min-width:0;font-size:16px;box-sizing:border-box}
+#shoppingView input {width:100%;max-width:100%}
+#shoppingView summary {min-height:48px;padding:10px 0;cursor:pointer}
+.shopping-row h3,.shopping-row p {margin:0}
+.shopping-section {display:flex;align-items:center;justify-content:space-between;gap:8px}
+.shopping-section button {width:auto}
+.shopping-quantity-save {grid-column:1/-1}
+.shopping-history li {margin:.55rem 0}
+#shoppingStatus {min-height:1.5em}
