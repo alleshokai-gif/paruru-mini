@@ -429,6 +429,7 @@ let homeAgentConversationContext = {};
 let pendingHomeAgentActionCandidate = null;
 let pendingHomeAgentRetry = null;
 let pendingHomeInputIntentConfirmation = null;
+let pendingHomeShopping = null;
 let activeMembershipContext = null;
 let healthTaskCache = null;
 
@@ -806,6 +807,8 @@ function showAuthenticationState(message, state = "locked") {
     try { globalThis.PALURUBusHub?.setActive(false); } catch { /* Hub lifecycle must not block authentication. */ }
     try { globalThis.PALURUBusHomeRoute?.setActive(false); } catch { /* Route decision must not block authentication. */ }
     activeMembershipContext = null;
+    pendingHomeShopping = null;
+    if (pendingHomeInputIntentConfirmation?.shopping) hideHomeInputIntentConfirmation();
     inboxItems = [];
     familyInboxReviews = [];
     activeFamilyInboxReview = null;
@@ -1192,6 +1195,11 @@ homeIntentConfirmSwitch.addEventListener("click", async () => {
   const pending = pendingHomeInputIntentConfirmation;
   if (!pending) return;
   hideHomeInputIntentConfirmation();
+  if (pending.shopping) {
+    if (pending.shopping.items.length) await submitHomeShopping(pending.memo, pending.shopping);
+    else memoInput.focus();
+    return;
+  }
   await submitHomeInput(pending.suggestedRoute, { memo: pending.memo, intentConfirmed: true });
 });
 
@@ -1199,6 +1207,10 @@ homeIntentConfirmKeep.addEventListener("click", async () => {
   const pending = pendingHomeInputIntentConfirmation;
   if (!pending) return;
   hideHomeInputIntentConfirmation();
+  if (pending.shopping?.remainder) {
+    memoInput.focus();
+    return;
+  }
   await submitHomeInput(pending.selectedRoute, { memo: pending.memo, intentConfirmed: true });
 });
 
@@ -1221,6 +1233,23 @@ async function submitHomeInput(route, options = {}) {
   }
 
   const selectedRoute = route === "register" ? "register" : "consult";
+  if (selectedRoute === "register" && !options.intentConfirmed) {
+    const previous = pendingHomeShopping;
+    if (previous?.legacyUnconfirmed && previous.member === activeMembershipContext?.memberUserId &&
+        (memo === previous.memo || memo === previous.plan.remainder)) {
+      showMessage("買い物は登録済みや。残りは保存結果を確認できんかったから、受信箱を確認してな。", "error");
+      return;
+    }
+    const shopping = planHomeShopping(memo);
+    if (shopping) {
+      if (shopping.confirm && !(previous?.memo === memo && previous?.member === activeMembershipContext?.memberUserId)) {
+        renderHomeInputIntentConfirmation({ memo, selectedRoute, suggestedRoute: "register", shopping });
+      } else if (shopping.items.length) {
+        await submitHomeShopping(memo, shopping);
+      }
+      return;
+    }
+  }
   if (!options.intentConfirmed) {
     const intent = classifyHomeInputIntent(memo);
     const suggestedRoute = getSuggestedHomeInputRoute(intent);
@@ -1243,6 +1272,96 @@ function classifyHomeInputIntent(memo) {
   if (isCalendarWriteRequest(value) || isRegisterLikelyHomeInput(value)) return HOME_INPUT_INTENTS.REGISTER_LIKELY;
   if (isConsultLikelyHomeInput(value)) return HOME_INPUT_INTENTS.CONSULT_LIKELY;
   return HOME_INPUT_INTENTS.AMBIGUOUS;
+}
+
+function parseHomeShoppingAddition(text) {
+  const value = text.normalize("NFKC").trim();
+  const explicit = /^買い物リスト(?:に|へ)\s*(.+?)(?:を)?(?:追加(?:して)?|入れて|入れといて|登録(?:して)?)$/.exec(value);
+  const request = /^(.+?)(?:を)?(?:買って(?:きて|おいて)?(?:ください)?|買っといて|買う)$/.exec(value);
+  const match = explicit || request;
+  if (!match || /[?？「」『』]|(?:と言|って言|かも|なら|らしい|不要|予定|タスク|メモ|リマインダー|カレンダー|登録|追加|買って|今日|明日|までに|帰りに|ついでに)/.test(match[1])) return null;
+  const names = match[1].split(/[、,・]|(?<=[ァ-ヶ一-龯a-z0-9])と(?=[ァ-ヶ一-龯a-z0-9])/i);
+  const items = names.map(part => {
+    const trimmed = part.trim();
+    const amount = /^(.+?)\s*(\d+)\s*(個|本|パック|袋|枚|箱|斤|束|缶|玉|kg|g|ml|l)$/i.exec(trimmed);
+    return { name: amount ? amount[1].trim() : trimmed, quantity: amount ? Number(amount[2]) : 1, unit: amount?.[3] || "" };
+  });
+  if (items.length > 8 || items.some(item => !/^[\p{L}\p{N}ー々 .%+()-]{1,60}$/u.test(item.name) ||
+      /^(?:これ|それ|あれ|何か|もの|全部)$/.test(item.name) || item.quantity < 1 || item.quantity > 999)) return null;
+  return { items, confirm: !explicit && value.endsWith("買う") };
+}
+
+function planHomeShopping(memo) {
+  if (/[「」『』]/.test(memo)) return null;
+  const clauses = memo.trim().replace(/[。！!]+$/, "").split(/[。；;\n]+|(?<=買って|買っといて|買ってきて|買っておいて|買ってください|追加|登録)[、,，]/u);
+  const items = [];
+  const rest = [];
+  let confirm = false;
+  for (const part of clauses.map(value => value.trim()).filter(Boolean)) {
+    const shopping = parseHomeShoppingAddition(part);
+    if (shopping) {
+      items.push(...shopping.items);
+      confirm ||= shopping.confirm;
+    } else {
+      rest.push(part);
+    }
+  }
+  if (items.length && items.length <= 8 && rest.every(part => classifyHomeInputIntent(part) === HOME_INPUT_INTENTS.REGISTER_LIKELY &&
+      !/買い物リスト|買って|買っといて|買う/.test(part))) {
+    return { items, remainder: rest.join("。"), confirm: confirm || rest.length > 0 };
+  }
+  if (items.length || /^買い物リスト(?:に|へ)|(?:買って(?:きて|おいて)?(?:ください)?|買っといて|買う)[？?。！!]*$/.test(memo)) {
+    return { items: [], remainder: items.length || clauses.length > 1 ? memo : "", confirm: true };
+  }
+  return null;
+}
+
+async function submitHomeShopping(memo, plan) {
+  if (isSubmitting) return;
+  const member = activeMembershipContext?.memberUserId;
+  if (!member || !isViewAllowed_("shopping")) {
+    showMessage("家族の買い物リストに登録できるアカウントで開いてな。", "error");
+    return;
+  }
+  if (pendingHomeShopping?.memo !== memo || pendingHomeShopping?.member !== member) {
+    pendingHomeShopping = { memo, plan, member, requestId: createUuid(), startedAt: Date.now() };
+  }
+  const pending = pendingHomeShopping;
+  if (Date.now() - pending.startedAt >= 47 * 60 * 60 * 1000) {
+    showMessage("前回の結果を買い物リストで確認してな。", "error");
+    return;
+  }
+  setSending(true, "買い物リストに登録中…", "save");
+  memoInput.readOnly = true;
+  let shoppingMessage;
+  try {
+    const result = await callAuthenticatedShopping_({ action: "add", items: plan.items }, pending.requestId);
+    if (!Array.isArray(result?.items) || !Number.isInteger(result.changed) || !Number.isInteger(result.duplicates)) throw new Error("SHOPPING_INVALID_RESPONSE");
+    shoppingMessage = `買い物リストに${result.changed}件登録したで。` + (result.duplicates ? ` 登録済み${result.duplicates}件の数量はそのままや。` : "");
+  } catch (error) {
+    showMessage("買い物リストへの登録結果を確認できんかった。入力を残したで。", "error");
+    return;
+  } finally {
+    memoInput.readOnly = false;
+    setSending(false);
+  }
+  if (pendingHomeShopping !== pending || activeMembershipContext?.memberUserId !== member || !isViewAllowed_("shopping")) return;
+  if (!plan.remainder) {
+    pendingHomeShopping = null;
+    memoInput.value = "";
+    showMessage(shoppingMessage, "success");
+    return;
+  }
+  // Leave only the legacy portion in the composer before invoking its existing save.
+  // Its API has no replay key, so an unconfirmed response must not be retried here.
+  memoInput.value = plan.remainder;
+  pending.legacyUnconfirmed = true;
+  if (await savePaluruMemo(plan.remainder)) {
+    pendingHomeShopping = null;
+    showMessage(`${shoppingMessage} ${message.textContent}`, "success");
+  } else {
+    showMessage(`${shoppingMessage} 残りは保存結果を確認できんかったから、受信箱を確認してな。`, "error");
+  }
 }
 
 function isRegisterLikelyHomeInput(value) {
@@ -1276,7 +1395,20 @@ function renderHomeInputIntentConfirmation(options) {
     memo: String(options?.memo || ""),
     selectedRoute,
     suggestedRoute,
+    shopping: options?.shopping,
   };
+  const shopping = options?.shopping;
+  if (shopping) {
+    const products = shopping.items.map(item => item.name + (item.unit || item.quantity > 1 ? ` ${item.quantity}${item.unit}` : "")).join("、");
+    homeIntentConfirmMessage.textContent = shopping.items.length
+      ? `家族の買い物リストに「${products}」を登録する？${shopping.remainder ? ` 残りは今までの登録先へ「${shopping.remainder}」を送るで。` : ""}`
+      : "買い物リストに入れる商品を特定できんかった。商品名とほかの登録内容を分けて書いてな。";
+    homeIntentConfirmSwitch.textContent = shopping.items.length ? (shopping.remainder ? "分けて登録する" : "買い物リストへ登録") : "入力を見直す";
+    homeIntentConfirmKeep.textContent = shopping.remainder ? "登録せず戻る" : "いつもの登録先へ";
+    homeIntentConfirm.classList.remove("is-hidden");
+    revealPanelIfNeeded(homeIntentConfirm);
+    return;
+  }
   const isRegisterSuggestion = suggestedRoute === "register";
   homeIntentConfirmMessage.textContent = isRegisterSuggestion
     ? "登録する内容っぽいで。予定やタスクとして登録する？"
@@ -1380,8 +1512,10 @@ async function savePaluruMemo(memoOverride = "") {
   setParuruState("sending");
   showMessage(PARURU_STATES.sending.line, "");
 
+  let saved = false;
   try {
     const result = await saveMemo(payload);
+    saved = true;
     form.reset();
     categoryInput.value = "";
     resetExplicitSelectionState();
@@ -1395,6 +1529,7 @@ async function savePaluruMemo(memoOverride = "") {
   } finally {
     setSending(false);
   }
+  return saved;
 }
 
 navItems.forEach((item) => {

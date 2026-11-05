@@ -132,6 +132,9 @@ function createHarness() {
     Uint8Array,
     URL,
     Promise,
+    AbortController,
+    setTimeout: () => 1,
+    clearTimeout: () => {},
     crypto: {
       randomUUID: () => uuidValues[uuidIndex++],
       getRandomValues: (bytes) => bytes.fill(7),
@@ -291,7 +294,7 @@ test('A3 implicit dated appointment asks to switch to registration before any AP
 
 test('B save button always sends a normal memo to createWithAI', async () => {
   const harness = createHarness();
-  await harness.save('牛乳買う');
+  await harness.save('鍵の置き場所をメモに残して');
   const actions = harness.requests.filter((entry) => entry.payload).map((entry) => entry.payload.action);
   assert(actions.includes('createWithAI'), 'createWithAI not called');
   assert(!actions.includes('agentChat'), 'normal memo reached agentChat');
@@ -1169,6 +1172,81 @@ test('agentChat logs API_ERROR and FETCH_FAILED with the same request context', 
   }
   const fetchFailure = rejected.logs.find((entry) => entry.args[1]?.event === 'FETCH_FAILED');
   assert(fetchFailure?.args[1]?.action === 'agentChat' && fetchFailure.args[1]?.clientRequestIdSuffix === '22222222', 'fetch failure was not correlated safely');
+});
+
+function shoppingHarness() {
+  const harness = createHarness();
+  harness.context.PALURU_READ_TRANSPORT_V2_CONFIG = { v3BaseUrl: 'https://gateway.invalid' };
+  harness.run('activeMembershipContext = {memberUserId:"fixture", role:"guardian", allowedViews:["home"]};');
+  harness.setActionResponder(payload => payload.operation
+    ? { items: [], changed: payload.operation.items.length, duplicates: 0 }
+    : { success: true, item: {} });
+  return harness;
+}
+
+test('TOP register writes a structured shopping batch to the shared API only', async () => {
+  const h = shoppingHarness();
+  await h.save('買い物リストに牛乳２本と卵を追加');
+  const [request] = h.requests;
+  assert(h.requests.length === 1 && request.url.endsWith('/v2/family/shopping'), 'shopping used the wrong endpoint');
+  assert(JSON.stringify(request.payload.operation.items) === JSON.stringify([
+    {name:'牛乳', quantity:2, unit:'本'}, {name:'卵', quantity:1, unit:''},
+  ]), 'shopping items or quantities were misparsed');
+  assert(request.payload.request_id && request.options.headers.Authorization === 'Bearer test-firebase-token', 'existing auth or idempotency missing');
+});
+
+test('TOP asks for the destination of a weak shopping intent before saving', async () => {
+  const h = shoppingHarness();
+  await h.save('牛乳を買う');
+  assert(h.requests.length === 0 && !h.element('#homeIntentConfirm').classList.contains('is-hidden'), 'uncertain intent wrote without confirmation');
+  await h.handlers.get('#homeIntentConfirmKeep:click')();
+  assert(h.requests[0]?.payload.action === 'createWithAI' && h.requests[0].payload.memo === '牛乳を買う', 'explicit legacy destination was ignored');
+});
+
+test('TOP splits mixed input and only sends the remainder to the legacy registration', async () => {
+  const h = shoppingHarness();
+  await h.save('牛乳買って、明日の予定も登録');
+  assert(h.requests.length === 0 && h.element('#homeIntentConfirmSwitch').textContent === '分けて登録する', 'mixed confirmation missing');
+  await h.handlers.get('#homeIntentConfirmSwitch:click')();
+  assert(h.requests[0]?.payload.operation.items[0].name === '牛乳', 'wrong shopping clause');
+  assert(h.requests[1]?.payload.action === 'createWithAI' && h.requests[1].payload.memo === '明日の予定も登録', 'legacy path received shopping or lost the schedule');
+});
+
+test('TOP reuses the shopping replay key after a lost result before submitting the remainder', async () => {
+  const h = shoppingHarness();
+  const mixed = '牛乳買って、明日の予定も登録';
+  h.setActionResponder(() => { throw new Error('lost response'); });
+  await h.save(mixed);
+  await h.handlers.get('#homeIntentConfirmSwitch:click')();
+  assert(h.requests.length === 1 && h.element('#memo').value === mixed, 'failed shopping dispatched or discarded the remainder');
+  h.setActionResponder(payload => payload.operation ? { items: [], changed: 1, duplicates: 0, replayed: true } : { success: true, item: {} });
+  await h.save(mixed);
+  assert(h.requests[0].payload.request_id === h.requests[1].payload.request_id, 'lost result generated a second replay key');
+  assert(h.requests.filter(r => r.payload?.action === 'createWithAI').length === 1, 'legacy portion was dispatched twice');
+});
+
+test('TOP retains the remainder and blocks blind resend if legacy save is unconfirmed', async () => {
+  const h = shoppingHarness();
+  const mixed = '牛乳買って、明日の予定も登録';
+  h.setActionResponder(payload => {
+    if (payload.operation) return { items: [], changed: 1, duplicates: 0 };
+    throw new Error('lost legacy response');
+  });
+  await h.save(mixed);
+  await h.handlers.get('#homeIntentConfirmSwitch:click')();
+  assert(h.element('#memo').value === '明日の予定も登録', 'saved shopping clause remained in the composer');
+  await h.save('明日の予定も登録');
+  await h.save(mixed);
+  assert(h.requests.length === 2, 'a successful or uncertain leg was resent');
+});
+
+test('TOP leaves plain registration unchanged and asks before ambiguous mixed input', async () => {
+  const h = shoppingHarness();
+  await h.save('明日15時に会議を予定に追加');
+  assert(h.requests[0]?.payload.action === 'createWithAI' && h.requests[0].payload.memo === '明日15時に会議を予定に追加', 'plain registration was changed');
+  const before = h.requests.length;
+  await h.save('牛乳買って、あとよろしく');
+  assert(h.requests.length === before && h.element('#homeIntentConfirmSwitch').textContent === '入力を見直す', 'ambiguous clause was silently dropped');
 });
 
 test('I JavaScript syntax and J cache versions', () => {
