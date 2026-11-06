@@ -1091,6 +1091,9 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsCapaApi: callAuthenticatedKazOsCapa_,
       kazOsTodayApi: callAuthenticatedKazOsToday_,
       kazOsInboxApi: callAuthenticatedKazOsInbox_,
+      getLocationHistoryAuth: () => appAuthenticationState === "active_member"
+        && activeMembershipContext?.role === "admin"
+        ? firebaseAuthService.getAuthEnvelope(false) : null,
       kazOsV3DashboardApi: callAuthenticatedKazOsV3Dashboard_,
       kazOsV3InboxApi: callAuthenticatedKazOsV3Inbox_,
       kazOsDevelopmentMetricsApi: callAuthenticatedKazOsDevelopmentMetrics_,

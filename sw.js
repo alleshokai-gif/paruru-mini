@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261106-bus-approach-scope-v1");
-// Release: v20261106-bus-approach-scope-v1
+importScripts("./build.js?v=v20261107-location-history-v1");
+// Release: v20261107-location-history-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
@@ -33,6 +33,8 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/bus/home-route.js"),
   versioned("features/bus/home-route.css"),
   versioned("features/kaz-os/inbox.js"),
+  versioned("features/kaz-os/location-history.js"),
+  versioned("features/kaz-os/location-history.css"),
   versioned("features/kaz-os/personal.js"),
   versioned("features/kaz-os/personal.css"),
   versioned("features/kaz-os/navigation.js"),
