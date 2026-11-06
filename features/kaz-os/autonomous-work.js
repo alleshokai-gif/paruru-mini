@@ -4,7 +4,7 @@
   const choices = Object.freeze({approve:'推奨案を選択',changes_requested:'別案の検討',defer:'判断を保留',reject:'提案を見送り'});
   const topics = Object.freeze({priority_tradeoff:'優先順',scope_tradeoff:'作業範囲'});
   const statuses = new Set(['running','review_pending','complete','failed','blocked','unknown']);
-  const partialSource=/^https:\/\/github\.com\/alleshokai-gif\/kaz-context\/blob\/[a-f0-9]{40}\/(?:feedback\/events\/[0-9]{4}\/[0-9]{2}\/fb-[a-z0-9-]+\.json|intermediate\/[a-z0-9-]+\.json)$/;
+  const partialSource=/^https:\/\/github\.com\/alleshokai-gif\/(?:(?:kaz-context\/blob\/[a-f0-9]{40}\/(?:feedback\/events\/[0-9]{4}\/[0-9]{2}\/fb-[a-z0-9-]+\.json|intermediate\/[a-z0-9-]+\.json|(?:tools\/kaz-os|docs)\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.(?:md|py|js)))|(?:(?:energy-management-gas|quality-quest|paruru-mini)\/blob\/[a-f0-9]{40}\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.(?:md|py|js|mjs|cjs|gs|css|html)))$/;
   const decisionFields = Object.freeze({background:400,cause:400,verified_facts:500,remaining:400,
     recommended_option:300,alternative_option:300,recommendation_reason:400,owner_reason:400});
   function ready(item) {
@@ -95,8 +95,8 @@
     RELATION_UNAVAILABLE:'プロジェクト未確認', DUPLICATE_CANDIDATE:'重複候補',
     DEPENDENCY_UNCONFIRMED:'依存未確認', HUMAN_GATE:'本人の操作が必要',
     AUDIT_NEXT_STEP:'今回の実装経路の対象外', MAPPING_UNAVAILABLE:'Work情報を確認できない',
-    PR_REVIEW_PENDING:'PRレビュー待ち', OUTSIDE_REPOSITORY:'許可対象リポジトリ外',
-    OUTSIDE_SCOPE:'実行権限の対象外', NO_ACTION:'次の一手なし',
+    PR_REVIEW_PENDING:'PRレビュー待ち', OUTSIDE_REPOSITORY:'実装権限の対象外',
+    OUTSIDE_SCOPE:'実行権限の対象外', NO_ACTION:'実装指示なし・調査候補',
     PR_EVIDENCE:'既存PR記録あり', RESERVED:'同じ作業が予約済み'
   };
   function renderNightStatus(parent,execution,day,hasResult){
@@ -157,7 +157,7 @@
       text(card,'h4',`${item.work_label} ${item.title}`);
       text(card,'p','一手完了 · Work全体は未完了','kai-action-source');
       text(card,'h5','進んだこと');text(card,'p',item.summary);
-      text(card,'h5','次の一手');text(card,'p',item.next_action);
+      text(card,'h5','次に進めること');text(card,'p',item.next_action);
       text(card,'p',item.decision_required?'本人の判断が必要です。':'今は本人の判断は不要です。');
       const details=document.createElement('details');
       text(details,'summary','根拠資料（任意）');
