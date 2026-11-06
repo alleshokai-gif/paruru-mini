@@ -73,6 +73,55 @@
     yesterday.setUTCDate(yesterday.getUTCDate()-1);
     return yesterday.toISOString().slice(0,10);
   }
+  const nightMessages={
+    no_eligible_work:'正常スキップ。条件を満たす仕事がありませんでした。次回の夜間実行で再確認します。',
+    no_testable_step:'正常スキップ。対象コードと検証方法を特定できませんでした。次回の候補選定で再確認します。',
+    legacy_preflight_skip:'正常スキップ。予約前に終了し、Codexは起動していません。保存済みの棚卸しでは適格候補が0件でした。',
+    no_output:'Codexは実行しましたが、検証できる成果がありませんでした。',
+    verification_failed:'成果案を検証できませんでした。変更は採用せず、検証結果を確認します。',
+    failed:'夜間処理が失敗しました。実行記録を確認してください。',
+    unknown:'夜間処理の結果を確認できません。同じ作業を再実行する前に実行記録を確認してください。',
+    unavailable:'夜間処理の記録を取得できませんでした。時間をおいて再表示してください。',
+    inventory_unavailable:'仕事の棚卸しを確認できず、夜間処理を開始できませんでした。',
+    preflight_failed:'夜間処理の実行前確認に失敗しました。実行記録を確認してください。',
+    running:'夜間処理を実行中です。',
+    completed:'夜間処理は完了しました。成果を取り込むとここに表示します。',
+    scheduled:'今夜の夜間処理は開始時刻前です。'
+  };
+  const exclusionLabels={
+    CANONICAL_CLOSED:'完了・中止', EVIDENCE_SUGGESTS_DONE:'既存成果あり',
+    OWNER_DONE:'本人が完了を記録', OWNER_DELAYED:'延期中', OWNER_BLOCKED:'ブロック中',
+    OWNER_STATE_UNCERTAIN:'進捗が未確認', RECORDED_BLOCKER:'依存・ブロックあり',
+    RELATION_UNAVAILABLE:'プロジェクト未確認', DUPLICATE_CANDIDATE:'重複候補',
+    DEPENDENCY_UNCONFIRMED:'依存未確認', HUMAN_GATE:'本人の操作が必要',
+    AUDIT_NEXT_STEP:'今回の実装経路の対象外', MAPPING_UNAVAILABLE:'Work情報を確認できない',
+    PR_REVIEW_PENDING:'PRレビュー待ち', OUTSIDE_REPOSITORY:'許可対象リポジトリ外',
+    OUTSIDE_SCOPE:'実行権限の対象外', NO_ACTION:'次の一手なし',
+    PR_EVIDENCE:'既存PR記録あり', RESERVED:'同じ作業が予約済み'
+  };
+  function renderNightStatus(parent,execution,day,hasResult){
+    if(!execution||execution.day!==day){
+      if(!hasResult)text(parent,'p',nightMessages.unknown,'kp-notice');
+      return;
+    }
+    const status=execution.status;
+    const reason=execution.reason;
+    const message=status==='skipped'&&['no_eligible_work','no_testable_step','legacy_preflight_skip'].includes(reason)
+      ? nightMessages[reason] : status==='unavailable'&&reason==='inventory_unavailable'
+        ? nightMessages.inventory_unavailable : status==='failed'&&reason==='preflight_failed'
+          ? nightMessages.preflight_failed : Object.hasOwn(nightMessages,status)?nightMessages[status]:nightMessages.unknown;
+    if(status!=='completed'||!hasResult)text(parent,'p',message,'kp-notice');
+    if(status==='skipped'&&Number.isInteger(execution.inventory_count)
+      &&execution.inventory_count>=0&&execution.inventory_count<=200){
+      const details=document.createElement('details');
+      text(details,'summary',`棚卸し ${execution.inventory_count}件の内訳を見る`);
+      for(const [code,count] of Object.entries(execution.exclusions||{})){
+        if(Object.hasOwn(exclusionLabels,code)&&Number.isInteger(count)&&count>0&&count<=execution.inventory_count)
+          text(details,'p',`${exclusionLabels[code]} ${count}件`);
+      }
+      parent.appendChild(details);
+    }
+  }
   async function append(host,{read,review,snapshot,current}) {
     if(typeof read!=='function')return;
     let view;
@@ -95,14 +144,13 @@
     text(report,'h3',todayNight+' 夜の作業');
     const completedRecent=recent.length+(recentRun?view.run.items.filter(i=>i.substep_completed).length:0);
     const summary=text(report,'p','','kai-action-source');
-    const empty=text(report,'p','この夜の新しい成果はありません。','kp-notice');
     const updateSummary=()=>{
       const pending=recentRun?view.run.items.filter(i=>ready(i)&&!i.review).length:0;
       const completed=view.partial_progress_unavailable?'集計できません':completedRecent+'件';
       summary.textContent=`新しい部分成果 ${completed} · 判断待ち ${pending}件`;
-      empty.hidden=Boolean(view.partial_progress_unavailable||completedRecent||pending);
     };
     updateSummary();
+    renderNightStatus(report,view.night_execution,todayNight,Boolean(completedRecent||recentRun));
     section.appendChild(report);
     function renderPartial(parent,item){
       const card=document.createElement('article');card.dataset.autonomousPartial=item.work_label;
