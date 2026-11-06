@@ -25,6 +25,8 @@
       ||view.partial_progress.some(i=>!i||!/^WI-[1-9][0-9]*$/.test(i.work_label)
         ||i.status!=='partial_completed'||i.work_done!==false||typeof i.decision_required!=='boolean'
         ||!Number.isFinite(Date.parse(i.completed_at))
+        ||(i.origin!==undefined&&!['manual','night_artifact','night_evidence'].includes(i.origin))
+        ||(i.origin==='night_artifact'&&(!Number.isFinite(Date.parse(i.started_at))||Date.parse(i.started_at)>Date.parse(i.completed_at)))
         ||![['title',160],['summary',500],['next_action',300]]
           .every(([key,max])=>typeof i[key]==='string'&&i[key].trim()&&i[key].length<=max)
         ||!Array.isArray(i.evidence_refs)||!i.evidence_refs.length||i.evidence_refs.length>3
@@ -75,6 +77,8 @@
   }
   const nightMessages={
     no_eligible_work:'正常スキップ。条件を満たす仕事がありませんでした。次回の夜間実行で再確認します。',
+    already_reserved:'夜間枠は使用済みのため、23:00のCodex起動はありませんでした。',
+    evidence_only:'検証記録は残りました。新しく制作された成果物はありません。',
     no_testable_step:'正常スキップ。対象コードと検証方法を特定できませんでした。次回の候補選定で再確認します。',
     legacy_preflight_skip:'正常スキップ。予約前に終了し、Codexは起動していません。保存済みの棚卸しでは適格候補が0件でした。',
     no_output:'Codexは実行しましたが、検証できる成果がありませんでした。',
@@ -106,8 +110,8 @@
     }
     const status=execution.status;
     const reason=execution.reason;
-    const message=status==='skipped'&&['no_eligible_work','no_testable_step','legacy_preflight_skip'].includes(reason)
-      ? nightMessages[reason] : status==='unavailable'&&reason==='inventory_unavailable'
+    const message=status==='skipped'&&['no_eligible_work','no_testable_step','legacy_preflight_skip','already_reserved'].includes(reason)
+      ? nightMessages[reason] : status==='no_output'&&reason==='evidence_only'?nightMessages.evidence_only : status==='unavailable'&&reason==='inventory_unavailable'
         ? nightMessages.inventory_unavailable : status==='failed'&&reason==='preflight_failed'
           ? nightMessages.preflight_failed : Object.hasOwn(nightMessages,status)?nightMessages[status]:nightMessages.unknown;
     if(status!=='completed'||!hasResult)text(parent,'p',message,'kp-notice');
@@ -134,18 +138,19 @@
     const now=Number.isFinite(asOf)?asOf:Date.now();
     const todayNight=nightDay(now);
     const partials=view.partial_progress||[];
-    const isRecent=i=>Date.parse(i.completed_at)<=now&&nightDay(i.completed_at,true)===todayNight;
-    const recent=partials.filter(isRecent);
-    const history=partials.filter(i=>!isRecent(i));
-    const recentRun=view.status==='current'&&view.run.night_day===todayNight;
+    const isRecent=i=>Date.parse(i.completed_at)<=now&&nightDay(i.started_at||i.completed_at,true)===todayNight;
+    const recent=partials.filter(i=>i.origin==='night_artifact'&&isRecent(i));
+    const manual=partials.filter(i=>i.origin==='manual');
+    const history=partials.filter(i=>!manual.includes(i)&&!recent.includes(i));
+    const recentRun=view.status==='current'&&view.run.night_day===todayNight&&!view.run.manual_general_once;
     text(section,'h2','AIが進めた仕事');
     const report=document.createElement('div');
     report.className='kai-autonomous-latest';
     text(report,'h3',todayNight+' 夜の作業');
-    const completedRecent=recent.length+(recentRun?view.run.items.filter(i=>i.substep_completed).length:0);
+    const completedRecent=recent.length+(recentRun?view.run.items.filter(i=>i.substep_completed&&i.pr_url).length:0);
     const summary=text(report,'p','','kai-action-source');
     const updateSummary=()=>{
-      const pending=recentRun?view.run.items.filter(i=>ready(i)&&!i.review).length:0;
+      const pending=recent.filter(i=>i.decision_required).length+(recentRun?view.run.items.filter(i=>ready(i)&&!i.review).length:0);
       const completed=view.partial_progress_unavailable?'集計できません':completedRecent+'件';
       summary.textContent=`新しい部分成果 ${completed} · 判断待ち ${pending}件`;
     };
@@ -156,6 +161,7 @@
       const card=document.createElement('article');card.dataset.autonomousPartial=item.work_label;
       text(card,'h4',`${item.work_label} ${item.title}`);
       text(card,'p','一手完了 · Work全体は未完了','kai-action-source');
+      if(item.started_at)text(card,'p','夜間実行 '+new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(item.started_at))+' JST','kai-action-source');
       text(card,'h5','進んだこと');text(card,'p',item.summary);
       text(card,'h5','次に進めること');text(card,'p',item.next_action);
       text(card,'p',item.decision_required?'本人の判断が必要です。':'今は本人の判断は不要です。');
@@ -169,6 +175,12 @@
       card.appendChild(details);parent.appendChild(card);
     }
     for(const item of recent)renderPartial(report,item);
+    if(manual.length){
+      const earlier=document.createElement('div');
+      text(earlier,'h3','依頼を受けて先に進めた仕事');
+      for(const item of manual)renderPartial(earlier,item);
+      section.appendChild(earlier);
+    }
     let archive=null;
     function archiveSection(){
       if(!archive){
@@ -195,7 +207,7 @@
     const updateCounts=()=>{updateSummary();const pending=view.run.items.filter(x=>ready(x)&&!x.review).length;
       counts.textContent=`あなたの判断待ち ${pending}件 · 自動調査・再評価待ち ${internal}件 · 完了した一手 ${completed}件`;};
     updateCounts();
-    text(runParent,'p',`${view.run.night_day} 夜の実行記録。Workの完了や公開は自動確定していません。`,'kai-action-source');
+    text(runParent,'p',view.run.manual_general_once?'手動実行の記録':`${view.run.night_day} 夜の実行記録。`,'kai-action-source');
     if(view.status==='stale')text(runParent,'p','以前の実行記録です。','kp-notice');
     for(const item of [...view.run.items].sort((a,b)=>Number(!!ready(b))-Number(!!ready(a)))){
       const card=document.createElement('article');card.dataset.autonomousWork=item.work_id;
