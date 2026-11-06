@@ -1,4 +1,5 @@
 import { KAZU_MODES, minutes, validateKazuStatic } from './kazu-commute.js';
+import { createCommuteOnboardService } from './commute-onboard.js';
 
 const JST = 9 * 3600;
 const LABELS = Object.freeze({
@@ -124,7 +125,9 @@ export function createKazuRouteService({ artifact, loadBuses, clock = () => Date
   validateKazuStatic(artifact);
   if (typeof loadBuses !== 'function' || typeof clock !== 'function')
     throw Error('KAZU_RUNTIME_INVALID');
-  return Object.freeze({ async evaluate(mode) {
+  const onboard = createCommuteOnboardService({ artifact, loadBuses, clock });
+  return Object.freeze({ getTrainChoices: onboard.getTrainChoices, evaluateOnboard: onboard.evaluate,
+    async evaluate(mode) {
     if (!KAZU_MODES.includes(mode)) throw Error('KAZU_MODE_INVALID');
     const now = clock();
     if (!Number.isFinite(now)) throw Error('KAZU_CLOCK_INVALID');

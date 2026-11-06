@@ -22,6 +22,14 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
       const homeRoutePath = url.pathname === '/api/bus/home-route';
       const commuteRoutePath = url.pathname === '/api/bus/commute-route';
       const commuteMode = url.searchParams.get('mode');
+      const onboardKeys = [...url.searchParams.keys()];
+      const onboardChoices = url.pathname === '/api/bus/commute-trains' && !url.search;
+      const onboardEvaluation = url.pathname === '/api/bus/commute-onboard'
+        && [2, 3].includes(onboardKeys.length) && new Set(onboardKeys).size === onboardKeys.length
+        && onboardKeys.every(key => ['trainId', 'stationId', 'target'].includes(key))
+        && (!url.searchParams.has('target') || ['home', 'noborito', 'mukougaoka'].includes(url.searchParams.get('target')))
+        && /^[a-zA-Z0-9:._-]{1,180}$/.test(url.searchParams.get('trainId') || '')
+        && ['YoyogiUehara','ShimoKitazawa','Kyodo','SeijogakuenMae','Noborito'].includes(url.searchParams.get('stationId'));
       const commuteQuery = commuteRoutePath && [...url.searchParams.keys()].length === 1
         && ['hibiya', 'tamachi', 'pharmacy'].includes(commuteMode);
       const hubId = url.searchParams.get('id');
@@ -38,12 +46,19 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
         && (!homeRoutePath || /^[a-zA-Z0-9:_-]{1,100}$/.test(url.searchParams.get('trainId') || ''))
         && (!railKeys.includes('page') || /^(?:0|-?[1-9]\d?)$/.test(url.searchParams.get('page'))
           && Math.abs(Number(url.searchParams.get('page'))) <= 50);
-      if (!arrivalsPath && !hubQuery && !journeyQuery && !railQuery && !commuteQuery)
+      if (!arrivalsPath && !hubQuery && !journeyQuery && !railQuery && !commuteQuery && !onboardChoices && !onboardEvaluation)
         return reply({ success: false, error: { code: 'BUS_NOT_FOUND' } }, 404);
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '600' } });
       if (request.method !== 'GET') return reply({ success: false, error: { code: 'BUS_METHOD_NOT_ALLOWED' } }, 405);
       if (!env.ODPT_ACCESS_TOKEN) return reply({ success: false, error: { code: 'BUS_NOT_CONFIGURED' } }, 503);
       try {
+        if (onboardChoices || onboardEvaluation) {
+          if (typeof kazuRouteServiceFactory !== 'function') return reply({ error: 'BUS_NOT_FOUND' }, 404);
+          const service = kazuRouteServiceFactory(env);
+          return reply(onboardChoices ? await service.getTrainChoices()
+            : await service.evaluateOnboard({ trainId: url.searchParams.get('trainId'), stationId: url.searchParams.get('stationId'),
+              target: url.searchParams.get('target') || 'home' }));
+        }
         if (commuteQuery) {
           if (typeof kazuRouteServiceFactory !== 'function')
             return reply({ success: false, error: { code: 'BUS_NOT_FOUND' } }, 404);
