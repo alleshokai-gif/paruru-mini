@@ -4,7 +4,7 @@
   const choices = Object.freeze({approve:'推奨案を選択',changes_requested:'別案の検討',defer:'判断を保留',reject:'提案を見送り'});
   const topics = Object.freeze({priority_tradeoff:'優先順',scope_tradeoff:'作業範囲'});
   const statuses = new Set(['running','review_pending','complete','failed','blocked','unknown']);
-  const partialSource=/^https:\/\/github\.com\/alleshokai-gif\/(?:(?:kaz-context\/blob\/[a-f0-9]{40}\/(?:feedback\/events\/[0-9]{4}\/[0-9]{2}\/fb-[a-z0-9-]+\.json|intermediate\/[a-z0-9-]+\.json|(?:tools\/kaz-os|docs)\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.(?:md|py|js)))|(?:(?:energy-management-gas|quality-quest|paruru-mini)\/blob\/[a-f0-9]{40}\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.(?:md|py|js|mjs|cjs|gs|css|html)))$/;
+  const partialSource=/^https:\/\/github\.com\/alleshokai-gif\/(?:(?:kaz-context\/blob\/[a-f0-9]{40}\/(?:feedback\/events\/[0-9]{4}\/[0-9]{2}\/fb-[a-z0-9-]+\.json|intermediate\/[a-z0-9-]+\.json|(?:tools\/kaz-os|docs)\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.(?:md|py|js)))|kaz-content\/blob\/[a-f0-9]{40}\/articles\/ai-conversation-series\/article_(?:[0-9]{2}_draft_v[0-9]+(?:_review)?|autonomous_[a-f0-9]{64}_draft)\.md|(?:(?:energy-management-gas|quality-quest|paruru-mini)\/blob\/[a-f0-9]{40}\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.(?:md|py|js|mjs|cjs|gs|css|html)))$/;
   const decisionFields = Object.freeze({background:400,cause:400,verified_facts:500,remaining:400,
     recommended_option:300,alternative_option:300,recommendation_reason:400,owner_reason:400});
   function ready(item) {
@@ -160,9 +160,10 @@
       text(card,'h5','次に進めること');text(card,'p',item.next_action);
       text(card,'p',item.decision_required?'本人の判断が必要です。':'今は本人の判断は不要です。');
       const details=document.createElement('details');
-      text(details,'summary','根拠資料（任意）');
+      const editorial = item.evidence_refs.some(ref => ref.startsWith('https://github.com/alleshokai-gif/kaz-content/'));
+      text(details,'summary',editorial?'未公開の下書きを確認':'根拠資料（任意）');
       for(const [index,ref] of item.evidence_refs.entries()){
-        const a=text(details,'a',`根拠 ${index+1}`,'kp-button');
+        const a=text(details,'a',editorial?(index===0?'原稿を読む':'タイトル案・編集メモ'):`根拠 ${index+1}`,'kp-button');
         a.href=ref;a.target='_blank';a.rel='noopener noreferrer';
       }
       card.appendChild(details);parent.appendChild(card);
