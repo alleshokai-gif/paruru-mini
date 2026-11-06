@@ -108,9 +108,24 @@
     return { waitLabel, delayLabel, positionLabel: `次の${row.routeLabel.normalize('NFKC')}　${stops}` };
   }
 
+  function scheduleSummary(data, ids = data.providers?.map(row => row.provider) || []) {
+    const labels = {kawasaki:'川崎市バス',tokyu:'東急バス',seibu:'西武バス'};
+    return ids.flatMap(id => {
+      const row = data.schedule?.[id];
+      if (!row || !labels[id]) return [];
+      const date = Number.isFinite(row.effectiveAt)
+        ? new Date(row.effectiveAt + 32400000).toISOString().slice(0,10).replaceAll('-', '/') : null;
+      const version = id === 'kawasaki' && date ? `${date}改正` : row.version ? `${row.version}版` : '版未確認';
+      const notice = row.status === 'update_failed' ? ' ⚠ 更新確認失敗'
+        : row.status === 'stale' ? ' ⚠ 最新版未確認' : '';
+      return [`${labels[id]}｜${version}${notice}`];
+    }).join(' / ');
+  }
+
   function sourceSummary(data) {
     const tokyu = data.providers.find((value) => value.provider === 'tokyu' && Number.isFinite(value.retrievedAt));
-    return `${tokyu ? `東急時刻表取得 ${dateClock(tokyu.retrievedAt)} / ` : ''}出典: ${data.attributions
+    const schedule = scheduleSummary(data);
+    return `${schedule ? schedule + ' / ' : ''}${tokyu ? `東急時刻表取得 ${dateClock(tokyu.retrievedAt)} / ` : ''}出典: ${data.attributions
       .map((value) => value.providerName).join('・')}（${[...new Set(data.attributions.map((value) => value.distributor))].join('・')}）`;
   }
 
@@ -339,7 +354,7 @@
     }
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', mount); else mount();
   }
-  return { install, validate, displayArrival, displayShadowPosition, sourceSummary, renderArrivalList, configuredHubs, apiUrl,
+  return { install, validate, displayArrival, displayShadowPosition, sourceSummary, scheduleSummary, renderArrivalList, configuredHubs, apiUrl,
     resolveSelectedHubId, createSelection,
     HUB_UI_DEFAULT_ENABLED, HUB_SELECTION_STORAGE_KEY,
     selectHub(hubId) { return selectHubFromRoute?.(hubId) ?? false; },

@@ -6,8 +6,8 @@ const unavailable = status => ({ observer: null, status,
   stats: { supportedChains: 0, geometrySources: [] } });
 const fail = () => { throw Error('SHADOW_GEOMETRY_INVALID'); };
 
-function validatedSource(bundle, positionStatic) {
-  if (bundle?.schemaVersion !== 1 || bundle.staticSourceHash !== positionStatic?.sourceHash
+function validatedSource(bundle, positionStatic, stopReference) {
+  if (bundle?.schemaVersion !== 1 || (bundle.staticSourceHash !== positionStatic?.sourceHash && bundle.staticSourceHash !== stopReference?.sourceHash)
     || bundle.sources?.length !== 1) fail();
   const source = bundle.sources[0];
   if (source.schemaVersion !== 1 || source.provider !== 'kawasaki'
@@ -15,7 +15,7 @@ function validatedSource(bundle, positionStatic) {
     || source.sourceType !== 'validated_road_geometry'
     || source.sourceVersion !== 'osm:7109917:v14+mlit:n07:2022'
     || source.approvalVersion !== 'p3.3-shadow-1'
-    || source.staticSourceHash !== positionStatic.sourceHash
+    || source.staticSourceHash !== bundle.staticSourceHash
     || source.approvedForShadow !== true || source.approvedForPublic !== false
     || source.geometryReady !== false || source.validation?.status !== 'approved_for_stage_1_shadow'
     || source.validation.pointCount !== 281 || source.validation.gapCount !== 0
@@ -29,6 +29,12 @@ function validatedSource(bundle, positionStatic) {
     || candidate.points?.length !== 281 || candidate.stopProjections?.length !== 20
     || chain.stops.length !== 20 || candidate.corridor?.fromStopId !== '184_2'
     || candidate.corridor?.toStopId !== '362_1') fail();
+  if (source.staticSourceHash !== positionStatic.sourceHash &&
+    (stopReference.chainId !== chainId || !chain.stops.every(({stopId}) => {
+      const old = stopReference.stops?.[stopId], current = positionStatic.stops[stopId];
+      return old && current && old.name === current.name
+        && JSON.stringify(old.position) === JSON.stringify(current.position);
+    }))) fail();
   let previous = -1;
   for (const [ordinal, projection] of candidate.stopProjections.entries()) {
     const stop = chain.stops[ordinal];
@@ -42,12 +48,12 @@ function validatedSource(bundle, positionStatic) {
 
 // This index exists only for the family Shadow display. The public Route Index
 // still rejects the artifact's eligible=false and geometryReady=false flags.
-export function loadShadowPosition({ index, positionStatic,
+export function loadShadowPosition({ index, positionStatic, stopReference,
   read = () => readFileSync(new URL('../release-static/position-shadow-geometry.json', import.meta.url), 'utf8') } = {}) {
   try {
     const raw = read();
     if (Buffer.byteLength(raw) > 2 * 1024 * 1024) throw Error('SHADOW_GEOMETRY_SIZE');
-    const { source, chainId, candidate } = validatedSource(JSON.parse(raw), positionStatic);
+    const { source, chainId, candidate } = validatedSource(JSON.parse(raw), positionStatic, stopReference);
     const geometry = prepareShape(candidate.points);
     const stops = candidate.stopProjections.map((projection, ordinal) => {
       const stop = positionStatic.stops[projection.stopId];

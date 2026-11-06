@@ -30,7 +30,8 @@ steps:
             const index=mergeKawasakiStatic(p0,journey);
             const position=loadPosition({index,provider:"kawasaki"});
             assert.equal(Object.keys(position.staticData?.directions||{}).length,8);
-            const shadow=loadShadowPosition({index,positionStatic});
+            const stopReference=JSON.parse(readFileSync("/app/generated/shadow-stop-reference.json"));
+            const shadow=loadShadowPosition({index,positionStatic,stopReference});
             assert.equal(shadow.status,"shadow_geometry_loaded");
             assert.equal(shadow.stats.supportedChains,2);
             assert.equal(shadow.stats.sharedCorridorChains,1);
@@ -76,7 +77,9 @@ steps:
         done
         docker rm -f bus-build-smoke
         exit 1
-images: ['${_IMAGE}']
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '--platform=linux/amd64', '--target=schedule-refresh', '-t', '${_IMAGE}-refresh', '.']
+images: ['${_IMAGE}', '${_IMAGE}-refresh']
 options:
   logging: CLOUD_LOGGING_ONLY
 timeout: 900s

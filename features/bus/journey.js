@@ -78,7 +78,8 @@
     const children = element(doc, 'div', 'bus-journey-children');
     const heading = element(doc, 'header', 'bus-hub-header');
     heading.append(element(doc, 'h2', 'bus-hub-title', spec.label));
-    mountPoint.append(heading, status, children);
+    const sources = element(doc, 'p', 'bus-hub-sources', '');
+    mountPoint.append(heading, status, sources, children);
     const controller = root.PALURUBus.createController({ hidden: () => doc.hidden,
         validateData: (data) => validate(data, spec.id),
         fetchData: async (signal) => {
@@ -91,6 +92,7 @@
           status.textContent = error ? '情報を更新できませんでした' : !data ? '情報を読み込み中…'
             : loading ? '更新中…' : '各駅の次3便';
           status.classList.toggle('is-stale', !!error);
+          if (data) sources.textContent = root.PALURUBusHub.scheduleSummary?.(data, ['kawasaki','tokyu']) || '';
           if (data) renderChildren(doc, children, data, root.PALURUBusHub,
             root.PALURU_BUS_POSITION_SHADOW_ENABLED === true);
         } });

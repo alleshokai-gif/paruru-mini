@@ -50,3 +50,13 @@ observation/node_modules/**
 !generated/p1-position-static.json
 !generated/seibu-p2-4-static.json
 !generated/kawasaki-p2-5-static.json
+
+!refresh
+!refresh/**
+!scripts
+!scripts/p0-static.js
+!scripts/p2-5-kawasaki-static.js
+!scripts/position-static.js
+!providers/kawasaki/static.js
+!providers/kawasaki/static-source.js
+!generated/shadow-stop-reference.json

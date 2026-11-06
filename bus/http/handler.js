@@ -1,6 +1,6 @@
 export function createHttpHandler(serviceFactory, { health = false, hubServiceFactory = null,
   journeyServiceFactory = null, railHomeRouteServiceFactory = null,
-  kazuRouteServiceFactory = null } = {}) {
+  kazuRouteServiceFactory = null, scheduleStatus = null } = {}) {
   return {
     async fetch(request, env) {
       const url = new URL(request.url);
@@ -43,6 +43,8 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '600' } });
       if (request.method !== 'GET') return reply({ success: false, error: { code: 'BUS_METHOD_NOT_ALLOWED' } }, 405);
       if (!env.ODPT_ACCESS_TOKEN) return reply({ success: false, error: { code: 'BUS_NOT_CONFIGURED' } }, 503);
+      const schedule = scheduleStatus?.();
+      const withSchedule = body => schedule ? { ...body, schedule } : body;
       try {
         if (commuteQuery) {
           if (typeof kazuRouteServiceFactory !== 'function')
@@ -65,16 +67,16 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
           const journeyService = journeyServiceFactory(env);
           if (typeof journeyService?.hasJourney !== 'function' || !journeyService.hasJourney(journeyId))
             return reply({ success: false, error: { code: 'BUS_NOT_FOUND' } }, 404);
-          return reply(await journeyService.getJourney(journeyId));
+          return reply(withSchedule(await journeyService.getJourney(journeyId)));
         }
         if (hubPath) {
           if (typeof hubServiceFactory !== 'function') return reply({ success: false, error: { code: 'BUS_NOT_FOUND' } }, 404);
           const hubService = hubServiceFactory(env);
           if (typeof hubService?.hasHub !== 'function' || !hubService.hasHub(hubId))
             return reply({ success: false, error: { code: 'BUS_NOT_FOUND' } }, 404);
-          return reply(await hubService.getHub(hubId));
+          return reply(withSchedule(await hubService.getHub(hubId)));
         }
-        return reply(await serviceFactory(env).getArrivals());
+        return reply(withSchedule(await serviceFactory(env).getArrivals()));
       }
       catch { return reply({ success: false, error: { code: 'BUS_UNAVAILABLE' } }, 503); }
     }

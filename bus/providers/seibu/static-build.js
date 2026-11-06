@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
+import { readZip } from '../kawasaki/static.js';
 import { clockSeconds } from '../../core/time.js';
 import { ARTIFACT_SCHEMA_VERSION, DIRECTIONS, PROVIDER_ID, STOPS, TARGET_ROUTES,
   SCHOOL_TO_TACHIKAWA_SOURCE, TACHIKAWA_TO_SCHOOL_SOURCE } from './config.js';
@@ -89,27 +90,36 @@ export function validateSeibuArtifact(value) {
 
 export function buildSeibuStatic(bytes, { now = Date.now() / 1000 } = {}) {
   if (!(bytes instanceof Uint8Array) || !Number.isFinite(now)) fail('BUS_SEIBU_STATIC_INPUT');
-  let files; try { files = unzipSync(bytes); } catch { fail('BUS_SEIBU_STATIC_ZIP'); }
-  const agency = table(files, 'agency'), stopsRows = table(files, 'stops'), routesRows = table(files, 'routes');
-  const tripsRows = table(files, 'trips'), stopTimes = table(files, 'stop_times');
-  const calendar = table(files, 'calendar', true), calendarDates = table(files, 'calendar_dates', true);
-  const feedInfoRows = table(files, 'feed_info');
-  if (!agency.length || agency.some((row) => row.agency_timezone !== 'Asia/Tokyo')
-    || !calendar.length && !calendarDates.length || feedInfoRows.length !== 1) fail('BUS_SEIBU_STATIC_METADATA');
+  const routeConfig = new Map(TARGET_ROUTES.map(row => [row.routeId,row]));
+  const agency = [], stopsRows = [], calendar = [], calendarDates = [], feedInfoRows = [];
+  const routes = new Map(), trips = new Map();
+  const tables = {agency,stops:stopsRows,calendar,calendar_dates:calendarDates,feed_info:feedInfoRows};
+  const seen = readZip(bytes,new Set([...Object.keys(tables),'routes','trips']),(name,columns,values)=>{
+    if (name === 'routes' || name === 'trips') {
+      if (!routeConfig.has(values[columns.indexOf('route_id')])) return;
+      const row = Object.fromEntries(columns.map((key,i)=>[key,values[i]]));
+      const map = name === 'routes' ? routes : trips, id = name === 'routes' ? row.route_id : row.trip_id;
+      if (!id || map.has(id)) fail('BUS_SEIBU_STATIC_DUPLICATE');
+      map.set(id,row); return;
+    }
+    tables[name].push(Object.fromEntries(columns.map((key,i)=>[key,values[i]])));
+  });
+  if (['agency','stops','routes','trips','feed_info'].some(name=>!seen.has(name))
+    || !agency.length || agency.some(row=>row.agency_timezone!=='Asia/Tokyo')
+    || !calendar.length && !calendarDates.length || feedInfoRows.length!==1) fail('BUS_SEIBU_STATIC_METADATA');
   const feedInfo = feedInfoRows[0];
-  const routeConfig = new Map(TARGET_ROUTES.map((row) => [row.routeId, row]));
-  const routes = new Map(routesRows.filter((row) => routeConfig.has(row.route_id)).map((row) => [row.route_id, row]));
   if (routes.size !== TARGET_ROUTES.length) fail('BUS_SEIBU_STATIC_ROUTE');
   for (const config of TARGET_ROUTES) {
-    const row = routes.get(config.routeId);
-    if ((row.route_short_name || '系統番号なし') !== config.routeLabel) fail('BUS_SEIBU_STATIC_ROUTE');
+    if ((routes.get(config.routeId).route_short_name || '系統番号なし') !== config.routeLabel) fail('BUS_SEIBU_STATIC_ROUTE');
   }
-  const trips = new Map(tripsRows.filter((row) => routeConfig.has(row.route_id)).map((row) => [row.trip_id, row]));
   const chains = new Map();
-  for (const row of stopTimes) if (trips.has(row.trip_id)) {
-    if (!chains.has(row.trip_id)) chains.set(row.trip_id, []);
-    chains.get(row.trip_id).push(row);
-  }
+  const stopsSeen = readZip(bytes,new Set(['stop_times']),(_,columns,values)=>{
+    const id = values[columns.indexOf('trip_id')];
+    if (!trips.has(id)) return;
+    if (!chains.has(id)) chains.set(id,[]);
+    chains.get(id).push(Object.fromEntries(columns.map((key,i)=>[key,values[i]])));
+  });
+  if (!stopsSeen.has('stop_times')) fail('BUS_SEIBU_STATIC_TABLE');
   const stopMap = new Map(stopsRows.map((row) => [row.stop_id, row]));
   const directions = Object.fromEntries(DIRECTIONS.map((row) => [row.id, []]));
   const selectedStopIds = new Set(), selectedRouteIds = new Set(), serviceIds = new Set();
