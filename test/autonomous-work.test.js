@@ -36,6 +36,18 @@ async function main(){
   assert.ok(all(partialHost).some(x=>x.textContent==='今は本人の判断は不要です。'));
   assert.equal(all(partialHost).filter(x=>x.tag==='button').length,0);
   const asOf='2026-11-05T08:00:00+09:00';
+  for(const [status,reason,expected] of [
+    ['skipped','no_eligible_work','正常スキップ'],['no_output',null,'Codexは実行しました'],
+    ['verification_failed',null,'成果案を検証できません'],['failed',null,'夜間処理が失敗'],
+    ['unknown',null,'夜間処理の結果を確認できません'],['unavailable',null,'記録を取得できません']
+  ]){
+    const zero=new Node('div');
+    await feature.append(zero,{read:async()=>({schema_version:'kaz-autonomous-view-v1',as_of:asOf,
+      status:'no_results',run:null,raw_payload_stored:false,
+      night_execution:{day:'2026-11-04',status,reason,inventory_count:1,exclusions:{RESERVED:1}}}),current:()=>true});
+    assert.ok(all(zero).some(x=>x.textContent?.includes(expected)),status);
+    if(status==='skipped')assert.ok(all(zero).some(x=>x.textContent==='同じ作業が予約済み 1件'));
+  }
   const lastNight={...partial,work_label:'WI-50',title:'Last night result',completed_at:'2026-11-04T23:15:00+09:00'};
   const older={...partial,work_label:'WI-48',title:'Old result',completed_at:'2026-11-03T13:00:00+09:00'};
   const daytime={...partial,completed_at:'2026-11-05T07:00:00+09:00'};
