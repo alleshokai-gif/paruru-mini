@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261106-autonomous-night-outcome-v1");
-// Release: v20261106-autonomous-night-outcome-v1
+importScripts("./build.js?v=v20261106-autonomous-evidence-v1");
+// Release: v20261106-autonomous-evidence-v1
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;
