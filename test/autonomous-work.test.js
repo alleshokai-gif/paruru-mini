@@ -55,9 +55,9 @@ async function main(){
     as_of:asOf,status:'no_results',run:null,raw_payload_stored:false,
     partial_progress:[external]}),current:()=>true});
   assert.ok(all(externalHost).some(x=>x.href===external.evidence_refs[0]));
-  const lastNight={...partial,work_label:'WI-50',title:'Last night result',completed_at:'2026-11-04T23:15:00+09:00'};
+  const lastNight={...partial,work_label:'WI-50',title:'Last night result',origin:'night_artifact',started_at:'2026-11-04T23:00:00+09:00',completed_at:'2026-11-04T23:15:00+09:00'};
   const older={...partial,work_label:'WI-48',title:'Old result',completed_at:'2026-11-03T13:00:00+09:00'};
-  const daytime={...partial,completed_at:'2026-11-05T07:00:00+09:00'};
+  const daytime={...partial,origin:'manual',completed_at:'2026-11-05T07:00:00+09:00'};
   const nightlyHost=new Node('div');
   await feature.append(nightlyHost,{read:async()=>({schema_version:'kaz-autonomous-view-v1',
     as_of:asOf,status:'no_results',run:null,raw_payload_stored:false,
@@ -68,7 +68,8 @@ async function main(){
   assert.ok(all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-50'));
   assert.ok(!all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-48'));
   assert.ok(all(historyBox).some(x=>x.dataset.autonomousPartial==='WI-48'));
-  assert.ok(all(historyBox).some(x=>x.dataset.autonomousPartial==='WI-51'));
+  assert.ok(!all(historyBox).some(x=>x.dataset.autonomousPartial==='WI-51'));
+  assert.ok(all(nightlyHost).some(x=>x.textContent==='依頼を受けて先に進めた仕事'));
   assert.ok(!all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-51'));
   assert.ok(!historyBox.open,'history starts collapsed');
   assert.ok(all(recentBox).some(x=>x.textContent==='新しい部分成果 1件 · 判断待ち 0件'));
