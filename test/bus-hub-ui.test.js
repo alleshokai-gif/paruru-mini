@@ -73,7 +73,7 @@ test('Seibu imminent ETA and coarse stop location use the shared Hub card withou
   assert.doesNotMatch(shown, /時刻表のみ|位置確認中/);
 });
 
-test('official Tokyu approach adds one line only to the first Tokyu card without changing static time', () => {
+test('official Tokyu approach is shown once, separately from the scheduled cards', () => {
   const tokyu = arrival({ id: 'tokyu-first', sourceId: 'kibukihoncho_to_mukougaoka', destination: '向ヶ丘遊園駅南口',
     originStop: { id: 'odpt:BusstopPole:TokyuBus.Shibokuhonchou.00240751.b', name: '神木本町' },
     officialApproach: { matchedTripId: null, uniqueNext: true, sourceId: 'kibukihoncho_to_mukougaoka', routeLabel: '向01',
@@ -83,22 +83,18 @@ test('official Tokyu approach adds one line only to the first Tokyu card without
     arrival({ id: 'kawasaki', provider: 'kawasaki', routeLabel: '登０５' }), tokyu,
     { ...tokyu, id: 'tokyu-second', scheduledDeparture: NOW + 1800 }
   ] }, 'kibukihoncho', true);
-  assert.equal(list.children.length, 3);
+  assert.equal(list.children.length, 4);
   const firstTokyu = renderedText(list.children[1]);
-  assert.match(firstTokyu, /07:05.*便.*あと5分.*🚌 次の向01　4〜5停留所手前/s);
-  assert.doesNotMatch(firstTokyu, /時刻表のみ|公式接近/);
-  assert.equal(descendants(list.children[1]).filter((node) => node.className === 'bus-hub-position-shadow').length, 1);
-  assert.doesNotMatch(fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8'),
-    /bus-hub-official-approach/);
-  assert.doesNotMatch(firstTokyu, /位置確認中|便未照合|取得/);
+  assert.match(firstTokyu, /07:05.*便.*時刻表のみ/s);
+  assert.doesNotMatch(firstTokyu, /あと5分|遅れ/);
   assert.doesNotMatch(renderedText(list.children[2]), /次の向01/);
-  assert.match(renderedText(list.children[2]), /位置確認中/);
+  assert.match(renderedText(list.children[3]), /東急の接近情報.*次の向01　4〜5停留所手前・あと5分（便未照合）/s);
   assert.doesNotMatch(renderedText(hub.renderArrivalList(fakeDocument(),
     { recommendedArrivalId: null, arrivals: [tokyu] }, 'kibukihoncho')), /次の向01|位置確認中/);
 });
 
-test('Tokyu official approach derives approximate delay and keeps ETA in the shared timing row', () => {
-  const retrievedAt = NOW;
+test('Tokyu official approach never derives a delay from an unrelated scheduled trip', () => {
+  const retrievedAt = Date.now() / 1000;
   const row = arrival({ scheduledDeparture: NOW + 6 * 60, sourceId: 'kibukihoncho_to_mukougaoka',
     destination: '向ヶ丘遊園駅南口',
     officialApproach: { matchedTripId: null, uniqueNext: true, sourceId: 'kibukihoncho_to_mukougaoka',
@@ -106,7 +102,8 @@ test('Tokyu official approach derives approximate delay and keeps ETA in the sha
       waitMinutes: 12, stopsAwayMin: 7, stopsAwayMax: 9, retrievedAt } });
   const shown = renderedText(hub.renderArrivalList(fakeDocument(),
     { recommendedArrivalId: null, arrivals: [row] }, 'kibukihoncho', true));
-  assert.match(shown, /07:06.*便.*あと12分.*約\+6分遅れ.*次の向01　約8停留所手前/s);
+  assert.match(shown, /07:06.*便.*時刻表のみ.*次の向01　約8停留所手前・あと12分（便未照合）/s);
+  assert.doesNotMatch(shown, /遅れ|早い予測/);
   const source = fs.readFileSync(require.resolve('../features/bus/hub.css'), 'utf8');
   assert.match(source, /grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\)/);
   assert.match(source, /bus-hub-quality \{ justify-self: center; \}/);
@@ -132,12 +129,12 @@ test('official ETA degrades to coarse approach while invalid source or stale dat
     officialApproach: { ...base, uniqueNext: false, stopsAwayMin: null, stopsAwayMax: null } });
   assert.match(renderedText(hub.renderArrivalList(fakeDocument(),
     { recommendedArrivalId: null, arrivals: [coarse] }, 'kibukihoncho', true)),
-  /あと5分.*次の向01　接近中/s);
+  /次の向01　接近中・あと5分/s);
   const imminent = arrival({ destination: '向ヶ丘遊園駅南口', sourceId: base.sourceId,
     officialApproach: { ...base, waitMinutes: 0 } });
   assert.match(renderedText(hub.renderArrivalList(fakeDocument(),
     { recommendedArrivalId: null, arrivals: [imminent] }, 'kibukihoncho', true)),
-  /まもなく.*次の向01　4〜5停留所手前/s);
+  /次の向01　4〜5停留所手前・まもなく/s);
 });
 
 test('Kawasaki stop-sequence position displays approximate progress without geometry', () => {

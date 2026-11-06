@@ -101,11 +101,7 @@
       ? max <= 6 ? count === max ? `${count}停留所手前` : `${count}〜${max}停留所手前`
         : `約${Math.round((count + max) / 2)}停留所手前` : '接近中';
     const waitLabel = wait === 0 ? 'まもなく' : `あと${age > 90 ? '約' : ''}${wait}分`;
-    const predictedDeparture = approach.retrievedAt + approach.waitMinutes * 60;
-    const delayMinutes = Math.round((predictedDeparture - row.scheduledDeparture) / 60);
-    const delayLabel = delayMinutes > 0 ? `約+${delayMinutes}分遅れ`
-      : delayMinutes < 0 ? `約${Math.abs(delayMinutes)}分早い予測` : '';
-    return { waitLabel, delayLabel, positionLabel: `次の${row.routeLabel.normalize('NFKC')}　${stops}` };
+    return { waitLabel, positionLabel: `次の${row.routeLabel.normalize('NFKC')}　${stops}` };
   }
 
   function scheduleSummary(data, ids = data.providers?.map(row => row.provider) || []) {
@@ -211,15 +207,13 @@
   function renderArrivalList(doc, group, hubId, positionShadowEnabled = false) {
     const list = element(doc, 'ol', 'bus-hub-board');
     const visible = group.arrivals.slice(0, 3);
-    const firstTokyuIndex = visible.findIndex((row) => row.provider === 'tokyu');
-    visible.forEach((row, index) => {
+    const approaches = new Map();
+    visible.forEach((row) => {
         const recommended = row.id === group.recommendedArrivalId;
-        const officialApproach = positionShadowEnabled && index === firstTokyuIndex
+        const officialApproach = positionShadowEnabled
           ? displayOfficialApproach(row.officialApproach, row) : null;
-        const baseShown = displayArrival(row);
-        const shown = officialApproach
-          ? { ...baseShown, note: officialApproach.waitLabel, delay: officialApproach.delayLabel, kind: 'live' }
-          : baseShown;
+        if (officialApproach) approaches.set(row.sourceId, officialApproach);
+        const shown = displayArrival(row);
         const item = element(doc, 'li', `bus-hub-row is-${shown.kind}${recommended ? ' is-recommended' : ''}`);
         const heading = element(doc, 'div', 'bus-hub-row-heading');
         heading.append(providerLabel(doc, row.provider), element(doc, 'span', 'bus-hub-route', row.routeLabel));
@@ -238,7 +232,6 @@
         if (shown.delay) timing.append(element(doc, 'span', 'bus-hub-delay', shown.delay));
       item.append(heading, element(doc, 'p', 'bus-hub-destination', `${row.destination} 行き`));
       item.append(timing);
-      if (officialApproach) item.append(element(doc, 'p', 'bus-hub-position-shadow', `🚌 ${officialApproach.positionLabel}`));
       if (row.provider === 'kawasaki' && row.isOrigin === true
         && ['kibukihoncho', 'mizonokuchi-minamiguchi'].includes(hubId)) {
         const notice = row.originNotice === 'likely_turnaround' ? '到着車両が折返す可能性高い'
@@ -251,6 +244,8 @@
         `🚌 ${displayShadowPosition(row.position)}`));
       list.append(item);
     });
+    for (const approach of approaches.values()) list.append(element(doc, 'li', 'bus-hub-position-shadow',
+      `🚌 東急の接近情報　${approach.positionLabel}・${approach.waitLabel}（便未照合）`));
     return list;
   }
 
