@@ -159,8 +159,30 @@ export function buildTokyuArrivals(staticData, now, limit = 3, calendarResolver 
   return values;
 }
 
+export async function fetchTokyuSnapshot(token, fetcher = fetch, fetchedAt = Date.now() / 1000) {
+  const requests = new Map();
+  const exact = (type, parameters) => {
+    const key = `${type}|${JSON.stringify(parameters)}`;
+    if (!requests.has(key)) requests.set(key, fetchOdptStatic(type, parameters, token, fetcher));
+    return requests.get(key);
+  };
+  const directions = await Promise.all(TOKYU_HUB_DIRECTIONS.map(async (q) => {
+    const [stops, patterns, timetables] = await Promise.all([
+      exact('odpt:BusstopPole', { 'owl:sameAs': q.fromStopId }),
+      exact('odpt:BusroutePattern', { 'owl:sameAs': q.routePatternId }),
+      exact('odpt:BusstopPoleTimetable', { 'odpt:operator': q.operatorId,
+        'odpt:busstopPole': q.fromStopId })
+    ]);
+    return normalizeTokyuStatic({ query: q, stops, patterns,
+      timetables: selectTokyuTimetables(timetables, q), fetchedAt });
+  }));
+  return Object.freeze({ fetchedAt, directions: Object.freeze(directions),
+    sourceUpdatedAt: Math.max(...directions.map((value) => value.sourceUpdatedAt)) });
+}
+
 export function createTokyuStaticProvider({ token, fetcher = fetch, now = () => Date.now() / 1000,
-  cacheSeconds = STATIC_CACHE_SEC, calendarResolver = resolveTokyuServiceCalendar } = {}) {
+  cacheSeconds = STATIC_CACHE_SEC, calendarResolver = resolveTokyuServiceCalendar,
+  loadSnapshot = () => fetchTokyuSnapshot(token, fetcher, now()) } = {}) {
   if (!text(token) || /\s/.test(token) || !Number.isFinite(cacheSeconds) || cacheSeconds < 0)
     fail('BUS_TOKYU_PROVIDER_INVALID');
   let cached = null, pending = null;
@@ -169,25 +191,8 @@ export function createTokyuStaticProvider({ token, fetcher = fetch, now = () => 
     if (cached && age >= 0 && age < cacheSeconds) return cached;
     if (pending) return pending;
     pending = (async () => {
-      const fetchedAt = now();
-      const requests = new Map();
-      const exact = (type, parameters) => {
-        const key = `${type}|${JSON.stringify(parameters)}`;
-        if (!requests.has(key)) requests.set(key, fetchOdptStatic(type, parameters, token, fetcher));
-        return requests.get(key);
-      };
-      const directions = await Promise.all(TOKYU_HUB_DIRECTIONS.map(async (q) => {
-        const [stops, patterns, timetables] = await Promise.all([
-          exact('odpt:BusstopPole', { 'owl:sameAs': q.fromStopId }),
-          exact('odpt:BusroutePattern', { 'owl:sameAs': q.routePatternId }),
-          exact('odpt:BusstopPoleTimetable', { 'odpt:operator': q.operatorId,
-            'odpt:busstopPole': q.fromStopId })
-        ]);
-        return normalizeTokyuStatic({ query: q, stops, patterns,
-          timetables: selectTokyuTimetables(timetables, q), fetchedAt });
-      }));
-      cached = Object.freeze({ fetchedAt, directions: Object.freeze(directions),
-        sourceUpdatedAt: Math.max(...directions.map((value) => value.sourceUpdatedAt)) });
+      const data = await loadSnapshot();
+      cached = data;
       return cached;
     })();
     try { return await pending; } finally { pending = null; }

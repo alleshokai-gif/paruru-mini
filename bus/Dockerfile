@@ -3,6 +3,20 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
+FROM node:24.22.1-bookworm-slim AS schedule-refresh
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
+COPY core ./core
+COPY config ./config
+COPY position ./position
+COPY runtime ./runtime
+COPY providers ./providers
+COPY scripts/p0-static.js scripts/p2-5-kawasaki-static.js scripts/position-static.js ./scripts/
+COPY refresh ./refresh
+USER node
+CMD ["node", "refresh/run.js"]
+
 FROM node:24.22.1-bookworm-slim
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
@@ -25,6 +39,7 @@ COPY generated/p0-static.json ./generated/p0-static.json
 COPY generated/p1-position-static.json ./generated/p1-position-static.json
 COPY generated/seibu-p2-4-static.json ./generated/seibu-p2-4-static.json
 COPY generated/kawasaki-p2-5-static.json ./generated/kawasaki-p2-5-static.json
+COPY generated/shadow-stop-reference.json ./generated/shadow-stop-reference.json
 USER node
 EXPOSE 8080
 CMD ["node", "runtime/start.js"]
