@@ -12,6 +12,13 @@
   const search = panel.querySelector('[data-location-action="search"]');
   const searchStatus = panel.querySelector('[data-location-status="search"]');
   const editStatus = panel.querySelector('[data-location-status="edit"]');
+  const pagination = panel.querySelector("[data-location-pagination]");
+  const previous = panel.querySelector("[data-location-prev]");
+  const next = panel.querySelector("[data-location-next]");
+  const pageNumber = panel.querySelector("[data-location-page-number]");
+  const listTitle = panel.querySelector("[data-location-list-title]");
+  const attribution = panel.querySelector("[data-location-attribution]");
+  const providers = panel.querySelector("[data-location-providers]");
   const counts = new Intl.NumberFormat("ja-JP");
   const errors = {
     FORBIDDEN: "この機能は所有者本人だけが利用できます。",
@@ -27,13 +34,19 @@
   let session = null;
   let owner = null;
   let requestNumber = 0;
+  let currentPage = 1;
+  let filters = {};
+  let loading = false;
   function reset() {
     session?.abort.abort();
     session = null;
     owner = null;
     panel.hidden = true;
-    panel.open = false;
     results.replaceChildren();
+    currentPage = 1;
+    filters = {};
+    pagination.hidden = true;
+    attribution.hidden = true;
     summary.textContent = "";
     editStatus.textContent = "";
     for (const form of forms) {
@@ -48,6 +61,8 @@
     session = null;
     panel.hidden = true;
     results.replaceChildren();
+    pagination.hidden = true;
+    attribution.hidden = true;
     summary.textContent = "";
     searchStatus.textContent = "";
     editStatus.textContent = "";
@@ -60,8 +75,10 @@
     owner = context.memberUserId;
     const resumed = !session;
     session ||= { auth: event.detail.getLocationHistoryAuth, abort: new AbortController() };
-    panel.hidden = false;
-    if (resumed && panel.open) void runSearch();
+    if (resumed && panel.classList.contains("is-active")) {
+      panel.hidden = false;
+      void runSearch();
+    }
   });
   async function call(active, action, body, type = "application/json") {
     const token = (await active.auth())?.idToken;
@@ -112,14 +129,64 @@
   }
   function renderPlace(row) {
     const item = element("li");
-    const title = element("strong", row.name + (row.category ? "（" + row.category + "）" : ""));
-    const badge = {estimated: "施設名の推定", nearby: "周辺の施設への訪問候補", unresolved: "施設名未確定", owner: "本人が修正"}[row.name_state];
-    const confidence = row.max_probability == null ? "" : "／推定確率の最大 " + Math.round(row.max_probability * 100) + "%";
-    const line = row.visit_count ? "訪問候補 " + row.visit_count + "回／最終 " + row.last_visit_day + confidence
+    const uncertain = row.name_state === "unresolved" || row.name_state === "nearby";
+    const area = row.area ? row.area + " 周辺" : row.coarse_coord?.map(n => n.toFixed(2)).join(", ");
+    const title = element("strong", uncertain && area ? area + "の訪問候補" : row.name);
+    const badge = {estimated: "名称推定", nearby: "周辺候補・名称未確定", unresolved: "名称未確定",
+      owner: "本人修正", place_id: "Google Mapsの施設IDと一致"}[row.name_state];
+    const line = row.visit_count ? "訪問候補 " + row.visit_count + "回　最終 " + row.last_visit_day
       : "該当期間に記録なし。未訪問かどうかは不明です。";
-    item.append(title, element("p", [badge, line].filter(Boolean).join("。")));
     const details = element("details");
-    details.append(element("summary", "訪問日・修正"));
+    const heading = element("summary");
+    heading.append(title, element("span", [row.category || (row.category_unconfirmed ? "カテゴリ未確定" : ""),
+      uncertain ? null : area, badge].filter(Boolean).join(" · ")),
+      element("span", line));
+    details.append(heading);
+    const body = element("div");
+    body.className = "location-detail";
+    details.append(body);
+    let loaded = false;
+    details.addEventListener("toggle", async () => {
+      if (!details.open || loaded || !session) return;
+      for (const open of results.querySelectorAll("li > details[open]")) {
+        if (open !== details) open.open = false;
+      }
+      const active = session;
+      loaded = true;
+      body.textContent = "訪問日と滞在時間を読み込み中…";
+      try {
+        const value = await call(active, "detail", JSON.stringify({...filters, place_key: row.place_key}));
+        if (active !== session) return;
+        if (!value.results[0]) throw new Error("LOCATION_PLACE_NOT_ELIGIBLE");
+        body.replaceChildren();
+        renderDetail(body, row, value.results[0]);
+      } catch (error) {
+        if (active !== session) return;
+        loaded = false;
+        body.textContent = errors[error.message] || "詳細を取得できません。いったん閉じて開き直してください。";
+      }
+    });
+    item.append(details);
+    return item;
+  }
+  function renderDetail(details, row, data) {
+    const visitList = element("ul");
+    for (const visit of data.visits || []) {
+      const entry = element("li");
+      const duration = Number.isFinite(visit.duration_seconds)
+        ? (visit.duration_seconds < 60 ? "1分未満" : counts.format(Math.round(visit.duration_seconds / 60)) + "分")
+        : "不明";
+      const probability = visit.probability == null ? "" : " · 訪問推定 " + Math.round(visit.probability * 100) + "%";
+      entry.append(element("span", visit.day + (visit.excluded ? "（除外中）" : "") + " · 滞在 " + duration + probability),
+        button(visit.excluded ? "この訪問を復元" : "この訪問を除外", control =>
+          void correct({action: visit.excluded ? "restore" : "exclude", target: visit.event_id}, control)));
+      visitList.append(entry);
+    }
+    details.append(element("h3", "訪問日と滞在時間"), visitList);
+    if (data.visits_truncated) details.append(element("p", "最新20件を表示。期間で絞り込めます。"));
+    if (!data.visits.length) details.append(element("p", "この期間に表示できる訪問はありません。"));
+    const options = element("details");
+    options.append(element("summary", "施設名を修正"));
     const input = element("input");
     input.type = "text";
     input.maxLength = 120;
@@ -127,58 +194,73 @@
     input.autocomplete = "off";
     const label = element("label", "施設全体の名前");
     label.append(input);
-    details.append(label, button("施設名を変更", control => {
+    options.append(label, button("施設名を変更", control => {
       if (!input.value.trim()) { input.focus(); return; }
       void correct({action: "rename", target: row.place_key, name: input.value.trim()}, control);
     }));
-    if (row.candidates?.length) {
+    if (data.candidates?.length) {
       const select = element("select");
-      for (const candidate of row.candidates) select.add(new Option(candidate.name, candidate.key));
+      for (const candidate of data.candidates) select.add(new Option(candidate.name, candidate.key));
       const candidateLabel = element("label", "自動推定の候補");
       candidateLabel.append(select);
-      details.append(candidateLabel, button("候補を採用", control =>
+      options.append(candidateLabel, button("候補を採用", control =>
         void correct({action: "select", target: row.place_key, candidate: select.value}, control)));
     }
-    if (row.name_state === "owner") details.append(button("自動推定に戻す", control =>
+    if (row.name_state === "owner") options.append(button("自動推定に戻す", control =>
       void correct({action: "reset_name", target: row.place_key}, control)));
-    const visits = element("ul");
-    for (const visit of row.visits || []) {
-      const entry = element("li");
-      entry.append(element("span", visit.day + (visit.excluded ? "（除外中）" : "")),
-        button(visit.excluded ? "この訪問を復元" : "この訪問を除外", control =>
-          void correct({action: visit.excluded ? "restore" : "exclude", target: visit.event_id}, control)));
-      visits.append(entry);
-    }
-    details.append(visits);
-    if (row.visits_truncated) details.append(element("p", "最新20件を表示。期間で絞り込めます。"));
-    item.append(details);
-    return item;
+    details.append(options);
   }
-  async function runSearch() {
-    if (!session) return;
+  async function runSearch(page = 1, useSubmitted = false) {
+    if (!session || loading) return;
     const active = session, current = ++requestNumber;
+    loading = true;
+    const submit = search.querySelector("button[type=submit]");
+    submit.disabled = previous.disabled = next.disabled = true;
     searchStatus.textContent = "訪問履歴を確認中…";
-    const data = Object.fromEntries(new FormData(search));
-    data.include_excluded = search.elements.include_excluded.checked;
+    if (!useSubmitted) {
+      filters = Object.fromEntries(new FormData(search));
+      filters.include_excluded = search.elements.include_excluded.checked;
+    }
     try {
-      const value = await call(active, "history", JSON.stringify(data));
+      const value = await call(active, "page", JSON.stringify({...filters, page}));
       if (active !== session || current !== requestNumber) return;
       results.replaceChildren(...value.results.map(renderPlace));
+      currentPage = value.page;
+      pagination.hidden = value.page_count < 2;
+      pageNumber.textContent = value.page + " / " + value.page_count + " ページ";
+      previous.disabled = value.page <= 1;
+      next.disabled = value.page >= value.page_count;
+      if (useSubmitted) listTitle.scrollIntoView({block: "start"});
+      listTitle.textContent = ["query", "area", "category", "start", "end"].some(field => filters[field])
+        ? "検索結果" : "最近の訪問場所";
+      attribution.hidden = !value.results.some(row => row.name_state === "place_id");
+      const credits = [...new Set(value.results.flatMap(row => row.attributions || []))];
+      providers.textContent = credits.length ? " · " + credits.join(" · ") : "";
       summary.textContent = value.first_day
         ? "保存済み " + counts.format(value.events) + "イベント／訪問 " + counts.format(value.by_kind.visit)
           + "件／" + value.first_day + "〜" + value.last_day
         : "";
       searchStatus.textContent = value.status === "not_imported" ? "タイムラインはまだ取り込まれていません。"
         : value.lookup?.startsWith("LOCATION_PLACES") || value.lookup === "not_configured" ? "外部の施設照合を利用できません。保存済みの情報で検索しました。"
-        : !value.results.length ? "条件に合う訪問候補はありません。"
-        : value.truncated ? "最新の候補を表示しています。施設名や期間で絞れます。" : "";
+        : value.resolution === "limited" ? "施設名の照会上限に達しました。照合済みの情報とエリアを表示しています。"
+        : value.resolution === "unavailable" ? "施設名の照会ができませんでした。エリアや保存済みの情報を表示しています。"
+        : !value.results.length ? "このページに条件に合う訪問候補はありません。" : "";
     } catch (error) {
       if (active !== session || current !== requestNumber) return;
       results.replaceChildren();
+      pagination.hidden = true;
+      attribution.hidden = true;
       searchStatus.textContent = errors[error.message] || "訪問履歴を読み込めませんでした。もう一度お試しください。";
+    } finally {
+      loading = false;
+      if (active === session) submit.disabled = false;
     }
   }
-  panel.addEventListener("toggle", () => { if (panel.open && !summary.textContent) void runSearch(); });
+  doc.addEventListener("paruru:location-history-opened", () => {
+    if (!summary.textContent) void runSearch();
+  });
+  previous.addEventListener("click", () => void runSearch(currentPage - 1, true));
+  next.addEventListener("click", () => void runSearch(currentPage + 1, true));
   for (const form of forms) {
     const action = form.dataset.locationAction;
     const select = form.elements.category;

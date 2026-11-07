@@ -557,7 +557,7 @@ if ("serviceWorker" in navigator) {
         checkForAppUpdate();
         document.addEventListener("paruru:settings-opened", checkForAppUpdate);
         document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "visible" && ["family-schedules", "settings"].includes(activeView)) {
+          if (document.visibilityState === "visible" && ["family-schedules", "settings", "location-history"].includes(activeView)) {
             checkForAppUpdate();
           }
         });
@@ -1120,6 +1120,7 @@ const activateMembershipContext_ = function(membershipContext) {
       || new URLSearchParams(globalThis.location?.search || "").get("familyScheduleSignage") === "1")
       && isViewAllowed_("family-schedules")) activeView = "family-schedules";
   if (globalThis.location?.hash === "#shopping" && isViewAllowed_("shopping")) activeView = "shopping";
+  if (globalThis.location?.hash === "#location-history" && isViewAllowed_("location-history")) activeView = "location-history";
   const initialViewLoad = switchView(activeView);
   void scheduleAuthenticatedBackgroundReads_(membershipContext, initialViewLoad);
   return initialViewLoad;
@@ -1600,7 +1601,6 @@ if (typeof document.addEventListener === "function") {
     }
     if (detail.openMemo || detail.anchorId) {
       const target = detail.openMemo ? document.querySelector("#homeMemoDetails") : document.getElementById(detail.anchorId);
-      if (target?.id === "locationHistory" && !target.hidden && activeView === "settings") target.open = true;
       if (target && typeof target.scrollIntoView === "function") target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
@@ -1966,8 +1966,9 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
-  if (["family-schedules", "shopping"].includes(resolvedView) || ["#family-schedules", "#shopping"].includes(globalThis.location?.hash)) {
-    const hash = ["family-schedules", "shopping"].includes(resolvedView) ? "#" + resolvedView : "";
+  const standaloneHashes = ["family-schedules", "shopping", "location-history"];
+  if (standaloneHashes.includes(resolvedView) || standaloneHashes.includes(globalThis.location?.hash?.slice(1))) {
+    const hash = standaloneHashes.includes(resolvedView) ? "#" + resolvedView : "";
     globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}${hash}`);
   }
   if (resolvedView !== "kaz-os" && /^#kaz-os(?:\/|$)/.test(String(globalThis.location?.hash || ""))) {
@@ -1990,6 +1991,11 @@ async function switchView(viewName) {
 
   if (resolvedView === "settings" && typeof CustomEvent === "function") {
     document.dispatchEvent(new CustomEvent("paruru:settings-opened"));
+  }
+  if (resolvedView === "location-history" && typeof CustomEvent === "function") {
+    document.dispatchEvent(new CustomEvent("paruru:location-history-opened"));
+    window.scrollTo({top: 0, behavior: "instant"});
+    return;
   }
   if (resolvedView === "family-schedules") {
     const pending = [];
@@ -5562,6 +5568,7 @@ function saveUserProfileFromForm() {
 }
 
 function isViewAllowed_(viewName) {
+  if (viewName === "location-history") return activeMembershipContext?.role === "admin" && isViewAllowed_("settings");
   // A read-only child of the existing Home permission, with the same API roles.
   if (viewName === "family-schedules" || viewName === "shopping") return isViewAllowed_("home")
     && ["admin", "guardian", "self_record"].includes(activeMembershipContext?.role);
