@@ -18,6 +18,12 @@
   const text = (parent,tag,value,className='') => {
     const e=document.createElement(tag);e.textContent=value;e.className=className;parent.appendChild(e);return e;
   };
+  const usageKeys=['input_tokens','cached_input_tokens','output_tokens'];
+  function validUsage(value){
+    return value&&Object.keys(value).length===usageKeys.length
+      &&usageKeys.every(k=>Number.isSafeInteger(value[k])&&value[k]>=0)
+      &&value.cached_input_tokens<=value.input_tokens;
+  }
   function validate(view) {
     if(!view||view.schema_version!=='kaz-autonomous-view-v1'||view.raw_payload_stored!==false
       ||!['no_results','current','stale'].includes(view.status))throw Error('AUTONOMOUS_CONTRACT_INVALID');
@@ -26,14 +32,25 @@
         ||i.status!=='partial_completed'||i.work_done!==false||typeof i.decision_required!=='boolean'
         ||!Number.isFinite(Date.parse(i.completed_at))
         ||(i.origin!==undefined&&!['manual','night_artifact','night_evidence'].includes(i.origin))
+        ||(i.usage!==undefined&&(i.origin!=='night_artifact'||!validUsage(i.usage)))
         ||(i.origin==='night_artifact'&&(!Number.isFinite(Date.parse(i.started_at))||Date.parse(i.started_at)>Date.parse(i.completed_at)))
         ||![['title',160],['summary',500],['next_action',300]]
           .every(([key,max])=>typeof i[key]==='string'&&i[key].trim()&&i[key].length<=max)
         ||!Array.isArray(i.evidence_refs)||!i.evidence_refs.length||i.evidence_refs.length>3
         ||!i.evidence_refs.every(ref=>typeof ref==='string'&&partialSource.test(ref)))))
       throw Error('AUTONOMOUS_PARTIAL_CONTRACT_INVALID');
-    if(view.status==='no_results') {if(view.run!==null)throw Error('AUTONOMOUS_CONTRACT_INVALID');return view;}
-    const r=view.run;
+    if(view.status==='no_results'){
+      if(view.run!==null)throw Error('AUTONOMOUS_CONTRACT_INVALID');
+    }else validateRun(view.run);
+    if(view.night_runs!==undefined){
+      if(!Array.isArray(view.night_runs)||view.night_runs.length>2)throw Error('AUTONOMOUS_CONTRACT_INVALID');
+      view.night_runs.forEach(validateRun);
+      if(new Set(view.night_runs.map(r=>r.run_id)).size!==view.night_runs.length)
+        throw Error('AUTONOMOUS_CONTRACT_INVALID');
+    }
+    return view;
+  }
+  function validateRun(r){
     if(!r||r.schema_version!=='kaz-autonomous-run-v1'||!/^[a-f0-9]{64}$/.test(r.run_id)
       ||!statuses.has(r.status)||r.canonical_writes!==0||r.provider_api_calls!==0||r.auto_apply_allowed!==false
       ||r.raw_payload_stored!==false||!Number.isFinite(Date.parse(r.finished_at))
@@ -47,7 +64,6 @@
         ||(i.review!==null&&(!choices[i.review?.decision]||!Number.isFinite(Date.parse(i.review?.observed_at)))))
         throw Error('AUTONOMOUS_CONTRACT_INVALID');
     }
-    return view;
   }
   function reviewWindow(snapshot,item,now=Date.now()) {
     const w=(snapshot?.work||[]).find(w=>w.id===item.work_id);
@@ -90,6 +106,9 @@
     preflight_failed:'夜間処理の実行前確認に失敗しました。実行記録を確認してください。',
     running:'夜間処理を実行中です。',
     completed:'夜間処理は完了しました。成果を取り込むとここに表示します。',
+    time_limit:'夜間の実行時間上限に達しました。',
+    budget_limit:'夜間のCodex実行枠を使い切りました。',
+    work_limit:'設定された夜間の作業件数に達しました。',
     scheduled:'今夜の夜間処理は開始時刻前です。'
   };
   const exclusionLabels={
@@ -114,7 +133,9 @@
       ? nightMessages[reason] : status==='no_output'&&reason==='evidence_only'?nightMessages.evidence_only : status==='unavailable'&&reason==='inventory_unavailable'
         ? nightMessages.inventory_unavailable : status==='failed'&&reason==='preflight_failed'
           ? nightMessages.preflight_failed : Object.hasOwn(nightMessages,status)?nightMessages[status]:nightMessages.unknown;
-    if(status!=='completed'||!hasResult)text(parent,'p',message,'kp-notice');
+    if(['time_limit','budget_limit','work_limit'].includes(reason))
+      text(parent,'p',nightMessages[reason],'kai-action-source');
+    else if(status!=='completed'||!hasResult)text(parent,'p',message,'kp-notice');
     if(status==='skipped'&&Number.isInteger(execution.inventory_count)
       &&execution.inventory_count>=0&&execution.inventory_count<=200){
       const details=document.createElement('details');
@@ -142,20 +163,29 @@
     const recent=partials.filter(i=>i.origin==='night_artifact'&&isRecent(i));
     const manual=partials.filter(i=>i.origin==='manual');
     const history=partials.filter(i=>!manual.includes(i)&&!recent.includes(i));
-    const recentRun=view.status==='current'&&view.run.night_day===todayNight&&!view.run.manual_general_once;
+    const recentRuns=(view.night_runs||(view.run&&view.status==='current'?[view.run]:[]))
+      .filter(r=>r.night_day===todayNight&&!r.manual_general_once);
+    const pastRun=view.run&&!recentRuns.some(r=>r.run_id===view.run.run_id)?view.run:null;
     text(section,'h2','AIが進めた仕事');
     const report=document.createElement('div');
     report.className='kai-autonomous-latest';
     text(report,'h3',todayNight+' 夜の作業');
-    const completedRecent=recent.length+(recentRun?view.run.items.filter(i=>i.substep_completed&&i.pr_url).length:0);
+    const completedRecent=recent.length+recentRuns.flatMap(r=>r.items).filter(i=>i.substep_completed&&i.pr_url).length;
+    const usage=[...recent.map(i=>i.usage),...recentRuns.filter(r=>r.codex_cli_attempts>0).map(r=>r.metrics?.usage)];
+    if(usage.length){
+      const known=usage.filter(validUsage);
+      const totals=usageKeys.map(k=>known.reduce((total,u)=>total+u[k],0));
+      const amounts=known.length?`入力 ${totals[0].toLocaleString()} · 出力 ${totals[2].toLocaleString()} トークン`:'取得できません';
+      text(report,'p',`Codex利用量 ${amounts}${known.length<usage.length?'（一部未計測）':''} · 費用 未計測`,'kai-action-source');
+    }
     const summary=text(report,'p','','kai-action-source');
     const updateSummary=()=>{
-      const pending=recent.filter(i=>i.decision_required).length+(recentRun?view.run.items.filter(i=>ready(i)&&!i.review).length:0);
+      const pending=recent.filter(i=>i.decision_required).length+recentRuns.flatMap(r=>r.items).filter(i=>ready(i)&&!i.review).length;
       const completed=view.partial_progress_unavailable?'集計できません':completedRecent+'件';
       summary.textContent=`新しい部分成果 ${completed} · 判断待ち ${pending}件`;
     };
     updateSummary();
-    renderNightStatus(report,view.night_execution,todayNight,Boolean(completedRecent||recentRun));
+    renderNightStatus(report,view.night_execution,todayNight,Boolean(completedRecent||recentRuns.length));
     section.appendChild(report);
     function renderPartial(parent,item){
       const card=document.createElement('article');card.dataset.autonomousPartial=item.work_label;
@@ -186,7 +216,7 @@
       if(!archive){
         archive=document.createElement('details');
         archive.className='kai-autonomous-history';
-        const historyCount=history.length+(view.status!=='no_results'&&!recentRun?view.run.items.length:0);
+        const historyCount=history.length+(pastRun?.items.length||0);
         text(archive,'summary',`過去の成果・実行記録を見る（${historyCount}件）`);
         section.appendChild(archive);
       }
@@ -198,94 +228,96 @@
     }
     if(view.partial_progress_unavailable)
       text(section,'p','一部の成果履歴を読み戻せません。','kp-notice');
-    if(view.status==='no_results'){host.prepend(section);return;}
-    const runParent=recentRun?report:archiveSection();
-    section.dataset.autonomousRun=view.run.run_id;
-    const completed=view.run.items.filter(x=>x.substep_completed).length;
-    const internal=view.run.items.filter(x=>!ready(x)&&x.status!=='complete'&&x.status!=='running').length;
-    const counts=text(runParent,'p','');
-    const updateCounts=()=>{updateSummary();const pending=view.run.items.filter(x=>ready(x)&&!x.review).length;
-      counts.textContent=`あなたの判断待ち ${pending}件 · 自動調査・再評価待ち ${internal}件 · 完了した一手 ${completed}件`;};
-    updateCounts();
-    text(runParent,'p',view.run.manual_general_once?'手動実行の記録':`${view.run.night_day} 夜の実行記録。`,'kai-action-source');
-    if(view.status==='stale')text(runParent,'p','以前の実行記録です。','kp-notice');
-    for(const item of [...view.run.items].sort((a,b)=>Number(!!ready(b))-Number(!!ready(a)))){
-      const card=document.createElement('article');card.dataset.autonomousWork=item.work_id;
-      const eligible=ready(item);
-      const heading=eligible ? (item.review?'判断を記録済み':'あなたの判断待ち')
-        : item.status==='complete'?(item.substep_completed?'部分成果完了':'調査完了')
-          :item.status==='running'?'実行中':'自動調査・再評価待ち';
-      text(card,'h3',`${item.title} · ${heading}`);
-      let details;
-      if(eligible){
-        const d=item.owner_decision;
-        for(const [label,value] of [['何が進んだか',item.summary||d.verified_facts],
-          ['AIの推奨',d.recommended_option],['あなたにお願いしたい判断',d.owner_reason]]){
-          text(card,'h4',label);
-          text(card,'p',value);
+    for(const run of [...recentRuns,...(pastRun?[pastRun]:[])]){
+      const currentRun=run!==pastRun||view.status==='current';
+      const runParent=run===pastRun?archiveSection():report;
+      section.dataset.autonomousRun=run.run_id;
+      const completed=run.items.filter(x=>x.substep_completed).length;
+      const internal=run.items.filter(x=>!ready(x)&&x.status!=='complete'&&x.status!=='running').length;
+      const counts=text(runParent,'p','');
+      const updateCounts=()=>{updateSummary();const pending=run.items.filter(x=>ready(x)&&!x.review).length;
+        counts.textContent=`あなたの判断待ち ${pending}件 · 自動調査・再評価待ち ${internal}件 · 完了した一手 ${completed}件`;};
+      updateCounts();
+      text(runParent,'p',run.manual_general_once?'手動実行の記録':`${run.night_day} 夜の実行記録。`,'kai-action-source');
+      if(!currentRun)text(runParent,'p','以前の実行記録です。','kp-notice');
+      for(const item of [...run.items].sort((a,b)=>Number(!!ready(b))-Number(!!ready(a)))){
+        const card=document.createElement('article');card.dataset.autonomousWork=item.work_id;
+        const eligible=ready(item);
+        const heading=eligible ? (item.review?'判断を記録済み':'あなたの判断待ち')
+          : item.status==='complete'?(item.substep_completed?'部分成果完了':'調査完了')
+            :item.status==='running'?'実行中':'自動調査・再評価待ち';
+        text(card,'h3',`${item.title} · ${heading}`);
+        let details;
+        if(eligible){
+          const d=item.owner_decision;
+          for(const [label,value] of [['何が進んだか',item.summary||d.verified_facts],
+            ['AIの推奨',d.recommended_option],['あなたにお願いしたい判断',d.owner_reason]]){
+            text(card,'h4',label);
+            text(card,'p',value);
+          }
+          details=document.createElement('details');
+          text(details,'summary','背景・検証・別案を確認');
+          for(const [key,label] of Object.entries({background:'背景',cause:'原因',verified_facts:'検証結果',
+            remaining:'残っていること',recommendation_reason:'推奨の根拠',alternative_option:'別案'})){
+            text(details,'h4',label);
+            text(details,'p',d[key]);
+          }
+        }else{
+          if(item.summary)text(card,'p',item.summary);
+          if(item.status==='complete'&&item.substep_completed)
+            text(card,'p','Work全体は未完了です。今は本人の判断は不要です。','kai-action-source');
+          if(heading==='自動調査・再評価待ち')
+            text(card,'p','判断をお願いできる段階まで調査できていません。今は操作不要です。','kp-notice');
         }
-        details=document.createElement('details');
-        text(details,'summary','背景・検証・別案を確認');
-        for(const [key,label] of Object.entries({background:'背景',cause:'原因',verified_facts:'検証結果',
-          remaining:'残っていること',recommendation_reason:'推奨の根拠',alternative_option:'別案'})){
-          text(details,'h4',label);
-          text(details,'p',d[key]);
+        const slot=eligible&&!item.review&&currentRun ? reviewWindow(snapshot,item):null;
+        if(slot){const clock=x=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(x));
+          text(card,'p',`次の確認済み空き枠: ${clock(slot.start)}〜${clock(slot.end)}。確認時間が未推定のため、予定への割当はしていません。`);}
+        const output=text(card,'p',item.review?`${choices[item.review.decision]}を記録済みです。`:'');
+        output.setAttribute('role','status');output.setAttribute('aria-live','polite');
+        const buttons=[];
+        if(eligible&&!item.review&&typeof review==='function'&&currentRun){
+          const topic=topics[item.owner_decision.kind];
+          text(card,'p','選んだ判断だけを保存します。PRのマージ・公開・Work更新は別操作です。別案・保留・見送りは次回の候補選定に反映します。','kai-action-source');
+          const group=text(card,'div','','kai-review-actions');
+          group.setAttribute('role','group');
+          group.setAttribute('aria-label',`${topic}の判断`);
+          const actions={approve:`推奨の${topic}を記録`,changes_requested:`別の${topic}の検討を記録`,
+            defer:`${topic}の判断を保留`,reject:`${topic}の提案を見送る`};
+          for(const [decision,label]of Object.entries(actions)){
+            const button=text(group,'button',label,'kp-button');button.type='button';
+            button.dataset.autonomousDecision=decision;
+            button.disabled=item.review_read_status!=='current'||!!item.review;
+            button.addEventListener('click',async()=>{
+              buttons.forEach(b=>{b.disabled=true;});output.textContent='確認結果を保存しています…';
+              try{
+                const result=await review({run_id:run.run_id,work_id:item.work_id,decision,observed_at:new Date().toISOString()});
+                if(!current())return;
+                if(!result||result.schema_version!=='kaz-autonomous-review-receipt-v1'
+                  ||!['saved','already_saved'].includes(result.status)||result.decision!==decision
+                  ||result.auto_apply_allowed!==false||result.canonical_writes!==0||result.provider_calls!==0)
+                  throw Error('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');
+                const fresh=validate(await read());
+                const saved=[...(fresh.night_runs||[]),fresh.run].find(r=>r?.run_id===run.run_id)?.items.find(i=>i.work_id===item.work_id)?.review;
+                if(!saved||saved.decision!==decision)throw Error('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');
+                output.textContent=`${label}を保存し、読み戻せました。`;
+                item.review=saved;updateCounts();
+                buttons.forEach(b=>{b.disabled=true;});
+              }catch(_){if(current())output.textContent='保存結果を確認できません。再送せず、画面を読み直して状態を確認してください。';}
+            });buttons.push(button);
+          }
         }
-      }else{
-        if(item.summary)text(card,'p',item.summary);
-        if(item.status==='complete'&&item.substep_completed)
-          text(card,'p','Work全体は未完了です。今は本人の判断は不要です。','kai-action-source');
-        if(heading==='自動調査・再評価待ち')
-          text(card,'p','判断をお願いできる段階まで調査できていません。今は操作不要です。','kp-notice');
-      }
-      const slot=eligible&&!item.review&&view.status==='current' ? reviewWindow(snapshot,item):null;
-      if(slot){const clock=x=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date(x));
-        text(card,'p',`次の確認済み空き枠: ${clock(slot.start)}〜${clock(slot.end)}。確認時間が未推定のため、予定への割当はしていません。`);}
-      const output=text(card,'p',item.review?`${choices[item.review.decision]}を記録済みです。`:'');
-      output.setAttribute('role','status');output.setAttribute('aria-live','polite');
-      const buttons=[];
-      if(eligible&&!item.review&&typeof review==='function'&&view.status==='current'){
-        const topic=topics[item.owner_decision.kind];
-        text(card,'p','選んだ判断だけを保存します。PRのマージ・公開・Work更新は別操作です。別案・保留・見送りは次回の候補選定に反映します。','kai-action-source');
-        const group=text(card,'div','','kai-review-actions');
-        group.setAttribute('role','group');
-        group.setAttribute('aria-label',`${topic}の判断`);
-        const actions={approve:`推奨の${topic}を記録`,changes_requested:`別の${topic}の検討を記録`,
-          defer:`${topic}の判断を保留`,reject:`${topic}の提案を見送る`};
-        for(const [decision,label]of Object.entries(actions)){
-          const button=text(group,'button',label,'kp-button');button.type='button';
-          button.dataset.autonomousDecision=decision;
-          button.disabled=item.review_read_status!=='current'||!!item.review;
-          button.addEventListener('click',async()=>{
-            buttons.forEach(b=>{b.disabled=true;});output.textContent='確認結果を保存しています…';
-            try{
-              const result=await review({run_id:view.run.run_id,work_id:item.work_id,decision,observed_at:new Date().toISOString()});
-              if(!current())return;
-              if(!result||result.schema_version!=='kaz-autonomous-review-receipt-v1'
-                ||!['saved','already_saved'].includes(result.status)||result.decision!==decision
-                ||result.auto_apply_allowed!==false||result.canonical_writes!==0||result.provider_calls!==0)
-                throw Error('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');
-              const fresh=validate(await read());
-              const saved=fresh.run?.run_id===view.run.run_id&&fresh.run.items.find(i=>i.work_id===item.work_id)?.review;
-              if(!saved||saved.decision!==decision)throw Error('AUTONOMOUS_REVIEW_RESULT_UNKNOWN');
-              output.textContent=`${label}を保存し、読み戻せました。`;
-              item.review=saved;updateCounts();
-              buttons.forEach(b=>{b.disabled=true;});
-            }catch(_){if(current())output.textContent='保存結果を確認できません。再送せず、画面を読み直して状態を確認してください。';}
-          });buttons.push(button);
+        if(eligible&&item.review_read_status!=='current')text(card,'p','確認結果の読戻しが未確認のため、操作を保留しています。','kp-notice');
+        if(item.pr_url&&!details){
+          details=document.createElement('details');
+          text(details,'summary','根拠資料（任意）');
         }
+        if(item.pr_url){
+          const a=text(details,'a','GitHubで検証記録を見る','kp-button');
+          a.href=item.pr_url;a.target='_blank';a.rel='noopener noreferrer';
+        }
+        if(details)card.appendChild(details);
+        runParent.appendChild(card);
       }
-      if(eligible&&item.review_read_status!=='current')text(card,'p','確認結果の読戻しが未確認のため、操作を保留しています。','kp-notice');
-      if(item.pr_url&&!details){
-        details=document.createElement('details');
-        text(details,'summary','根拠資料（任意）');
-      }
-      if(item.pr_url){
-        const a=text(details,'a','GitHubで検証記録を見る','kp-button');
-        a.href=item.pr_url;a.target='_blank';a.rel='noopener noreferrer';
-      }
-      if(details)card.appendChild(details);
-      runParent.appendChild(card);
     }
     if(current())host.prepend(section);
   }

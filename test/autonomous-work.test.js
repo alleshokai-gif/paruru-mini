@@ -73,6 +73,27 @@ async function main(){
   assert.ok(!all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-51'));
   assert.ok(!historyBox.open,'history starts collapsed');
   assert.ok(all(recentBox).some(x=>x.textContent==='新しい部分成果 1件 · 判断待ち 0件'));
+  const batch=fixture(), second=fixture().run;
+  batch.as_of=asOf;
+  batch.run.night_day=second.night_day='2026-11-04';
+  second.run_id='b'.repeat(64);second.items[0].work_id='second';
+  batch.run.codex_cli_attempts=second.codex_cli_attempts=1;
+  batch.run.metrics={usage:{input_tokens:100,cached_input_tokens:20,output_tokens:10}};
+  second.metrics={usage:{input_tokens:200,cached_input_tokens:30,output_tokens:15}};
+  batch.night_runs=[batch.run,second];
+  const batchHost=new Node('div');
+  await feature.append(batchHost,{read:async()=>batch,current:()=>true,review:async payload=>{
+    assert.equal(payload.run_id,second.run_id);
+    second.items[0].review={decision:payload.decision,observed_at:payload.observed_at};
+    return {schema_version:'kaz-autonomous-review-receipt-v1',status:'saved',decision:payload.decision,
+      auto_apply_allowed:false,canonical_writes:0,provider_calls:0};
+  }});
+  const batchRecent=all(batchHost).find(x=>x.className==='kai-autonomous-latest');
+  assert.ok(all(batchRecent).some(x=>x.textContent==='新しい部分成果 2件 · 判断待ち 2件'));
+  assert.ok(all(batchRecent).some(x=>x.textContent?.includes('入力 300 · 出力 25')));
+  await all(all(batchRecent).find(x=>x.dataset.autonomousWork==='second'))
+    .find(x=>x.dataset.autonomousDecision==='approve').listeners.click();
+  assert.ok(all(batchRecent).some(x=>x.textContent==='新しい部分成果 2件 · 判断待ち 1件'));
   const oldRun=fixture();oldRun.as_of=asOf;oldRun.run.night_day='2026-11-03';
   const oldRunHost=new Node('div');
   await feature.append(oldRunHost,{read:async()=>oldRun,current:()=>true});
