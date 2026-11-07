@@ -283,7 +283,7 @@ let originalEditDueDate = "";
 let shoppingTimingTouched = false;
 
 function rememberViewForControllerChange_() {
-  if (activeView !== "nurse-okan") return;
+  if (!["nurse-okan", "settings"].includes(activeView)) return;
   try {
     sessionStorage.setItem(CONTROLLER_CHANGE_VIEW_STORAGE_KEY, activeView);
   } catch (_) {}
@@ -293,7 +293,7 @@ function consumeViewAfterControllerChange_() {
   try {
     const viewName = String(sessionStorage.getItem(CONTROLLER_CHANGE_VIEW_STORAGE_KEY) || "");
     sessionStorage.removeItem(CONTROLLER_CHANGE_VIEW_STORAGE_KEY);
-    return viewName === "nurse-okan" && isViewAllowed_(viewName) ? viewName : "";
+    return ["nurse-okan", "settings"].includes(viewName) && isViewAllowed_(viewName) ? viewName : "";
   } catch (_) {
     return "";
   }
@@ -555,8 +555,9 @@ if ("serviceWorker" in navigator) {
           });
         };
         checkForAppUpdate();
+        document.addEventListener("paruru:settings-opened", checkForAppUpdate);
         document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "visible" && activeView === "family-schedules") {
+          if (document.visibilityState === "visible" && ["family-schedules", "settings"].includes(activeView)) {
             checkForAppUpdate();
           }
         });
@@ -835,7 +836,7 @@ function showAuthenticationState(message, state = "locked") {
     homeAgentConversationContext = {};
     notificationCandidatesState = { lastFetchedAt: 0, inFlight: null, items: [], totalCount: 0, includeTomorrow: false, warnings: [] };
     try { sessionStorage.removeItem(AGENT_CHAT_SESSION_STORAGE_KEY); } catch (_) {}
-    if (typeof CustomEvent === "function" && typeof document.dispatchEvent === "function") document.dispatchEvent(new CustomEvent("kaz-os:locked", { detail: {} }));
+    if (typeof CustomEvent === "function" && typeof document.dispatchEvent === "function") document.dispatchEvent(new CustomEvent("kaz-os:locked", { detail: { state } }));
     if (typeof pendingHomeAgentActionCandidate !== "undefined") pendingHomeAgentActionCandidate = null;
   }
   splash?.classList.remove("is-hidden");
@@ -1599,6 +1600,7 @@ if (typeof document.addEventListener === "function") {
     }
     if (detail.openMemo || detail.anchorId) {
       const target = detail.openMemo ? document.querySelector("#homeMemoDetails") : document.getElementById(detail.anchorId);
+      if (target?.id === "locationHistory" && !target.hidden && activeView === "settings") target.open = true;
       if (target && typeof target.scrollIntoView === "function") target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
@@ -1986,6 +1988,7 @@ async function switchView(viewName) {
     : resolvedView);
   showMessage("", "");
 
+  if (resolvedView === "settings") document.dispatchEvent(new CustomEvent("paruru:settings-opened"));
   if (resolvedView === "family-schedules") {
     const pending = [];
     document.dispatchEvent(new CustomEvent("family-schedules:opened", {detail:{waitUntil(promise){pending.push(promise);}}}));
@@ -5588,7 +5591,8 @@ function normalizeAllowedView_(viewName) {
 function applyAllowedViews_() {
   getViewNavigationItems_().forEach((item) => {
     const allowed = isViewAllowed_(item.dataset.visibilityView || item.dataset.targetView)
-      && (!item.dataset.requiredCapability || hasMembershipCapability_(item.dataset.requiredCapability));
+      && (!item.dataset.requiredCapability || hasMembershipCapability_(item.dataset.requiredCapability))
+      && (!item.dataset.requiredRole || item.dataset.requiredRole === activeMembershipContext?.role);
     item.hidden = !allowed;
     item.setAttribute("aria-hidden", String(!allowed));
   });
