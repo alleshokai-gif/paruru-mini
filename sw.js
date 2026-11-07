@@ -1,5 +1,5 @@
-importScripts("./build.js?v=v20261107-location-history-v11");
-// Release: v20261107-location-history-v11
+importScripts("./build.js?v=v20261107-location-history-page");
+// Release: v20261107-location-history-page
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
 const DEBUG = false;

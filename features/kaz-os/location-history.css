@@ -5,6 +5,52 @@
   cursor: pointer;
 }
 
+#locationHistory {
+  max-width: 700px;
+  margin-inline: auto;
+  min-width: 0;
+}
+
+#locationHistory h1, #locationHistory h2, #locationHistory h3 {
+  margin: 0 0 8px;
+}
+
+#locationHistory h2 {
+  margin-block-start: 20px;
+  font-size: 1.15rem;
+}
+
+#locationHistory .location-heading p,
+#locationHistory .location-source {
+  color: var(--muted);
+  font-size: .875rem;
+  margin-block: 6px;
+}
+
+#locationHistory .location-search,
+#locationHistory .location-import,
+#locationHistory [data-location-results] > li {
+  border: 1px solid var(--line, #e5e5ef);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+#locationHistory .location-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+#locationHistory .location-filters label:first-child,
+#locationHistory .location-filters label:last-child {
+  grid-column: 1 / -1;
+}
+
+#locationHistory [data-location-status]:empty {
+  display: none;
+}
+
 #locationHistory .settings-form,
 #locationHistory label {
   min-width: 0;
@@ -30,12 +76,24 @@
 
 #locationHistory [data-location-results] {
   padding: 0;
+  margin-block: 10px;
   list-style: none;
 }
 
 #locationHistory [data-location-results] > li {
-  padding: 12px 0;
-  border-top: 1px solid var(--line, #ddd);
+  margin-block: 8px;
+  padding-block: 0;
+}
+
+#locationHistory [data-location-results] > li > details > summary {
+  padding-block: 9px;
+}
+
+#locationHistory [data-location-results] > li > details > summary span {
+  display: block;
+  color: var(--muted);
+  font-size: .85rem;
+  margin-block-start: 3px;
 }
 
 #locationHistory [data-location-results] label {
@@ -49,5 +107,31 @@
 }
 
 #locationHistory [data-location-results] ul {
-  padding-inline-start: 18px;
+  padding: 0;
+  list-style: none;
+}
+
+#locationHistory .location-detail {
+  border-top: 1px solid var(--line, #e5e5ef);
+  padding-block: 12px;
+}
+
+#locationHistory .location-detail li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+
+#locationHistory [data-location-pagination]:not([hidden]) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-block: 12px;
+}
+
+#locationHistory .location-google-maps {
+  font-weight: 600;
 }
