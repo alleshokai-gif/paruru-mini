@@ -1988,7 +1988,9 @@ async function switchView(viewName) {
     : resolvedView);
   showMessage("", "");
 
-  if (resolvedView === "settings") document.dispatchEvent(new CustomEvent("paruru:settings-opened"));
+  if (resolvedView === "settings" && typeof CustomEvent === "function") {
+    document.dispatchEvent(new CustomEvent("paruru:settings-opened"));
+  }
   if (resolvedView === "family-schedules") {
     const pending = [];
     document.dispatchEvent(new CustomEvent("family-schedules:opened", {detail:{waitUntil(promise){pending.push(promise);}}}));
