@@ -190,7 +190,8 @@
     const input = element("input");
     input.type = "text";
     input.maxLength = 120;
-    input.value = row.name_state === "unresolved" || row.name_state === "nearby" ? "" : row.name;
+    input.value = ["owner", "known", "estimated"].includes(row.name_state) ? row.name : "";
+    input.placeholder = "任意の表示名";
     input.autocomplete = "off";
     const label = element("label", "施設全体の名前");
     label.append(input);
