@@ -58,10 +58,14 @@ export function createRailHomeRouteService({ odakyuStatic, jrStatic, futureIndex
         ? attachJrNambuLocations([train], rows, now)[0] : train });
   }
 
-  async function evaluate({ journeyId, trainId, page = 0 } = {}) {
-    const now = clock(), choices = await getTrainChoices(journeyId, page, now);
-    const selectedTrain = choices.trains.find((train) => train.id === trainId);
-    if (!selectedTrain) throw Error('HOME_ROUTE_TRAIN_INVALID');
+  async function evaluate({ journeyId, trainId, page = 0, stationId } = {}) {
+    const now = clock();
+    let selectedTrain;
+    if (!stationId) {
+      const choices = await getTrainChoices(journeyId, page, now);
+      selectedTrain = choices.trains.find((train) => train.id === trainId);
+      if (!selectedTrain) throw Error('HOME_ROUTE_TRAIN_INVALID');
+    }
     let realtime = null;
     try { realtime = await adapter.getRealtime(); }
     catch { /* The existing Future Bus Query retains a Static fallback. */ }
@@ -73,7 +77,7 @@ export function createRailHomeRouteService({ odakyuStatic, jrStatic, futureIndex
     ]));
     sourceLoaders['tokyu:mukougaoka_to_kibukihoncho'] = async ({ boardingAt }) =>
       getFutureTokyuBuses({ index: await tokyuIndex(), now, boardingAt });
-    return compareHomeRoutes({ journeyId, selectedTrain,
+    return compareHomeRoutes({ journeyId, selectedTrain, stationId,
       transferMinutes: HOME_TRANSFER_MINUTES, rushTransferMinutes: HOME_RUSH_TRANSFER_MINUTES,
       loadBuses: createHomeBusLoader(sourceLoaders), now });
   }

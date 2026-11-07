@@ -89,6 +89,17 @@ function createRuntimeService({ futureIndex = null, unknownSources = [], unavail
   });
 }
 
+test('confirmed station uses only its bus departures and existing walking allowances', async () => {
+  const result = await createRuntimeService().evaluate({ stationId: 'noborito' });
+  assert.equal(result.selectedTrainId, null);
+  assert.equal(result.stationId, 'noborito');
+  assert.ok(result.fastest);
+  assert.equal(result.fastest.stationTimeSource, 'current_station');
+  assert.ok(result.options.every((row) => row.stationId === 'noborito'
+    && row.boardingAt > now && row.homeArrivalAt > row.departureAt));
+  assert.equal(result.alternate, null);
+});
+
 function realtimeForMukougaoka(index) {
   const fixture = sourceFixtureById.get('mukougaoka_to_kibukihoncho');
   const row = index.directions[fixture.id][0], scheduledDeparture = dayStart + row.scheduledSeconds;

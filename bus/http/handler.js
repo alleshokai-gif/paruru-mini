@@ -30,6 +30,9 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
       const journeyQuery = journeyPath && [...url.searchParams.keys()].length === 1
         && typeof journeyId === 'string' && journeyId.length > 0;
       const railKeys = [...url.searchParams.keys()];
+      const stationId = url.searchParams.get('stationId');
+      const stationHomeQuery = homeRoutePath && railKeys.length === 1
+        && ['noborito', 'mukougaoka', 'musashi_mizonokuchi'].includes(stationId);
       const railQuery = (railTrainsPath || homeRoutePath)
         && railKeys.every((key) => ['journeyId', 'page', 'trainId'].includes(key))
         && railKeys.length === new Set(railKeys).size
@@ -38,7 +41,7 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
         && (!homeRoutePath || /^[a-zA-Z0-9:_-]{1,100}$/.test(url.searchParams.get('trainId') || ''))
         && (!railKeys.includes('page') || /^(?:0|-?[1-9]\d?)$/.test(url.searchParams.get('page'))
           && Math.abs(Number(url.searchParams.get('page'))) <= 50);
-      if (!arrivalsPath && !hubQuery && !journeyQuery && !railQuery && !commuteQuery)
+      if (!arrivalsPath && !hubQuery && !journeyQuery && !railQuery && !stationHomeQuery && !commuteQuery)
         return reply({ success: false, error: { code: 'BUS_NOT_FOUND' } }, 404);
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '600' } });
       if (request.method !== 'GET') return reply({ success: false, error: { code: 'BUS_METHOD_NOT_ALLOWED' } }, 405);
@@ -51,10 +54,11 @@ export function createHttpHandler(serviceFactory, { health = false, hubServiceFa
             return reply({ success: false, error: { code: 'BUS_NOT_FOUND' } }, 404);
           return reply(await kazuRouteServiceFactory(env).evaluate(commuteMode));
         }
-        if (railQuery) {
+        if (railQuery || stationHomeQuery) {
           if (typeof railHomeRouteServiceFactory !== 'function')
             return reply({ success: false, error: { code: 'BUS_NOT_FOUND' } }, 404);
           const railService = railHomeRouteServiceFactory(env);
+          if (stationHomeQuery) return reply(await railService.evaluate({ stationId }));
           const page = Number(url.searchParams.get('page') || 0);
           return reply(railTrainsPath
             ? await railService.getTrainChoices(url.searchParams.get('journeyId'), page)
