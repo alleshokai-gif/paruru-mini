@@ -9,7 +9,7 @@
   <link rel="icon" href="./assets/icons/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
   <link rel="stylesheet" href="./style.css?v=v20261023-kaz-development-metrics-v7">
-  <link rel="stylesheet" href="./features/kaz-os/location-history.css?v=v20261107-location-history-v1">
+  <link rel="stylesheet" href="./features/kaz-os/location-history.css?v=v20261107-location-history-v11">
   <link rel="stylesheet" href="./features/bus/bus.css">
   <link rel="stylesheet" href="./features/bus/hub.css?v=v20260929-seibu-location-v1">
   <link rel="stylesheet" href="./features/bus/journey.css">
@@ -233,6 +233,30 @@
       <section id="settingsView" class="app-view" data-view="settings">
         <div class="settings-placeholder">
           <h1>&#35373;&#23450;</h1>
+          <details id="locationHistory" class="settings-fieldset" hidden>
+            <summary>訪問履歴（本人専用）</summary>
+            <p>施設名は検索時に自動で照合します。空欄で最近の訪問を表示できます。Googleマップの推定履歴なので、施設内の個別店舗への入店は断定できません。</p>
+            <form class="settings-form" data-location-action="search">
+              <label>施設名 <input name="query" type="search" maxlength="120" autocomplete="off"></label>
+              <label>カテゴリ <select name="category"></select></label>
+              <label>開始日（日本時間） <input name="start" type="date"></label>
+              <label>終了日（日本時間） <input name="end" type="date"></label>
+              <label class="settings-check-row"><input name="include_excluded" type="checkbox"> 除外した訪問も表示</label>
+              <button type="submit">訪問履歴を検索</button>
+            </form>
+            <p data-location-summary></p>
+            <p data-location-status="search" role="status"></p>
+            <p data-location-status="edit" role="status"></p>
+            <ul data-location-results></ul>
+            <details>
+              <summary>Googleタイムラインを取り込む</summary>
+              <form class="settings-form" data-location-action="import">
+                <label>AndroidでエクスポートしたJSON <input name="file" type="file" accept=".json,application/json" required></label>
+                <button type="submit">選んだファイルを取り込む</button>
+              </form>
+              <p data-location-status="import" role="status"></p>
+            </details>
+          </details>
           <form id="profileForm" class="settings-form">
             <label class="field">
               <span>&#21033;&#29992;&#32773;ID</span>
@@ -299,40 +323,6 @@
             <summary>通信診断（安全なメタデータのみ）</summary>
             <p>トークン、利用者情報、予定名、本文は保存しません。</p>
             <pre id="transportDiagnosticsOutput" aria-live="polite">診断はまだありません。</pre>
-          </details>
-          <details id="locationHistory" class="settings-fieldset" hidden>
-            <summary>訪問履歴（本人専用）</summary>
-            <p>Googleマップが推定した履歴です。施設名と同じPlace IDの訪問候補を表示します。施設全体の記録から個別店舗への入店は判断しません。</p>
-            <form class="settings-form" data-location-action="search">
-              <label>施設名 <input name="query" type="search" maxlength="120" autocomplete="off"></label>
-              <label>カテゴリ <select name="category"></select></label>
-              <label>開始日（日本時間） <input name="start" type="date"></label>
-              <label>終了日（日本時間） <input name="end" type="date"></label>
-              <button type="submit">訪問候補を検索</button>
-            </form>
-            <p data-location-status="search" role="status"></p>
-            <ul data-location-results></ul>
-            <details>
-              <summary>公開施設の名前を登録</summary>
-              <p>検索したい施設だけ登録します。対象店舗と建物全体のPlace IDが違う場合は、店舗のIDを使ってください。</p>
-              <p><a href="https://developers.google.com/maps/documentation/places/web-service/place-id?hl=ja" target="_blank" rel="noreferrer">Googleで施設のPlace IDを調べる（別画面）</a></p>
-              <form class="settings-form" data-location-action="places">
-                <label>GoogleのPlace ID <input name="place_id" required maxlength="256" pattern="[A-Za-z0-9_\-]+" autocomplete="off"></label>
-                <label>施設名 <input name="name" required maxlength="200" autocomplete="off"></label>
-                <label>カテゴリ <select name="category" required></select></label>
-                <label class="settings-check-row"><input name="public_venue" type="checkbox" required> 公開施設であることを確認しました</label>
-                <button type="submit">施設名を登録</button>
-              </form>
-              <p data-location-status="places" role="status"></p>
-            </details>
-            <details>
-              <summary>Googleタイムラインを取り込む</summary>
-              <form class="settings-form" data-location-action="import">
-                <label>AndroidでエクスポートしたJSON <input name="file" type="file" accept=".json,application/json" required></label>
-                <button type="submit">選んだファイルを取り込む</button>
-              </form>
-              <p data-location-status="import" role="status"></p>
-            </details>
           </details>
           <p id="buildVersion" class="build-version">アプリVersion: 読み込み中…</p>
         </div>
@@ -563,8 +553,8 @@
       <div id="familyInboxReviewCandidates" class="family-inbox-review-candidates"></div>
     </dialog>
 
-    <script src="./build.js?v=v20261107-location-history-v1" defer></script>
-    <script src="./features/navigation/config.js?v=v20261105-family-shopping-v1" defer></script>
+    <script src="./build.js?v=v20261107-location-history-v11" defer></script>
+    <script src="./features/navigation/config.js?v=v20261107-location-history-v11" defer></script>
     <script src="./features/transport/diagnostics.js?v=v20260925-dynamic-daily-planning-v2" defer></script>
     <script src="./features/transport/read-v2-config.js?v=v20261105-autonomous-history-v1" defer></script>
     <script src="./features/kaz-os/autonomous-work.js?v=v20261107-night-provenance-v1" defer></script>
@@ -573,8 +563,8 @@
     <script src="./features/auth/firebase-auth.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/auth/firebase-auth-runtime.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
     <script src="./features/nurse-okan/health-routine.js?v=v20260925-phase2-today-selection-contract-v1" defer></script>
-    <script src="./features/kaz-os/location-history.js?v=v20261107-location-history-v1" defer></script>
-    <script src="./app.js?v=v20261107-location-history-v1" defer></script>
+    <script src="./features/kaz-os/location-history.js?v=v20261107-location-history-v11" defer></script>
+    <script src="./app.js?v=v20261107-location-history-v11" defer></script>
     <script src="./features/shopping/page.js?v=v20261105-family-shopping-v1" defer></script>
     <script src="./features/family-schedules/page.js?v=v20261106-family-schedule-refresh-v1" defer></script>
     <script src="./features/nurse-okan/nurse-okan.js?v=v20260925-navigation-final-v8" defer></script>

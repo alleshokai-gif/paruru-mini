@@ -27,3 +27,27 @@
 #locationHistory li {
   overflow-wrap: anywhere;
 }
+
+#locationHistory [data-location-results] {
+  padding: 0;
+  list-style: none;
+}
+
+#locationHistory [data-location-results] > li {
+  padding: 12px 0;
+  border-top: 1px solid var(--line, #ddd);
+}
+
+#locationHistory [data-location-results] label {
+  display: block;
+  margin: 6px 0;
+}
+
+#locationHistory [data-location-results] button {
+  margin: 4px 4px 4px 0;
+  max-width: 100%;
+}
+
+#locationHistory [data-location-results] ul {
+  padding-inline-start: 18px;
+}

@@ -19,6 +19,7 @@
     { id: "kaz-os", label: "Kaz OS", note: "やること・予定・確認", icon: "▦", view: "kaz-os", page: "today", menu: true, section: "やること・確認" },
     { id: "memo", label: "ぱるるメモ", note: "思いついたことを残す", icon: "📝", view: "home", capability: "memo.self.create", openMemo: true, menu: true, section: "その他" },
     { id: "settings", label: "設定", icon: "⚙️", view: "settings", menu: true, section: "その他" },
+    { id: "location-history", label: "訪問履歴", icon: "📍", view: "settings", anchor: "locationHistory", adminOnly: true, menu: true, section: "その他" },
   ]);
 
   function makeButton(item, className) {
@@ -28,6 +29,10 @@
     button.dataset.navigationId = item.id;
     button.dataset.targetView = item.view;
     if (item.capability) button.dataset.requiredCapability = item.capability;
+    if (item.adminOnly) {
+      button.dataset.requiredRole = "admin";
+      button.hidden = true;
+    }
     if (item.anchor) button.dataset.homeAnchor = item.anchor;
     if (item.openMemo) {
       button.dataset.openHomeMemo = "true";
