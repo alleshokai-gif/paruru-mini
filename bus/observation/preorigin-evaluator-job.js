@@ -1,6 +1,7 @@
 import { GoogleAuth } from 'google-auth-library';
 import { pathToFileURL } from 'node:url';
 import { PREORIGIN_HEADERS, PREORIGIN_RAW_SHEET } from './preorigin-schema.js';
+import { columnName } from './sheets.js';
 import { PREORIGIN_SCHEDULER_CONFIG } from './preorigin-scheduler.js';
 import { preoriginEvaluatorConfig } from './preorigin-evaluator-config.js';
 import { evaluatePreoriginCanary } from './preorigin-evaluator.js';
@@ -49,7 +50,7 @@ async function rawValues(client, spreadsheetId) {
   const metadata = (await client.request({ url: `${root}?fields=sheets.properties.title` })).data;
   if (!(metadata.sheets || []).some((sheet) => sheet.properties?.title === PREORIGIN_RAW_SHEET))
     return [PREORIGIN_HEADERS];
-  const range = encodeURIComponent(`'${PREORIGIN_RAW_SHEET}'!A1:AJ`);
+  const range = encodeURIComponent(`'${PREORIGIN_RAW_SHEET}'!A1:${columnName(PREORIGIN_HEADERS.length)}`);
   const data = (await client.request({ url: `${root}/values/${range}?majorDimension=ROWS&valueRenderOption=UNFORMATTED_VALUE` })).data;
   if ((data.values || []).length > MAX_ROWS) throw Error('PREORIGIN_EVALUATOR_RAW_TOO_LARGE');
   return data.values || [];

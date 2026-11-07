@@ -12,6 +12,7 @@ function observation(overrides = {}) {
     scheduled_departure: '2026-09-16T06:50:00+09:00', origin_stop_id: '184_1',
     route_id: '10035', platform: '1番', record_kind: 'target_snapshot',
     vehicle_classification: 'none', vehicle_hash: null, vehicle_timestamp: null,
+    observed_trip_id: null, observed_route_id: null, observed_start_date: null, observed_schedule_relationship: null,
     position_lat: null, position_lon: null, distance_to_origin_m: null, gps_age_sec: null,
     feed_timestamp: 1789508400, rt_age_sec: 0, raw_vehicle_entities: 4, assigned_count: 3,
     tripless_count: 1, partial_descriptor_count: 0, stale_count: 0, gps_missing_count: 0,
@@ -41,10 +42,12 @@ test('report derives Level A only from an ordered same-HMAC transition', () => {
 
 test('report keeps Level B as a candidate and never invents Level C', () => {
   const candidate = observation({ record_kind: 'vehicle_observation', vehicle_classification: 'partial_assignment',
-    vehicle_hash: VEHICLE, vehicle_timestamp: 1789508400 });
+    vehicle_hash: VEHICLE, vehicle_timestamp: 1789508400, observed_trip_id: 'partial-trip', observed_route_id: '10035' });
   const result = summarizePreoriginRows(sheet(candidate), '2026-09-16');
   assert.equal(result.levelA.chains, 0);
   assert.equal(result.levelBCandidateTrips, 1);
+  assert.equal(result.partialDescriptorObservations, 1);
+  assert.deepEqual(result.partialDescriptorPatterns, { 'trip:yes|route:yes|start:no|schedule:no': 1 });
   assert.equal(result.levelC, null);
 });
 
