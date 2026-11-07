@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "method": "public_ui_pattern_comparison",
+  "checkedAt": "2026-10-31T07:07:40.440Z",
+  "officialRevision": {
+    "effectiveDate": "2026-03-14",
+    "sourceUrl": "https://www.odakyu.jp/daiya/202603/",
+    "newsCheckedUrl": "https://www.odakyu.jp/company/about/news/",
+    "laterRevisionNoticeFound": false
+  },
+  "savedFingerprint": "f1fbc99a32b2f4435240b1558ac4cf522f2f607239b2d3517f4de30e67495d9e",
+  "savedServiceDates": [
+    "2026-09-30",
+    "2026-10-04"
+  ],
+  "checks": [
+    {
+      "tripId": "provider:Weekday:odakyu-81ff0062",
+      "calendar": "Weekday",
+      "result": "matched",
+      "scope": "selected_fields_only",
+      "identityMappingConfirmed": false,
+      "sourceUrl": "https://transfer.navitime.biz/odakyu-transit/smart/diagram/StopListDiagram?tCode=81fe0062&datetime=2026-11-02T08%3A17%3A00&posType=1&node=00005508&nodeName=%E4%BB%A3%E3%80%85%E6%9C%A8%E4%B8%8A%E5%8E%9F&year=2026&month=11&day=2&hour=8&minute=17&destination=%E5%B0%8F%E7%94%B0%E5%8E%9F%2F%E7%89%87%E7%80%AC%E6%B1%9F%E3%83%8E%E5%B3%B6&direction=down&kind=%E5%B0%8F%E7%94%B0%E6%80%A5%E5%B0%8F%E7%94%B0%E5%8E%9F%E7%B7%9A%E5%90%84%E5%81%9C&parentUrl=https%3A%2F%2Fwww.odakyu.jp",
+      "fields": [
+        "type",
+        "destination",
+        "YoyogiUehara.departure",
+        "Noborito.arrival",
+        "SeijogakuenMae.arrival",
+        "SeijogakuenMae.departure"
+      ],
+      "stationDepartureCrossChecks": [
+        "Kyodo",
+        "Noborito"
+      ]
+    },
+    {
+      "tripId": "provider:Weekday:odakyu-81ff0065",
+      "calendar": "Weekday",
+      "result": "matched",
+      "scope": "selected_fields_only",
+      "identityMappingConfirmed": false,
+      "sourceUrl": "https://transfer.navitime.biz/odakyu-transit/smart/diagram/StopListDiagram?tCode=81fe0065&datetime=2026-11-02T08%3A20%3A00&posType=1&node=00005508&nodeName=%E4%BB%A3%E3%80%85%E6%9C%A8%E4%B8%8A%E5%8E%9F&year=2026&month=11&day=2&hour=8&minute=20&destination=%E5%B0%8F%E7%94%B0%E5%8E%9F%2F%E7%89%87%E7%80%AC%E6%B1%9F%E3%83%8E%E5%B3%B6&direction=down&kind=%E5%B0%8F%E7%94%B0%E6%80%A5%E5%B0%8F%E7%94%B0%E5%8E%9F%E7%B7%9A%E6%80%A5%E8%A1%8C&parentUrl=https%3A%2F%2Fwww.odakyu.jp",
+      "fields": [
+        "type",
+        "destination",
+        "YoyogiUehara.departure",
+        "Noborito.arrival",
+        "SeijogakuenMae.arrival",
+        "SeijogakuenMae.departure"
+      ],
+      "stationDepartureCrossChecks": [
+        "Kyodo",
+        "Noborito"
+      ]
+    },
+    {
+      "tripId": "provider:Weekday:odakyu-81ff0067",
+      "calendar": "Weekday",
+      "result": "matched",
+      "scope": "selected_fields_only",
+      "identityMappingConfirmed": false,
+      "sourceUrl": "https://transfer.navitime.biz/odakyu-transit/smart/diagram/StopListDiagram?tCode=81fe0067&datetime=2026-11-02T08%3A24%3A00&posType=1&node=00005508&nodeName=%E4%BB%A3%E3%80%85%E6%9C%A8%E4%B8%8A%E5%8E%9F&year=2026&month=11&day=2&hour=8&minute=24&destination=%E5%B0%8F%E7%94%B0%E5%8E%9F%2F%E7%89%87%E7%80%AC%E6%B1%9F%E3%83%8E%E5%B3%B6&direction=down&kind=%E5%B0%8F%E7%94%B0%E6%80%A5%E5%B0%8F%E7%94%B0%E5%8E%9F%E7%B7%9A%E5%BF%AB%E9%80%9F%E6%80%A5%E8%A1%8C&parentUrl=https%3A%2F%2Fwww.odakyu.jp",
+      "fields": [
+        "type",
+        "destination",
+        "YoyogiUehara.departure",
+        "Noborito.arrival",
+        "SeijogakuenMae.nonstop",
+        "MukogaokaYuen.nonstop"
+      ],
+      "stationDepartureCrossChecks": [
+        "Noborito"
+      ]
+    },
+    {
+      "tripId": "provider:SaturdayHoliday:odakyu-81ff026a",
+      "calendar": "SaturdayHoliday",
+      "result": "matched",
+      "scope": "selected_fields_only",
+      "identityMappingConfirmed": false,
+      "sourceUrl": "https://transfer.navitime.biz/odakyu-transit/smart/diagram/StopListDiagram?tCode=81fe026a&datetime=2026-11-01T08%3A02%3A00&posType=1&node=00005508&nodeName=%E4%BB%A3%E3%80%85%E6%9C%A8%E4%B8%8A%E5%8E%9F&year=2026&month=11&day=1&hour=8&minute=2&destination=%E5%B0%8F%E7%94%B0%E5%8E%9F%2F%E7%89%87%E7%80%AC%E6%B1%9F%E3%83%8E%E5%B3%B6&direction=down&kind=%E5%B0%8F%E7%94%B0%E6%80%A5%E5%B0%8F%E7%94%B0%E5%8E%9F%E7%B7%9A%E5%90%84%E5%81%9C&parentUrl=https%3A%2F%2Fwww.odakyu.jp",
+      "fields": [
+        "type",
+        "destination",
+        "YoyogiUehara.departure",
+        "Noborito.arrival",
+        "SeijogakuenMae.arrival",
+        "SeijogakuenMae.departure"
+      ],
+      "stationDepartureCrossChecks": [
+        "Kyodo",
+        "Noborito"
+      ]
+    },
+    {
+      "tripId": "provider:SaturdayHoliday:odakyu-81ff026d",
+      "calendar": "SaturdayHoliday",
+      "result": "matched",
+      "scope": "selected_fields_only",
+      "identityMappingConfirmed": false,
+      "sourceUrl": "https://transfer.navitime.biz/odakyu-transit/smart/diagram/StopListDiagram?tCode=81fe026d&datetime=2026-11-01T08%3A06%3A00&posType=1&node=00005508&nodeName=%E4%BB%A3%E3%80%85%E6%9C%A8%E4%B8%8A%E5%8E%9F&year=2026&month=11&day=1&hour=8&minute=6&destination=%E5%B0%8F%E7%94%B0%E5%8E%9F%2F%E7%89%87%E7%80%AC%E6%B1%9F%E3%83%8E%E5%B3%B6&direction=down&kind=%E5%B0%8F%E7%94%B0%E6%80%A5%E5%B0%8F%E7%94%B0%E5%8E%9F%E7%B7%9A%E5%BF%AB%E9%80%9F%E6%80%A5%E8%A1%8C&parentUrl=https%3A%2F%2Fwww.odakyu.jp",
+      "fields": [
+        "type",
+        "destination",
+        "YoyogiUehara.departure",
+        "Noborito.arrival",
+        "SeijogakuenMae.nonstop",
+        "MukogaokaYuen.nonstop"
+      ],
+      "stationDepartureCrossChecks": [
+        "Noborito"
+      ]
+    },
+    {
+      "tripId": "provider:SaturdayHoliday:odakyu-81ff026e",
+      "calendar": "SaturdayHoliday",
+      "result": "matched",
+      "scope": "selected_fields_only",
+      "identityMappingConfirmed": false,
+      "sourceUrl": "https://transfer.navitime.biz/odakyu-transit/smart/diagram/StopListDiagram?tCode=81fe026e&datetime=2026-11-01T08%3A09%3A00&posType=1&node=00005508&nodeName=%E4%BB%A3%E3%80%85%E6%9C%A8%E4%B8%8A%E5%8E%9F&year=2026&month=11&day=1&hour=8&minute=9&destination=%E5%B0%8F%E7%94%B0%E5%8E%9F%2F%E7%89%87%E7%80%AC%E6%B1%9F%E3%83%8E%E5%B3%B6&direction=down&kind=%E5%B0%8F%E7%94%B0%E6%80%A5%E5%B0%8F%E7%94%B0%E5%8E%9F%E7%B7%9A%E6%80%A5%E8%A1%8C&parentUrl=https%3A%2F%2Fwww.odakyu.jp",
+      "fields": [
+        "type",
+        "destination",
+        "YoyogiUehara.departure",
+        "Noborito.arrival",
+        "SeijogakuenMae.arrival",
+        "SeijogakuenMae.departure"
+      ],
+      "stationDepartureCrossChecks": [
+        "Kyodo",
+        "Noborito"
+      ]
+    }
+  ],
+  "supplemental": [
+    {
+      "scope": "Shinjuku.station_departure_only",
+      "calendar": "Weekday",
+      "matched": 1,
+      "mismatched": 0,
+      "sourceUrl": "https://www.odakyu.jp/station/shinjuku/timetable/down/",
+      "sourceEventId": "Weekday:Shinjuku:36"
+    },
+    {
+      "scope": "Shinjuku.station_departure_only",
+      "calendar": "SaturdayHoliday",
+      "matched": 1,
+      "mismatched": 0,
+      "sourceUrl": "https://www.odakyu.jp/station/shinjuku/timetable/down/",
+      "sourceEventId": "SaturdayHoliday:Shinjuku:32"
+    },
+    {
+      "tripId": "metro:Weekday:odpt.Train:TokyoMetro.Chiyoda.A705S",
+      "scope": "Hibiya.departure_YoyogiUehara.arrival_destination",
+      "matched": 1,
+      "mismatched": 0,
+      "sourceUrl": "https://transfer.tokyometro.jp/website/stop?operation=008601d6&numbering=C09&datetime=2026-11-02T08:00:00%2B09:00&lang=ja"
+    },
+    {
+      "tripId": "metro:SaturdayHoliday:odpt.Train:TokyoMetro.Chiyoda.A715K",
+      "scope": "Hibiya.departure_YoyogiUehara.arrival_destination",
+      "matched": 1,
+      "mismatched": 0,
+      "sourceUrl": "https://transfer.tokyometro.jp/website/stop?operation=008602c8&numbering=C09&datetime=2026-11-01T08:02:00%2B09:00&lang=ja"
+    }
+  ],
+  "unknown": [
+    "689 unreviewed Odakyu trips",
+    "Unstored intermediate arrivals and MukogaokaYuen arrivals remain unavailable to routing",
+    "Metro/Odakyu through-service identity not confirmed",
+    "Current provider tCode differs from saved version; no immutable identity mapping",
+    "Representative morning samples do not validate all service hours"
+  ],
+  "rights": {
+    "mode": "normal_public_ui_review_only",
+    "newTimetableImported": false,
+    "scope": "Comparison verdicts and source references only; no new stop-time database, automated harvesting or additional licence inferred",
+    "sources": [
+      "https://www.odakyu.jp/policy/",
+      "https://www.tokyometro.jp/station/hibiya/timetable/index.html"
+    ]
+  }
+}
