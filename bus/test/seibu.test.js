@@ -69,6 +69,31 @@ function artifactFixture() {
   return buildSeibuStatic(gtfsFixture(), { now: NOW - 3600 });
 }
 
+test('school access keeps same-trip terminal arrival, departure prediction and walking cutoff', () => {
+  const artifact = artifactFixture();
+  const row = artifact.directions[SCHOOL_TO_TACHIKAWA_SOURCE][0];
+  const access = { sourceId: SCHOOL_TO_TACHIKAWA_SOURCE, until: NOW + 3600,
+    walkMinutes: { [STOPS.schoolInbound]: 22 } };
+  const realtime = { timestamp: NOW, updates: [{
+    trip: { tripId: row.tripId, routeId: row.routeId, startDate: '20260914', relationship: 0 },
+    timestamp: NOW, stops: [
+      { stopId: row.fromStopId, sequence: row.stopSequence, departure: { delay: 180 } },
+      { stopId: row.toStopId, sequence: row.alightSequence, arrival: { delay: 240 } }
+    ]
+  }] };
+  const find = (rt) => buildSeibuArrivals({ artifact, now: NOW, access, realtime: rt })
+    .find((bus) => bus.tripId === row.tripId);
+  assert.equal(find(null), undefined);
+  assert.equal(find(realtime).departureAt, NOW + 23 * 60);
+  assert.equal(find(realtime).arrivalAt, NOW + 37 * 60);
+  assert.equal(find(realtime).arrivalTiming, 'realtime');
+  realtime.updates[0].stops.pop();
+  assert.equal(find(realtime).arrivalAt, NOW + 36 * 60);
+  assert.equal(find(realtime).arrivalTiming, 'delay_projection');
+  realtime.timestamp = NOW - 3600;
+  assert.equal(find(realtime), undefined);
+});
+
 function realtimeFixture() {
   const update = bindings.transit_realtime.FeedMessage.create({ header: { gtfsRealtimeVersion: '2.0', timestamp: NOW }, entity: [{
     id: 'tu', tripUpdate: { trip: { tripId: 'out-0', routeId: TARGET_ROUTES[0].routeId }, timestamp: NOW,
