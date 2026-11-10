@@ -20,8 +20,7 @@ function validateArtifact(value) {
   return value;
 }
 
-function eventTime(stop, scheduled) {
-  const event = stop?.departure || stop?.arrival;
+function eventTime(event, scheduled) {
   if (event?.time != null) return event.time;
   if (event?.delay != null) return scheduled + event.delay;
   return null;
@@ -31,7 +30,8 @@ function unsupportedPosition() {
   return { supported: false, state: null, stopsAway: null, previousStop: null, nextStop: null, confidence: null };
 }
 
-export function buildSeibuArrivals({ artifact, realtime = null, now, realtimeError = false, limit = 3 }) {
+export function buildSeibuArrivals({ artifact, realtime = null, now, realtimeError = false, limit = 3,
+  access = null }) {
   validateArtifact(artifact);
   if (!Number.isFinite(now) || !Number.isInteger(limit) || limit < 1 || limit > 10) fail('BUS_SEIBU_BUILD_INVALID');
   const today = dateKey(now);
@@ -50,6 +50,7 @@ export function buildSeibuArrivals({ artifact, realtime = null, now, realtimeErr
   }
   const active = new Map(), result = [];
   for (const direction of DIRECTIONS) {
+    if (access && direction.id !== access.sourceId) continue;
     const candidates = [];
     for (const offset of [-1, 0, 1]) {
       const day = dayStart(now) + offset * DAY, date = dateKey(day);
@@ -64,16 +65,42 @@ export function buildSeibuArrivals({ artifact, realtime = null, now, realtimeErr
         const update = matches.length === 1 ? matches[0] : null;
         const updateFresh = feedFresh && update && fresh(update.timestamp ?? realtime.timestamp, now, LIMITS.tripMaxAgeSec);
         if (updateFresh && update.trip.relationship === 3) continue;
-        const stopMatches = (update?.stops || []).filter((stop) => (stop.stopId === row.fromStopId || stop.stopId == null)
-          && (stop.sequence === row.stopSequence || stop.sequence == null));
-        const stop = stopMatches.length === 1 ? stopMatches[0] : null;
+        const matchingStop = (id, sequence) => {
+          const matches = (update?.stops || []).filter((stop) =>
+            (stop.stopId === id || stop.stopId == null) && (stop.sequence === sequence || stop.sequence == null)
+              && (stop.stopId != null || stop.sequence != null));
+          return matches.length === 1 ? matches[0] : null;
+        };
+        const stop = matchingStop(row.fromStopId, row.stopSequence);
         if (updateFresh && stop?.relationship === 1) continue;
         let estimatedDeparture = updateFresh && Math.abs(scheduledDeparture - now) <= RT_JOIN_WINDOW_SEC
-          ? eventTime(stop, scheduledDeparture) : null;
+          ? eventTime(stop?.departure || stop?.arrival, scheduledDeparture) : null;
         if (estimatedDeparture != null && Math.abs(estimatedDeparture - scheduledDeparture) > RT_JOIN_WINDOW_SEC)
           estimatedDeparture = null;
         if (estimatedDeparture != null && estimatedDeparture < now) continue;
         if (estimatedDeparture == null && scheduledDeparture < now) continue;
+        if (access) {
+          const walkMinutes = access.walkMinutes[row.fromStopId];
+          const departureAt = estimatedDeparture ?? scheduledDeparture;
+          if (!Number.isFinite(walkMinutes) || departureAt < now + walkMinutes * 60
+            || departureAt > access.until || !Number.isFinite(row.scheduledArrivalSeconds)) continue;
+          const alight = matchingStop(row.toStopId, row.alightSequence);
+          if (updateFresh && alight?.relationship === 1) continue;
+          const scheduledArrivalAt = day + row.scheduledArrivalSeconds;
+          const estimatedArrivalAt = updateFresh && Math.abs(scheduledDeparture - now) <= RT_JOIN_WINDOW_SEC
+            ? eventTime(alight?.arrival, scheduledArrivalAt) : null;
+          const validEstimate = estimatedArrivalAt != null
+            && Math.abs(estimatedArrivalAt - scheduledArrivalAt) <= RT_JOIN_WINDOW_SEC;
+          // If the bus is late and the feed has no arrival, carry its delay forward as a projection.
+          const delay = Math.max(0, departureAt - scheduledDeparture);
+          const arrivalAt = validEstimate ? estimatedArrivalAt : scheduledArrivalAt + delay;
+          if (arrivalAt <= departureAt) continue;
+          candidates.push({ tripId: row.tripId, serviceDate: date, stopId: row.fromStopId,
+            stopName: artifact.stops[row.fromStopId].name, routeLabel: row.routeLabel, walkMinutes,
+            departureAt, arrivalAt, departureTiming: estimatedDeparture == null ? 'scheduled' : 'realtime',
+            arrivalTiming: validEstimate ? 'realtime' : delay > 0 ? 'delay_projection' : 'scheduled' });
+          continue;
+        }
         const realtimeState = estimatedDeparture != null ? 'realtime'
           : realtime && !feedFresh || update && !updateFresh ? 'realtime_stale'
             : realtimeError || realtime ? 'static_fallback' : 'static_only';
@@ -98,6 +125,8 @@ export function buildSeibuArrivals({ artifact, realtime = null, now, realtimeErr
         });
       }
     }
+    if (access) return candidates.sort((a, b) => a.arrivalAt - b.arrivalAt
+      || a.departureAt - b.departureAt || a.tripId.localeCompare(b.tripId));
     candidates.sort((a, b) => (a.estimatedDeparture ?? a.scheduledDeparture) - (b.estimatedDeparture ?? b.scheduledDeparture)
       || a.scheduledDeparture - b.scheduledDeparture || a.id.localeCompare(b.id));
     result.push(...candidates.slice(0, limit));
@@ -117,6 +146,11 @@ export function createSeibuProvider({ artifact, token, fetcher = fetch, now = ()
     try { return await pending; } finally { pending = null; }
   }
   return {
+    async getAccessBuses({ at, until, sourceId, walkMinutes }) {
+      const snapshot = await realtime().catch(() => null);
+      return buildSeibuArrivals({ artifact, realtime: snapshot, now: at,
+        access: { sourceId, until, walkMinutes } });
+    },
     async getArrivals() {
       let snapshot = null, realtimeError = false;
       try { snapshot = await realtime(); } catch { realtimeError = true; }

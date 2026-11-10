@@ -71,6 +71,8 @@ export function validateSeibuArtifact(value) {
         || !value.stops[row.fromStopId] || !value.stops[row.toStopId] || !value.routes[row.routeId]
         || !Number.isInteger(row.stopSequence) || !Number.isInteger(row.alightSequence)
         || row.stopSequence >= row.alightSequence || !Number.isFinite(row.scheduledSeconds)
+        || row.scheduledArrivalSeconds != null && (!Number.isFinite(row.scheduledArrivalSeconds)
+          || row.scheduledArrivalSeconds < row.scheduledSeconds)
         || row.platform != null && typeof row.platform !== 'string') fail('BUS_SEIBU_ARTIFACT_ROW');
       if (!Array.isArray(row.positionStops) || row.positionStops.length < 2
         || row.positionStops.at(-1).sequence !== row.alightSequence
@@ -130,6 +132,7 @@ export function buildSeibuStatic(bytes, { now = Date.now() / 1000 } = {}) {
     if (!pair) continue;
     const fromSequence = Number(pair.from.stop_sequence), toSequence = Number(pair.to.stop_sequence);
     const scheduledSeconds = clockSeconds(pair.from.departure_time);
+    const scheduledArrivalSeconds = clockSeconds(pair.to.arrival_time);
     if (!Number.isInteger(fromSequence) || !Number.isInteger(toSequence) || scheduledSeconds === null
       || !trip.service_id || !stopMap.has(pair.from.stop_id) || !stopMap.has(pair.to.stop_id)) fail('BUS_SEIBU_STATIC_TRIP');
     const route = routes.get(trip.route_id), fromStop = stopMap.get(pair.from.stop_id);
@@ -144,6 +147,8 @@ export function buildSeibuStatic(bytes, { now = Date.now() / 1000 } = {}) {
       serviceId: trip.service_id, directionId: trip.direction_id || null,
       fromStopId: pair.from.stop_id, toStopId: pair.to.stop_id,
       stopSequence: fromSequence, alightSequence: toSequence, scheduledSeconds,
+      scheduledArrivalSeconds: scheduledArrivalSeconds !== null && scheduledArrivalSeconds >= scheduledSeconds
+        ? scheduledArrivalSeconds : null,
       headsign, platform: fromStop.platform_code || null, positionStops });
     selectedStopIds.add(pair.from.stop_id); selectedStopIds.add(pair.to.stop_id);
     selectedRouteIds.add(trip.route_id); serviceIds.add(trip.service_id);

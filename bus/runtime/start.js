@@ -30,6 +30,7 @@ import { normalizeKawasakiHubResult } from '../providers/kawasaki/hub.js';
 import { createTokyuStaticProvider } from '../providers/tokyu/static.js';
 import { createTokyuApproachSource, withTokyuApproaches } from '../providers/tokyu/approach.js';
 import { createSeibuProvider } from '../providers/seibu/provider.js';
+import { SCHOOL_TO_TACHIKAWA_SOURCE } from '../providers/seibu/config.js';
 import { JOURNEYS } from '../journey/config.js';
 import { createJourneyService } from '../journey/service.js';
 import { createRailHomeRouteService } from '../rail/home-route-service.js';
@@ -47,9 +48,10 @@ function kawasakiIndex({p0, journey, position}) {
 export function start({ env = process.env, log = (v) => console.log(JSON.stringify(v)) } = {}) {
   const started = performance.now(), config = runtimeConfig(env), token = config.env.ODPT_ACCESS_TOKEN;
   const p0 = validateArtifact(read('../generated/p0-static.json'),source.sourceDate);
+  const bundledSeibu = read('../generated/seibu-p2-4-static.json');
   let assets = { kawasaki:{p0,journey:read('../generated/kawasaki-p2-5-static.json'),
     position:read('../generated/p1-position-static.json')},
-    seibu:{artifact:read('../generated/seibu-p2-4-static.json')}, tokyu:null };
+    seibu:{artifact:bundledSeibu}, tokyu:null };
   let stopReference;
   try { stopReference=read('../generated/shadow-stop-reference.json'); } catch { /* Old build support. */ }
   const fallbackRef = artifact => ({version:artifact.sourceVersion,sourceHash:artifact.sourceHash,
@@ -108,6 +110,7 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
   const railHomeRouteService = createRailHomeRouteService({ odakyuStatic, jrStatic,
     futureIndex: index, futureQueries: queries, providerContext, adapter,
     odptToken: token, challengeEnv: env,
+    loadAccessBuses: (query) => seibuProvider.getAccessBuses(query),
     loadTokyuIndex: () => inputs.tokyu?.journey ?? fetchTokyuJourneyTimetables(token) });
   const commuteQueries = Object.freeze({ noborito: ['noborito_to_home',
     'noborito_tamagawa_to_kibukihoncho'], mizonokuchi: ['mizonokuchi_to_home'] });
@@ -149,6 +152,13 @@ export function start({ env = process.env, log = (v) => console.log(JSON.stringi
         if (artifact?.sourceHash !== ref.sourceHash || artifact.sourceVersion !== ref.version
           || artifact.feedInfo.feed_end_date !== ref.endDate || effectiveAt(artifact.feedInfo.feed_start_date) > Date.now())
           throw Error('SCHEDULE_ARTIFACT_MISMATCH');
+      }
+      // An older durable snapshot with the exact same GTFS hash has the
+      // same trips, but predates the destination-arrival field.
+      if (provider === 'seibu' && payload.artifact.sourceHash === bundledSeibu.sourceHash
+        && !payload.artifact.directions[SCHOOL_TO_TACHIKAWA_SOURCE].some(
+          (row) => Number.isFinite(row.scheduledArrivalSeconds))) {
+        payload = {...payload,artifact:bundledSeibu};
       }
       const next = {...assets,[provider]:payload};
       const composition = compose(next);

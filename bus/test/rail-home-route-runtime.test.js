@@ -73,7 +73,7 @@ function fixedTokyuIndex(noCandidates = false) {
 }
 
 function createRuntimeService({ futureIndex = null, unknownSources = [], unavailableTokyu = false,
-  noCandidates = false, realtime = null, realtimeFailure = false } = {}) {
+  noCandidates = false, realtime = null, realtimeFailure = false, loadAccessBuses = null } = {}) {
   futureIndex ??= fixedBusIndex({ unknownSources, noCandidates });
   return createRailHomeRouteService({ jrStatic, odakyuStatic, futureIndex, futureQueries,
     providerContext: KAWASAKI_CONTEXT,
@@ -81,13 +81,35 @@ function createRuntimeService({ futureIndex = null, unknownSources = [], unavail
       if (realtimeFailure) throw Error('RT_DOWN');
       return realtime;
     } },
-    odptToken: 'synthetic', challengeEnv: {}, clock: () => now,
+    odptToken: 'synthetic', challengeEnv: {}, clock: () => now, loadAccessBuses,
     loadTokyuIndex: async () => {
       if (unavailableTokyu) throw Error('TOKYU_DOWN');
       return fixedTokyuIndex(noCandidates);
     }
   });
 }
+
+test('school departures exclude trains before access and reuse the station comparison', async () => {
+  const bus = { tripId: 'seibu-test', departureAt: now + 8 * 60, arrivalAt: now + 22 * 60 };
+  const futureIndex = fixedBusIndex();
+  for (const id of SOURCE_FIXTURES.map((row) => row.id)) {
+    futureIndex.directions[id][0].scheduledSeconds = seconds('20:30:00');
+    futureIndex.directions[id][0].scheduledArrivalSeconds = seconds('20:45:00');
+  }
+  const service = createRuntimeService({ futureIndex, loadAccessBuses: async ({ at, sourceId }) => {
+    assert.equal(at, now);
+    assert.equal(sourceId, 'showa_daiichi_gakuen_to_tachikawa');
+    return [bus];
+  } });
+  for (const [journeyId, readyAt] of [['university', now + 23 * 60], ['high_school', bus.arrivalAt + 5 * 60]]) {
+    const result = await service.evaluate({ journeyId, from: 'school' });
+    assert.equal(result.access.railReadyAt, readyAt);
+    assert.ok(result.options.length);
+    assert.ok(result.options.every((row) => row.sourceDepartureAt >= readyAt));
+  }
+  const unavailable = await createRuntimeService().evaluate({ journeyId: 'high_school', from: 'school' });
+  assert.deepEqual(unavailable.options, []);
+});
 
 test('confirmed station uses only its bus departures and existing walking allowances', async () => {
   const result = await createRuntimeService().evaluate({ stationId: 'noborito' });
