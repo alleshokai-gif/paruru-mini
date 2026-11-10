@@ -1,4 +1,4 @@
-importScripts("./build.js?v=v20261110-development-evidence-v1");
+importScripts("./build.js?v=v20261110-development-evidence-v2");
 // Release: v20261107-location-history-page
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;

@@ -1281,6 +1281,11 @@
       const host = byId('kazPersonalContent');
       if (!host) return;
       host.textContent = `${pageLabel}を確認中…`;
+      const appendAutonomous = (target, snapshot) => {
+        if (selection.page === 'today' && globalThis.KazAutonomousWork)
+          void globalThis.KazAutonomousWork.append(target,{read:autonomousWorkApi,
+            review:autonomousReviewApi,snapshot,current});
+      };
       let todayFailureStage = 'DASHBOARD_READ';
       try {
         if (selection.page === 'context') {
@@ -1315,6 +1320,7 @@
           todayFailureStage = 'TODAY_RENDER';
           globalThis.KazPersonalView.render(planHost, selection, planResult.value);
           recordTodayDiagnostic('TODAY_PLAN_PARTIAL_DISPLAY', 'success', 'none', 'DASHBOARD_SNAPSHOT_UNAVAILABLE');
+          appendAutonomous(host, null);
           return;
         }
         if (snapshotResult.status !== 'fulfilled') {
@@ -1400,9 +1406,7 @@
           todayClockTimer?.unref?.();
         }
         void appendAiJudgments(actionHost, selection.page, current, snapshot, brief);
-        if(selection.page==='today'&&globalThis.KazAutonomousWork)
-          void globalThis.KazAutonomousWork.append(briefHost,{read:autonomousWorkApi,
-            review:autonomousReviewApi,snapshot,current});
+        appendAutonomous(briefHost, snapshot);
       } catch (error) {
         if (!current()) return;
         if (selection.page === 'metrics') {
@@ -1417,6 +1421,7 @@
           'unresolved', error?.transportClassification || (error?.httpStatus ? 'http' : 'unknown'), todaySafeError(error));
         const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];
         globalThis.KazPersonalView.render(host, selection, { sources: { [sourceName]: { status: 'failed' } } });
+        appendAutonomous(host, null);
       }
       return;
     }
