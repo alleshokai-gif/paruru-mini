@@ -48,6 +48,11 @@
       if(new Set(view.night_runs.map(r=>r.run_id)).size!==view.night_runs.length)
         throw Error('AUTONOMOUS_CONTRACT_INVALID');
     }
+    if(view.night_attempts!==undefined&&(!Array.isArray(view.night_attempts)||view.night_attempts.length>2
+      ||view.night_attempts.some(row=>!row||!/^WI-[1-9][0-9]*$/.test(row.work_label)
+        ||!Number.isFinite(Date.parse(row.started_at))
+        ||!['no_output','artifact_verified','unconfirmed','unknown'].includes(row.status))))
+      throw Error('AUTONOMOUS_CONTRACT_INVALID');
     return view;
   }
   function validateRun(r){
@@ -97,7 +102,7 @@
     evidence_only:'検証記録は残りました。新しく制作された成果物はありません。',
     no_testable_step:'正常スキップ。対象コードと検証方法を特定できませんでした。次回の候補選定で再確認します。',
     legacy_preflight_skip:'正常スキップ。予約前に終了し、Codexは起動していません。保存済みの棚卸しでは適格候補が0件でした。',
-    no_output:'Codexは実行しましたが、検証できる成果がありませんでした。',
+    no_output:'新しい成果は記録されていません。確認できた実行は下に表示します。',
     verification_failed:'成果案を検証できませんでした。変更は採用せず、検証結果を確認します。',
     failed:'夜間処理が失敗しました。実行記録を確認してください。',
     unknown:'夜間処理の結果を確認できません。同じ作業を再実行する前に実行記録を確認してください。',
@@ -165,6 +170,7 @@
     const history=partials.filter(i=>!manual.includes(i)&&!recent.includes(i));
     const recentRuns=(view.night_runs||(view.run&&view.status==='current'?[view.run]:[]))
       .filter(r=>r.night_day===todayNight&&!r.manual_general_once);
+    const attempts=(view.night_attempts||[]).filter(r=>nightDay(r.started_at,true)===todayNight&&Date.parse(r.started_at)<=now);
     const pastRun=view.run&&!recentRuns.some(r=>r.run_id===view.run.run_id)?view.run:null;
     text(section,'h2','AIが進めた仕事');
     const report=document.createElement('div');
@@ -182,10 +188,24 @@
     const updateSummary=()=>{
       const pending=recent.filter(i=>i.decision_required).length+recentRuns.flatMap(r=>r.items).filter(i=>ready(i)&&!i.review).length;
       const completed=view.partial_progress_unavailable?'集計できません':completedRecent+'件';
-      summary.textContent=`新しい部分成果 ${completed} · 判断待ち ${pending}件`;
+      const finishedWorks=recentRuns.flatMap(r=>r.items).filter(i=>i.work_done===true&&i.status==='complete').length;
+      summary.textContent=`新しい部分成果 ${completed} · 今夜の判断待ち ${pending}件`
+        +(finishedWorks?` · Work完了 ${finishedWorks}件`:'');
     };
     updateSummary();
     renderNightStatus(report,view.night_execution,todayNight,Boolean(completedRecent||recentRuns.length));
+    for(const attempt of attempts){
+      if(attempt.status==='artifact_verified'&&recent.some(row=>row.work_label===attempt.work_label&&row.started_at===attempt.started_at))continue;
+      const card=document.createElement('article');
+      text(card,'h4',`${attempt.work_label} · 夜間の成果物作成`);
+      const messages={no_output:'Codexは実行済み。既存資料を調べたものの、新しい成果案は返りませんでした。',
+        artifact_verified:'成果物の保存と検証を確認済み。成果欄への反映待ちです。',
+        unconfirmed:'途中で結果を確認できなくなりました。自動再送はしません。',
+        unknown:'起動準備の記録まで確認。実行結果は未確認です。'};
+      text(card,'p',messages[attempt.status]);
+      if(attempt.status==='no_output')text(card,'p','本人判断の依頼はありません。次回は未処理の一手を候補から探します。','kai-action-source');
+      report.appendChild(card);
+    }
     section.appendChild(report);
     function renderPartial(parent,item){
       const card=document.createElement('article');card.dataset.autonomousPartial=item.work_label;

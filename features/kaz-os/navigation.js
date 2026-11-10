@@ -1483,7 +1483,7 @@
       partial:'部分完了', unknown:'判定不能'};
     const evidence = {acceptance:'Acceptance確認', deployment_acceptance:'本番反映とAcceptance確認',
       final_failure:'失敗確定記録', owner_progress:'本人の進捗記録', test_ci:'技術検証・CI',
-      controller_run:'Controller実行記録', github_work_binding:'GitHubの明示Work ID', explicit_work:'明示Work ID'};
+      controller_run:'Controller実行記録', artifact_readback:'成果物の保存と読戻し', github_work_binding:'GitHubの明示Work ID', explicit_work:'明示Work ID'};
     const labels = [['一発完走率', 'one_shot_rate', rate], ['完走率', 'completion_rate', rate],
       ['完走時間の中央値', 'elapsed_ms', elapsed], ['人間介入回数の中央値', 'human_interventions', number],
       ['手戻り率', 'rework_rate', rate], ['判定カバレッジ', 'coverage', rate]];
@@ -1505,6 +1505,12 @@
           : `算定 ${stat?.known ?? 'unknown'} / ${stat?.total ?? 'unknown'}件`);
       }
       add(body, 'p', `Work紐付け ${data.linked_sessions}/${data.sessions} セッション（${rate(data.sessions ? data.linked_sessions / data.sessions : null)}）`);
+      if (data.session_scope) {
+        const scopes = {unregistered_development:'Work未登録の開発', non_development:'調査・相談（明示）',
+          github_work_unconfirmed:'成果参照あり・Work未確認', unknown:'区分を確認できない'};
+        add(body, 'p', Object.entries(scopes).map(([key, label]) =>
+          `${label} ${data.session_scope[key] ?? 'unknown'}件`).join(' · '));
+      }
       add(body, 'p', Object.entries(status).map(([key, label]) => `${label} ${summary.outcomes?.[key] ?? 'unknown'}件`).join(' · '));
       add(body, 'p', '完走時間は初回Attempt開始から確認まで。記録できた実行時間の中央値は '
         + metric(summary.execution_ms, elapsed) + '。');
