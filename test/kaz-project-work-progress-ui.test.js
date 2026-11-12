@@ -95,7 +95,7 @@ const projectDetail = render(snapshot, 'projects', p2.id);
 assert.match(projectDetail.textContent, /目的: Recorded project purpose/);
 assert.match(projectDetail.textContent, /説明: Recorded project description/);
 assert.match(projectDetail.textContent, /完了事項: Recorded project completion/);
-assert.match(projectDetail.textContent, /完了Work: Completed Work/);
+assert.match(projectDetail.textContent, /NotionでDONEのWork: Completed Work/);
 assert.match(projectDetail.textContent, /残件: 1 Work/);
 assert.match(projectDetail.textContent, /Work状態: DOING 1 · DONE 1/);
 assert.match(projectDetail.textContent, /残作業の記録: Recorded project remaining/);
@@ -107,7 +107,7 @@ const works = render(snapshot, 'work');
 const workLinks = all(works, node => node.className === 'kp-work-row kp-work-link');
 assert.deepEqual(workLinks.map(node => node.dataset.workItem),
   [w4.id, w1.id, w2.id, w3.id, w5.id]);
-assert.match(workLinks[0].textContent, /Second Priority Work.*DOING.*CRITICAL.*Second Project.*進捗率: 未記録/);
+assert.match(workLinks[0].textContent, /Second Priority Work.*DOING.*CRITICAL.*Second Project.*成果条件: 未定義/);
 
 const workDetail = render(snapshot, 'work', w4.id);
 assert.match(workDetail.textContent, /作業の目的: Recorded work purpose/);
@@ -125,4 +125,36 @@ assert.match(wi53.textContent, /ブロッカー: 未記録/);
 w2.work_id = 'WI-53';
 assert.match(render(snapshot, 'work', w2.id).textContent, /全114項目 · Secret関連25項目/);
 assert.doesNotMatch(render(snapshot, 'work', w2.id).textContent, /MUST_NOT_RENDER/);
+const outcome = {
+  schema_version: 'kaz-outcome-contract-v1', kind: 'work', goal: 'Independent outcome',
+  why: 'Need an observable result', current_state: 'Merged only', scope: { in: 'Target', out: 'Other' },
+  depends_on: null, criteria: [
+    { id: 'AC-1', condition: 'Change is merged', result: 'achieved', requires: 'merge',
+      method: 'Read merge record', evidence: [{ kind: 'merge', observed_on: '2026-11-13',
+        ref: 'https://github.com/example/repo/pull/12', observation: 'Verified merge' }] },
+    { id: 'AC-2', condition: 'Target behavior works', result: 'unmet', requires: 'runtime',
+      method: 'Read live output', gap: 'Repair live behavior',
+      evidence: [{ kind: 'runtime', observed_on: '2026-11-13', ref: 'javascript:alert(1)', observation: 'Failed' }] },
+    { id: 'AC-3', condition: 'User receives result', result: 'unverified', requires: 'use',
+      method: 'Observe actual use', gap: 'Need actual use observation', evidence: [] },
+  ],
+};
+snapshot.component_data.work.page_details[w4.id].outcome = outcome;
+snapshot.component_data.projects.page_details[p2.id].outcome = {
+  ...outcome, kind: 'project', mode: 'ongoing', integration_work: [w4.work_id],
+};
+snapshot.component_data.projects.outcome_integration = { [p2.id]: { status: 'unmet', members: { [w4.work_id]: 'unmet' } } };
+const workOutcome = render(snapshot, 'work', w4.id);
+assert.match(workOutcome.textContent, /ゴール: Independent outcome.*達成 1件 · 未達 1件 · 未確認 1件/);
+assert.match(workOutcome.textContent, /残り: Need actual use observation/);
+assert.match(workOutcome.textContent, /前提Work: 未確認/);
+assert.equal(all(workOutcome, node => node.tagName === 'A' && node.href?.startsWith('https:')).length, 1);
+assert.doesNotMatch(JSON.stringify(workOutcome), /javascript:alert/);
+const projectOutcome = render(snapshot, 'projects', p2.id);
+assert.match(projectOutcome.textContent, /継続運用.*ゴール: Independent outcome/);
+assert.match(projectOutcome.textContent, /統合判定: 未達/);
+assert.equal(all(projectOutcome, node => node.tagName === 'A' && /Second Priority Work · 未達/.test(node.textContent)).length, 1);
+assert.doesNotMatch(render(snapshot, 'today').textContent, /Independent outcome/);
+snapshot.sources.work.status = 'failed';
+assert.doesNotMatch(render(snapshot, 'work', w4.id).textContent, /Independent outcome/);
 console.log('PASS Project and Work priority lists, detail links, recorded progress and missing-value boundaries');

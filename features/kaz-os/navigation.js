@@ -736,6 +736,11 @@
         } else if (error?.code === 'AI_PROGRESS_TIMED_SCHEDULE') {
           output.textContent = '時刻付きの予定は上書きできません。予定を確認してください。';
           buttons.forEach(button => { button.disabled = false; });
+        } else if (['AI_PROGRESS_ACCEPTANCE_PENDING', 'AI_PROGRESS_OUTCOME_UNAVAILABLE'].includes(error?.code)) {
+          output.textContent = error.code === 'AI_PROGRESS_ACCEPTANCE_PENDING'
+            ? '完成条件や前提Workを確認してから完了にできます。WORKの詳細を確認してください。'
+            : '完成条件を取得できませんでした。Workは更新していません。';
+          buttons.forEach(button => { button.disabled = false; });
         } else if (error?.code === 'AI_PROGRESS_WRITE_CONFIG_INVALID') {
           output.textContent = '更新の準備ができていません。しばらくしてから確認してください。';
           buttons.forEach(button => { button.disabled = false; });
