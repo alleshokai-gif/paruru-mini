@@ -7,6 +7,11 @@
   'use strict';
   const PROJECT_STATES = ['ACTIVE', 'REVIEW', 'BLOCKED', 'BACKLOG', 'DONE'];
   const WORK_STATES = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
+  const OUTCOME_SCHEMA = 'kaz-outcome-contract-v1';
+  const OUTCOME_LABEL = { achieved: '達成', unmet: '未達', unverified: '未確認' };
+  const EVIDENCE_LABEL = { record: '記録', test: 'テスト', pr: 'PR作成', merge: 'マージ',
+    deploy: '本番反映', runtime: '本番動作', use: '実利用', reference: '参考' };
+  const EVIDENCE_URL = /^https:\/\/(?:github\.com\/[\w.-]+\/[\w.-]+\/(?:(?:pull|issues|actions\/runs)\/[1-9][0-9]*|commit\/[0-9a-f]{40})|(?:app\.)?notion\.com\/(?:p\/)?[0-9a-f]{32}|www\.notion\.so\/[0-9a-f]{32})$/;
   const INBOX_KINDS = { human_review: 'Human Review', acceptance: 'Acceptance', blocked: 'Blocked解除', idea: 'Idea', context_candidate: 'Context candidate' };
   const laneLimits = { now: 1, next: 2, quick_wins: 2, waiting_preview: 2 };
   const MAX_SOURCE_CLOCK_SKEW_MS = 60_000;
@@ -105,6 +110,70 @@
     const detailText = (row, key) => detailOf(row)?.status === 'current'
       ? detailOf(row)[key] || '未記録'
       : detailOf(row)?.status === 'unavailable' ? '本文を取得できません' : '未記録';
+    function outcomeOf(row, kind, source) {
+      const detail = detailOf(row), contract = detail?.outcome;
+      return sourceState(source) === 'ok' && detail?.status === 'current'
+        && contract?.schema_version === OUTCOME_SCHEMA && contract.kind === kind
+        && Array.isArray(contract.criteria) && contract.criteria.length ? contract : null;
+    }
+    function outcomeCounts(contract) {
+      return Object.entries(OUTCOME_LABEL).map(([result, label]) =>
+        `${label} ${contract.criteria.filter(row => row.result === result).length}件`).join(' · ');
+    }
+    function showOutcome(row, kind, source) {
+      const contract = outcomeOf(row, kind, source);
+      if (!contract) {
+        const detail = detailOf(row);
+        if (detail?.outcome_status === 'invalid' || detail?.status === 'unavailable'
+            || (detail?.outcome && sourceState(source) !== 'ok'))
+          add('p', '成果条件を確認できません。達成状況は未確認です。', 'kp-notice');
+        else if (data?.origin === 'notion_official_api')
+          add('p', '成果条件: 未定義。記録上の状態を表示しています。', 'kp-muted');
+        return null;
+      }
+      const group = part(kind === 'project' ? 'Projectの成果目標' : 'Workの完成条件');
+      group.classList.add('kp-outcome');
+      if (kind === 'project')
+        add('p', contract.mode === 'ongoing' ? '継続運用 · 下の判定は目標の達成状況です。' : '完了型Project', 'kp-muted', group);
+      const integration = kind === 'project' && sourceState('tasks') === 'ok'
+        ? data.outcome_integration?.[row.id] : null;
+      add('p', `目的: ${contract.why}`, '', group);
+      add('p', `ゴール: ${contract.goal}`, 'kp-outcome-goal', group);
+      add('p', `現在地: ${contract.current_state}`, '', group);
+      add('p', outcomeCounts(contract), 'kp-outcome-counts', group);
+      if (kind === 'project') add('p', `統合判定: ${OUTCOME_LABEL[integration?.status] || '未確認'}`, 'kp-muted', group);
+      const scope = fold('対象範囲', group);
+      add('p', `対象: ${contract.scope?.in}`, '', scope);
+      add('p', `対象外: ${contract.scope?.out}`, '', scope);
+      for (const ac of contract.criteria) {
+        const card = fold(`${ac.id} · ${OUTCOME_LABEL[ac.result] || '未確認'} · ${ac.condition}`, group);
+        add('p', `判定方法: ${ac.method}（${EVIDENCE_LABEL[ac.requires] || '未確認'}）`, '', card);
+        if (ac.gap) add('p', `残り: ${ac.gap}`, 'kp-outcome-gap', card);
+        if (!ac.evidence?.length) add('p', '判定の証拠は未記録です。', 'kp-muted', card);
+        for (const proof of ac.evidence || []) {
+          const label = `${EVIDENCE_LABEL[proof.kind] || '参考'} · ${proof.observed_on} JST`;
+          add('p', proof.observation, '', card);
+          if (typeof proof.ref === 'string' && EVIDENCE_URL.test(proof.ref)) {
+            const a = add('a', label + 'の根拠を開く', 'kp-back kp-outcome-ref', card);
+            a.href = proof.ref; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          }
+        }
+      }
+      const ids = kind === 'project' ? contract.integration_work : contract.depends_on;
+      const label = kind === 'project' ? '統合判定に使うWork' : '前提Work';
+      if (!ids?.length) add('p', `${label}: ${Array.isArray(ids) ? 'なし' : '未確認'}`, 'kp-muted', group);
+      else {
+        const related = fold(label, group);
+        const canRead = kind === 'project' && sourceState('tasks') === 'ok' ? work : null;
+        for (const id of ids) {
+          const member = canRead?.find(w => w.work_id === id && w.project_id === row.id);
+          if (member) related.append(link(`${id} · ${member.title} · ${OUTCOME_LABEL[integration?.members?.[id]] || '未確認'}`,
+            'work', member.id, 'kp-back'));
+          else add('p', id, 'kp-muted', related);
+        }
+      }
+      return contract;
+    }
     function workLink(w, parent) {
       const row = link('', 'work', w.id, 'kp-work-row kp-work-link');
       row.dataset.workItem = w.id;
@@ -112,7 +181,11 @@
       top.append(el('strong', w.title), el('span', w.state, 'kp-badge kp-' + String(w.state).toLowerCase()));
       if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
       row.append(top, el('span', `${w.project_name || 'Project未確認'} · ${w.work_id || 'ID未確認'}`, 'kp-muted'));
-      row.append(el('span', w.state === 'DONE' ? '進捗: 完了' : '進捗率: 未記録', 'kp-muted'));
+      const outcome = outcomeOf(w, 'work', 'work_items');
+      row.append(el('span', outcome ? outcomeCounts(outcome) :
+        w.state === 'DONE' ? 'Notion記録: DONE · 成果未確認' :
+        detailOf(w)?.status === 'unavailable' || detailOf(w)?.outcome_status === 'invalid' || detailOf(w)?.outcome
+          ? '成果条件: 未確認' : '成果条件: 未定義', 'kp-muted'));
       parent.append(row);
       return row;
     }
@@ -493,10 +566,11 @@
         if (!w) { add('p', 'この取得範囲にWorkが見つかりません。'); return; }
         add('h3', w.title, 'kp-project-title');
         add('p', `${w.state} · ${w.priority || 'Priority未設定'} · ${w.work_id || 'ID未確認'}`, 'kp-muted');
+        const outcome = showOutcome(w, 'work', 'work_items');
         add('p', `作業の目的: ${detailText(w, 'purpose')}`);
         for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', '進捗記録']])
           if (detailOf(w)?.status === 'current' && detailOf(w)[key]) add('p', `${label}: ${detailOf(w)[key]}`);
-        add('p', w.state === 'DONE' ? '進捗: NotionでDONEと記録済み。' : '進捗率: 未記録。状態から割合は推測しません。', 'kp-muted');
+        if (!outcome && w.state === 'DONE') add('p', 'NotionでDONEと記録済み。成果の証拠は別途確認が必要です。', 'kp-muted');
         add('p', `実施済み: ${detailText(w, 'completed')}`);
         add('p', `残作業: ${detailText(w, 'remaining')}`);
         add('p', `次の行動: ${w.next_action || '未記録'}`);
@@ -595,15 +669,16 @@
         const p = project(selection.id);
         if (!p) { add('p', 'この取得範囲にProjectが見つかりません。'); return; }
         add('h3', p.title, 'kp-project-title'); host.append(badge(state(p.status)));
+        const outcome = showOutcome(p, 'project', 'projects');
         add('p', `目的: ${detailText(p, 'purpose')}`);
         for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', '進捗記録']])
           if (detailOf(p)?.status === 'current' && detailOf(p)[key]) add('p', `${label}: ${detailOf(p)[key]}`);
         add('p', `現在の焦点: ${p.current_focus || '未記録'}`);
-        progressRow(p, host, current);
+        if (!outcome) progressRow(p, host, current);
         const projectProgress = progressUi?.projects?.[p.id];
         const completed = projectProgress?.completed_work_ids?.map(id => wi(id)?.title).filter(Boolean);
         add('p', `完了事項: ${detailText(p, 'completed')}`);
-        add('p', `完了Work: ${completed ? completed.length ? completed.join(' / ') : '該当Workなし' : '取得範囲では未確認'}`);
+        add('p', `NotionでDONEのWork: ${completed ? completed.length ? completed.join(' / ') : '該当Workなし' : '取得範囲では未確認'}`);
         add('p', `残件: ${Number.isInteger(projectProgress?.remaining_work_count) ? `${projectProgress.remaining_work_count} Work` : '未確認'}`);
         if (projectProgress?.state_counts) add('p', `Work状態: ${Object.entries(projectProgress.state_counts).map(([name, count]) => `${name} ${count}`).join(' · ')}`, 'kp-muted');
         add('p', `残作業の記録: ${detailText(p, 'remaining')}`);
@@ -639,7 +714,9 @@
         const row = link('', 'projects', p.id, 'kp-project-row'); row.dataset.projectId = p.id;
         const title = el('div', '', 'kp-project-head'); title.append(el('strong', p.title), badge(state(p.status))); title.title = p.title; row.append(title);
         const footer = add('div', '', 'kp-project-footer', row);
-        progressRow(p, footer, current, true);
+        const outcome = outcomeOf(p, 'project', 'projects');
+        if (outcome) add('span', outcomeCounts(outcome), 'kp-muted', footer);
+        else progressRow(p, footer, current, true);
         const priority = progressUi?.projects?.[p.id]?.priority;
         if (priority) add('span', priority, 'kp-badge kp-priority', footer);
         const remaining = progressUi?.projects?.[p.id]?.remaining_work_count;
