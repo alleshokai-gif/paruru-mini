@@ -12,6 +12,10 @@
 .kp-kpis strong{font-size:26px;font-weight:750;font-variant-numeric:tabular-nums;line-height:1.1}.kp-kpis span{font-size:10px;letter-spacing:.025em}
 .kp-work-list{border-top:1px solid #d9e1df}.kp-work-row{padding:10px 0;border-bottom:1px solid #d9e1df;background:transparent}.kp-work-row p{margin:4px 0}.kp-work-row .kp-project-head{align-items:center}.kp-priority{background:#eef2f1;color:#46534e}.kp-work-row .kp-next,.kp-work-row .kp-blocker{white-space:normal;overflow:visible;text-overflow:clip}
 .kp-work-link{display:block;min-height:48px;min-width:0;color:inherit;text-decoration:none}.kp-work-link .kp-project-head>strong{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.kp-work-sort{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 4px}
+.kp-work-sort label{display:grid;gap:3px;min-width:0;font-size:13px;font-weight:650}
+.kp-work-sort select{box-sizing:border-box;width:100%;min-width:0;min-height:48px;padding:6px 8px;border:1px solid #a9bbb3;border-radius:6px;background:#fff;color:#263e35;font:inherit;font-size:16px}
+.kp-work-sort select:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
 .kp-free-section{margin-bottom:24px}.kp-free-window{padding:12px;margin:8px 0;border:1px solid #d9e5dc;border-radius:10px;background:#f7faf7;min-width:0}
 .kp-free-time{margin:0 0 8px;font-size:18px;font-weight:750;line-height:1.35;font-variant-numeric:tabular-nums;white-space:nowrap;color:#174b3b}
 .kp-free-suggestion{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-top:1px solid #e2eae3;min-width:0}

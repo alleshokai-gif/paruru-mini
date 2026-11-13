@@ -1,4 +1,4 @@
-importScripts("./build.js?v=v20261113-kaz-outcome-contract-v1");
+importScripts("./build.js?v=v20261113-kaz-work-list-sort-v1");
 // Release: v20261107-location-history-page
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
