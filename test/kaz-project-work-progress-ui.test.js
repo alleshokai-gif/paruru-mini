@@ -109,7 +109,7 @@ const works = render(snapshot, 'work');
 const workLinks = all(works, node => node.className === 'kp-work-row kp-work-link');
 assert.deepEqual(workLinks.map(node => node.dataset.workItem),
   [w4.id, w1.id, w2.id, w3.id, w5.id]);
-assert.match(workLinks[0].textContent, /Second Priority Work.*DOING.*CRITICAL.*Second Project.*成果条件: 未定義/);
+assert.match(workLinks[0].textContent, /Second Priority Work.*DOING.*CRITICAL.*Second Project.*段階.*作業中/);
 
 // Sort the two visible groups independently, keeping priority ties numeric in either direction.
 const sortFixture = create().dashboard;
@@ -171,7 +171,10 @@ assert.doesNotMatch(render(snapshot, 'work', w2.id).textContent, /MUST_NOT_RENDE
 const outcome = {
   schema_version: 'kaz-outcome-contract-v1', kind: 'work', goal: 'Independent outcome',
   why: 'Need an observable result', current_state: 'Merged only', scope: { in: 'Target', out: 'Other' },
-  depends_on: null, criteria: [
+  depends_on: null, remaining_gap: [
+    { id: 'AC-2', result: 'unmet', gap: 'Repair live behavior' },
+    { id: 'AC-3', result: 'unverified', gap: 'Need actual use observation' },
+  ], criteria: [
     { id: 'AC-1', condition: 'Change is merged', result: 'achieved', requires: 'merge',
       method: 'Read merge record', evidence: [{ kind: 'merge', observed_on: '2026-11-13',
         ref: 'https://github.com/example/repo/pull/12', observation: 'Verified merge' }] },
@@ -198,6 +201,29 @@ assert.match(projectOutcome.textContent, /継続運用.*ゴール: Independent o
 assert.match(projectOutcome.textContent, /統合判定: 未達/);
 assert.equal(all(projectOutcome, node => node.tagName === 'A' && /Second Priority Work · 未達/.test(node.textContent)).length, 1);
 assert.doesNotMatch(render(snapshot, 'today').textContent, /Independent outcome/);
+const workProgress = render(snapshot, 'work');
+const outcomeRow = all(workProgress, node => node.dataset.workItem === w4.id)[0];
+assert.match(outcomeRow.textContent, /現在地.*Merged only.*残り.*Repair live behavior/);
+assert.match(outcomeRow.textContent, /完成条件 · 達成 1件 · 未達 1件 · 未確認 1件/);
+assert.doesNotMatch(outcomeRow.textContent, /要レビュー|要対応|\d+%/);
 snapshot.sources.work.status = 'failed';
 assert.doesNotMatch(render(snapshot, 'work', w4.id).textContent, /Independent outcome/);
+snapshot.sources.work.status = 'current';
+
+// A concrete, newer, unresolved owner request appears on the exact Work detail.
+const reviewHost = fakeHost();
+const reviewedAt = Date.now();
+personal.render(reviewHost, { page: 'work', id: w4.id }, component.dashboard(snapshot, 'work'),
+  reviewedAt, {
+    current: () => true,
+    readWorkHistory: async () => ({
+      partials: new Map(),
+      decisions: new Map([[w4.id, { at: reviewedAt, expires: reviewedAt + 60000,
+        question: '公開範囲を決めてください', owner_reason: '本人が公開範囲を決めます',
+        recommended_option: '対象者だけ', alternative_option: '全体へ公開' }]]),
+    }),
+  });
+setImmediate(() => {
+  assert.match(reviewHost.textContent, /要レビュー.*公開範囲を決めてください.*本人が公開範囲を決めます.*対象者だけ.*全体へ公開/);
+});
 console.log('PASS Project and Work priority lists, detail links, recorded progress and missing-value boundaries');

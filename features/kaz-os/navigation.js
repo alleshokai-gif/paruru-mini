@@ -1345,6 +1345,9 @@
           projectsApi: async () => globalThis.KazV3ComponentData.dashboard(await v3DashboardApi(), 'projects'),
         } : selection.page === 'today' ? {
           answerApi: typeof inboxAnswerApi === 'function' ? inboxAnswerApi : null,
+        } : selection.page === 'work' && typeof autonomousWorkApi === 'function' && globalThis.KazAutonomousWork?.workHistory ? {
+          readWorkHistory: async () => globalThis.KazAutonomousWork.workHistory(await autonomousWorkApi()),
+          current,
         } : {};
         let plannerHost = host;
         let briefHost = host;
