@@ -1,2 +1,2 @@
 // Family Inbox school print release.
-globalThis.BUILD_ID = "v20261113-kaz-work-list-progress-v1";
+globalThis.BUILD_ID = "v20261113-kaz-work-compact-evidence-v1";

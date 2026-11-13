@@ -74,7 +74,7 @@
   }
   function workHistory(view, now=Date.now()) {
     validate(view);
-    const partials = new Map(), decisions = new Map(), seenWork = new Set();
+    const partials = new Map(), decisions = new Map(), pullRequests = new Map(), seenWork = new Set();
     let decisionsUnavailable = view.night_execution?.status === 'unavailable';
     for (const item of view.partial_progress || []) {
       const at = Date.parse(item.completed_at);
@@ -87,6 +87,8 @@
       const at = Date.parse(run.finished_at);
       if (at > now) continue;
       for (const item of run.items) {
+        if (item.pr_url && item.substep_completed === true && item.validation === 'observed_git_facts'
+          && !pullRequests.has(item.work_id)) pullRequests.set(item.work_id, { at, ref: item.pr_url });
         if (seenWork.has(item.work_id)) continue;
         seenWork.add(item.work_id);
         const expires = at + 2 * 86400000;
@@ -97,7 +99,7 @@
         }
       }
     }
-    return {partials, decisions, decisionsUnavailable, partialsUnavailable: view.partial_progress_unavailable === true};
+    return {partials, decisions, pullRequests, decisionsUnavailable, partialsUnavailable: view.partial_progress_unavailable === true};
   }
   function reviewWindow(snapshot,item,now=Date.now()) {
     const w=(snapshot?.work||[]).find(w=>w.id===item.work_id);

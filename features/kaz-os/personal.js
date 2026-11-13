@@ -8,14 +8,10 @@
   const PROJECT_STATES = ['ACTIVE', 'REVIEW', 'BLOCKED', 'BACKLOG', 'DONE'];
   const WORK_STATES = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
   const WORK_PRIORITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
-  const WORK_STAGES = { IDEA: '構想', BACKLOG: '着手待ち', READY: '着手可能', SCHEDULED: '着手予定あり',
-    DOING: '作業中', CODEX_RUNNING: 'AI実行中', WAITING: '待機中', BLOCKED: '作業停止中',
-    HUMAN_REVIEW: 'レビュー段階', ACCEPTANCE: '受入確認段階', DONE: '終了の記録あり', CANCELLED: '取消済み' };
+  const WORK_STAGES = { IDEA: '構想', BACKLOG: '着手待ち', READY: '着手可能', SCHEDULED: '着手予定',
+    DOING: '作業中', CODEX_RUNNING: 'AI実行中', WAITING: '待機中', BLOCKED: '停止中',
+    HUMAN_REVIEW: 'レビュー段階', ACCEPTANCE: '受入段階', DONE: '完了登録', CANCELLED: '取消済み' };
   const isClosedWork = work => ['DONE', 'CANCELLED'].includes(work.state);
-  const shortText = (text, limit = 96) => {
-    const chars = Array.from(text.replace(/\s+/g, ' ').trim());
-    return chars.length > limit ? chars.slice(0, limit).join('') + '…' : chars.join('');
-  };
   const priorityRank = value => {
     const index = WORK_PRIORITIES.indexOf(value);
     return index < 0 ? WORK_PRIORITIES.length : index;
@@ -35,6 +31,63 @@
   const EVIDENCE_LABEL = { record: '記録', test: 'テスト', pr: 'PR作成', merge: 'マージ',
     deploy: '本番反映', runtime: '本番動作', use: '実利用', reference: '参考' };
   const EVIDENCE_URL = /^https:\/\/(?:github\.com\/[\w.-]+\/[\w.-]+\/(?:(?:pull|issues|actions\/runs)\/[1-9][0-9]*|commit\/[0-9a-f]{40})|(?:app\.)?notion\.com\/(?:p\/)?[0-9a-f]{32}|www\.notion\.so\/[0-9a-f]{32})$/;
+  const CHECKPOINTS = {
+    record: ['記録確認', 0], research: ['仕様調査の実績', 0], decision: ['方針承認の記録', 0],
+    partial: ['部分成果あり', 1], test: ['テスト確認', 2], pr_draft: ['PR下書き', 3], pr: ['PR作成', 3],
+    merge: ['マージ確認', 4], deploy: ['本番反映の実績', 5], runtime: ['本番動作の実績', 6], use: ['実利用の実績', 7],
+  };
+  const jst = value => new Date(value).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo',
+    year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' JST';
+  const evidenceDay = value => new Date(value + 9 * 3600000).toISOString().slice(0, 10);
+
+  function assessWork(w, { trusted, detail, outcome, history, pullRequest, at }) {
+    if (!trusted) return { label: '取得未確認', reason: '最新のWorkデータを確認できません。' };
+    if (w.state === 'CANCELLED') return { label: WORK_STAGES.CANCELLED, reason: 'Notionで取消と登録されています。' };
+    const checkpoints = [];
+    function observe(kind, day, source, ref, effect = 'supports') {
+      if (Object.hasOwn(CHECKPOINTS, kind) && /^\d{4}-\d{2}-\d{2}$/.test(day || '') && day <= evidenceDay(at))
+        checkpoints.push({ kind, day, source, ref, effect });
+    }
+    const records = detail?.work_evidence;
+    if (records?.schema_version === 'kaz-notion-work-evidence-v1') {
+      for (const observation of records.observations || [])
+        observe(observation.kind, observation.observed_on, 'Notionの実績記録');
+      for (const pr of records.pull_requests || []) {
+        const occurred = stamp(pr.occurred_at);
+        if (['merge', 'pr', 'pr_draft'].includes(pr.kind) && Number.isFinite(occurred) && occurred <= at
+          && EVIDENCE_URL.test(pr.ref)) observe(pr.kind, evidenceDay(occurred), 'Notionに紐づくPR（GitHub確認）', pr.ref);
+      }
+    }
+    for (const ac of outcome?.criteria || []) {
+      for (const proof of ac.evidence || []) {
+        if (proof.effect === 'supports') observe(proof.kind, proof.observed_on, `${ac.id}の証拠`, proof.ref);
+        if (proof.effect === 'contradicts' && proof.kind === ac.requires && ac.result === 'unmet')
+          observe(proof.kind, proof.observed_on, `${ac.id}の未達を示す証拠`, proof.ref, proof.effect);
+      }
+    }
+    if (history && Number.isFinite(stamp(history.completed_at)) && stamp(history.completed_at) <= at)
+      observe('partial', evidenceDay(stamp(history.completed_at)), '実行履歴', history.evidence_refs[0]);
+    if (pullRequest && Number.isFinite(pullRequest.at) && pullRequest.at <= at)
+      observe('pr', evidenceDay(pullRequest.at), '実行履歴', pullRequest.ref);
+    checkpoints.sort((a, b) => b.day.localeCompare(a.day)
+      || Number(b.effect === 'contradicts') - Number(a.effect === 'contradicts')
+      || CHECKPOINTS[b.kind][1] - CHECKPOINTS[a.kind][1]);
+    const observed = checkpoints[0];
+    if (outcome?.criteria.every(ac => ac.result === 'achieved'))
+      return { label: 'AC達成', observed, tone: 'verified', reason: '登録されている完成条件の達成を確認しました。' };
+    if (observed?.effect === 'contradicts')
+      return { label: 'AC未達を確認', observed, tone: 'gap', reason: '直近の証拠で未達だった条件と残りを、下の成果条件で確認できます。' };
+    if (observed) {
+      const label = observed.source === 'Notionに紐づくPR（GitHub確認）'
+        ? `関連${observed.kind === 'merge' ? 'PRマージ' : CHECKPOINTS[observed.kind][0]}` : CHECKPOINTS[observed.kind][0];
+      return { label, observed, tone: 'evidence',
+        reason: '日付と証拠を確認できた直近の実績です。Work全体の完成判定は下の成果条件を参照してください。' };
+    }
+    const reason = detail?.status === 'unavailable' ? 'Notion本文を取得できません。' :
+      outcome ? '成果条件に到達を確認できる証拠がありません。' :
+      '日付付きの実績または関連する実行履歴を確認できません。';
+    return { label: WORK_STAGES[w.state] || '段階未確認', reason: `${reason} Notionの登録状態を表示しています。` };
+  }
   const INBOX_KINDS = { human_review: 'Human Review', acceptance: 'Acceptance', blocked: 'Blocked解除', idea: 'Idea', context_candidate: 'Context candidate' };
   const laneLimits = { now: 1, next: 2, quick_wins: 2, waiting_preview: 2 };
   const MAX_SOURCE_CLOCK_SKEW_MS = 60_000;
@@ -200,20 +253,20 @@
     function workLink(w, parent, showNumber = false) {
       const row = link('', 'work', w.id, 'kp-work-row kp-work-link');
       row.dataset.workItem = w.id;
-      const top = el('div', '', 'kp-project-head');
-      const title = showNumber && w.work_id ? `${w.work_id} ${w.title}` : w.title;
-      top.append(el('strong', title), el('span', w.state, 'kp-badge kp-' + String(w.state).toLowerCase()));
-      if (w.priority || showNumber) top.append(el('span', w.priority || '重要度未設定', 'kp-badge kp-priority'));
-      const projectName = w.project_name || 'Project未確認';
-      row.append(top, el('span', showNumber && w.work_id ? projectName :
-        `${projectName} · ${w.work_id || 'ID未確認'}`, 'kp-muted'));
       if (showNumber) {
-        row.dataset.workProgress = 'true';
-        const summary = add('div', '', 'kp-work-progress', row);
-        renderWorkProgress(w, summary, true, workHistory ? Date.now() : now);
+        row.dataset.workCompact = 'true';
+        const title = add('strong', w.work_id ? `${w.work_id} ${w.title}` : w.title, 'kp-work-title', row);
+        title.title = title.textContent;
+        const summary = add('div', '', 'kp-work-summary', row);
+        renderWorkSummary(w, summary, workHistory ? Date.now() : now);
         parent.append(row);
         return row;
       }
+      const top = el('div', '', 'kp-project-head');
+      top.append(el('strong', w.title), el('span', w.state, 'kp-badge kp-' + String(w.state).toLowerCase()));
+      if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
+      const projectName = w.project_name || 'Project未確認';
+      row.append(top, el('span', `${projectName} · ${w.work_id || 'ID未確認'}`, 'kp-muted'));
       const outcome = outcomeOf(w, 'work', 'work_items');
       row.append(el('span', outcome ? outcomeCounts(outcome) :
         w.state === 'DONE' ? 'Notion記録: DONE · 成果未確認' :
@@ -223,43 +276,76 @@
       return row;
     }
     let workHistory = null;
-    function renderWorkProgress(w, panel, compact, at = now) {
-      panel.replaceChildren();
+    function workAssessment(w, at) {
       const trusted = sourceState('work_items') === 'ok';
-      const detail = trusted && detailOf(w)?.status === 'current' ? detailOf(w) : null;
+      const detail = trusted ? detailOf(w) : null;
       const outcome = outcomeOf(w, 'work', 'work_items');
       const history = trusted ? workHistory?.partials.get(w.work_id) : null;
+      const pullRequest = trusted ? workHistory?.pullRequests?.get(w.id) : null;
       const decision = trusted && !isClosedWork(w) ? workHistory?.decisions.get(w.id) : null;
       const revision = stamp(w.source_revision);
-      const owner = decision && Number.isFinite(revision) && decision.at >= revision && at < decision.expires ? decision : null;
+      const owner = decision && decision.at <= at && at < decision.expires ? decision : null;
+      return { owner, history, pullRequest, detail, outcome, revision,
+        assessment: assessWork(w, { trusted, detail, outcome, history, pullRequest, at }) };
+    }
+    function renderWorkSummary(w, panel, at) {
+      panel.replaceChildren();
+      const { assessment, owner } = workAssessment(w, at);
+      const stage = add('span', assessment.label, `kp-work-stage ${assessment.tone || 'registered'}`, panel);
+      if (assessment.observed) {
+        const day = assessment.observed.day.slice(5).replace('-', '/');
+        add('span', day, 'kp-work-day', panel).title = `${assessment.observed.source} · ${assessment.observed.day} JST`;
+      } else if (assessment.label !== '取得未確認') {
+        add('span', '登録状態', 'kp-work-day', panel);
+      }
+      stage.title = assessment.reason;
+      if (w.priority) add('span', w.priority, 'kp-work-rank', panel);
+      if (owner) add('span', '要対応', 'kp-work-owner', panel);
+    }
+    function renderWorkProgress(w, panel, at = now) {
+      panel.replaceChildren();
+      const { assessment, owner, history, pullRequest, detail, outcome, revision } = workAssessment(w, at);
       const historyIsNew = history && Number.isFinite(revision) && stamp(history.completed_at) >= revision;
-      const jst = value => new Date(value).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',
-        year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST';
       const line = (label, value) => {
         const p = add('p', '', '', panel);
-        p.append(el('b', label + '　'), el('span', compact ? shortText(value) : value));
+        p.append(el('b', label + '　'), el('span', value));
       };
+      function evidenceLink(ref, label) {
+        const url = typeof ref === 'string' && (EVIDENCE_URL.test(ref) || ref.startsWith('https://github.com/')
+          && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/blob\/[a-f0-9]{40}\/[\w./-]+$/.test(ref));
+        if (!url) return;
+        const a = add('a', label, 'kp-back kp-outcome-ref', panel);
+        a.href = ref; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      }
+      line('進捗評価', assessment.label);
+      if (assessment.observed) {
+        line('評価根拠', `${assessment.observed.source} · ${assessment.observed.day} JST`);
+        evidenceLink(assessment.observed.ref, '評価根拠を開く');
+      }
+      add('p', assessment.reason, 'kp-muted', panel);
+      if (w.work_id && Number.isFinite(revision)) line('登録状態', `${WORK_STAGES[w.state] || w.state} · ${jst(revision)}`);
+      if (outcome) line('完成条件', outcomeCounts(outcome));
+      if (detail?.work_evidence?.schema_version === 'kaz-notion-work-evidence-v1') {
+        if (detail.work_evidence.pull_requests_unconfirmed > 0)
+          line('GitHubの状態未確認', `関連PR ${detail.work_evidence.pull_requests_unconfirmed}件`);
+        for (const proof of detail.work_evidence.observations || [])
+          if (Object.hasOwn(CHECKPOINTS, proof.kind) && /^\d{4}-\d{2}-\d{2}$/.test(proof.observed_on) && proof.observed_on <= evidenceDay(at))
+            line('Notionの実績記録', `${CHECKPOINTS[proof.kind][0]} · ${proof.observed_on} JST`);
+        for (const ref of detail.work_evidence.refs || []) evidenceLink(ref, 'Notion本文の関連リンクを開く');
+        if (/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(w.id))
+          evidenceLink(`https://app.notion.com/p/${w.id.replaceAll('-', '')}`, 'NotionのWork本文を開く');
+      }
+      if (history) {
+        line(`部分成果（${jst(stamp(history.completed_at))}）`, history.summary);
+        for (const ref of history.evidence_refs) evidenceLink(ref, '実行結果の証拠を開く');
+      }
+      if (pullRequest) evidenceLink(pullRequest.ref, '実行履歴に記録されたPRを開く');
       if (owner) add('p', '要レビュー', 'kp-work-owner', panel);
-      if (compact) line('段階', WORK_STAGES[w.state] || '進捗未評価');
-      const current = outcome?.current_state || detail?.progress || detail?.completed;
-      if (compact && (current || !history)) line('現在地', current ||
-        (trusted && Number.isFinite(revision) ? `進捗未評価（状態記録 ${jst(revision)}）` : '進捗の記録を確認できません'));
-      if (history) line(`部分成果（${jst(history.completed_at)}）`, history.summary);
-      if (compact) {
-        const gaps = [...(outcome?.remaining_gap || [])].sort((a,b) => Number(b.result === 'unmet') - Number(a.result === 'unmet'));
-        const remaining = owner?.remaining || gaps[0]?.gap || detail?.remaining || w.blocker;
-        if (remaining) line('残り', remaining);
-        else if (!isClosedWork(w)) line('残り', '未記録');
-        if (outcome) add('p', '完成条件 · ' + outcomeCounts(outcome), 'kp-muted', panel);
-        else if (w.state === 'DONE') add('p', '成果の証拠は未確認', 'kp-muted', panel);
-        if (owner) {
-          line('本人への依頼', owner.question?.trim() || owner.owner_reason);
-          return;
-        }
-      } else if (owner) {
+      if (owner) {
         line('本人への依頼', owner.question?.trim() || owner.owner_reason);
         if (owner.question?.trim() && owner.question.trim() !== owner.owner_reason.trim())
           line('本人の判断が必要な理由', owner.owner_reason);
+        if (owner.remaining) line('依頼に関する残作業', owner.remaining);
         line('推奨案', owner.recommended_option);
         line('別案', owner.alternative_option);
         const today = link('TODAYの夜間実行記録を開く', 'today', null, 'kp-back');
@@ -268,9 +354,7 @@
       const canAdvance = ['READY', 'DOING', 'BACKLOG', 'SCHEDULED'].includes(w.state) && !w.blocker?.trim();
       const next = !owner && canAdvance && historyIsNew && !history.decision_required ? history.next_action : null;
       if (next) line('AIの次の行動（実行記録）', next);
-      else if (compact && !isClosedWork(w) && w.next_action?.trim()) line('次の行動（Notion）', w.next_action);
-      else if (compact && !isClosedWork(w)) line('次の行動', '未記録');
-      else if (!compact && history && !owner && !isClosedWork(w) && !history.decision_required)
+      else if (history && !owner && !isClosedWork(w) && !history.decision_required)
         line('実行時に記録した次の候補', history.next_action);
     }
     function loadWorkHistory(update) {
@@ -284,6 +368,7 @@
           history.partialsUnavailable ? '一部の実行履歴を取得できません。' : '',
           history.decisionsUnavailable ? '一部の本人依頼の状態を確認できません。' : '',
         ].filter(Boolean).join(' ');
+        status.hidden = !status.textContent;
         update();
         for (const expires of new Set([...history.decisions.values()].map(item => item.expires))) {
           const delay = expires - Date.now();
@@ -657,9 +742,8 @@
     }
     if (selection.page === 'work') {
       const head = part('WORK');
-      add('p', '全Project横断のWork Items', 'kp-subtitle', head);
       const workHealth = notice('work_items', head);
-      if (data?.origin === 'notion_official_api' && data?.sources?.work_items) {
+      if (selection.id && data?.origin === 'notion_official_api' && data?.sources?.work_items) {
         const source = data.sources.work_items;
         const fetched = Number.isFinite(stamp(source.fetched_at)) ? new Date(source.fetched_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST' : '取得時刻未確認';
         add('p', `実データ · Notion / READ-ONLY · ${source.fetch_status} · ${fetched}`, 'kp-muted', head);
@@ -671,15 +755,14 @@
         head.prepend(link('← WORK', 'work', null, 'kp-back'));
         const w = wi(selection.id);
         if (!w) { add('p', 'この取得範囲にWorkが見つかりません。'); return; }
-        add('h3', w.title, 'kp-project-title');
+        add('h3', w.work_id ? `${w.work_id} ${w.title}` : w.title, 'kp-project-title');
         add('p', `${w.state} · ${w.priority || 'Priority未設定'} · ${w.work_id || 'ID未確認'}`, 'kp-muted');
-        if (options.readWorkHistory) {
-          const panel = add('div', '', 'kp-work-progress');
-          loadWorkHistory(() => renderWorkProgress(w, panel, false, Date.now()));
-        }
+        const panel = add('div', '', 'kp-work-progress');
+        renderWorkProgress(w, panel);
+        loadWorkHistory(() => renderWorkProgress(w, panel, Date.now()));
         const outcome = showOutcome(w, 'work', 'work_items');
         add('p', `作業の目的: ${detailText(w, 'purpose')}`);
-        for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', '進捗記録']])
+        for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', 'Notionの進捗メモ']])
           if (detailOf(w)?.status === 'current' && detailOf(w)[key]) add('p', `${label}: ${detailOf(w)[key]}`);
         if (!outcome && w.state === 'DONE') add('p', 'NotionでDONEと記録済み。成果の証拠は別途確認が必要です。', 'kp-muted');
         add('p', `実施済み: ${detailText(w, 'completed')}`);
@@ -702,8 +785,8 @@
         }
         return;
       }
-      add('p', `${work.length} Work Items`, 'kp-muted', head);
       if (!work.length) { add('p', 'この取得範囲のWork Itemは0件です。'); return; }
+      head.classList.add('kp-work-list-head');
       const controls = add('div', '', 'kp-work-sort', head);
       function sortSelect(label, choices, value) {
         const field = add('label', label, '', controls);
@@ -714,7 +797,7 @@
       }
       const sortKey = sortSelect('並び替え', [['priority', '重要度'], ['number', 'WI番号']], 'priority');
       const direction = sortSelect('順序', [['desc', '高い順'], ['asc', '低い順']], 'desc');
-      const orderNote = add('p', '', 'kp-muted', head);
+      const orderNote = add('p', '', 'kp-work-list-note kp-muted', head);
       orderNote.setAttribute('role', 'status');
       const active = [], terminal = [];
       for (const w of inRecordedOrder(work, progressUi?.work_order)) {
@@ -729,7 +812,7 @@
         const descending = direction.value === 'desc';
         direction.options[0].textContent = byPriority ? '高い順' : '降順（大きい順）';
         direction.options[1].textContent = byPriority ? '低い順' : '昇順（小さい順）';
-        orderNote.textContent = `${byPriority ? '重要度' : 'WI番号'}：${direction.options[descending ? 0 : 1].textContent} · 完了・取消は末尾`;
+        orderNote.textContent = `${work.length}件 · ${byPriority ? '重要度' : 'WI番号'}：${direction.options[descending ? 0 : 1].textContent}`;
         const compare = (a, b) => {
           if (!byPriority) return compareWorkNumbers(a, b, direction.value);
           const rank = priorityRank(a.priority) - priorityRank(b.priority);
@@ -747,9 +830,9 @@
       loadWorkHistory(() => {
         const byId = new Map(work.map(w => [w.id, w]));
         for (const row of host.querySelectorAll('a[data-work-item]')) {
-          const panel = row.querySelector('.kp-work-progress');
+          const panel = row.querySelector('.kp-work-summary');
           if (panel && byId.has(row.dataset.workItem))
-            renderWorkProgress(byId.get(row.dataset.workItem), panel, true, Date.now());
+            renderWorkSummary(byId.get(row.dataset.workItem), panel, Date.now());
         }
       });
       return;
