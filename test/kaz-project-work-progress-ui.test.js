@@ -34,7 +34,7 @@ function all(node, predicate) {
 function render(snapshot, page, id = null) {
   const host = fakeHost();
   personal.render(host, { page, id }, component.dashboard(snapshot, page),
-    Date.parse('2026-10-09T14:30:00+09:00'));
+    Date.parse('2026-11-13T14:30:00+09:00'));
   return host;
 }
 
@@ -109,7 +109,8 @@ const works = render(snapshot, 'work');
 const workLinks = all(works, node => node.className === 'kp-work-row kp-work-link');
 assert.deepEqual(workLinks.map(node => node.dataset.workItem),
   [w4.id, w1.id, w2.id, w3.id, w5.id]);
-assert.match(workLinks[0].textContent, /Second Priority Work.*DOING.*CRITICAL.*Second Project.*段階.*作業中/);
+assert.match(workLinks[0].textContent, /FX-4 Second Priority Work.*作業中.*登録状態.*CRITICAL/);
+assert.doesNotMatch(workLinks[0].textContent, /Second Project|次の行動|Recorded work/);
 
 // Sort the two visible groups independently, keeping priority ties numeric in either direction.
 const sortFixture = create().dashboard;
@@ -177,7 +178,7 @@ const outcome = {
   ], criteria: [
     { id: 'AC-1', condition: 'Change is merged', result: 'achieved', requires: 'merge',
       method: 'Read merge record', evidence: [{ kind: 'merge', observed_on: '2026-11-13',
-        ref: 'https://github.com/example/repo/pull/12', observation: 'Verified merge' }] },
+        ref: 'https://github.com/example/repo/pull/12', effect: 'supports', observation: 'Verified merge' }] },
     { id: 'AC-2', condition: 'Target behavior works', result: 'unmet', requires: 'runtime',
       method: 'Read live output', gap: 'Repair live behavior',
       evidence: [{ kind: 'runtime', observed_on: '2026-11-13', ref: 'javascript:alert(1)', observation: 'Failed' }] },
@@ -194,7 +195,7 @@ const workOutcome = render(snapshot, 'work', w4.id);
 assert.match(workOutcome.textContent, /ゴール: Independent outcome.*達成 1件 · 未達 1件 · 未確認 1件/);
 assert.match(workOutcome.textContent, /残り: Need actual use observation/);
 assert.match(workOutcome.textContent, /前提Work: 未確認/);
-assert.equal(all(workOutcome, node => node.tagName === 'A' && node.href?.startsWith('https:')).length, 1);
+assert.ok(all(workOutcome, node => node.tagName === 'A' && node.href === 'https://github.com/example/repo/pull/12').length >= 1);
 assert.doesNotMatch(JSON.stringify(workOutcome), /javascript:alert/);
 const projectOutcome = render(snapshot, 'projects', p2.id);
 assert.match(projectOutcome.textContent, /継続運用.*ゴール: Independent outcome/);
@@ -203,9 +204,13 @@ assert.equal(all(projectOutcome, node => node.tagName === 'A' && /Second Priorit
 assert.doesNotMatch(render(snapshot, 'today').textContent, /Independent outcome/);
 const workProgress = render(snapshot, 'work');
 const outcomeRow = all(workProgress, node => node.dataset.workItem === w4.id)[0];
-assert.match(outcomeRow.textContent, /現在地.*Merged only.*残り.*Repair live behavior/);
-assert.match(outcomeRow.textContent, /完成条件 · 達成 1件 · 未達 1件 · 未確認 1件/);
+assert.match(outcomeRow.textContent, /マージ確認.*11\/13/);
+assert.doesNotMatch(outcomeRow.textContent, /Merged only|Repair live behavior|完成条件/);
+assert.match(workOutcome.textContent, /進捗評価.*マージ確認.*評価根拠.*AC-1の証拠/);
 assert.doesNotMatch(outcomeRow.textContent, /要レビュー|要対応|\d+%/);
+outcome.criteria[1].evidence[0] = { ...outcome.criteria[1].evidence[0], effect: 'contradicts',
+  ref: 'https://github.com/example/repo/issues/13' };
+assert.match(render(snapshot, 'work').textContent, /AC未達を確認/);
 snapshot.sources.work.status = 'failed';
 assert.doesNotMatch(render(snapshot, 'work', w4.id).textContent, /Independent outcome/);
 snapshot.sources.work.status = 'current';
