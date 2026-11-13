@@ -94,7 +94,7 @@ async function main() {
     kazOsDevelopmentMetricsApi: async () => {
       calls.metrics++;
       const period = {
-        summary: { works: 1, outcomes: { partial: 1 } }, linked_sessions: 1, sessions: 448,
+        summary: { works: 1, outcomes: { partial: 1 }, completion_rate: { known: 0, total: 1 } }, linked_sessions: 1, sessions: 448,
         models: [{ model: 'unknown', reasoning_level: 'unknown', works: 1,
           api_cost_usd: { value: null, known: 0, total: 1 } }],
         works: [{ work_id: 'WI-15', outcome: 'partial', github_links: [] }], trend: {},
@@ -154,8 +154,11 @@ async function main() {
     'development metrics must leave the five-tab navigation on normal routes');
   assert.equal(host.children[0].tag, 'h2', 'metrics share the Kaz OS page heading');
   assert.equal(host.children[1].className, 'development-productivity');
-  assert.match(JSON.stringify(host.children[1]), /API費用 unknown/);
-  assert.match(JSON.stringify(host.children[1]), /Work紐付け 1\/448 セッション（0\.22%）/);
+  assert.match(JSON.stringify(host.children[1]), /API費用 —/);
+  assert.match(JSON.stringify(host.children[1]), /収集 448セッション · Work紐付け 1セッション/);
+  assert.match(JSON.stringify(host.children[1]), /データ最終更新/);
+  assert.match(JSON.stringify(host.children[1]), /判定確定 0 \/ 1 Work/);
+  assert.match(JSON.stringify(host.children[1]), /判定未確定 1 Work/);
   assert.equal(host.children[2].className, 'development-metrics-details');
   assert.equal(host.children[2].children[1].className, 'development-metrics-dashboard');
   assert.equal(host.children[2].open, false, 'technical details start collapsed');

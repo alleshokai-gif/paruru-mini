@@ -1455,7 +1455,7 @@
     if (allowed()) document.dispatchEvent(new CustomEvent('paruru:view-request', { detail: { viewName: 'kaz-os' } }));
   }
 
-  function renderProductivity(host, value) {
+  function renderProductivity(host, value, freshnessNode) {
     const periods = value?.schema_version === 'kaz-development-productivity-v1' && value.periods;
     const section = document.createElement('section');
     section.className = 'development-productivity';
@@ -1465,6 +1465,7 @@
       parent.append(node);
       return node;
     };
+    section.append(freshnessNode);
     add(section, 'h3', 'AI開発の生産性');
     if (!periods || !['7', '30', '90', 'all'].every(key => periods[key]?.summary
         && Array.isArray(periods[key].works) && Array.isArray(periods[key].models))) {
@@ -1487,7 +1488,7 @@
     const grain = select('推移の単位 ', [['day', '日'], ['week', '週'], ['month', '月']], 'week');
     const body = document.createElement('div');
     section.append(body);
-    const show = (v, format) => Number.isFinite(v) ? format(v) : 'unknown';
+    const show = (v, format) => Number.isFinite(v) ? format(v) : '—';
     const percent = new Intl.NumberFormat('ja-JP', { style: 'percent', maximumFractionDigits: 2 });
     const rate = v => show(v, n => percent.format(n));
     const number = v => show(v, n => n.toLocaleString('ja-JP'));
@@ -1497,6 +1498,9 @@
     const evidence = {acceptance:'Acceptance確認', deployment_acceptance:'本番反映とAcceptance確認',
       final_failure:'失敗確定記録', owner_progress:'本人の進捗記録', test_ci:'技術検証・CI',
       controller_run:'Controller実行記録', artifact_readback:'成果物の保存と読戻し', github_work_binding:'GitHubの明示Work ID', explicit_work:'明示Work ID'};
+    const pendingReason = {test_ci:'CIまで確認', artifact_readback:'成果物の読戻しまで確認',
+      controller_run:'Controllerの実行記録あり', owner_progress:'進捗記録あり',
+      github_work_binding:'Work ID確認済み', explicit_work:'Work ID確認済み'};
     const labels = [['一発完走率', 'one_shot_rate', rate], ['完走率', 'completion_rate', rate],
       ['完走時間の中央値', 'elapsed_ms', elapsed], ['人間介入回数の中央値', 'human_interventions', number],
       ['手戻り率', 'rework_rate', rate], ['判定カバレッジ', 'coverage', rate]];
@@ -1505,19 +1509,35 @@
       const data = periods[range.value];
       body.replaceChildren();
       const summary = data.summary;
+      const latest = Date.parse(data.latest_session_at || '');
+      add(body, 'p', `収集 ${number(data.sessions)}セッション · Work紐付け ${number(data.linked_sessions)}セッション`);
+      if (Number.isFinite(latest)) add(body, 'p', `期間内の最終セッション記録 ${new Date(latest).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'})} JST`);
+      const confirmed = summary.completion_rate?.known;
+      add(body, 'p', `計測対象 ${number(summary.works)} Work · 判定確定 ${number(confirmed)} / ${number(summary.works)} Work`);
+      if (Number.isInteger(confirmed) && Number.isInteger(summary.works) && confirmed < summary.works) {
+        const reasons = new Map();
+        for (const work of data.works) {
+          if (['complete', 'failed'].includes(work.outcome)) continue;
+          const reason = pendingReason[work.evidence] || '終端の証拠を確認できない';
+          reasons.set(reason, (reasons.get(reason) || 0) + 1);
+        }
+        const knownReasons = [...reasons.values()].reduce((sum, count) => sum + count, 0);
+        const remaining = summary.works - confirmed - knownReasons;
+        if (remaining > 0) reasons.set('内訳未表示', remaining);
+        add(body, 'p', `判定未確定 ${summary.works - confirmed} Work · ${[...reasons].map(([label, count]) => `${label} ${count}件`).join('、')}`);
+      }
       const cards = add(body, 'div', '');
       cards.className = 'development-metrics-dashboard';
       for (const [label, key, format] of labels) {
         const card = add(cards, 'section', '');
         card.className = 'development-metrics-card';
         add(card, 'h4', label);
-        add(card, 'strong', format(summary[key]?.value));
+        add(card, 'strong', key === 'completion_rate' && confirmed === 0 ? '—（判定確定なし）' : format(summary[key]?.value));
         const stat = summary[key];
         add(card, 'p', key === 'coverage'
           ? `判定確定 ${summary.completion_rate?.known ?? 'unknown'} / ${summary.works}件`
           : `算定 ${stat?.known ?? 'unknown'} / ${stat?.total ?? 'unknown'}件`);
       }
-      add(body, 'p', `Work紐付け ${data.linked_sessions}/${data.sessions} セッション（${rate(data.sessions ? data.linked_sessions / data.sessions : null)}）`);
       if (data.session_scope) {
         const scopes = {unregistered_development:'Work未登録の開発', non_development:'調査・相談（明示）',
           github_work_unconfirmed:'成果参照あり・Work未確認', unknown:'区分を確認できない'};
@@ -1749,8 +1769,8 @@
       : '日時 unknown';
     const collectionState = sourceStatus === 'current' ? '正常'
       : sourceStatus === 'partial' ? `一部ログ未読 ${value.source?.unreadable_count ?? 'unknown'}件`
-        : sourceStatus === 'empty' ? '未収集' : '状態 unknown';
-    collected.textContent = `最終収集 ${collectionTime} / 収集状態 ${collectionState}`;
+        : sourceStatus === 'empty' ? '未収集' : sourceStatus === 'stale' ? '更新が遅れています' : '状態未確認';
+    collected.textContent = `データ最終更新 ${collectionTime} · 収集状態 ${collectionState}`;
     host.append(collected);
     const list = document.createElement('ul');
     for (const item of value.sessions || []) {
@@ -1779,7 +1799,7 @@
     const nodes = Array.from(host.children);
     const titleIndex = nodes.findIndex(node => node.tag === 'h2' || node.tagName?.toLowerCase() === 'h2');
     const title = nodes[titleIndex];
-    const supportingDetails = nodes.slice(titleIndex + 2);
+    const supportingDetails = nodes.slice(titleIndex + 2).filter(node => node !== collected);
     const dashboard = document.createElement('div');
     dashboard.className = 'development-metrics-dashboard';
     const addCard = (label, value, detail) => {
@@ -1792,7 +1812,7 @@
     };
     const unknown = 'unknown';
     const sessionCount = totals.sessions ?? unknown;
-    const collectionText = nodes.find(node => node.textContent?.startsWith('最終収集'))?.textContent || '収集状態 unknown';
+    const collectionText = collected.textContent;
     const githubRate = Number.isFinite(totals.github_linked_rate)
       ? `${Math.round(totals.github_linked_rate * 100)}%` : unknown;
     const observedTime = totals.observed_span_ms == null ? unknown : `${Math.round(totals.observed_span_ms / 60000)}分`;
@@ -1814,7 +1834,7 @@
     disclosure.appendChild(dashboard);
     supportingDetails.forEach(node => disclosure.appendChild(node));
     host.replaceChildren(title);
-    renderProductivity(host, value.productivity);
+    renderProductivity(host, value.productivity, collected);
     host.append(disclosure);
   }
 
