@@ -7,6 +7,21 @@
   'use strict';
   const PROJECT_STATES = ['ACTIVE', 'REVIEW', 'BLOCKED', 'BACKLOG', 'DONE'];
   const WORK_STATES = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
+  const WORK_PRIORITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+  const priorityRank = value => {
+    const index = WORK_PRIORITIES.indexOf(value);
+    return index < 0 ? WORK_PRIORITIES.length : index;
+  };
+  const workNumber = value => {
+    const match = typeof value === 'string' && /^WI-([0-9]+)$/.exec(value);
+    const number = match ? Number(match[1]) : NaN;
+    return Number.isSafeInteger(number) ? number : null;
+  };
+  function compareWorkNumbers(a, b, direction) {
+    const left = workNumber(a.work_id), right = workNumber(b.work_id);
+    if (left === null || right === null) return Number(left === null) - Number(right === null);
+    return direction === 'desc' ? right - left : left - right;
+  }
   const OUTCOME_SCHEMA = 'kaz-outcome-contract-v1';
   const OUTCOME_LABEL = { achieved: '達成', unmet: '未達', unverified: '未確認' };
   const EVIDENCE_LABEL = { record: '記録', test: 'テスト', pr: 'PR作成', merge: 'マージ',
@@ -174,13 +189,16 @@
       }
       return contract;
     }
-    function workLink(w, parent) {
+    function workLink(w, parent, showNumber = false) {
       const row = link('', 'work', w.id, 'kp-work-row kp-work-link');
       row.dataset.workItem = w.id;
       const top = el('div', '', 'kp-project-head');
-      top.append(el('strong', w.title), el('span', w.state, 'kp-badge kp-' + String(w.state).toLowerCase()));
+      const title = showNumber && w.work_id ? `${w.work_id} ${w.title}` : w.title;
+      top.append(el('strong', title), el('span', w.state, 'kp-badge kp-' + String(w.state).toLowerCase()));
       if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
-      row.append(top, el('span', `${w.project_name || 'Project未確認'} · ${w.work_id || 'ID未確認'}`, 'kp-muted'));
+      const projectName = w.project_name || 'Project未確認';
+      row.append(top, el('span', showNumber && w.work_id ? projectName :
+        `${projectName} · ${w.work_id || 'ID未確認'}`, 'kp-muted'));
       const outcome = outcomeOf(w, 'work', 'work_items');
       row.append(el('span', outcome ? outcomeCounts(outcome) :
         w.state === 'DONE' ? 'Notion記録: DONE · 成果未確認' :
@@ -591,19 +609,48 @@
         }
         return;
       }
-      add('p', `${work.length} Work Items · ${progressUi ? 'Notion Priority順 · 完了/取消は末尾' : '取得順'}`, 'kp-muted', head);
+      add('p', `${work.length} Work Items`, 'kp-muted', head);
       if (!work.length) { add('p', 'この取得範囲のWork Itemは0件です。'); return; }
-      const rows = add('div', '', 'kp-work-list');
-      const terminal = [];
-      inRecordedOrder(work, progressUi?.work_order).forEach(w => {
-        if (!WORK_STATES.includes(w.state)) return;
-        if (['DONE','CANCELLED'].includes(w.state)) { terminal.push(w); return; }
-        workLink(w, rows);
-      });
-      if (terminal.length) {
-        const closed = fold(`終了した項目 ${terminal.length}件`);
-        terminal.forEach(w => workLink(w, closed));
+      const controls = add('div', '', 'kp-work-sort', head);
+      function sortSelect(label, choices, value) {
+        const field = add('label', label, '', controls);
+        const input = add('select', '', '', field);
+        for (const [key, name] of choices) add('option', name, '', input).value = key;
+        input.value = value;
+        return input;
       }
+      const sortKey = sortSelect('並び替え', [['priority', '重要度'], ['number', 'WI番号']], 'priority');
+      const direction = sortSelect('順序', [['desc', '高い順'], ['asc', '低い順']], 'desc');
+      const orderNote = add('p', '', 'kp-muted', head);
+      orderNote.setAttribute('role', 'status');
+      const active = [], terminal = [];
+      for (const w of inRecordedOrder(work, progressUi?.work_order)) {
+        if (WORK_STATES.includes(w.state))
+          (['DONE','CANCELLED'].includes(w.state) ? terminal : active).push(w);
+      }
+      const rows = add('div', '', 'kp-work-list');
+      const closedRows = terminal.length ? add('div', '', 'kp-work-list',
+        fold(`終了した項目 ${terminal.length}件`)) : null;
+      function refreshOrder() {
+        const byPriority = sortKey.value === 'priority';
+        const descending = direction.value === 'desc';
+        direction.options[0].textContent = byPriority ? '高い順' : '降順（大きい順）';
+        direction.options[1].textContent = byPriority ? '低い順' : '昇順（小さい順）';
+        orderNote.textContent = `${byPriority ? '重要度' : 'WI番号'}：${direction.options[descending ? 0 : 1].textContent} · 完了・取消は末尾`;
+        const compare = (a, b) => {
+          if (!byPriority) return compareWorkNumbers(a, b, direction.value);
+          const rank = priorityRank(a.priority) - priorityRank(b.priority);
+          return (descending ? rank : -rank) || compareWorkNumbers(a, b, 'asc');
+        };
+        for (const [container, items] of [[rows, active], [closedRows, terminal]]) {
+          if (!container) continue;
+          container.replaceChildren();
+          [...items].sort(compare).forEach(w => workLink(w, container, true));
+        }
+      }
+      sortKey.addEventListener('change', refreshOrder);
+      direction.addEventListener('change', refreshOrder);
+      refreshOrder();
       return;
     }
 

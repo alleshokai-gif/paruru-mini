@@ -10,6 +10,8 @@ function fakeHost() {
       let own = '';
       return {
         tagName: tag.toUpperCase(), children: [], dataset: {}, className: '',
+        listeners: {},
+        get options() { return this.children; },
         classList: { add() {} },
         get textContent() { return own + this.children.map(child => child.textContent).join(' '); },
         set textContent(value) { own = String(value); this.children = []; },
@@ -18,7 +20,7 @@ function fakeHost() {
         replaceChildren(...nodes) { this.children = [...nodes]; },
         querySelectorAll() { return []; },
         setAttribute() {},
-        addEventListener() {},
+        addEventListener(type, handler) { this.listeners[type] = handler; },
       };
     },
   };
@@ -108,6 +110,47 @@ const workLinks = all(works, node => node.className === 'kp-work-row kp-work-lin
 assert.deepEqual(workLinks.map(node => node.dataset.workItem),
   [w4.id, w1.id, w2.id, w3.id, w5.id]);
 assert.match(workLinks[0].textContent, /Second Priority Work.*DOING.*CRITICAL.*Second Project.*成果条件: 未定義/);
+
+// Sort the two visible groups independently, keeping priority ties numeric in either direction.
+const sortFixture = create().dashboard;
+const sample = (id, priority, state = 'READY') =>
+  ({ id: `sort-${id}`, work_id: `WI-${id}`, title: `Work ${id}`, state, priority });
+const sourceWork = [
+  sample(66, 'HIGH'), sample(10, 'HIGH'), sample(2, 'HIGH'), sample(19, null),
+  sample(8, 'LOW'), sample(12, 'MEDIUM'), sample(6, 'CRITICAL'),
+  sample(23, 'LOW', 'CANCELLED'), sample(3, null, 'DONE'), sample(20, 'LOW', 'DONE'),
+];
+sortFixture.component_data.work.work_items = sourceWork;
+sortFixture.component_data.work.progress_ui = { schema_version: 'kaz-project-work-progress-v1',
+  work_order: sourceWork.map(w => w.id) };
+const sorted = render(sortFixture, 'work');
+const [key, direction] = all(sorted, node => node.tagName === 'SELECT');
+const [openRows, closedRows] = all(sorted, node => node.className === 'kp-work-list');
+const [closed] = all(sorted, node => node.tagName === 'DETAILS');
+const numbers = rows => rows.children.map(row => Number(row.dataset.workItem.split('-').pop()));
+const change = (input, value) => { input.value = value; input.listeners.change(); };
+assert.deepEqual(numbers(openRows), [6, 2, 10, 66, 12, 8, 19]);
+assert.deepEqual(numbers(closedRows), [20, 23, 3]);
+assert.match(sorted.textContent, /重要度：高い順/);
+for (const row of [...openRows.children, ...closedRows.children]) {
+  const id = row.dataset.workItem.split('-').pop();
+  assert.equal(all(row, node => node.tagName === 'STRONG')[0].textContent, `WI-${id} Work ${id}`);
+}
+change(direction, 'asc');
+assert.deepEqual(numbers(openRows), [19, 8, 12, 2, 10, 66, 6]);
+assert.deepEqual(numbers(closedRows), [3, 20, 23]);
+closed.open = true;
+change(key, 'number');
+assert.match(sorted.textContent, /WI番号：昇順/);
+assert.deepEqual(numbers(openRows), [2, 6, 8, 10, 12, 19, 66]);
+assert.deepEqual(numbers(closedRows), [3, 20, 23]);
+change(direction, 'desc');
+assert.deepEqual(numbers(openRows), [66, 19, 12, 10, 8, 6, 2]);
+assert.deepEqual(numbers(closedRows), [23, 20, 3]);
+assert.equal(closed.open, true);
+change(key, 'priority');
+assert.deepEqual(numbers(openRows), [6, 2, 10, 66, 12, 8, 19]);
+assert.deepEqual(sourceWork.map(w => w.work_id), [66, 10, 2, 19, 8, 12, 6, 23, 3, 20].map(n => `WI-${n}`));
 
 const workDetail = render(snapshot, 'work', w4.id);
 assert.match(workDetail.textContent, /作業の目的: Recorded work purpose/);
