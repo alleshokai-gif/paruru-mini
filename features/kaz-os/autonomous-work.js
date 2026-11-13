@@ -61,14 +61,43 @@
       ||r.raw_payload_stored!==false||!Number.isFinite(Date.parse(r.finished_at))
       ||!Array.isArray(r.items)||!r.items.length||r.items.length>2)throw Error('AUTONOMOUS_CONTRACT_INVALID');
     for(const i of r.items){
+      const recordedText=(value,max)=>typeof value==='string'&&value.length<=max
+        ||i.status==='complete'&&value===undefined;
       if(typeof i.work_id!=='string'||typeof i.title!=='string'||i.title.length>200||!statuses.has(i.status)
-        ||typeof i.summary!=='string'||i.summary.length>1200||typeof i.review_question!=='string'||i.review_question.length>500
+        ||!recordedText(i.summary,1200)||!recordedText(i.review_question,500)
         ||i.review_estimate_min!==null||typeof i.substep_completed!=='boolean'
         ||!['current','unavailable'].includes(i.review_read_status)
         ||(i.pr_url!==null&&!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9][0-9]*$/.test(i.pr_url))
         ||(i.review!==null&&(!choices[i.review?.decision]||!Number.isFinite(Date.parse(i.review?.observed_at)))))
         throw Error('AUTONOMOUS_CONTRACT_INVALID');
     }
+  }
+  function workHistory(view, now=Date.now()) {
+    validate(view);
+    const partials = new Map(), decisions = new Map(), seenWork = new Set();
+    let decisionsUnavailable = view.night_execution?.status === 'unavailable';
+    for (const item of view.partial_progress || []) {
+      const at = Date.parse(item.completed_at);
+      if (at <= now && (!partials.has(item.work_label) || at > Date.parse(partials.get(item.work_label).completed_at)))
+        partials.set(item.work_label, item);
+    }
+    const runs = [view.run, ...(view.night_runs || [])].filter(Boolean)
+      .sort((a,b)=>Date.parse(b.finished_at)-Date.parse(a.finished_at));
+    for (const run of runs) {
+      const at = Date.parse(run.finished_at);
+      if (at > now) continue;
+      for (const item of run.items) {
+        if (seenWork.has(item.work_id)) continue;
+        seenWork.add(item.work_id);
+        const expires = at + 2 * 86400000;
+        if (now >= expires || run.status !== 'review_pending' || !ready(item)) continue;
+        if (item.review_read_status !== 'current') decisionsUnavailable = true;
+        else if (item.review === null) {
+          decisions.set(item.work_id, { at, expires, question: item.review_question, ...item.owner_decision });
+        }
+      }
+    }
+    return {partials, decisions, decisionsUnavailable, partialsUnavailable: view.partial_progress_unavailable === true};
   }
   function reviewWindow(snapshot,item,now=Date.now()) {
     const w=(snapshot?.work||[]).find(w=>w.id===item.work_id);
@@ -341,5 +370,5 @@
     }
     if(current())host.prepend(section);
   }
-  root.KazAutonomousWork=Object.freeze({append,validate,reviewWindow});
+  root.KazAutonomousWork=Object.freeze({append,validate,reviewWindow,workHistory});
 })(globalThis);

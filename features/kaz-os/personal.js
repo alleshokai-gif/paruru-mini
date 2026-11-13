@@ -8,6 +8,14 @@
   const PROJECT_STATES = ['ACTIVE', 'REVIEW', 'BLOCKED', 'BACKLOG', 'DONE'];
   const WORK_STATES = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
   const WORK_PRIORITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+  const WORK_STAGES = { IDEA: '構想', BACKLOG: '着手待ち', READY: '着手可能', SCHEDULED: '着手予定あり',
+    DOING: '作業中', CODEX_RUNNING: 'AI実行中', WAITING: '待機中', BLOCKED: '作業停止中',
+    HUMAN_REVIEW: 'レビュー段階', ACCEPTANCE: '受入確認段階', DONE: '終了の記録あり', CANCELLED: '取消済み' };
+  const isClosedWork = work => ['DONE', 'CANCELLED'].includes(work.state);
+  const shortText = (text, limit = 96) => {
+    const chars = Array.from(text.replace(/\s+/g, ' ').trim());
+    return chars.length > limit ? chars.slice(0, limit).join('') + '…' : chars.join('');
+  };
   const priorityRank = value => {
     const index = WORK_PRIORITIES.indexOf(value);
     return index < 0 ? WORK_PRIORITIES.length : index;
@@ -195,10 +203,17 @@
       const top = el('div', '', 'kp-project-head');
       const title = showNumber && w.work_id ? `${w.work_id} ${w.title}` : w.title;
       top.append(el('strong', title), el('span', w.state, 'kp-badge kp-' + String(w.state).toLowerCase()));
-      if (w.priority) top.append(el('span', w.priority, 'kp-badge kp-priority'));
+      if (w.priority || showNumber) top.append(el('span', w.priority || '重要度未設定', 'kp-badge kp-priority'));
       const projectName = w.project_name || 'Project未確認';
       row.append(top, el('span', showNumber && w.work_id ? projectName :
         `${projectName} · ${w.work_id || 'ID未確認'}`, 'kp-muted'));
+      if (showNumber) {
+        row.dataset.workProgress = 'true';
+        const summary = add('div', '', 'kp-work-progress', row);
+        renderWorkProgress(w, summary, true, workHistory ? Date.now() : now);
+        parent.append(row);
+        return row;
+      }
       const outcome = outcomeOf(w, 'work', 'work_items');
       row.append(el('span', outcome ? outcomeCounts(outcome) :
         w.state === 'DONE' ? 'Notion記録: DONE · 成果未確認' :
@@ -206,6 +221,80 @@
           ? '成果条件: 未確認' : '成果条件: 未定義', 'kp-muted'));
       parent.append(row);
       return row;
+    }
+    let workHistory = null;
+    function renderWorkProgress(w, panel, compact, at = now) {
+      panel.replaceChildren();
+      const trusted = sourceState('work_items') === 'ok';
+      const detail = trusted && detailOf(w)?.status === 'current' ? detailOf(w) : null;
+      const outcome = outcomeOf(w, 'work', 'work_items');
+      const history = trusted ? workHistory?.partials.get(w.work_id) : null;
+      const decision = trusted && !isClosedWork(w) ? workHistory?.decisions.get(w.id) : null;
+      const revision = stamp(w.source_revision);
+      const owner = decision && Number.isFinite(revision) && decision.at >= revision && at < decision.expires ? decision : null;
+      const historyIsNew = history && Number.isFinite(revision) && stamp(history.completed_at) >= revision;
+      const jst = value => new Date(value).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',
+        year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST';
+      const line = (label, value) => {
+        const p = add('p', '', '', panel);
+        p.append(el('b', label + '　'), el('span', compact ? shortText(value) : value));
+      };
+      if (owner) add('p', '要レビュー', 'kp-work-owner', panel);
+      if (compact) line('段階', WORK_STAGES[w.state] || '進捗未評価');
+      const current = outcome?.current_state || detail?.progress || detail?.completed;
+      if (compact && (current || !history)) line('現在地', current ||
+        (trusted && Number.isFinite(revision) ? `進捗未評価（状態記録 ${jst(revision)}）` : '進捗の記録を確認できません'));
+      if (history) line(`部分成果（${jst(history.completed_at)}）`, history.summary);
+      if (compact) {
+        const gaps = [...(outcome?.remaining_gap || [])].sort((a,b) => Number(b.result === 'unmet') - Number(a.result === 'unmet'));
+        const remaining = owner?.remaining || gaps[0]?.gap || detail?.remaining || w.blocker;
+        if (remaining) line('残り', remaining);
+        else if (!isClosedWork(w)) line('残り', '未記録');
+        if (outcome) add('p', '完成条件 · ' + outcomeCounts(outcome), 'kp-muted', panel);
+        else if (w.state === 'DONE') add('p', '成果の証拠は未確認', 'kp-muted', panel);
+        if (owner) {
+          line('本人への依頼', owner.question?.trim() || owner.owner_reason);
+          return;
+        }
+      } else if (owner) {
+        line('本人への依頼', owner.question?.trim() || owner.owner_reason);
+        if (owner.question?.trim() && owner.question.trim() !== owner.owner_reason.trim())
+          line('本人の判断が必要な理由', owner.owner_reason);
+        line('推奨案', owner.recommended_option);
+        line('別案', owner.alternative_option);
+        const today = link('TODAYの夜間実行記録を開く', 'today', null, 'kp-back');
+        panel.append(today);
+      }
+      const canAdvance = ['READY', 'DOING', 'BACKLOG', 'SCHEDULED'].includes(w.state) && !w.blocker?.trim();
+      const next = !owner && canAdvance && historyIsNew && !history.decision_required ? history.next_action : null;
+      if (next) line('AIの次の行動（実行記録）', next);
+      else if (compact && !isClosedWork(w) && w.next_action?.trim()) line('次の行動（Notion）', w.next_action);
+      else if (compact && !isClosedWork(w)) line('次の行動', '未記録');
+      else if (!compact && history && !owner && !isClosedWork(w) && !history.decision_required)
+        line('実行時に記録した次の候補', history.next_action);
+    }
+    function loadWorkHistory(update) {
+      if (!options.readWorkHistory || sourceState('work_items') !== 'ok') return;
+      const status = add('p', '実行履歴・本人依頼を確認中…', 'kp-muted');
+      status.setAttribute('role', 'status');
+      void options.readWorkHistory().then(history => {
+        if (!options.current?.()) return;
+        workHistory = history;
+        status.textContent = [
+          history.partialsUnavailable ? '一部の実行履歴を取得できません。' : '',
+          history.decisionsUnavailable ? '一部の本人依頼の状態を確認できません。' : '',
+        ].filter(Boolean).join(' ');
+        update();
+        for (const expires of new Set([...history.decisions.values()].map(item => item.expires))) {
+          const delay = expires - Date.now();
+          if (delay > 0) {
+            const timer = setTimeout(() => { if (options.current?.()) update(); }, delay + 1);
+            timer?.unref?.();
+          }
+        }
+      }).catch(() => {
+        if (options.current?.()) status.textContent = '実行履歴・本人依頼を取得できません。';
+      });
     }
     function workDetail(w, parent) {
       const d = fold(`${w.title} · ${w.state} · ${estimate(w.estimate_min)}`, parent);
@@ -584,6 +673,10 @@
         if (!w) { add('p', 'この取得範囲にWorkが見つかりません。'); return; }
         add('h3', w.title, 'kp-project-title');
         add('p', `${w.state} · ${w.priority || 'Priority未設定'} · ${w.work_id || 'ID未確認'}`, 'kp-muted');
+        if (options.readWorkHistory) {
+          const panel = add('div', '', 'kp-work-progress');
+          loadWorkHistory(() => renderWorkProgress(w, panel, false, Date.now()));
+        }
         const outcome = showOutcome(w, 'work', 'work_items');
         add('p', `作業の目的: ${detailText(w, 'purpose')}`);
         for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', '進捗記録']])
@@ -626,7 +719,7 @@
       const active = [], terminal = [];
       for (const w of inRecordedOrder(work, progressUi?.work_order)) {
         if (WORK_STATES.includes(w.state))
-          (['DONE','CANCELLED'].includes(w.state) ? terminal : active).push(w);
+          (isClosedWork(w) ? terminal : active).push(w);
       }
       const rows = add('div', '', 'kp-work-list');
       const closedRows = terminal.length ? add('div', '', 'kp-work-list',
@@ -651,6 +744,14 @@
       sortKey.addEventListener('change', refreshOrder);
       direction.addEventListener('change', refreshOrder);
       refreshOrder();
+      loadWorkHistory(() => {
+        const byId = new Map(work.map(w => [w.id, w]));
+        for (const row of host.querySelectorAll('a[data-work-item]')) {
+          const panel = row.querySelector('.kp-work-progress');
+          if (panel && byId.has(row.dataset.workItem))
+            renderWorkProgress(byId.get(row.dataset.workItem), panel, true, Date.now());
+        }
+      });
       return;
     }
 

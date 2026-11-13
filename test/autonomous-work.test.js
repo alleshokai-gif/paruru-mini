@@ -21,6 +21,26 @@ function fixture(){return {schema_version:'kaz-autonomous-view-v1',as_of:new Dat
         alternative_option:'Review the audit.',recommendation_reason:'The fix has a nearer deadline.',
         owner_reason:'The owner decides which deadline matters more.'}}]}};}
 async function main(){
+  const ownerView=fixture(), evaluatedAt=Date.parse(ownerView.run.finished_at);
+  assert.equal(feature.workHistory(ownerView,evaluatedAt).decisions.get('w').question,'Review the result?');
+  assert.equal(feature.workHistory(ownerView,evaluatedAt+2*86400000).decisions.size,0);
+  const newerRun=fixture().run;
+  newerRun.run_id='b'.repeat(64);
+  newerRun.finished_at=new Date(evaluatedAt+1000).toISOString();
+  newerRun.status=newerRun.items[0].status='complete';
+  assert.equal(feature.workHistory({...ownerView,night_runs:[newerRun]},evaluatedAt+1000).decisions.size,0);
+  const ownerItem=ownerView.run.items[0];
+  ownerItem.review={decision:'approve',observed_at:ownerView.run.finished_at};
+  assert.equal(feature.workHistory(ownerView,evaluatedAt).decisions.size,0);
+  ownerItem.review=null;ownerItem.review_read_status='unavailable';
+  const unreadOwner=feature.workHistory(ownerView,evaluatedAt);
+  assert.equal(unreadOwner.decisions.size,0);
+  assert.equal(unreadOwner.decisionsUnavailable,true);
+  delete ownerItem.summary;delete ownerItem.review_question;
+  assert.throws(()=>feature.workHistory(ownerView,evaluatedAt),/AUTONOMOUS_CONTRACT_INVALID/);
+  ownerView.run.status=ownerItem.status='complete';ownerItem.review_state='completed';
+  assert.equal(feature.workHistory(ownerView,evaluatedAt).decisions.size,0);
+
   const empty=new Node('div');await feature.append(empty,{read:async()=>({schema_version:'kaz-autonomous-view-v1',status:'no_results',run:null,raw_payload_stored:false}),current:()=>true});
   assert.ok(all(empty).some(x=>x.textContent==='新しい部分成果 0件 · 今夜の判断待ち 0件'));
   assert.equal(all(empty).filter(x=>x.tag==='article').length,0,'no false result on an empty night');
