@@ -287,3 +287,39 @@ test('PALURU Bus view mounts the accepted manual train selector with a productio
   assert.match(preview, /window\.PALURUBusHomeRoute\?\.setActive\(true\)/);
   assert.doesNotMatch(preview, /nav\.innerHTML/);
 });
+
+test('unknown-arrival options retain transfer guidance and rail delay notes', () => {
+  const cases = [
+    { placeId: 'noborito-tamagawa', stationId: 'noborito', stationLabel: '登戸駅多摩川口',
+      station: '登戸', walk: '多摩川口側へ移動', routeLabel: '登０６' },
+    { placeId: 'mizonokuchi', stationId: 'musashi_mizonokuchi', stationLabel: '溝の口駅南口',
+      station: '武蔵溝ノ口', walk: '溝の口駅南口へ移動', routeLabel: '溝１８' }
+  ];
+  for (const entry of cases) {
+    const doc = fakeDocument(), mount = doc.createElement('div');
+    const option = { ...entry, stationTimeAt: epoch('18:18'), stationTimeSource: 'departure',
+      railTimingQuality: 'delay_projection', boardingAt: epoch('18:26'),
+      departureAt: epoch('18:31'), provider: 'kawasaki', tripId: entry.placeId,
+      homeArrivalAt: null, timingQuality: 'arrival_unknown', recommendable: false };
+    const original = { ...option };
+    ui.renderDecision(doc, mount, { status: 'insufficient_data', fastest: null,
+      alternate: null, options: [option], unavailablePlaces: [] });
+    const text = renderedText(mount);
+    assert.match(text, /帰宅時刻を比較できません.*到着時刻不明の乗車候補/s);
+    assert.ok(text.includes(`${entry.station}で下車`));
+    assert.ok(text.includes(`乗り場：${entry.stationLabel}`));
+    const card = mount.children.find((child) =>
+      child.className === 'bus-home-route-option bus-home-route-display-only');
+    const railIndex = card.children.findIndex((child) => child.className === 'bus-home-route-rail');
+    assert.deepEqual(card.children.slice(railIndex, railIndex + 5).map((child) => child.textContent), [
+      `🚃 ${entry.station} 18:18着・遅延に基づく見込み`, '↓', `🚶 ${entry.walk}`, '↓',
+      `🚌 18:31 川崎市バス ${entry.routeLabel}`
+    ]);
+    const badges = card.children[0].children.filter((child) => child.className === 'bus-home-route-area');
+    assert.deepEqual(badges.map((child) => child.textContent),
+      entry.placeId === 'noborito-tamagawa' ? ['多摩川口'] : []);
+    assert.match(text, /到着時刻は不明.*最速比較・推薦の対象外/s);
+    assert.doesNotMatch(text, /神木本町 .*着|到着予測|時刻表上の最速候補/);
+    assert.deepEqual(option, original);
+  }
+});
