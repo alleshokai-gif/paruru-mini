@@ -33,11 +33,12 @@ function harness(operation) {
     transportDiagnostics_: () => ({
       requestId: () => '123e4567-e89b-42d3-a456-426614174000',
       start: () => ({}),
-      classifyError: error => error.transportClassification || 'unknown',
+      classifyError: error => context.PALURUTransportDiagnostics.classifyError(error),
       record: (_, entry) => records.push(entry),
     }),
   };
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'features', 'transport', 'diagnostics.js'), 'utf8'), context);
   vm.runInContext(source, context);
   async function flush() { for (let i = 0; i < 16; i++) await Promise.resolve(); }
   async function advance(ms) {
@@ -70,6 +71,7 @@ test('an unresponsive read settles after two existing deadlines, with bounded re
   assert.equal(failure.code, 'HOME_CONTROL_UNAVAILABLE');
   assert.equal(failure.transportClassification, 'timeout');
   assert.equal(h.records[1].outcome, 'unresolved');
+  assert.deepEqual(h.records.map(row => row.classification), ['timeout', 'timeout']);
   assert.deepEqual(h.records.map(row => row.elapsedMs), [8000, 8000]);
   assert.equal(h.calls[0].payload.request_id, h.calls[1].payload.request_id);
   assert.deepEqual(h.calls.map(row => row.payload.transport_attempt), [1, 2]);

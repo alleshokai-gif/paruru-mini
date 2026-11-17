@@ -59,7 +59,7 @@ failure code/timing within existing access, assess the real cause, independently
 review the candidate, obtain the outstanding publication permission, and run
 real-browser acceptance. Do not increase timeouts to manufacture success.
 
-## Local results
+## Local results at 885d1993
 
 - Deadline tests against unchanged main: two fail, two pass. After the local
   candidate: all four pass with virtual time, no network and unchanged limits.
@@ -71,3 +71,32 @@ real-browser acceptance. Do not increase timeouts to manufacture success.
   also reports its 13 internal checks passing. Syntax and whitespace checks pass.
 - No external review, push, CI, publication or deployment was performed for
   this local candidate. The PR #217 head and worktree remain unchanged.
+
+## Authorized independent review and Draft preparation
+
+The subsequent instruction authorized the existing Claude Pro review/code
+delivery route for this separate candidate, while continuing to prohibit merge,
+production publication and GAS deployment. PR #217 remains outside this scope.
+
+- Claude Pro / firstParty review of exact code head `885d1993` returned
+  `approved`, blocking findings 0, session
+  `3841a6d6-d278-41bf-882c-9575169a61fe`.
+- The reviewer explicitly retained the missing production stage attribution and
+  unproven latency improvement. Reducing duplicate Sheet reads does not prove
+  that a 9-second GAS execution will fit the unchanged 8-second deadline.
+- The non-blocking diagnostic-classification question was checked against the
+  actual existing classifier; both timeout records remain `timeout`. The
+  focused 16 test entries pass, with an additional exact classifier assertion
+  run passing all four deadline cases. Production code is unchanged from the
+  reviewed head; only the test and this record changed.
+- Numeric Pro allowance was not available from the isolated interactive usage
+  check without onboarding. That check was cancelled without model prompts or
+  setting/authentication changes. The single review succeeded, no 429 or
+  provider limit was returned, and no paid fallback or allowance change was used.
+- Draft preparation uses `[skip ci]` to avoid GitHub Actions spending; this does
+  not satisfy required checks or authorize integration. The existing Cloudflare
+  Workers build hook is checked separately before pushing because a commit
+  message alone does not establish that the external hook is disabled.
+
+No live Calendar bodies, secrets, ledger rows or production data were supplied
+to the reviewer. Original Work reservations/metrics remain outside this change.
