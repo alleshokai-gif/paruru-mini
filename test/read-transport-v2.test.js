@@ -428,6 +428,35 @@ async function main() {
       routeModes: { dashboardV3: 'DIRECT_V2', inboxV3: 'DIRECT_V2' } };
     assert.deepEqual(await harness.create({ config }).dashboardV3(), dashboard);
     assert.deepEqual(await harness.create({ config }).inboxV3(), inbox);
+    // These are existing server-side human-review kinds, not automatic writes.
+    for (const kind of ['GARDENER_IMPROVEMENT', 'GARDENER_CONTROLLED_APPLY',
+      'GARDENER_APPLIED_CHANGE', 'GARDENER_PULL_REQUEST']) {
+      const row = { kind, decision_status: 'pending' };
+      const current = { ...dashboard, today: { ...dashboard.today, confirmations: [row] } };
+      const reviewInbox = { ...inbox, inbox_items: [row] };
+      assert.deepEqual(await load(async () => response(200, current))
+        .create({ config }).dashboardV3(), current);
+      assert.deepEqual(await load(async () => response(200, reviewInbox))
+        .create({ config }).inboxV3(), reviewInbox);
+      for (const status of ['STALE', 'DEGRADED']) {
+        const aged = { ...current, status, sources: { ...sources,
+          work_busy: { ...sources.work_busy, status: 'stale' } } };
+        assert.deepEqual(await load(async () => response(200, aged))
+          .create({ config }).dashboardV3(), aged,
+        'compatibility must preserve source freshness, without upgrading expired data');
+      }
+    }
+    for (const row of [
+      { kind: 'GARDENER_UNKNOWN', decision_status: 'pending' },
+      { kind: 'GARDENER_CONTROLLED_APPLY', decision_status: 'approved' },
+    ]) {
+      const invalid = { ...dashboard, today: { ...dashboard.today, confirmations: [row] } };
+      const reviewInbox = { ...inbox, inbox_items: [row] };
+      await assert.rejects(load(async () => response(200, invalid))
+        .create({ config }).dashboardV3(), error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+      await assert.rejects(load(async () => response(200, reviewInbox))
+        .create({ config }).inboxV3(), error => error.code === 'V3_SNAPSHOT_CONTRACT_INVALID');
+    }
     const eventDriven = { ...dashboard, sources: { ...sources,
       decision_ledger: { ...sources.decision_ledger, valid_until: null },
       today: { ...sources.today, valid_until: null },

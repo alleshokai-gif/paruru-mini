@@ -261,6 +261,8 @@
       'conflict_resolution', 'stale_state_confirmation', 'calendar_event_impact',
       'calendar_partial_window', 'calendar_impact_triage', 'calendar_event_selection',
       'CONTEXT_CANDIDATE', 'CONFLICT_RESOLUTION',
+      'GARDENER_IMPROVEMENT', 'GARDENER_CONTROLLED_APPLY',
+      'GARDENER_APPLIED_CHANGE', 'GARDENER_PULL_REQUEST',
       'today_focus', 'daily_estimate', 'generic_candidate_review']);
     if (!value || value.schema_version !== schema
         || !['CURRENT', 'STALE', 'DEGRADED'].includes(value.status)

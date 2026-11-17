@@ -1,2 +1,2 @@
 // Family Inbox school print release.
-globalThis.BUILD_ID = "v20261114-energy-ecocute-link-v1";
+globalThis.BUILD_ID = "v20261117-today-gardener-contract-v1";
