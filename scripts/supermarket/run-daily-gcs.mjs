@@ -94,18 +94,29 @@ export async function makeGcs(bucket, fetcher = fetch) {
   };
 }
 
-export async function runDaily(store,date,{collector,ocr,sourceFetch} = {}) {
+async function createWorkspace() {
+  const tmp = await mkdtemp(join(tmpdir(),'paluru-flyer-daily-'));
+  const dbFile = join(tmp,'state.sqlite');
+  return {
+    async open(bytes) {
+      if (bytes) await writeFile(dbFile,bytes,{mode:0o600});
+      return openDb(dbFile);
+    },
+    async finish(db) { db.close(); return readFile(dbFile); },
+    async dispose() { await rm(tmp,{recursive:true,force:true}); }
+  };
+}
+
+export async function runDaily(store,date,{collector,ocr,sourceFetch,workspaceFactory=createWorkspace} = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) ||
       new Date(date).toISOString().slice(0,10) !== date) throw new Error('INVALID_RUN_DAY');
   const leaseKey = prefix+'/claims/'+date+'.json';
-  const lease = await store.put(leaseKey,Buffer.from(JSON.stringify({schema:1,date})),'application/json','0');
-  const tmp = await mkdtemp(join(tmpdir(),'paluru-flyer-daily-'));
+  const ws = await workspaceFactory();
   try {
-    const dbFile = join(tmp,'state.sqlite');
+    const lease = await store.put(leaseKey,Buffer.from(JSON.stringify({schema:1,date})),'application/json','0');
     const oldDb = await store.describe(dbKey);
-    if (oldDb) await writeFile(dbFile,await store.read(dbKey,oldDb),{mode:0o600});
-    const db = openDb(dbFile);
-    let result, requests = 0, elapsed;
+    const db = await ws.open(oldDb ? await store.read(dbKey,oldDb) : null);
+    let result, requests = 0, elapsed, dbBytes;
     try {
       if (!lease) {
         result = snapshot(db,date);
@@ -119,9 +130,12 @@ export async function runDaily(store,date,{collector,ocr,sourceFetch} = {}) {
         elapsed = Math.round(performance.now()-start);
         if (!result.states.ok) throw new Error('COLLECTOR_DAY_NOT_WRITTEN');
       }
-    } finally { db.close(); }
+    } finally {
+      if (lease && result?.states?.ok) dbBytes = await ws.finish(db);
+      else db.close();
+    }
     if (lease) {
-      const dbMeta = await store.put(dbKey,await readFile(dbFile),'application/vnd.sqlite3',stateGen(oldDb));
+      const dbMeta = await store.put(dbKey,dbBytes,'application/vnd.sqlite3',stateGen(oldDb));
       if (!dbMeta) throw new Error('GCS_STATE_WRITE_CONFLICT');
     }
     const bytes = Buffer.from(JSON.stringify(portableResult(result)));
@@ -138,7 +152,7 @@ export async function runDaily(store,date,{collector,ocr,sourceFetch} = {}) {
     if (sha(await store.read(latestKey,published)) !== sha(bytes)) throw new Error('GCS_LATEST_READBACK_MISMATCH');
     return {date,disposition:lease?'published':'recovered_publication',requests,elapsed,status:result.states,
       offers:result.offers.length,generation:stateGen(published)};
-  } finally { await rm(tmp,{recursive:true,force:true}); }
+  } finally { await ws.dispose(); }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.umask(0o077);
