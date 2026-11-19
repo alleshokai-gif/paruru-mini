@@ -4,7 +4,7 @@ import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { collect, openDb, snapshot } from './collector.mjs';
+import { collect, openDb, snapshot, portableResult } from './collector.mjs';
 import { extractOkFront } from './ok-ocr.mjs';
 import poc from '../../features/shopping/supermarket-poc.js';
 
@@ -124,7 +124,7 @@ export async function runDaily(store,date,{collector,ocr,sourceFetch} = {}) {
       const dbMeta = await store.put(dbKey,await readFile(dbFile),'application/vnd.sqlite3',stateGen(oldDb));
       if (!dbMeta) throw new Error('GCS_STATE_WRITE_CONFLICT');
     }
-    const bytes = Buffer.from(JSON.stringify(result));
+    const bytes = Buffer.from(JSON.stringify(portableResult(result)));
     const oldLatest = await store.describe(latestKey);
     if (oldLatest) {
       const oldBytes = await store.read(latestKey,oldLatest);

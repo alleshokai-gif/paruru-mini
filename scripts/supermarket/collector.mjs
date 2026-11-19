@@ -12,7 +12,7 @@ const USER_AGENT = 'PALURU-Supermarket-PoC/1.0';
 const LIMIT = 256 * 1024;
 const STORE = 'ok';
 const HELD = Object.freeze({
-  iy:['https://promo.hatobase.jp/flyers/00521/new','AUTOMATED_USE_NOT_CONFIRMED'],
+  iy:['https://promo.hatobase.jp/flyers/00521/new','PUBLISHER_NOFOLLOW_MANUAL_ONLY'],
   maruetsu:['https://www.maruetsu.co.jp/store/9245/','TOKUBAI_AUTOMATED_USE_NOT_CONFIRMED'],
   life:['https://store.lifecorp.jp/detail/east648/','TOKUBAI_AUTOMATED_USE_NOT_CONFIRMED'],
   rosen:['https://www.sotetsu.rosen.co.jp/shopdetail?scode=0032','TARGET_ACCESS_DENIED'],
@@ -103,10 +103,11 @@ export async function collect(db, date, fetcher = fetch, {ocr, daily=false} = {}
   for (const [store,[source,error]] of Object.entries(HELD)) set.run(store,date,'held',source,null,error);
   // Claim the run before network I/O; an interrupted attempt must not silently repeat or serve stale data.
   set.run(STORE,date,'failed',INDEX,null,'INCOMPLETE_RUN');
-  let edition;
+  let edition,stage = 'robots';
   try {
     const robots = await get(ROBOTS, fetcher);
     if (robots.trim()) throw new Error('ROBOTS_POLICY_REVIEW_REQUIRED');
+    stage = 'index';
     edition = identifyEdition(await get(INDEX, fetcher));
     const loaded = db.prepare('SELECT from_day, until_day FROM editions WHERE evidence_id=?').get(edition.id);
     if (loaded) {
@@ -116,7 +117,9 @@ export async function collect(db, date, fetcher = fetch, {ocr, daily=false} = {}
     } else if (!ocr) {
       set.run(STORE,date,'needs_review',edition.source,edition.id,null);
     } else {
+      stage = 'image';
       const bytes = await getImage(edition.image || '',fetcher);
+      stage = 'ocr';
       const scanned = await ocr(bytes,edition);
       set.run(STORE,date,'needs_review',edition.source,edition.id,null);
       saveEdition(db,{store:STORE,source:edition.source,...scanned},'ocr_validated',
@@ -126,7 +129,9 @@ export async function collect(db, date, fetcher = fetch, {ocr, daily=false} = {}
     const code = /^(HTTP_\d{3}|CONTENT_TYPE|BODY_LIMIT|ROBOTS_POLICY_REVIEW_REQUIRED|INDEX_FORMAT_OR_SCOPE_CHANGED|OCR_[A-Z_]+)$/.test(error.message)
       ? error.message : error.name === 'TimeoutError' ? 'TIMEOUT' :
       error.code === 'ENOENT' ? 'OCR_DEPENDENCY_MISSING' : error.killed ? 'OCR_TIMEOUT' : 'REQUEST_OR_OCR_FAILED';
-    set.run(STORE,date,'failed',edition?.source || INDEX,edition?.id || null,code);
+    const diagnostic = stage === 'robots' && !['HTTP_403','HTTP_429','ROBOTS_POLICY_REVIEW_REQUIRED'].includes(code)
+      ? 'ROBOTS_' + code : code;
+    set.run(STORE,date,'failed',edition?.source || INDEX,edition?.id || null,diagnostic);
   }
   return snapshot(db, date);
 }
@@ -178,6 +183,26 @@ export function verifyImport(db,edition) {
   return saveEdition(db,edition,'visually_verified');
 }
 
+// Private SQLite/log codes are separate from the shared API allowlist.
+export function portableResult(result) {
+  const explicit = {
+    PUBLISHER_NOFOLLOW_MANUAL_ONLY:'manual_only', AUTOMATED_USE_NOT_CONFIRMED:'manual_only', TOKUBAI_AUTOMATED_USE_NOT_CONFIRMED:'permission_unconfirmed',
+    TARGET_ACCESS_DENIED:'http_denied', JAVASCRIPT_VIEWER_APPROVAL_UNVERIFIED:'permission_unconfirmed',
+    HTTP_403:'http_denied', HTTP_401:'http_denied', HTTP_429:'rate_limited',
+    ROBOTS_POLICY_REVIEW_REQUIRED:'permission_unconfirmed', REQUEST_FAILED:'network_error',
+    REQUEST_OR_OCR_FAILED:'source_unavailable', TIMEOUT:'timeout', OCR_TIMEOUT:'timeout',
+    INDEX_FORMAT_OR_SCOPE_CHANGED:'layout_changed', OCR_LAYOUT:'layout_changed',
+    OCR_DEPENDENCY_MISSING:'not_configured', OCR_SOURCE_MISSING:'layout_changed',
+    CONTENT_TYPE:'unsupported_format', BODY_LIMIT:'unsupported_format', NOT_ENABLED:'not_configured',
+    INCOMPLETE_RUN:'source_unavailable', HTTP_404:'source_unavailable',
+  };
+  const reason = e => (Object.hasOwn(explicit,e) ? explicit[e] : null) || (e?.startsWith('ROBOTS_') ? 'robots_unreachable' :
+    e?.startsWith('OCR_') ? 'extract_unverified' : e?.startsWith('HTTP_') ? 'http_error' : null);
+  return {...result,sources:result.sources.map(o => ({...o,
+    error:reason(o.error) || (o.state === 'failed' ? 'source_unavailable' : o.state === 'held' ? 'held' : null)
+  }))};
+}
+
 export function snapshot(db, date) {
   const stateRows = db.prepare('SELECT * FROM status WHERE day=? ORDER BY store').all(date);
   const states = Object.fromEntries(stateRows.map(o => [o.store, o.state]));
@@ -217,7 +242,7 @@ async function main() {
     if (command === 'verified-import') console.log(JSON.stringify(verifyImport(db, await jsonLimit(arg, LIMIT))));
     if (command === 'export') {
       const temp = arg + '.' + randomUUID() + '.tmp';
-      await writeFile(temp, JSON.stringify(snapshot(db, poc.dayTokyo())), { mode:0o600 });
+      await writeFile(temp, JSON.stringify(portableResult(snapshot(db, poc.dayTokyo()))), { mode:0o600 });
       await rename(temp, arg);
     }
   } finally { db.close(); }

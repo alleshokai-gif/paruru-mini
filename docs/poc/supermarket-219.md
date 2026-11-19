@@ -11,7 +11,7 @@
 | 店舗 | 第一候補・観測 | PoC採用・保留理由 |
 | --- | --- | --- |
 | オーケー 溝ノ口 | [店舗](https://ok-corporation.jp/shop/mizonokuchi.html) → [公式週間商品情報](https://ok-corporation.jp/flyer/) の関東版、対象外店舗表記あり | 1日1回の索引・robots確認。変更号の公式画像をローカルOCR。11/16–22号の3行を実測保存し、公式PDFでも照合。robots 404確認。本文画像をDB・リポジトリへ再配布しない |
-| イトーヨーカドー 溝ノ口 | [公式店舗](https://stores.itoyokado.co.jp/detail/521/) → [はとベース掲載一覧](https://promo.hatobase.jp/flyers/00521/new)、11/18–22の公開閲覧ページ | 公開ブラウザ閲覧。提供側の規約・robots・画像再利用を確認してから定期取得候補。非公開API使用なし |
+| イトーヨーカドー 溝ノ口 | [公式店舗](https://stores.itoyokado.co.jp/detail/521/) → [はとベース掲載一覧](https://promo.hatobase.jp/flyers/00521/new)、11/18–22の公開閲覧ページ | 提供元が公開ブラウザ手動閲覧・画像表示を提供。`/images` には `noindex,nofollow` を実測したため機械巡回は保留。ローカルOCRの試験のみ。非公開API使用なし |
 | マルエツ 川崎坂戸 | [公式店舗](https://www.maruetsu.co.jp/store/9245/)からトクバイ11/17–23号等を確認。旧一覧は403 | トクバイの定期自動取得は許可未確認につき保留。手動閲覧、公式[チラシ更新メール](https://www.maruetsu.co.jp/magazine/)・[アプリ](https://www.maruetsu.co.jp/shufoo/sp.html)は代替候補（通知のみ・出典範囲未検証、登録なし） |
 | ライフ 溝口 | [公式店舗](https://store.lifecorp.jp/detail/east648/) → [公式ページ組込みトクバイ](https://widgets.tokubai.co.jp/224224/leaflet_widget) | [トクバイ利用規約](https://kufu.jp/terms/tokubai)／[ライフの利用条件](https://www.lifecorp.jp/about_use.html) を確認の上、正式許可または手動参照から。非公開API・画像転載なし |
 | そうてつローゼン たいら | [公式店舗](https://www.sotetsu.rosen.co.jp/shopdetail?scode=0032) → 画像/PDFビューア候補 | 現在号・更新頻度・条件未確定。公式リンクの更新識別子を検証してから |
@@ -45,3 +45,7 @@ node scripts/supermarket/preview.mjs /private/offers.sqlite 8765
 `family-supermarket/v1/claims/YYYY-MM-DD.json` を generation=0 で先取り。次に `collector-state.sqlite` と `latest.json` を既存generationと一致する場合だけ書き込む。後者を同generationで再読取し、ダイジェスト比較。同日重複は外部収集0回。DB保存後にlatest配信だけ落ちた場合、同日再実行はDBから最新JSONを修復（外部アクセス0）。旧日のlatestを新しい日に表示してはならない。既存owner専用read gatewayは同じ固定キーを読む。家族データ／チラシ原画像は格納しない。
 
 配備前に専用の実行主体・バケット非公開設定・既存prefixへのオブジェクト作成/読取/更新と実bucketメタデータ読取・既存Schedulerの対象を確認する。構成の不足は未達として停止し、公開や権限拡張で代替しない。
+
+公開に使わないprivate snapshot契約でも、Gatewayには合意した列挙reason（例：`manual_only`、`permission_unconfirmed`、`http_denied`、`robots_unreachable`、`layout_changed`、`timeout`）のみを送る。個別のHTTP確認・OCR診断コードはprivate DBと実行ログに残し、理由値を丸ごと公開しない。
+
+ヨーカドーは2026-11-20の実ブラウザで公開画像の手動保存が可能と確認。ローカルOCR試験では銀鮭 1,000円・税込1,080円、牛乳198円・税込213円に一致。銀鮭の画像OCRには別々の数字領域で18/19/20日が出た。商品名の一部はOCR誤読し、自動DB採択はしていない。紙面全体の11/18〜22を個々の値引きに適用するのは誤りで、銀鮭と牛乳の対象は11/18〜20（画像目視）。取得自動化の承認と、価格行の適用日・品名・例外店舗を全て機械で検証するまでは手動候補。
