@@ -31,6 +31,9 @@
     SHOPPING_BUSY: '更新が重なりました。再読み込みしてから編集してください。',
     SHOPPING_CAPACITY: '保存上限に達しました。既存の商品・履歴は保持されています。'
   };
+  const preview = ['127.0.0.1','localhost'].includes(root.location?.hostname)
+    ? doc.getElementById('supermarketPocPreview') : null;
+  const planPreview = root.PALURUSupermarketPoc;
   let call = null, epoch = 0, busy = false, current = false;
   const el = (tag, text) => {
     const node = doc.createElement(tag);
@@ -84,7 +87,12 @@
     try {
       const result = await call(operation, operation.action === 'list' ? undefined : root.crypto.randomUUID());
       if (at !== epoch) return false;
-      render(validItems(result));
+      const items = validItems(result);
+      render(items);
+      if (preview && planPreview && operation.action === 'list') {
+        preview.hidden = false;
+        planPreview.render(doc, preview, result.supermarketPoc, items);
+      }
       current = true;
       status.textContent = result.duplicates ? '同じ商品は登録済みです。数量は変更していません。'
         : labels[operation.action] || '最新のリストです。';
@@ -92,6 +100,7 @@
     } catch (error) {
       if (at !== epoch) return false;
       current = false;
+      if (preview) { preview.replaceChildren(); preview.hidden = true; }
       status.textContent = errors[error?.code || error?.message] || '結果を確認できませんでした。再読み込みしてください。';
       return false;
     } finally {
@@ -101,6 +110,7 @@
   function clear() {
     epoch++; call = null; busy = false; current = false;
     pending.replaceChildren(); history.replaceChildren(); historyCount.textContent = ''; status.textContent = '';
+    if (preview) { preview.replaceChildren(); preview.hidden = true; }
     add.reset(); editable();
   }
   add.addEventListener('submit', async e => {
