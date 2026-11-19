@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFile, stat, rename, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { extractOkFront } from './ok-ocr.mjs';
 import poc from '../../features/shopping/supermarket-poc.js';
 
 export const INDEX = 'https://ok-corporation.jp/flyer/';
@@ -10,6 +11,15 @@ const ROBOTS = 'https://ok-corporation.jp/robots.txt';
 const USER_AGENT = 'PALURU-Supermarket-PoC/1.0';
 const LIMIT = 256 * 1024;
 const STORE = 'ok';
+const HELD = Object.freeze({
+  iy:['https://promo.hatobase.jp/flyers/00521/new','AUTOMATED_USE_NOT_CONFIRMED'],
+  maruetsu:['https://www.maruetsu.co.jp/store/9245/','TOKUBAI_AUTOMATED_USE_NOT_CONFIRMED'],
+  life:['https://store.lifecorp.jp/detail/east648/','TOKUBAI_AUTOMATED_USE_NOT_CONFIRMED'],
+  rosen:['https://www.sotetsu.rosen.co.jp/shopdetail?scode=0032','TARGET_ACCESS_DENIED'],
+  yaoko:['https://yap-pd.yaoko-net.com/app/flyer/1221/','JAVASCRIPT_VIEWER_APPROVAL_UNVERIFIED'],
+});
+const MAX_IMAGE = 8 * 1024 * 1024;
+const IMAGE_URL = /^https:\/\/ok-corporation\.jp\/archives\/\d{3}\/20\d{4}\/[a-f0-9]+\.jpg$/;
 const sha = data => createHash('sha256').update(data).digest('hex');
 const publisherPdf = s => /^https:\/\/ok-corporation\.jp\/media-download\/\d+\/[a-f0-9]+\/PDF\/$/.test(s);
 const jsonLimit = async (p, max) => {
@@ -23,16 +33,21 @@ export function openDb(filename) {
     CREATE TABLE IF NOT EXISTS status (store TEXT PRIMARY KEY, day TEXT NOT NULL, state TEXT NOT NULL,
       source TEXT, evidence_id TEXT, error TEXT);
     CREATE TABLE IF NOT EXISTS editions (evidence_id TEXT PRIMARY KEY, store TEXT NOT NULL, source TEXT NOT NULL,
-      from_day TEXT NOT NULL, until_day TEXT NOT NULL, obtained_at TEXT NOT NULL, offers TEXT NOT NULL);`);
+      from_day TEXT NOT NULL, until_day TEXT NOT NULL, obtained_at TEXT NOT NULL, offers TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS ocr_evidence (evidence_id TEXT PRIMARY KEY REFERENCES editions(evidence_id),
+      image_source TEXT NOT NULL, image_sha256 TEXT NOT NULL, parser TEXT NOT NULL);`);
   return db;
 }
 
 export function identifyEdition(html) {
-  const match = html.match(/【関東】商品情報紙[^<]*<\/h3>([\s\S]*?)(?=<h3\b|$)/i);
-  const pdf = match?.[1].match(/href="(https:\/\/ok-corporation\.jp\/media-download\/\d+\/[a-f0-9]+\/PDF\/)"/i)?.[1];
+  const match = html.match(/【関東】商品情報紙(\d{1,2})月(\d{1,2})日号[^<]*<\/h3>([\s\S]*?)(?=<h3\b|$)/i);
+  const pdf = match?.[3].match(/href="(https:\/\/ok-corporation\.jp\/media-download\/\d+\/[a-f0-9]+\/PDF\/)"/i)?.[1];
   // Fail closed if the current known distribution note changes.
-  if (!pdf || !publisherPdf(pdf) || !/※清瀬店は除きます。/.test(match[1])) throw new Error('INDEX_FORMAT_OR_SCOPE_CHANGED');
-  return { source: pdf, id: sha(pdf) };
+  if (!pdf || !publisherPdf(pdf) || !/※清瀬店は除きます。/.test(match[3])) throw new Error('INDEX_FORMAT_OR_SCOPE_CHANGED');
+  const front = Array.from(match[3].matchAll(/<img\b[^>]*>/gi)).map(m => m[0])
+    .filter(tag => /alt="【関東】オーケー商品情報 表"/.test(tag));
+  const image = front.length === 1 ? front[0].match(/data-src="([^"]+)"/)?.[1] : undefined;
+  return {source:pdf,id:sha(pdf),image:image && IMAGE_URL.test(image) ? image : null,month:+match[1],startDay:+match[2]};
 }
 
 async function get(url, fetcher) {
@@ -61,22 +76,57 @@ async function get(url, fetcher) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export async function collect(db, date, fetcher = fetch) {
+async function getImage(url, fetcher) {
+  if (!IMAGE_URL.test(url)) throw new Error('OCR_SOURCE_MISSING');
+  const r = await fetcher(url,{method:'GET',redirect:'error',signal:AbortSignal.timeout(18000),
+    headers:{'User-Agent':USER_AGENT,'Accept':'image/jpeg'}});
+  if (!r.ok || !/^image\/jpeg(?:[;\s]|$)/i.test(r.headers.get('content-type') || '')) {
+    if (r.body) await r.body.cancel();
+    throw new Error(r.ok ? 'CONTENT_TYPE' : 'HTTP_' + r.status);
+  }
+  const chunks = []; let count = 0;
+  for await (const block of r.body) {
+    count += block.length;
+    if (count > MAX_IMAGE) throw new Error('BODY_LIMIT');
+    chunks.push(Buffer.from(block));
+  }
+  const body = Buffer.concat(chunks);
+  if (body.length < 4 || body[0] !== 255 || body[1] !== 216 || body[2] !== 255) throw new Error('OCR_IMAGE_INVALID');
+  return body;
+}
+
+export async function collect(db, date, fetcher = fetch, {ocr, daily=false} = {}) {
+  if (!realDay(date)) throw new Error('INVALID_RUN_DAY');
   const set = db.prepare('INSERT OR REPLACE INTO status VALUES (?, ?, ?, ?, ?, ?)');
-  for (const store of Object.keys(poc.stores).filter(id => id !== STORE)) set.run(store, date, 'held', null, null, 'NOT_ENABLED');
   const previous = db.prepare('SELECT * FROM status WHERE store=?').get(STORE);
+  if (daily && previous?.day >= date) return snapshot(db, date);
+  for (const [store,[source,error]] of Object.entries(HELD)) set.run(store,date,'held',source,null,error);
+  // Claim the run before network I/O; an interrupted attempt must not silently repeat or serve stale data.
+  set.run(STORE,date,'failed',INDEX,null,'INCOMPLETE_RUN');
+  let edition;
   try {
-    // For the PoC any nonempty Robots policy means manual re-evaluation.
     const robots = await get(ROBOTS, fetcher);
     if (robots.trim()) throw new Error('ROBOTS_POLICY_REVIEW_REQUIRED');
-    const edition = identifyEdition(await get(INDEX, fetcher));
-    const loaded = db.prepare('SELECT until_day FROM editions WHERE evidence_id=?').get(edition.id);
-    const state = loaded ? (loaded.until_day < date ? 'expired' : previous?.evidence_id === edition.id ? 'unchanged' : 'checked') : 'needs_review';
-    set.run(STORE, date, state, edition.source, edition.id, null);
+    edition = identifyEdition(await get(INDEX, fetcher));
+    const loaded = db.prepare('SELECT from_day, until_day FROM editions WHERE evidence_id=?').get(edition.id);
+    if (loaded) {
+      const state = loaded.until_day < date ? 'expired' : loaded.from_day > date ? 'needs_review' :
+        previous?.evidence_id === edition.id ? 'unchanged' : 'checked';
+      set.run(STORE,date,state,edition.source,edition.id,null);
+    } else if (!ocr) {
+      set.run(STORE,date,'needs_review',edition.source,edition.id,null);
+    } else {
+      const bytes = await getImage(edition.image || '',fetcher);
+      const scanned = await ocr(bytes,edition);
+      set.run(STORE,date,'needs_review',edition.source,edition.id,null);
+      saveEdition(db,{store:STORE,source:edition.source,...scanned},'ocr_validated',
+        {source:edition.image,hash:sha(bytes),parser:'ok-front-template-v1'});
+    }
   } catch (error) {
-    const code = /^(HTTP_\d{3}|CONTENT_TYPE|BODY_LIMIT|ROBOTS_POLICY_REVIEW_REQUIRED|INDEX_FORMAT_OR_SCOPE_CHANGED)$/.test(error.message)
-      ? error.message : error.name === 'TimeoutError' ? 'TIMEOUT' : 'REQUEST_FAILED';
-    set.run(STORE, date, 'failed', null, null, code);
+    const code = /^(HTTP_\d{3}|CONTENT_TYPE|BODY_LIMIT|ROBOTS_POLICY_REVIEW_REQUIRED|INDEX_FORMAT_OR_SCOPE_CHANGED|OCR_[A-Z_]+)$/.test(error.message)
+      ? error.message : error.name === 'TimeoutError' ? 'TIMEOUT' :
+      error.code === 'ENOENT' ? 'OCR_DEPENDENCY_MISSING' : error.killed ? 'OCR_TIMEOUT' : 'REQUEST_OR_OCR_FAILED';
+    set.run(STORE,date,'failed',edition?.source || INDEX,edition?.id || null,code);
   }
   return snapshot(db, date);
 }
@@ -85,10 +135,11 @@ function realDay(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 }
-export function verifyImport(db, edition) {
+function saveEdition(db, edition, confidence, evidence) {
   const current = db.prepare('SELECT * FROM status WHERE store=?').get(STORE);
   if (edition?.store !== STORE || !current?.source || current.source !== edition.source || !publisherPdf(edition.source) ||
-      !realDay(edition.from) || !realDay(edition.until) || edition.from > current.day || edition.until < current.day ||
+      !realDay(edition.from) || !realDay(edition.until) || edition.from > edition.until ||
+      (!evidence && (edition.from > current.day || edition.until < current.day)) ||
       (Date.parse(edition.until) - Date.parse(edition.from)) / 86400000 > 14 ||
       !Array.isArray(edition.offers) || !edition.offers.length || edition.offers.length > 50) throw new Error('INVALID_EDITION');
   for (const o of edition.offers) {
@@ -101,7 +152,7 @@ export function verifyImport(db, edition) {
     throw new Error('DUPLICATE_OFFER');
   }
   const offers = edition.offers.map(({title,spec,unit,net_yen,tax_included_sen,conditions,kind}) =>
-    ({title,spec,unit,net_yen,tax_included_sen,conditions,kind,confidence:'visually_verified'}));
+    ({title,spec,unit,net_yen,tax_included_sen,conditions,kind,confidence}));
   const normalized = JSON.stringify(offers);
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -112,12 +163,19 @@ export function verifyImport(db, edition) {
     if (!existing) {
       db.prepare('INSERT INTO editions VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(current.evidence_id, STORE, edition.source, edition.from, edition.until, new Date().toISOString(), normalized);
+      if (evidence) db.prepare('INSERT INTO ocr_evidence VALUES (?, ?, ?, ?)')
+        .run(current.evidence_id,evidence.source,evidence.hash,evidence.parser);
     }
     db.prepare("UPDATE status SET state=?, error=NULL WHERE store=? AND evidence_id=?")
-      .run(existing ? 'unchanged' : 'checked', STORE, current.evidence_id);
+      .run(edition.until < current.day ? 'expired' : edition.from > current.day ? 'needs_review' :
+        existing ? 'unchanged' : 'checked', STORE, current.evidence_id);
     db.exec('COMMIT');
     return { duplicate: !!existing, offers: offers.length };
   } catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+
+export function verifyImport(db,edition) {
+  return saveEdition(db,edition,'visually_verified');
 }
 
 export function snapshot(db, date) {
@@ -140,7 +198,13 @@ async function main() {
     const lock = await import('node:fs/promises').then(fs => fs.open(dbFile + '.collect.lock', 'wx', 0o600));
     try {
       const db = openDb(dbFile);
-      try { const r = await collect(db, poc.dayTokyo()); console.log(JSON.stringify(r.sources)); }
+      try {
+        let requests = 0;
+        const elapsed = performance.now();
+        const counted = (...args) => { requests++; return fetch(...args); };
+        const r = await collect(db, poc.dayTokyo(),counted,{ocr:extractOkFront,daily:true});
+        console.log(JSON.stringify({date:r.date,requests,elapsedMs:Math.round(performance.now()-elapsed),offers:r.offers.length,sources:r.sources}));
+      }
       finally { db.close(); }
     } finally {
       await lock.close();
