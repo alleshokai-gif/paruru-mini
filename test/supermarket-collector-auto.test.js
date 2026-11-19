@@ -75,3 +75,18 @@ test('rejects confusing dates, unit, price or member condition rather than guess
     assert.equal(validateCard(card,{...bits,...invalid}),null);
   }
 });
+
+test('portable results preserve exact gateway reasons without internal diagnostic codes', async () => {
+  const {portableResult} = await import('../scripts/supermarket/collector.mjs');
+  const codes = [
+    ['PUBLISHER_NOFOLLOW_MANUAL_ONLY','manual_only'], ['TOKUBAI_AUTOMATED_USE_NOT_CONFIRMED','permission_unconfirmed'],
+    ['TARGET_ACCESS_DENIED','http_denied'], ['JAVASCRIPT_VIEWER_APPROVAL_UNVERIFIED','permission_unconfirmed'],
+    ['HTTP_429','rate_limited'], ['ROBOTS_TIMEOUT','robots_unreachable'], ['TIMEOUT','timeout'],
+    ['OCR_NO_VALID_OFFERS','extract_unverified'], ['INDEX_FORMAT_OR_SCOPE_CHANGED','layout_changed']
+  ];
+  for (const [error,checked] of codes) {
+    const state={state:'failed',error};
+    assert.equal(portableResult({sources:[state]}).sources[0].error,checked);
+    assert.equal(state.error,error);
+  }
+});
