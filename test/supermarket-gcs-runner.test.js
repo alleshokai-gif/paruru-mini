@@ -38,6 +38,29 @@ function storeMock() {
   };
 }
 
+// Project workflow deliberately mounts no writable filesystem. The production
+// workspace still serializes private SQLite files. Here one table is enough to
+// test the same SQL-based runner transitions and lock/recovery without a bypass.
+async function inMemoryWorkspace() {
+  const {openDb} = await import('../scripts/supermarket/collector.mjs');
+  return {
+    async open(bytes) {
+      const db = openDb(':memory:');
+      if (bytes) for (const row of JSON.parse(Buffer.from(bytes))) {
+        db.prepare('INSERT INTO status VALUES (?, ?, ?, ?, ?, ?)').run(...row);
+      }
+      return db;
+    },
+    async finish(db) {
+      try {
+        const rows = db.prepare('SELECT store,day,state,source,evidence_id,error FROM status ORDER BY store').all();
+        return Buffer.from(JSON.stringify(rows.map(row=>Object.values(row))));
+      } finally { db.close(); }
+    },
+    async dispose() {}
+  };
+}
+
 const failingCollector = async (db,date,fetch) => {
   await fetch('https://ok-corporation.jp/robots.txt');
   db.prepare("INSERT INTO status VALUES (?, ?, ?, NULL, NULL, ?)").run('ok',date,'failed','TEST_FAILURE');
@@ -47,7 +70,7 @@ const failingCollector = async (db,date,fetch) => {
 test('one exclusive same-day claim, persists SQLite and verifies latest after put', async () => {
   const {runDaily} = await import('../scripts/supermarket/run-daily-gcs.mjs');
   const store = storeMock(); let reads = 0;
-  const flags = {collector:failingCollector,sourceFetch:async () => {reads++;}};
+  const flags = {workspaceFactory:inMemoryWorkspace,collector:failingCollector,sourceFetch:async () => {reads++;}};
   let r = await runDaily(store,date,flags);
   assert.equal(r.disposition,'published');
   assert.equal(r.status.ok,'failed');
@@ -64,7 +87,7 @@ test('one exclusive same-day claim, persists SQLite and verifies latest after pu
 test('repairs lost latest write from stored DB without contacting source', async () => {
   const {runDaily} = await import('../scripts/supermarket/run-daily-gcs.mjs');
   const store = storeMock(); let reads = 0;
-  const flags = {collector:failingCollector,sourceFetch:async () => {reads++;}};
+  const flags = {workspaceFactory:inMemoryWorkspace,collector:failingCollector,sourceFetch:async () => {reads++;}};
   store.failNextLatest();
   await assert.rejects(runDaily(store,date,flags),/GCS_WRITE_403/);
   const r = await runDaily(store,date,flags);
