@@ -13,3 +13,8 @@
 .shopping-quantity-save {grid-column:1/-1}
 .shopping-history li {margin:.55rem 0}
 #shoppingStatus {min-height:1.5em}
+
+#supermarketPocPreview:not([hidden]) {display:grid;gap:8px;margin-block:12px;padding:12px;border:1px solid #d9deec;border-radius:14px}
+#supermarketPocPreview p,#supermarketPocPreview h3 {margin:0}
+#supermarketPocPreview ul {display:grid;gap:4px;margin:0;padding-inline-start:1.25rem;font-size:.9rem}
+.supermarket-plan {display:grid;gap:6px;min-width:0;padding:10px;border:1px solid #d9deec;border-radius:10px;background:#fff}

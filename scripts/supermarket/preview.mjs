@@ -27,8 +27,7 @@ export async function preview(db, port = 0) {
         '<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
         '<title>PALURU 買い物 PoC</title><link rel="stylesheet" href="/shopping.css"><body>' +
         '<p>ローカル試作。買い物リストの例はテスト用、チラシ価格は照合済み実データ。</p>' +
-        view.replace('data-view="shopping" hidden','data-view="shopping"').replace(
-          '</header>','</header><section id="supermarketPocPreview" hidden aria-live="polite"></section>') +
+        view.replace('data-view="shopping" hidden','data-view="shopping"') +
         '<button id="previewLock" type="button">ロックを試す</button>' +
         '<script src="/supermarket.js"></script><script src="/shopping.js"></script><script src="/bootstrap.js"></script></body></html>');
       return;

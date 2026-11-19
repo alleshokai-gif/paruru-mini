@@ -20,20 +20,24 @@
       .formatToParts(now);
     return ['year', 'month', 'day'].map(type => parts.find(p => p.type === type).value).join('-');
   }
+  const eligibleState = state => state === 'checked' || state === 'unchanged';
   function isOffer(o, date) {
     try {
       return !!stores[o.store] && /^\d{4}-\d{2}-\d{2}$/.test(o.from) &&
         /^\d{4}-\d{2}-\d{2}$/.test(o.until) && o.from <= date && date <= o.until &&
         typeof o.title === 'string' && o.title.length <= 160 &&
         typeof o.spec === 'string' && typeof o.unit === 'string' && typeof o.conditions === 'string' &&
-        ['weekly_information','special'].includes(o.kind) && o.confidence === 'visually_verified' &&
+        ['weekly_information','special'].includes(o.kind) &&
+        ['visually_verified','ocr_validated'].includes(o.confidence) &&
         Number.isInteger(o.net_yen) && o.net_yen > 0 && Number.isInteger(o.tax_included_sen) &&
+        o.tax_included_sen >= o.net_yen * 100 &&
         new URL(o.source).protocol === 'https:';
     } catch (_) { return false; }
   }
   function recommend(snapshot, items, date = dayTokyo()) {
-    const rows = snapshot?.schema === 1 && snapshot.date === date && Array.isArray(snapshot.offers)
-      ? snapshot.offers.filter(o => isOffer(o, date)) : [];
+    const rows = snapshot?.schema === 1 && snapshot.date === date &&
+        Array.isArray(snapshot.offers) && snapshot.offers.length <= 1000
+      ? snapshot.offers.filter(o => isOffer(o, date) && eligibleState(snapshot.states?.[o.store])) : [];
     const pending = items.filter(i => i.status === 'pending' && (!i.due_date || i.due_date <= date));
     const plans = [];
     for (const recipe of recipes) {
@@ -60,10 +64,14 @@
   function render(doc, target, snapshot, items, date = dayTokyo()) {
     const el = (tag, value) => { const n = doc.createElement(tag); if (value !== undefined) n.textContent = value; return n; };
     target.replaceChildren(el('h2', '今日のスーパー'), el('p', date + ' の夕食案・各案1店舗'));
-    const plans = recommend(snapshot, items, date);
-    if (!plans.length) target.append(el('p', '今日有効で照合済みの献立候補はありません。'));
+    const today = snapshot?.schema === 1 && snapshot.date === date;
+    const plans = today ? recommend(snapshot, items, date) : [];
+    if (!today) target.append(el('p', '当日のチラシ情報を確認できません。買い物リストは引き続き使えます。'));
+    else if (!plans.length) target.append(el('p', '今日有効で確認済みの献立候補はありません。'));
+    else if (plans.length < 3) target.append(el('p', '掲載価格を確認できた材料に絞って表示しています。'));
+    if (plans.length) target.append(el('p', '掲載品を基にした候補です。6店舗の合計額を比較したものではありません。'));
     for (const plan of plans) {
-      const a = el('article');
+      const a = el('article'); a.className = 'supermarket-plan';
       const o = plan.offer;
       a.append(el('h3', plan.name), el('p', '買い物先：' + plan.store),
         el('p', o.title + '・' + o.spec + '：税抜 ' + o.net_yen + '円 / ' + o.unit + '・税込参考 ' + (o.tax_included_sen / 100).toFixed(2) + '円（' +
@@ -75,11 +83,14 @@
       link.href = o.source; link.target = '_blank'; link.rel = 'noopener noreferrer';
       a.append(link); target.append(a);
     }
-    if (snapshot?.date === date && snapshot?.states) {
-      const state = el('p', Object.entries(stores).map(([id, name]) =>
-        name + ': ' + (statusLabels[snapshot.states[id]] || '未確認')).join(' / '));
-      target.append(state);
+    const state = el('ul');
+    state.setAttribute('aria-label', '6店舗の取得状況');
+    for (const [id, name] of Object.entries(stores)) {
+      const code = today && snapshot.states?.[id];
+      const label = Object.hasOwn(statusLabels, code) ? statusLabels[code] : '未確認';
+      state.append(el('li', name + '：' + label));
     }
+    target.append(state);
   }
   const api = Object.freeze({stores, dayTokyo, recommend, render});
   root.PALURUSupermarketPoc = api;

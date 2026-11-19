@@ -65,13 +65,13 @@ test('three one-store plans reuse pending list and omit invalid/future prices', 
   const offers = edition.offers.map(o => ({...o,store:'ok',source:pdf,from:edition.from,until:edition.until,confidence:'visually_verified'}));
   const shopping = [{name:'納豆',status:'pending'},{name:'牛乳',status:'pending'},{name:'醤油',status:'pending',due_date:'2026-11-25'},
     {name:'お茶',status:'purchased'}];
-  const plans = poc.recommend({schema:1,date,offers},shopping,date);
+  const plans = poc.recommend({schema:1,date,states:{ok:'checked'},offers},shopping,date);
   assert.equal(plans.length,3);
   for (const p of plans) {
     assert.equal(p.store,'オーケー 溝ノ口店');
     assert.deepEqual(p.listed,['納豆']); assert.deepEqual(p.unknown,['牛乳']); assert.equal(p.total,undefined);
   }
   assert.equal(poc.recommend({schema:1,date:'2026-11-24',offers},shopping,'2026-11-24').length,0);
-  assert.equal(poc.recommend({schema:1,date,offers:offers.map(o => ({...o,source:'javascript:alert(1)'}))},shopping,date).length,0);
+  assert.equal(poc.recommend({schema:1,date,states:{ok:'checked'},offers:offers.map(o => ({...o,source:'javascript:alert(1)'}))},shopping,date).length,0);
   assert.equal(poc.dayTokyo(new Date('2026-11-19T15:10:00.000Z')),date);
 });
