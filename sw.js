@@ -1,4 +1,4 @@
-importScripts("./build.js?v=v20261114-energy-ecocute-link-v1");
+importScripts("./build.js?v=v20261120-supermarket-shopping-v1");
 // Release: v20261107-location-history-page
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
@@ -15,6 +15,7 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("app.js"),
   versioned("features/family-schedules/page.js"),
   versioned("features/family-schedules/view.css"),
+  versioned("features/shopping/supermarket-poc.js"),
   versioned("features/shopping/page.js"),
   versioned("features/shopping/view.css"),
   versioned("features/auth/firebase-auth.js"),

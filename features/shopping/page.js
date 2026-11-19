@@ -31,10 +31,9 @@
     SHOPPING_BUSY: '更新が重なりました。再読み込みしてから編集してください。',
     SHOPPING_CAPACITY: '保存上限に達しました。既存の商品・履歴は保持されています。'
   };
-  const preview = ['127.0.0.1','localhost'].includes(root.location?.hostname)
-    ? doc.getElementById('supermarketPocPreview') : null;
+  const preview = doc.getElementById('supermarketPocPreview');
   const planPreview = root.PALURUSupermarketPoc;
-  let call = null, epoch = 0, busy = false, current = false;
+  let call = null, epoch = 0, busy = false, current = false, supermarketSnapshot = null;
   const el = (tag, text) => {
     const node = doc.createElement(tag);
     if (text !== undefined) node.textContent = text;
@@ -79,6 +78,21 @@
     history.replaceChildren(bought.length ? list : el('p', '購入履歴はありません。'));
     historyCount.textContent = bought.length + '件';
   }
+  function renderSupermarket(items) {
+    if (!preview || !planPreview || !call) return;
+    try {
+      planPreview.render(doc, preview, supermarketSnapshot, items);
+      preview.hidden = false;
+    } catch (_) {
+      // Recommendation errors must not hide or disable the existing shopping list.
+      preview.replaceChildren();
+      preview.hidden = true;
+    }
+  }
+  function clearSupermarket() {
+    supermarketSnapshot = null;
+    if (preview) { preview.replaceChildren(); preview.hidden = true; }
+  }
   async function run(operation) {
     if (busy || !call || (operation.action !== 'list' && !current)) return false;
     const at = epoch;
@@ -89,10 +103,8 @@
       if (at !== epoch) return false;
       const items = validItems(result);
       render(items);
-      if (preview && planPreview && operation.action === 'list') {
-        preview.hidden = false;
-        planPreview.render(doc, preview, result.supermarketPoc, items);
-      }
+      if (operation.action === 'list') supermarketSnapshot = result.supermarketPoc || null;
+      renderSupermarket(items);
       current = true;
       status.textContent = result.duplicates ? '同じ商品は登録済みです。数量は変更していません。'
         : labels[operation.action] || '最新のリストです。';
@@ -100,7 +112,7 @@
     } catch (error) {
       if (at !== epoch) return false;
       current = false;
-      if (preview) { preview.replaceChildren(); preview.hidden = true; }
+      clearSupermarket();
       status.textContent = errors[error?.code || error?.message] || '結果を確認できませんでした。再読み込みしてください。';
       return false;
     } finally {
@@ -110,7 +122,7 @@
   function clear() {
     epoch++; call = null; busy = false; current = false;
     pending.replaceChildren(); history.replaceChildren(); historyCount.textContent = ''; status.textContent = '';
-    if (preview) { preview.replaceChildren(); preview.hidden = true; }
+    clearSupermarket();
     add.reset(); editable();
   }
   add.addEventListener('submit', async e => {
@@ -120,7 +132,7 @@
       unit: f.get('unit'), due_date: f.get('due_date') || null, memo: f.get('memo')}]})) add.reset();
   });
   reload.addEventListener('click', () => run({action:'list'}));
-  doc.addEventListener('paruru:authenticated', e => { clear(); call = e.detail.shoppingApi || null; });
+  doc.addEventListener('paruru:authenticated', e => { clear(); call = typeof e.detail?.shoppingApi === 'function' ? e.detail.shoppingApi : null; });
   doc.addEventListener('kaz-os:locked', clear);
   doc.addEventListener('shopping:opened', e => e.detail.waitUntil(run({action:'list'})));
   doc.addEventListener('visibilitychange', () => {
