@@ -112,3 +112,18 @@ test('late response after lock or identity replacement never reveals the previou
   assert.equal(app.preview.all('article').length,0);
   assert.doesNotMatch(app.preview.text(),/納豆/);
 });
+
+test('verified offers from additional stores remain inspectable outside the unchanged menu selection',async()=>{
+  const app=setup();const data=result(app.date);
+  data.supermarketPoc.states.iy='checked';
+  const iy={...data.supermarketPoc.offers[0],store:'iy',title:'塩銀鮭',unit:'1パック',net_yen:1000,tax_included_sen:108000};
+  data.supermarketPoc.offers.push(iy,{...iy,title:'期限切れ採用禁止',until:'2000-01-01'},
+    {...iy,title:'保留店採用禁止',store:'rosen'});
+  app.authenticate(async()=>data);await app.open();
+  assert.equal(app.preview.all('article').length,3);
+  assert.equal(app.preview.all('li').length,6);
+  const details=app.preview.all('details');assert.equal(details.length,1);
+  assert.match(details[0].text(),/塩銀鮭/);assert.match(details[0].text(),/1000円 \/ 1パック/);
+  assert.match(details[0].text(),/1080\.00円/);assert.match(details[0].text(),/5件/);
+  assert.doesNotMatch(details[0].text(),/採用禁止/);
+});

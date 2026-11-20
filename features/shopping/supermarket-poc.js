@@ -65,6 +65,8 @@
     const el = (tag, value) => { const n = doc.createElement(tag); if (value !== undefined) n.textContent = value; return n; };
     target.replaceChildren(el('h2', '今日のスーパー'), el('p', date + ' の夕食案・各案1店舗'));
     const today = snapshot?.schema === 1 && snapshot.date === date;
+    const confirmed = today && Array.isArray(snapshot.offers) && snapshot.offers.length <= 1000
+      ? snapshot.offers.filter(o => isOffer(o,date) && eligibleState(snapshot.states?.[o.store])) : [];
     const plans = today ? recommend(snapshot, items, date) : [];
     if (!today) target.append(el('p', '当日のチラシ情報を確認できません。買い物リストは引き続き使えます。'));
     else if (!plans.length) target.append(el('p', '今日有効で確認済みの献立候補はありません。'));
@@ -88,9 +90,29 @@
     for (const [id, name] of Object.entries(stores)) {
       const code = today && snapshot.states?.[id];
       const label = Object.hasOwn(statusLabels, code) ? statusLabels[code] : '未確認';
-      state.append(el('li', name + '：' + label));
+      const count=confirmed.filter(o=>o.store===id).length;
+      state.append(el('li', name + '：' + label + (count ? '（' + count + '商品）' : '')));
     }
     target.append(state);
+    // Coverage is separate from the three menu recommendations. A newly
+    // collected store's verified prices must remain inspectable even when
+    // the unchanged recommendation logic chooses another store for a menu.
+    if(confirmed.length) {
+      const details=el('details');details.className='supermarket-offers';
+      details.append(el('summary','当日有効な掲載商品（'+confirmed.length+'件）'));
+      for(const [id,name] of Object.entries(stores)) {
+        const offers=confirmed.filter(o=>o.store===id);if(!offers.length)continue;
+        details.append(el('h4',name));
+        for(const o of offers) {
+          const row=el('p',o.title+'・'+o.spec+'：税抜 '+o.net_yen+'円 / '+o.unit+
+            '・税込参考 '+(o.tax_included_sen/100).toFixed(2)+'円（'+o.conditions+'） '+o.from+'〜'+o.until+' ');
+          row.className='supermarket-offer';
+          const link=el('a','公式資料');link.href=o.source;link.target='_blank';link.rel='noopener noreferrer';
+          row.append(link);details.append(row);
+        }
+      }
+      target.append(details);
+    }
   }
   const api = Object.freeze({stores, dayTokyo, recommend, render});
   root.PALURUSupermarketPoc = api;

@@ -186,3 +186,23 @@ test('an IY-disabled duplicate cannot overwrite a concurrent activation with its
   assert.deepEqual(await store.describe(latest),current);
   assert.equal(JSON.parse(await store.read(latest,current)).states.iy,'checked');
 });
+
+test('Yaoko activation claims its own day without re-collecting already checked IY or OK',async()=>{
+  const {runDaily}=await import('../scripts/supermarket/run-daily-gcs.mjs');
+  const {snapshot}=await import('../scripts/supermarket/collector.mjs');
+  const store=storeMock();let calls=0;
+  const initial=async(db,day)=>{
+    const set=db.prepare('INSERT INTO status VALUES(?,?,?,?,?,?)');
+    for(const id of ['ok','iy'])set.run(id,day,'checked','existing',null,null);
+    set.run('yaoko',day,'held','old',null,'old');return snapshot(db,day);
+  };
+  const flags={workspaceFactory:inMemoryWorkspace,collector:initial};await runDaily(store,date,flags);
+  const enabled={...flags,enableIy:true,enableYaoko:true,
+    iyCollector:async()=>{throw new Error('IY_MUST_NOT_REPLAY');},
+    yaokoCollector:async(db,day,fetch)=>{await fetch('https://yap-pd.yaoko-net.com/assets/flyer/1210/image.jpg');
+      db.prepare("UPDATE status SET state='checked',error=NULL WHERE store='yaoko'").run();return snapshot(db,day);},
+    sourceFetch:async()=>{calls++;}};
+  const r=await runDaily(store,date,enabled);assert.equal(r.activatedStore,'yaoko');assert.equal(calls,1);
+  assert.ok(store.attempts.some(([key])=>key===prefix+'/claims/'+date+'-yaoko.json'));
+  await runDaily(store,date,enabled);assert.equal(calls,1);
+});

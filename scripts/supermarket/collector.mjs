@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { extractOkFront } from './ok-ocr.mjs';
 import { identifyIyEdition, IY_SOURCE, IY_IMAGE } from './iy-ocr.mjs';
+import { identifyYaokoEdition, YAOKO_SOURCE, YAOKO_STORE, YAOKO_IMAGE } from './yaoko-ocr.mjs';
 import poc from '../../features/shopping/supermarket-poc.js';
 
 export const INDEX = 'https://ok-corporation.jp/flyer/';
@@ -22,6 +23,8 @@ const HELD = Object.freeze({
 const MAX_IMAGE = 8 * 1024 * 1024;
 const IY_ROBOTS='https://promo.hatobase.jp/robots.txt';
 const IY_CONTENT_ROBOTS='https://content.hatobase.jp/robots.txt';
+const YAOKO_ROBOTS='https://www.yaoko-net.com/robots.txt';
+const YAOKO_IMAGE_ROBOTS='https://yap-pd.yaoko-net.com/robots.txt';
 const IMAGE_URL = /^https:\/\/ok-corporation\.jp\/archives\/\d{3}\/20\d{4}\/[a-f0-9]+\.jpg$/;
 const sha = data => createHash('sha256').update(data).digest('hex');
 const publisherPdf = s => /^https:\/\/ok-corporation\.jp\/media-download\/\d+\/[a-f0-9]+\/PDF\/$/.test(s);
@@ -58,7 +61,7 @@ async function get(url, fetcher) {
     method:'GET', redirect:'error', signal:AbortSignal.timeout(12000),
     headers:{'User-Agent': USER_AGENT, 'Accept':'text/html, text/plain;q=0.9'}
   });
-  if ([ROBOTS,IY_ROBOTS,IY_CONTENT_ROBOTS].includes(url) && [404,410].includes(result.status)) {
+  if ([ROBOTS,IY_ROBOTS,IY_CONTENT_ROBOTS,YAOKO_ROBOTS,YAOKO_IMAGE_ROBOTS].includes(url) && [404,410].includes(result.status)) {
     if (result.body) await result.body.cancel();
     return '';
   }
@@ -80,7 +83,7 @@ async function get(url, fetcher) {
 }
 
 async function getImage(url, fetcher) {
-  if (!IMAGE_URL.test(url) && url!==IY_IMAGE) throw new Error('OCR_SOURCE_MISSING');
+  if (!IMAGE_URL.test(url) && url!==IY_IMAGE && url!==YAOKO_IMAGE) throw new Error('OCR_SOURCE_MISSING');
   const r = await fetcher(url,{method:'GET',redirect:'error',signal:AbortSignal.timeout(18000),
     headers:{'User-Agent':USER_AGENT,'Accept':'image/jpeg'}});
   if (!r.ok || !/^image\/jpeg(?:[;\s]|$)/i.test(r.headers.get('content-type') || '')) {
@@ -146,7 +149,8 @@ function realDay(value) {
 function saveEdition(db, edition, confidence, evidence) {
   const store=edition?.store;
   const current = db.prepare('SELECT * FROM status WHERE store=?').get(store||'');
-  const publisher=store===STORE ? publisherPdf(edition.source) : store==='iy' && edition.source===IY_SOURCE;
+  const publisher=store===STORE ? publisherPdf(edition.source) :
+    store==='iy' && edition.source===IY_SOURCE || store==='yaoko' && edition.source===YAOKO_SOURCE;
   if (!publisher || !current?.source || current.source !== edition.source ||
       !realDay(edition.from) || !realDay(edition.until) || edition.from > edition.until ||
       (!evidence && (edition.from > current.day || edition.until < current.day)) ||
@@ -224,6 +228,46 @@ export async function collectIy(db,date,fetcher=fetch,{ocr}={}) {
     const code=/^(HTTP_\d{3}|CONTENT_TYPE|BODY_LIMIT|ROBOTS_POLICY_REVIEW_REQUIRED|INDEX_FORMAT_OR_SCOPE_CHANGED|OCR_[A-Z_]+)$/.test(error.message)
       ?error.message:error.name==='TimeoutError'?'TIMEOUT':error.code==='ENOENT'?'OCR_DEPENDENCY_MISSING':'REQUEST_OR_OCR_FAILED';
     set.run('iy',date,'failed',IY_SOURCE,evidenceId,code);
+  }
+  return snapshot(db,date);
+}
+
+export function verifyYaokoRobots(official,viewer) {
+  // Exact current publisher policy; changed rules require review rather than a
+  // broad, incomplete REP implementation. No listed path covers this store.
+  const expected='User-agent: *\nSitemap: https://www.yaoko-net.com/sitemap.xml\n'+
+    'Disallow: /assets_c/\nDisallow: /inc/\nDisallow: /maintenance/\nDisallow: /includes_c/\nDisallow: /templates_c/';
+  if(official.trim() && official.replace(/\r/g,'').trim()!==expected)throw new Error('ROBOTS_POLICY_REVIEW_REQUIRED');
+  // This host returns its ordinary SPA shell at /robots.txt (200 HTML). It is
+  // not an Allow directive. Accept only the independently observed fallback;
+  // a real REP document, challenge or changed response requires review.
+  if(viewer.trim() && (!/^\s*<!doctype html>/i.test(viewer)||!viewer.includes('<div id="app"></div>')||
+      /(?:User-agent|Disallow|Allow)\s*:/i.test(viewer)))throw new Error('ROBOTS_POLICY_REVIEW_REQUIRED');
+}
+export async function collectYaoko(db,date,fetcher=fetch,{ocr}={}) {
+  if(!realDay(date))throw new Error('INVALID_RUN_DAY');
+  const previous=db.prepare('SELECT * FROM status WHERE store=?').get('yaoko');
+  if(previous?.day===date && previous.state!=='held')return snapshot(db,date);
+  const set=db.prepare('INSERT OR REPLACE INTO status VALUES (?, ?, ?, ?, ?, ?)');
+  if(date!=='2026-11-20') {
+    set.run('yaoko',date,'needs_review',YAOKO_SOURCE,null,'OCR_TEMPLATE_REVIEW_REQUIRED');return snapshot(db,date);
+  }
+  const evidenceId=sha(YAOKO_IMAGE);set.run('yaoko',date,'failed',YAOKO_SOURCE,evidenceId,'INCOMPLETE_RUN');
+  try {
+    if(db.prepare('SELECT 1 FROM editions WHERE evidence_id=?').get(evidenceId)) {
+      set.run('yaoko',date,'unchanged',YAOKO_SOURCE,evidenceId,null);return snapshot(db,date);
+    }
+    verifyYaokoRobots(await get(YAOKO_ROBOTS,fetcher),await get(YAOKO_IMAGE_ROBOTS,fetcher));
+    const edition=identifyYaokoEdition(await get(YAOKO_STORE,fetcher),date);
+    if(!ocr){set.run('yaoko',date,'needs_review',YAOKO_SOURCE,evidenceId,'OCR_DEPENDENCY_MISSING');return snapshot(db,date);}
+    const bytes=await getImage(YAOKO_IMAGE,fetcher);const scanned=await ocr(bytes,edition);
+    if(scanned.from!==date||scanned.until!==date)throw new Error('OCR_DATE_UNVERIFIED');
+    saveEdition(db,{store:'yaoko',source:YAOKO_SOURCE,...scanned},'ocr_validated',
+      {source:YAOKO_IMAGE,hash:sha(bytes),parser:'yaoko-1221-20261120-chicken-v1'});
+  }catch(error){
+    const code=/^(HTTP_\d{3}|CONTENT_TYPE|BODY_LIMIT|ROBOTS_POLICY_REVIEW_REQUIRED|INDEX_FORMAT_OR_SCOPE_CHANGED|OCR_[A-Z_]+)$/.test(error.message)
+      ?error.message:error.name==='TimeoutError'?'TIMEOUT':error.code==='ENOENT'?'OCR_DEPENDENCY_MISSING':'REQUEST_OR_OCR_FAILED';
+    set.run('yaoko',date,'failed',YAOKO_SOURCE,evidenceId,code);
   }
   return snapshot(db,date);
 }
