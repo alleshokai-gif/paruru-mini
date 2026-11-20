@@ -4,7 +4,7 @@ import { readFile, stat, rename, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import {corpusCatalog,ingestCorpus} from './whole-corpus-store.mjs';
-import {readRosen,ROSEN_STORE} from './rosen-dom.mjs';
+import {readRosen,ROSEN_STORE,isCompleteRosenPacket} from './rosen-dom.mjs';
 import {rosenPolicy} from './rosen-policy.mjs';
 import { identifyIyEdition, IY_SOURCE, IY_IMAGE } from './iy-ocr.mjs';
 import { identifyYaokoEdition, YAOKO_SOURCE, YAOKO_STORE, YAOKO_IMAGE } from './yaoko-ocr.mjs';
@@ -221,11 +221,11 @@ export async function collectRosen(db,date,fetcher=fetch,{read=readRosen,onSourc
  try{
   const knownIssues=new Map();
   if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='flyer_corpus_runs'").get()){
-   for(const row of db.prepare("SELECT issue_id,evidence_json FROM flyer_corpus_runs WHERE store='rosen' ORDER BY julianday(obtained_at) DESC,julianday(COALESCE(json_extract(evidence_json,'$.analyzed_at'),obtained_at)) DESC,corpus_id DESC").all())if(!knownIssues.has(row.issue_id))knownIssues.set(row.issue_id,JSON.parse(row.evidence_json));
+   for(const row of db.prepare("SELECT issue_id,evidence_json FROM flyer_corpus_runs WHERE store='rosen' ORDER BY julianday(obtained_at) DESC,julianday(COALESCE(json_extract(evidence_json,'$.analyzed_at'),obtained_at)) DESC,corpus_id DESC").all()){const packet=JSON.parse(row.evidence_json);if(!knownIssues.has(row.issue_id)&&isCompleteRosenPacket(packet))knownIssues.set(row.issue_id,packet);}
   }
   const policy=await rosenPolicy(db,{fetcher});
-  // Incomplete acquisition evidence is private and cannot become a complete
-  // issue cache or replace the last published whole catalog.
+  // Settled partial views may become explicit reference catalogs. Only a
+  // proven full matrix qualifies for knownIssues acquisition-cache reuse.
   db.exec('CREATE TABLE IF NOT EXISTS rosen_dom_views (observation_id TEXT PRIMARY KEY, issue_id TEXT NOT NULL, observed_at TEXT NOT NULL, evidence_json TEXT NOT NULL)');
   const result=await read(date,{knownIssues,policy,onSourceRequest,onPacket:packet=>ingestCorpus(db,packet),onView:part=>{
    const raw=JSON.stringify(part);db.prepare('INSERT OR IGNORE INTO rosen_dom_views VALUES(?,?,?,?)').run(sha(raw),part.issue_id,part.view.observed_at,raw);
@@ -378,17 +378,54 @@ export function snapshot(db, date) {
   // never make existing confirmed offers/list metadata unreadable. Keep the
   // complete observations in SQLite; leave headroom for portable diagnostics.
   if(Buffer.byteLength(JSON.stringify({...base,corpus}))<=460*1024)return {...base,corpus};
-  if(corpus.schema===2){
-    // Whole issues only. A large new store cannot erase a previously readable
-    // OK issue. Omitted issue counts remain explicit; full rows stay private.
-    const included=[],omitted=[];
-    const ordered=[...corpus.catalogs].sort((a,b)=>Number(b.store==='ok')-Number(a.store==='ok')||a.store.localeCompare(b.store)||a.issue_id.localeCompare(b.issue_id));
-    for(const c of ordered){const candidate={...base,corpus:{schema:2,verification_state:'needs_review',catalogs:[...included,c]},corpus_status:'partial',corpus_omitted_count:ordered.length};
-      const legacyOK=c.store==='ok'&&!included.length&&Buffer.byteLength(JSON.stringify({...base,corpus:c}))<=460*1024;
-      if(legacyOK||Buffer.byteLength(JSON.stringify(candidate))<=460*1024)included.push(c);
-      else omitted.push({store:c.store,issue_id:c.issue_id,frames:c.pages.reduce((n,p)=>n+p.items.length,0)});
+  const catalogs=corpus.schema===2?corpus.catalogs:[corpus];
+  // Preserve the already-readable OK and monthly Rosen 5170 issue in full.
+  // Other issues receive whole observation rows in round-robin order. Nothing
+  // is deleted from SQLite and no field/quote is moved across product or issue.
+  const protectedIssue=c=>c.store==='ok'||c.store==='rosen'&&c.issue_id==='rosen-taira-5170';
+  const protectedCatalogs=catalogs.filter(protectedIssue),optional=catalogs.filter(c=>!protectedIssue(c));
+  const shown=[...protectedCatalogs,...optional.map(c=>({...c,display_counts:{total:c.pages.reduce((n,p)=>n+p.items.length,0),shown:0,omitted:c.pages.reduce((n,p)=>n+p.items.length,0)},pages:c.pages.map(p=>({...p,items:[]}))}))];
+  const candidate=()=>({...base,corpus:{schema:2,verification_state:'needs_review',catalogs:shown},corpus_status:'partial',corpus_omitted_count:shown.filter(c=>!c.display_counts.shown&&c.display_counts.total).length});
+  const fits=()=>Buffer.byteLength(JSON.stringify(candidate()))<=460*1024;
+  if(fits()){
+    const queues=optional.map(c=>{
+      const queue=[];const length=Math.max(0,...c.pages.map(p=>p.items.length));
+      for(let ordinal=0;ordinal<length;ordinal++)for(let pageIndex=0;pageIndex<c.pages.length;pageIndex++){
+        const item=c.pages[pageIndex].items[ordinal];if(item)queue.push({pageIndex,ordinal,item});
+      }
+      return queue;
+    });
+    const selected=queues.map(()=>new Set());
+    const append=(i,next)=>{
+      const c=shown[protectedCatalogs.length+i],list=c.pages[next.pageIndex].items,original=optional[i].pages[next.pageIndex].items;
+      const position=list.findIndex(item=>original.indexOf(item)>next.ordinal),at=position<0?list.length:position;
+      list.splice(at,0,next.item);c.display_counts.shown++;c.display_counts.omitted--;return ()=>{list.splice(at,1);c.display_counts.shown--;c.display_counts.omitted++;};
+    };
+    // Reserve the first natural ordinal on every observed nonempty page before
+    // distributing capacity. Remaining rows alternate pages, then issues;
+    // product names, prices and food categories never decide selection.
+    const undoSeeds=[];
+    for(let i=0;i<queues.length;i++)for(const seed of queues[i].filter(row=>row.ordinal===0)){
+      undoSeeds.push(append(i,seed));selected[i].add(seed.item);
     }
-    if(included.length)return {...base,corpus:{schema:2,verification_state:'needs_review',catalogs:included},corpus_status:'partial',corpus_omitted_count:omitted.length};
+    if(!fits()){for(const undo of undoSeeds.reverse())undo();for(const set of selected)set.clear();}
+    const cursors=queues.map(()=>0);let pending=true;
+    while(pending){
+      pending=false;
+      for(let i=0;i<queues.length;i++){
+        if(cursors[i]>=queues[i].length)continue;
+        pending=true;const next=queues[i][cursors[i]++];if(selected[i].has(next.item))continue;
+        const undo=append(i,next);if(!fits())undo();else selected[i].add(next.item);
+      }
+    }
+    return candidate();
+  }
+  // Even all issue headers cannot always fit beside protected rows. Preserve
+  // the readable legacy issues, explicitly count omitted catalogs, and never
+  // silently reduce their rows or exceed the existing transport boundary.
+  if(protectedCatalogs.length){
+    const fallback={...base,corpus:protectedCatalogs.length===1&&protectedCatalogs[0].source_kind==='image'?protectedCatalogs[0]:{schema:2,verification_state:'needs_review',catalogs:protectedCatalogs},corpus_status:'partial',corpus_omitted_count:optional.length};
+    if(Buffer.byteLength(JSON.stringify(fallback))<=460*1024)return fallback;
   }
   return {...base,corpus_status:'too_large'};
 }

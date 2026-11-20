@@ -14,6 +14,9 @@ export function documentSource(store,s){
  if(typeof s!=='string')return false;
  if(store==='ok')return pdf(s);
  if(store==='rosen')return /^https:\/\/rosen\.mikke-sales\.com\/stores\/taira\/flyers\/\d+\/?$/.test(s);
+ if(store==='iy')return /^https:\/\/promo\.hatobase\.jp\/flyers\/00521\/\d+\/\d+\/?$/.test(s);
+ if(store==='yaoko')return s==='https://yap-pd.yaoko-net.com/app/flyer/1221/';
+ if(store==='life')return s==='https://store.lifecorp.jp/detail/east648/';
  return false;
 }
 const image=s=>typeof s==='string'&&/^https:\/\/ok-corporation\.jp\/archives\/\d{3}\/20\d{4}\/[a-f0-9]+\.jpg$/.test(s);
@@ -33,8 +36,8 @@ export function openCorpusTables(db){
    name TEXT,product_type TEXT NOT NULL,price_state TEXT NOT NULL,verification_state TEXT NOT NULL,
    observation_json TEXT NOT NULL,PRIMARY KEY(corpus_id,face,ordinal));`);
 }
-export function validateObservation(page,{dom=false,modern=false}={}){
- const region=b=>dom&&b===null||box(b);
+export function validateObservation(page,{dom=false,modern=false,imageReference=false}={}){
+ const region=b=>(dom||imageReference)&&b===null||box(b);
  demand((modern?/^[a-z0-9-]{1,80}$/.test(page.face):['front','back'].includes(page.face))&&Array.isArray(page.items)&&page.items.length<=1000,'CORPUS_PAGE_SCOPE');
  demand(Array.isArray(page.examined_tiles)&&page.examined_tiles.every(s=>typeof s==='string'&&s.length<80),'CORPUS_TILES');
  for(const item of page.items){
@@ -58,16 +61,25 @@ export function validateObservation(page,{dom=false,modern=false}={}){
 export function ingestCorpus(db,packet){
  const dom=packet.schema==='supermarket-whole-corpus-v2'&&packet.source_kind==='dom'&&packet.store==='rosen';
  const modern=packet.schema==='supermarket-whole-corpus-v2';
- demand((dom||packet.schema==='supermarket-whole-corpus-v1'&&packet.store==='ok')&&/^[a-z0-9-]{1,100}$/.test(packet.issue_id),'CORPUS_SCOPE');
+ const imageReference=modern&&packet.source_kind==='image'&&(
+  packet.store==='iy'&&/^iy-00521-\d+$/.test(packet.issue_id)&&typeof packet.source_document==='string'&&packet.issue_id==='iy-00521-'+packet.source_document.match(/\/flyers\/00521\/\d+\/(\d+)\/?$/)?.[1]||
+  packet.store==='yaoko'&&/^yaoko-1221-\d{8}$/.test(packet.issue_id)||
+  packet.store==='life'&&/^life-224224-\d{8}$/.test(packet.issue_id));
+ demand((dom||imageReference||packet.schema==='supermarket-whole-corpus-v1'&&packet.store==='ok')&&/^[a-z0-9-]{1,100}$/.test(packet.issue_id),'CORPUS_SCOPE');
  demand(/^[a-f0-9]{64}$/.test(packet.source_revision)&&/^[a-f0-9]{64}$/.test(packet.analysis_revision),'CORPUS_REVISION');
- demand(timestamp(packet.obtained_at)&&documentSource(packet.store,packet.source_document)&&(dom?packet.physical_pdf_pages===null&&packet.logical_faces===null:packet.physical_pdf_pages===1&&packet.logical_faces===2),'CORPUS_PROVENANCE');
+ demand(text(packet.obtained_at_precision??null,1000)&&text(packet.completeness_scope??null,6000),'CORPUS_SOURCE_LABELS');
+ demand(timestamp(packet.obtained_at)&&documentSource(packet.store,packet.source_document)&&(dom?packet.physical_pdf_pages===null&&packet.logical_faces===null:imageReference?packet.physical_pdf_pages===null&&[1,2].includes(packet.logical_faces):packet.physical_pdf_pages===1&&packet.logical_faces===2),'CORPUS_PROVENANCE');
  demand(Array.isArray(packet.pages)&&(modern?packet.pages.length>=1&&packet.pages.length<=64:packet.pages.length===2)&&new Set(packet.pages.map(p=>p.face)).size===packet.pages.length,'CORPUS_FACES');
+ if(imageReference)demand(packet.pages.length===packet.logical_faces&&packet.pages.every(p=>['front','back'].includes(p.face)),'CORPUS_IMAGE_FACES');
+ if(imageReference){
+  demand((packet.document_from==null||day(packet.document_from))&&(packet.document_until==null||day(packet.document_until))&&(!packet.document_from||!packet.document_until||packet.document_from<=packet.document_until),'CORPUS_DOCUMENT_PERIOD');
+ }
  if(dom){demand(Number.isInteger(packet.logical_views)&&packet.logical_views>=packet.pages.length&&packet.logical_views<=512,'CORPUS_DOM_VIEWS');demand(day(packet.document_from)&&day(packet.document_until)&&packet.document_from<=packet.document_until,'CORPUS_DOCUMENT_PERIOD');}
- for(const p of packet.pages){validateObservation(p,{dom,modern});if(dom)demand(text(p.label,160)&&(p.selected_day===null||day(p.selected_day)),'CORPUS_DOM_PAGE');}
+ for(const p of packet.pages){validateObservation(p,{dom,modern,imageReference});if(dom)demand(text(p.label,160)&&(p.selected_day===null||day(p.selected_day)),'CORPUS_DOM_PAGE');}
  for(const p of packet.pages){
   demand(text(p.document_period_raw??null,3000),'CORPUS_PERIOD');
-  demand(p.global_conditions===undefined||Array.isArray(p.global_conditions)&&p.global_conditions.length<=100&&p.global_conditions.every(c=>text(c.text,3000)&&text(c.scope,3000)&&(dom&&c.bbox===null||box(c.bbox))&&text(c.confidence??null,40)),'CORPUS_GLOBAL_CONDITIONS');
-  demand(p.unresolved_regions===undefined||Array.isArray(p.unresolved_regions)&&p.unresolved_regions.length<=1000&&p.unresolved_regions.every(c=>(dom&&c.bbox===null||box(c.bbox))&&text(c.reason,3000)),'CORPUS_UNRESOLVED');
+  demand(p.global_conditions===undefined||Array.isArray(p.global_conditions)&&p.global_conditions.length<=100&&p.global_conditions.every(c=>text(c.text,3000)&&text(c.scope,3000)&&((dom||imageReference)&&c.bbox===null||box(c.bbox))&&text(c.confidence??null,40)),'CORPUS_GLOBAL_CONDITIONS');
+  demand(p.unresolved_regions===undefined||Array.isArray(p.unresolved_regions)&&p.unresolved_regions.length<=1000&&p.unresolved_regions.every(c=>((dom||imageReference)&&c.bbox===null||box(c.bbox))&&text(c.reason,3000)),'CORPUS_UNRESOLVED');
  }
  const faceAllowed=face=>modern?typeof face==='string'&&packet.pages.some(p=>p.face===face):['front','back'].includes(face);
  demand(packet.source_notes===undefined||Array.isArray(packet.source_notes)&&packet.source_notes.length<=200&&packet.source_notes.every(n=>faceAllowed(n.face)&&text(n.kind,40)&&text(n.raw_text,6000)),'CORPUS_SOURCE_NOTES');
@@ -95,19 +107,24 @@ export function readCorpus(db,id){
 function singleCatalog(row){
  const packet=JSON.parse(row.evidence_json);
  // Source facts only: execution paths, model prompts and account metadata stay private.
+ const dom=packet.source_kind==='dom';
+ const projectedItem=item=>{const out=catalogItem(item);if(dom){delete out.geometry_verification;delete out.store_condition_link_verification;}return out;};
  return {schema:1,corpus_id:row.corpus_id,store:packet.store,issue_id:packet.issue_id,source_revision:packet.source_revision,
   analysis_revision:packet.analysis_revision,obtained_at:packet.obtained_at,source_document:packet.source_document,
+  coverage:packet.coverage?pick(packet.coverage,['state','expected_views','observed_views','missing_view_count','observed_dates']):null,
   physical_pdf_pages:packet.physical_pdf_pages,logical_faces:packet.logical_faces,source_kind:packet.source_kind??'image',logical_views:packet.logical_views??packet.logical_faces,document_from:packet.document_from??null,document_until:packet.document_until??null,verification_state:'needs_review',
+  ...(dom?{geometry_verification:'dom_region_unverified',store_condition_link_verification:'unverified'}:{}),
+  display_counts:{total:packet.pages.reduce((n,p)=>n+p.items.length,0),shown:packet.pages.reduce((n,p)=>n+p.items.length,0),omitted:0},
   source_notes:(packet.source_notes??[]).map(n=>({face:n.face,kind:n.kind,raw_text:n.raw_text,verification_state:'needs_review',scope_status:'unverified'})),
   unresolved_source_notes:(packet.unresolved_source_notes??[]).map(n=>({face:n.face,reason:n.reason})),
   pages:packet.pages.map(page=>({face:page.face,label:page.label??null,selected_day:page.selected_day??null,document_period_raw:page.document_period_raw,
    global_conditions:(page.global_conditions??[]).map(c=>pick(c,['text','scope','bbox','confidence'])),
-   items:page.items.map(item=>({...catalogItem(item),geometry_verification:packet.source_kind==='dom'?'dom_region_unverified':'unverified_model_bbox'})),unresolved_regions:(page.unresolved_regions??[]).map(c=>pick(c,['bbox','reason']))}))};
+   items:page.items.map(projectedItem),unresolved_regions:(page.unresolved_regions??[]).map(c=>pick(c,['bbox','reason']))}))};
 }
 export function corpusCatalog(db,{date=null}={}){
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='flyer_corpus_runs'").get())return null;
  const rows=db.prepare(`SELECT corpus_id,evidence_json FROM (
-   SELECT corpus_id,evidence_json,ROW_NUMBER() OVER(PARTITION BY store,issue_id ORDER BY julianday(obtained_at) DESC,julianday(COALESCE(json_extract(evidence_json,'$.analyzed_at'),obtained_at)) DESC,corpus_id DESC) AS rank
+   SELECT corpus_id,evidence_json,ROW_NUMBER() OVER(PARTITION BY store,issue_id ORDER BY CASE WHEN store='rosen' AND (json_extract(evidence_json,'$.coverage.state')='partial' OR json_extract(evidence_json,'$.acquisition.partial_reason') IS NOT NULL) THEN 1 ELSE 0 END,julianday(obtained_at) DESC,julianday(COALESCE(json_extract(evidence_json,'$.analyzed_at'),obtained_at)) DESC,corpus_id DESC) AS rank
    FROM flyer_corpus_runs) WHERE rank=1`).all();
  if(!rows.length)return null;
  let okSeen=false;
