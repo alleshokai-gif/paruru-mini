@@ -105,7 +105,14 @@
       if(count<=2000) {
         const details=el('details');details.className='supermarket-corpus';
         const dom=corpus.source_kind==='dom';
+        const rows=corpus.pages.flatMap(p=>Array.isArray(p.items)?p.items:[]);
+        const referenceCount=rows.filter(item=>item.price_state!=='discount_only'&&Array.isArray(item.prices)&&
+          item.prices.some(price=>price&&(Number.isFinite(price.net_yen)||Number.isFinite(price.tax_included_yen)))).length;
+        const store=Object.hasOwn(stores,corpus.store)?stores[corpus.store]:'店舗未確認';
         details.append(el('summary',(dom?'公開明細の読取':'全紙面のAI読取')+'（'+count+'枠・条件未照合）'));
+        details.append(el('p','店舗：'+store+' / 号：'+corpus.issue_id));
+        details.append(el('p','参考価格あり '+referenceCount+'枠・価格未確認 '+(count-referenceCount)+'枠・確定0枠（この読取内）'));
+        details.append(el('p','紙面期間：'+(corpus.document_from&&corpus.document_until?corpus.document_from+'〜'+corpus.document_until:'未確認')+'。商品ごとの販売日は未確認です。'));
         details.append(el('p','食品以外・価格非掲載・表示例・案内を含みます。読取値は確定売価ではなく、献立や買い物先の判断には使っていません。'));
         details.append(el('p',corpus.issue_id+'・'+(dom?corpus.logical_views+' 日付・カテゴリ表示':corpus.physical_pdf_pages+' PDFページ / '+corpus.logical_faces+'面')+'・取得 '+corpus.obtained_at));
         for(const page of corpus.pages) {

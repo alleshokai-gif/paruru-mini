@@ -118,6 +118,32 @@ test('two DOM issues remain separately visible beside the original OK paper with
  app.lock();assert.ok(!app.preview.text().includes('fixture household product'));
 });
 
+test('reference corpus counts numeric-price frames separately from unknown and discount-only frames',async()=>{
+ const app=setup(),data=result(app.date);
+ data.supermarketPoc.states.iy='checked';data.supermarketPoc.states.life='checked';
+ data.supermarketPoc.offers.push({...data.supermarketPoc.offers[0],store:'iy',title:'確認済追加品1'},
+  {...data.supermarketPoc.offers[0],store:'life',title:'確認済追加品2'});
+ const before=JSON.stringify(data.supermarketPoc.offers);
+ const row=(name,price_state,prices)=>({name,price_state,prices,variants:[],conditions:[]});
+ data.supermarketPoc.corpus={schema:1,store:'rosen',source_kind:'dom',verification_state:'needs_review',issue_id:'rosen-taira-5170',logical_views:150,
+  document_from:'2026-11-01',document_until:'2026-11-30',obtained_at:app.date+'T00:00:00Z',pages:[{face:'category-0',label:'家庭用品',items:[
+   row('本体価格の参考','priced',[{net_yen:100,tax_included_yen:null,raw_text:'本体100円'}]),
+   row('税込価格の参考','priced',[{net_yen:null,tax_included_yen:108,raw_text:'税込108円'},{net_yen:200,raw_text:'よりどり200円'}]),
+   row('価格不明','unreadable',[]),row('割引のみ','discount_only',[{discount_percent:20,raw_text:'20%引'}]),
+   row('文字列は数値価格にしない','priced',[{net_yen:'100',raw_text:'100円'}]),
+   row('割引欄の数字も価格未確認','discount_only',[{net_yen:100,raw_text:'価格対応不明の割引'}])
+  ]}]};
+ app.authenticate(async()=>data);assert.equal(await app.open(),true);
+ const corpus=app.preview.all('details').find(e=>e.className==='supermarket-corpus');
+ assert.match(corpus.text(),/店舗：そうてつローゼン たいら店 \/ 号：rosen-taira-5170/);
+ assert.match(corpus.text(),/参考価格あり 2枠・価格未確認 4枠・確定0枠（この読取内）/);
+ assert.match(corpus.text(),/紙面期間：2026-11-01〜2026-11-30。商品ごとの販売日は未確認/);
+ assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+ assert.equal(JSON.stringify(data.supermarketPoc.offers),before);assert.match(app.list.text(),/納豆/);
+ const offers=app.preview.all('details').find(e=>e.className==='supermarket-offers');
+ assert.match(offers.text(),/当日有効な掲載商品（6件）/);assert.doesNotMatch(offers.text(),/本体価格の参考|割引欄の数字/);
+});
+
 test('late response after lock or identity replacement never reveals the previous list or offers', async () => {
   const app=setup();
   let resolve;

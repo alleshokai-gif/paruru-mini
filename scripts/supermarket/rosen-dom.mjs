@@ -2,11 +2,12 @@
 import {createHash} from 'node:crypto';
 import {readFile,mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,resolve,dirname,basename} from 'node:path';
 import {ROSEN_AGENT} from './rosen-policy.mjs';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const implementation=hash(await readFile(new URL(import.meta.url)));
 export const ROSEN_STORE='https://rosen.mikke-sales.com/stores/taira';
+export const ACQUISITION_BOUNDS=Object.freeze({max_source_requests:160,min_source_interval_ms:1000,max_acquisition_ms:180000});
 const documentURL=s=>/^https:\/\/rosen\.mikke-sales\.com\/stores\/taira\/flyers\/\d+\/?$/.test(s);
 const demand=(v,code)=>{if(!v)throw Error(code);};
 const clean=s=>String(s??'').replace(/\s+/g,' ').trim();
@@ -21,6 +22,7 @@ export function selectedDay(label,range){
  const unique=[...new Set(choices)];demand(unique.length===1,'ROSEN_DAY_SCOPE');return unique[0];
 }
 const yen=s=>{const m=clean(s).match(/^(\d{1,3}(?:,\d{3})*|\d+)(?:\.(\d{1,2}))?$/);return m?Number(m[0].replaceAll(',','')):null;};
+const dateSummary=dates=>{const spans=[];for(const d of dates){const last=spans.at(-1);if(last&&Date.parse(d)-Date.parse(last[1])===86400000)last[1]=d;else spans.push([d,d]);}return spans.map(([a,b])=>a===b?a:a+'〜'+b).join('、');};
 export function packetFromViews(source,header,views,metrics={}){
  demand(documentURL(source)&&header.shop==='そうてつローゼン たいら店','ROSEN_STORE_SCOPE');
  const range=period(header.period);demand(views.length===header.days.length*header.categories.length&&views.length<=512,'ROSEN_VIEW_COVERAGE');
@@ -34,19 +36,30 @@ export function packetFromViews(source,header,views,metrics={}){
    total++;const key=hash(JSON.stringify(card));
    let item=unique.get(key);
    if(!item){
-    const prices=[],reasons=[],raw=clean(card.raw_text);
+    const prices=[],reasons=[],raw=clean(card.raw_text),lines=String(card.raw_text??'').replaceAll('\r','');
     const net=yen(card.net),taxText=clean(card.gross),taxMatch=taxText.match(/^税込\s*(\d[\d,]*(?:\.\d{1,2})?)\s*円$/),tax=taxMatch?yen(taxMatch[1]):null;
-    if(net!==null&&tax!==null&&clean(card.price_label)==='本体')prices.push({role:'general',raw_text:'本体'+card.net+'円 / '+taxText,net_yen:net,tax_included_yen:tax,discount_percent:null,unit_text:clean(card.unit)||null,payment_condition:null,other_conditions:[],bbox:null,confidence:'clear',review_reasons:[]});
-    else reasons.push('DOM_PRICE_FIELDS_UNVERIFIED');
+    const half=raw.match(/今ついている本体価格より\s*レジにて\s*半額/);
+    let lastEnd=0;
+    for(const m of lines.matchAll(/本体\s*(\d[\d,]*(?:\.\d{1,2})?)\s*円\s*税込\s*(\d[\d,]*(?:\.\d{1,2})?)\s*円/g)){
+     const n=yen(m[1]),g=yen(m[2]);if(n===null||g===null)continue;
+     const lead=lines.slice(lastEnd,m.index).split('\n').map(clean).filter(Boolean),label=lead.at(-1)||(prices.length===0?clean(card.unit)||null:null);
+     prices.push({role:'general',raw_text:clean(m[0]),net_yen:n,tax_included_yen:g,discount_percent:null,unit_text:label,payment_condition:null,other_conditions:[],bbox:null,confidence:'clear',review_reasons:label?[]:['QUOTE_UNIT_SCOPE_UNVERIFIED']});lastEnd=m.index+m[0].length;
+    }
+    if(!prices.length&&net!==null&&tax!==null&&clean(card.price_label)==='本体')prices.push({role:'general',raw_text:'本体'+card.net+'円 / '+taxText,net_yen:net,tax_included_yen:tax,discount_percent:null,unit_text:clean(card.unit)||null,payment_condition:null,other_conditions:[],bbox:null,confidence:'clear',review_reasons:[]});
+    if(!prices.length&&half)prices.push({role:'discount_rate',raw_text:half[0],net_yen:null,tax_included_yen:null,discount_percent:50,unit_text:clean(card.unit)||null,payment_condition:null,other_conditions:['元の売価・割引後の金額は掲載なし'],bbox:null,confidence:'clear',review_reasons:['NO_PRINTED_FINAL_AMOUNT']});
+    if(!prices.length)reasons.push('DOM_PRICE_FIELDS_UNVERIFIED');
     if(!clean(card.name))reasons.push('DOM_PRODUCT_NAME_MISSING');
-    item={name:clean(card.name)||null,spec:[clean(card.maker),clean(card.unit)].filter(Boolean).join(' / ')||null,variants:[],product_type:view.category==='家庭用品'?'nonfood':'unknown',price_state:prices.length?'priced':raw.match(/円|価格|税込/)?'unreadable':'not_printed',prices,valid_from:null,valid_until:null,validity_raw_text:null,conditions:card.notices.map(clean).filter(Boolean),bbox:null,confidence:reasons.length?'uncertain':'clear',review_reasons:['STORE_CONDITION_ASSOCIATION_UNVERIFIED','ITEM_DATE_SCOPE_UNVERIFIED',...reasons],observed_dates:[],dom_regions:[],raw_dom_fields:card};
+    const conditions=card.notices.map(clean).filter(Boolean);
+    if(prices.length>1)conditions.push('複数価格・組合せ条件を含む原文（未照合）：'+raw);
+    if(reasons.includes('DOM_PRICE_FIELDS_UNVERIFIED'))conditions.push('価格欄を含む原文（未照合）：'+raw);
+    item={name:clean(card.name)||null,spec:[clean(card.maker),clean(card.unit)].filter(Boolean).join(' / ')||null,variants:[],product_type:view.category==='家庭用品'?'nonfood':'unknown',price_state:prices[0]?.role==='discount_rate'?'discount_only':prices.length?'priced':raw.match(/円|価格|税込/)?'unreadable':'not_printed',prices,valid_from:null,valid_until:null,validity_raw_text:null,conditions,bbox:null,confidence:reasons.length?'uncertain':'clear',review_reasons:['STORE_CONDITION_ASSOCIATION_UNVERIFIED','ITEM_DATE_SCOPE_UNVERIFIED',...reasons],observed_dates:[],dom_regions:[],raw_dom_fields:card};
     unique.set(key,item);byCategory.get(view.category).items.push(item);
    }
    if(!item.observed_dates.includes(date))item.observed_dates.push(date);
    item.dom_regions.push({day:date,category:view.category,ordinal:ordinal+1,selector:'.Product__Inner'});
   }
  }
- for(const item of unique.values()){item.observed_dates.sort();item.validity_raw_text='公開UIに表示された日（商品期限は未照合）：'+item.observed_dates.join('、');}
+ for(const item of unique.values()){item.observed_dates.sort();item.validity_raw_text='公開画面で選択した日：'+dateSummary(item.observed_dates)+'（商品の販売期限は未照合）';}
  const pages=[...byCategory.values()],notes=[...new Set(views.map(v=>clean(v.notes)).filter(Boolean))];
  const sourceRevision=hash(JSON.stringify({source,header,views,index_fingerprint:metrics.index_fingerprint??null}));
  return {schema:'supermarket-whole-corpus-v2',source_kind:'dom',store:'rosen',issue_id:'rosen-taira-'+source.match(/flyers\/(\d+)/)[1],source_revision:sourceRevision,analysis_revision:implementation,obtained_at:new Date().toISOString(),source_document:source,physical_pdf_pages:null,logical_faces:null,logical_views:views.length,document_from:range.from,document_until:range.until,pages,
@@ -74,22 +87,30 @@ export async function readIssueViews(page,{onView=()=>{},check=()=>{}}={}){
  }
  return {header,views};
 }
-export async function readRosen(date,{knownIssues=new Map(),onPacket=()=>{},onView=()=>{},policy,onSourceRequest=()=>{},budgetMs=180000}={}){
+export async function readRosen(date,{knownIssues=new Map(),onPacket=()=>{},onView=()=>{},policy,onSourceRequest=()=>{},onSourceResponse=()=>{},budgetMs=180000,runtime=null}={}){
  if(process.getuid?.()===0)throw Error('BROWSER_ROOT_FORBIDDEN');
  demand(policy&&typeof policy.allows==='function','ROSEN_POLICY_REQUIRED');
- const dir=await mkdtemp(join(tmpdir(),'paluru-rosen-'));let browser;let requests=0,blocked=0,sourceFailed=false;
- const deadline=performance.now()+Math.min(180000,budgetMs);
+ const dir=await mkdtemp(join(tmpdir(),'paluru-rosen-'));let browser;let requests=0,blocked=0,blockedRobots=0,sourceFailed=false;
+ const deadline=performance.now()+Math.min(ACQUISITION_BOUNDS.max_acquisition_ms,budgetMs);
  const check=()=>{demand(performance.now()<deadline,'ROSEN_DEADLINE');demand(!sourceFailed,'ROSEN_ESSENTIAL_RESPONSE_FAILED');};
+ let requestQueue=Promise.resolve(),lastRequest=-Infinity;
+ const reserve=()=>{const next=requestQueue.then(async()=>{check();demand(requests<ACQUISITION_BOUNDS.max_source_requests,'ROSEN_REQUEST_BUDGET');
+  const delay=ACQUISITION_BOUNDS.min_source_interval_ms-(performance.now()-lastRequest);
+  if(delay>0)await new Promise(resolve=>setTimeout(resolve,delay));check();lastRequest=performance.now();requests++;onSourceRequest();
+ });requestQueue=next.catch(()=>{});return next;};
  try{
-  const {chromium}=await import('/opt/paluru-browser/node_modules/playwright-core/index.mjs');
-  browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,chromiumSandbox:true,timeout:20000,env:{PATH:process.env.PATH||'/usr/bin:/bin',LANG:'ja_JP.UTF-8',XDG_CONFIG_HOME:join(dir,'config'),XDG_CACHE_HOME:join(dir,'cache')},args:['--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run']});
+  const chromium=runtime?.chromium??(await import('/opt/paluru-browser/node_modules/playwright-core/index.mjs')).chromium;
+  const env={PATH:process.env.PATH||'/usr/bin:/bin',LANG:'ja_JP.UTF-8',XDG_CONFIG_HOME:join(dir,'config'),XDG_CACHE_HOME:join(dir,'cache')};
+  if(process.platform==='win32')for(const k of ['SystemRoot','WINDIR','LOCALAPPDATA','TEMP','TMP'])if(process.env[k])env[k]=process.env[k];
+  browser=await chromium.launch({executablePath:runtime?.executablePath??'/usr/bin/chromium',headless:true,chromiumSandbox:true,timeout:20000,env,args:['--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run']});
   const context=await browser.newContext({serviceWorkers:'block',acceptDownloads:false,userAgent:ROSEN_AGENT,locale:'ja-JP',timezoneId:'Asia/Tokyo',viewport:{width:1280,height:900}});
   const essential=req=>new URL(req.url()).hostname==='rosen.mikke-sales.com'&&['document','script','xhr','fetch'].includes(req.resourceType());
-  context.on('response',r=>{if(essential(r.request())&&r.status()>=400)sourceFailed=true;});
+  context.on('response',r=>{if(new URL(r.url()).hostname==='rosen.mikke-sales.com')onSourceResponse({resource_type:r.request().resourceType(),status:r.status(),at:new Date().toISOString()});if(essential(r.request())&&r.status()>=400)sourceFailed=true;});
   context.on('requestfailed',req=>{if(essential(req)&&req.failure()?.errorText!=='net::ERR_BLOCKED_BY_CLIENT')sourceFailed=true;});
   await context.route('**/*',async route=>{const req=route.request(),u=new URL(req.url());
+   if(u.hostname==='rosen.mikke-sales.com'&&u.pathname==='/robots.txt'){blockedRobots++;return route.abort('blockedbyclient');}
    if(u.protocol!=='https:'||u.hostname!=='rosen.mikke-sales.com'||u.port||u.username||u.password||req.method()!=='GET'||['image','media','font'].includes(req.resourceType())||!policy.allows(u.pathname+u.search)){blocked++;return route.abort('blockedbyclient');}
-   requests++;onSourceRequest();return route.continue();});
+   try{await reserve();return await route.continue();}catch{sourceFailed=true;return route.abort('blockedbyclient');}});
   const page=await context.newPage();page.setDefaultTimeout(10000);
   const response=await page.goto(ROSEN_STORE,{waitUntil:'domcontentloaded',timeout:25000});
   demand(response?.status()===200,'ROSEN_HTTP_'+(response?.status()??'UNKNOWN'));
@@ -116,6 +137,6 @@ export async function readRosen(date,{knownIssues=new Map(),onPacket=()=>{},onVi
    demand(packet.document_from===link.from&&packet.document_until===link.until,'ROSEN_DOCUMENT_PERIOD_CHANGED');await onPacket(packet);
    results.push({issue_id:id,disposition:'stored_for_verification',frames:packet.acquisition.exact_dom_text_deduplicated_frames,views:views.length});
   }
-  return {issues:results,source_requests:requests,blocked_nonessential_requests:blocked,model_calls:0};
- }finally{if(browser)await browser.close();await rm(dir,{recursive:true,force:true});}
+  return {issues:results,source_requests:requests,blocked_nonessential_requests:blocked,blocked_robots_requests:blockedRobots,model_calls:0};
+ }finally{if(browser)await browser.close();demand(dirname(resolve(dir))===resolve(tmpdir())&&basename(dir).startsWith('paluru-rosen-'),'ROSEN_TEMP_SCOPE');await rm(dir,{recursive:true,force:true});}
 }
