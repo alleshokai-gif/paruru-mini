@@ -5,6 +5,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends imagemagick tes
 ADD --chmod=0644 --checksum=sha256:36bdf9ac823f5911e624c30d0553e890b8abc7c31a65b3ef14da943658c40b79 https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/4.1.0/jpn.traineddata /usr/share/tesseract-ocr/5/tessdata/jpn_best.traineddata
 WORKDIR /app
 COPY features/shopping/supermarket-poc.js features/shopping/supermarket-poc.js
-COPY scripts/supermarket/collector.mjs scripts/supermarket/ok-ocr.mjs scripts/supermarket/iy-ocr.mjs scripts/supermarket/run-daily-gcs.mjs scripts/supermarket/
+COPY scripts/supermarket/collector.mjs scripts/supermarket/ok-ocr.mjs scripts/supermarket/iy-ocr.mjs scripts/supermarket/yaoko-ocr.mjs scripts/supermarket/run-daily-gcs.mjs scripts/supermarket/
 USER node
 ENTRYPOINT ["node","scripts/supermarket/run-daily-gcs.mjs"]
