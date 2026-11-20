@@ -7,6 +7,6 @@ WORKDIR /app
 COPY scripts/supermarket/browser-deps/package.json scripts/supermarket/browser-deps/package-lock.json /opt/paluru-browser/
 RUN npm ci --prefix /opt/paluru-browser --omit=dev --ignore-scripts --no-audit --fund=false
 COPY features/shopping/supermarket-poc.js features/shopping/supermarket-poc.js
-COPY scripts/supermarket/collector.mjs scripts/supermarket/ok-ocr.mjs scripts/supermarket/iy-ocr.mjs scripts/supermarket/yaoko-ocr.mjs scripts/supermarket/tokubai-ocr.mjs scripts/supermarket/browser.mjs scripts/supermarket/run-daily-gcs.mjs scripts/supermarket/
+COPY scripts/supermarket/collector.mjs scripts/supermarket/whole-corpus-store.mjs scripts/supermarket/iy-ocr.mjs scripts/supermarket/yaoko-ocr.mjs scripts/supermarket/tokubai-ocr.mjs scripts/supermarket/browser.mjs scripts/supermarket/run-daily-gcs.mjs scripts/supermarket/
 USER node
 ENTRYPOINT ["node","scripts/supermarket/run-daily-gcs.mjs"]

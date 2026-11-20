@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFile, stat, rename, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { extractOkFront } from './ok-ocr.mjs';
+import {corpusCatalog} from './whole-corpus-store.mjs';
 import { identifyIyEdition, IY_SOURCE, IY_IMAGE } from './iy-ocr.mjs';
 import { identifyYaokoEdition, YAOKO_SOURCE, YAOKO_STORE, YAOKO_IMAGE } from './yaoko-ocr.mjs';
 import {TOKUBAI_EDITIONS,TOKUBAI_ROBOTS,verifyTokubaiRobots,identifyTokubaiEdition} from './tokubai-ocr.mjs';
@@ -54,7 +54,12 @@ export function identifyEdition(html) {
   const front = Array.from(match[3].matchAll(/<img\b[^>]*>/gi)).map(m => m[0])
     .filter(tag => /alt="【関東】オーケー商品情報 表"/.test(tag));
   const image = front.length === 1 ? front[0].match(/data-src="([^"]+)"/)?.[1] : undefined;
-  return {source:pdf,id:sha(pdf),image:image && IMAGE_URL.test(image) ? image : null,month:+match[1],startDay:+match[2]};
+  const pages=Array.from(match[3].matchAll(/<img\b[^>]*>/gi)).map(m=>m[0]).flatMap(tag=>{
+    const face=tag.match(/alt="【関東】オーケー商品情報 (表|裏)"/)?.[1],url=tag.match(/data-src="([^"]+)"/)?.[1];
+    return face&&url&&IMAGE_URL.test(url)?[{face:face==='表'?'front':'back',source:url}]:[];
+  });
+  if(new Set(pages.map(p=>p.face)).size!==pages.length)throw Error('INDEX_FORMAT_OR_SCOPE_CHANGED');
+  return {source:pdf,id:sha(pdf),image:image && IMAGE_URL.test(image) ? image : null,pages,month:+match[1],startDay:+match[2]};
 }
 
 async function get(url, fetcher) {
@@ -131,7 +136,8 @@ export async function collect(db, date, fetcher = fetch, {ocr, daily=false} = {}
         previous?.evidence_id === edition.id ? 'unchanged' : 'checked';
       set.run(STORE,date,state,edition.source,edition.id,null);
     } else if (!ocr) {
-      set.run(STORE,date,'needs_review',edition.source,edition.id,null);
+      // No fixed SKU crop is an adequate substitute for a whole-issue reader.
+      set.run(STORE,date,'needs_review',edition.source,edition.id,'OCR_WHOLE_READER_NOT_CONNECTED');
     } else {
       stage = 'image';
       const bytes = await getImage(edition.image || '',fetcher);
@@ -339,7 +345,14 @@ export function snapshot(db, date) {
   const offers = db.prepare(`SELECT e.* FROM editions e JOIN status s USING(evidence_id)
     WHERE s.day=? AND s.state IN ('checked','unchanged') AND e.from_day<=? AND e.until_day>=?`).all(date,date,date)
     .flatMap(e => JSON.parse(e.offers).map(o => ({...o,store:e.store,source:e.source,from:e.from_day,until:e.until_day,obtained_at:e.obtained_at})));
-  return {schema:1,date,states,sources,offers};
+  const corpus=corpusCatalog(db);
+  const base={schema:1,date,states,sources,offers};
+  if(!corpus)return base;
+  // ShoppingGcs has an existing 480KiB read cap. A large optional corpus must
+  // never make existing confirmed offers/list metadata unreadable. Keep the
+  // complete observations in SQLite; leave headroom for portable diagnostics.
+  return Buffer.byteLength(JSON.stringify({...base,corpus}))<=460*1024
+    ? {...base,corpus} : {...base,corpus_status:'too_large'};
 }
 
 async function main() {
@@ -356,7 +369,7 @@ async function main() {
         let requests = 0;
         const elapsed = performance.now();
         const counted = (...args) => { requests++; return fetch(...args); };
-        const r = await collect(db, poc.dayTokyo(),counted,{ocr:extractOkFront,daily:true});
+        const r = await collect(db, poc.dayTokyo(),counted,{daily:true});
         console.log(JSON.stringify({date:r.date,requests,elapsedMs:Math.round(performance.now()-elapsed),offers:r.offers.length,sources:r.sources}));
       }
       finally { db.close(); }

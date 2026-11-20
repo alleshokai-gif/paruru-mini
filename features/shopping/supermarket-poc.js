@@ -94,6 +94,44 @@
       state.append(el('li', name + '：' + label + (count ? '（' + count + '商品）' : '')));
     }
     target.append(state);
+    // Whole-paper observations are independent of confirmed offers and menus.
+    // These values remain unverified readings, including nonfood and no-price rows.
+    const corpus=today&&snapshot.corpus;
+    if(today&&snapshot.corpus_status==='too_large')target.append(el('p','全紙面の読取はDBに保存されています。表示サイズの上限を超えたため、ここでは確認済み商品だけを表示しています。'));
+    if(corpus?.schema===1&&corpus.verification_state==='needs_review'&&Array.isArray(corpus.pages)&&corpus.pages.length<=20) {
+      const count=corpus.pages.reduce((n,p)=>n+(Array.isArray(p.items)?p.items.length:0),0);
+      if(count<=2000) {
+        const details=el('details');details.className='supermarket-corpus';
+        details.append(el('summary','全紙面のAI読取（'+count+'枠・条件未照合）'));
+        details.append(el('p','食品以外・価格非掲載・表示例・案内を含みます。読取値は確定売価ではなく、献立や買い物先の判断には使っていません。'));
+        details.append(el('p',corpus.issue_id+'・'+corpus.physical_pdf_pages+' PDFページ / '+corpus.logical_faces+'面・取得 '+corpus.obtained_at));
+        for(const page of corpus.pages) {
+          const rows=Array.isArray(page.items)?page.items:[];
+          details.append(el('h4',(page.face==='front'?'表':'裏')+'（'+rows.length+'枠）'));
+          if(page.document_period_raw)details.append(el('p','紙面の期間表記：'+page.document_period_raw));
+          for(const item of rows) {
+            const row=el('article');row.className='supermarket-corpus-item';
+            row.append(el('h5',item.name||'名称を読み取れない枠'));
+            row.append(el('p',[item.product_type,item.spec,...(item.variants||[])].filter(Boolean).join('・')));
+            const quotes=Array.isArray(item.prices)?item.prices:[];
+            if(!quotes.length)row.append(el('p',item.price_state==='not_printed'?'価格非掲載':'価格読取未確定'));
+            for(const price of quotes)row.append(el('p','未照合の読取：'+price.raw_text+(price.unit_text?' / '+price.unit_text:'')+(price.payment_condition?'（'+price.payment_condition+'）':'')));
+            if(item.conditions?.length)row.append(el('p','条件の読取・商品との対応未照合：'+item.conditions.join(' / ')));
+            row.append(el('p','商品への期間・店舗条件・位置の対応は要確認。'+(item.validity_raw_text||'')));
+            details.append(row);
+          }
+        }
+        if(corpus.source_notes?.length) {
+          const notes=el('details');notes.append(el('summary','紙面の注意書き（対応未照合）'));
+          for(const n of corpus.source_notes)notes.append(el('p',n.raw_text));details.append(notes);
+        }
+        if(corpus.unresolved_source_notes?.length)for(const n of corpus.unresolved_source_notes)details.append(el('p','未確定：'+n.reason));
+        try{const url=new URL(corpus.source_document);if(url.protocol==='https:'&&url.hostname==='ok-corporation.jp') {
+          const a=el('a','公式の全号PDF');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';details.append(a);
+        }}catch(_){}
+        target.append(details);
+      }
+    }
     // Coverage is separate from the three menu recommendations. A newly
     // collected store's verified prices must remain inspectable even when
     // the unchanged recommendation logic chooses another store for a menu.

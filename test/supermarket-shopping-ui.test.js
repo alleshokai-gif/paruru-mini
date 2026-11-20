@@ -74,6 +74,19 @@ test('PALURU real-host UI uses the existing authenticated list result and shows 
   assert.match(app.preview.text(),/取得失敗/);
   assert.match(app.list.text(),/納豆/);
 });
+test('whole-paper readings retain nonfood and no-price rows outside confirmed prices and menus',async()=>{
+ const app=setup(),data=result(app.date);
+ data.supermarketPoc.corpus={schema:1,verification_state:'needs_review',issue_id:'fixture-issue',physical_pdf_pages:1,logical_faces:2,obtained_at:app.date+'T00:00:00Z',source_document:'https://ok-corporation.jp/media-download/1/abcdef/PDF/',pages:[
+  {face:'front',items:[{name:'日用品の読取',product_type:'nonfood',variants:[],conditions:[],prices:[{raw_text:'100円',unit_text:'1個'}]}]},
+  {face:'back',items:[{name:'価格を載せていない野菜',product_type:'food',price_state:'not_printed',prices:[]}]}
+ ]};
+ app.authenticate(async()=>data);assert.equal(await app.open(),true);
+ assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+ assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-corpus-item').length,2);
+ assert.match(app.preview.text(),/全紙面のAI読取（2枠・条件未照合）/);assert.match(app.preview.text(),/価格非掲載/);
+ assert.match(app.preview.text(),/確定売価ではなく/);assert.match(app.list.text(),/納豆/);
+ app.lock();assert.ok(!app.preview.text().includes('日用品の読取'));
+});
 
 test('stale or omitted offers and failed source do not suppress existing shopping items', async () => {
   const app = setup();

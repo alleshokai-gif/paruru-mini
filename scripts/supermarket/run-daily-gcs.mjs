@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { collect, collectIy, collectYaoko, collectTokubai, openDb, snapshot, portableResult } from './collector.mjs';
-import { extractOkFront } from './ok-ocr.mjs';
 import { extractIyFront } from './iy-ocr.mjs';
 import { extractYaokoFront } from './yaoko-ocr.mjs';
 import {extractTokubaiFront} from './tokubai-ocr.mjs';
@@ -161,7 +160,7 @@ export async function runDaily(store,date,{collector,ocr,sourceFetch,workspaceFa
         }
       } else {
         const start = performance.now();
-        result = await (collector || collect)(db,date,fetcher,{daily:true,ocr:ocr || extractOkFront});
+        result = await (collector || collect)(db,date,fetcher,{daily:true,ocr});
         if(enableIy) result=await iyCollector(db,date,fetcher,{ocr:iyOcr});
         if(enableYaoko) result=await yaokoCollector(db,date,fetcher,{ocr:yaokoOcr});
         if(enableMaruetsu) result=await maruetsuCollector(db,date,fetcher,{ocr:maruetsuOcr});
