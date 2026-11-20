@@ -197,6 +197,11 @@ export async function runDaily(store,date,{collector,ocr,sourceFetch,workspaceFa
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.umask(0o077);
   try {
+    if(process.argv.length>2&&(process.argv.length!==3||process.argv[2]!=='--browser-probe'))throw new Error('INVALID_RUN_MODE');
+    if(process.argv[2]==='--browser-probe') {
+      const {probeBrowser}=await import('./browser.mjs');
+      console.log(JSON.stringify(await probeBrowser()));
+    } else {
     if (process.env.PALURU_SUPERMARKET_ENABLE_GCS !== '1' || !process.env.CLOUD_RUN_JOB) {
       throw new Error('GCS_RUNNER_NOT_ENABLED');
     }
@@ -205,9 +210,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         enableMaruetsu:process.env.PALURU_SUPERMARKET_MARUETSU==='1',enableLife:process.env.PALURU_SUPERMARKET_LIFE==='1'});
     console.log(JSON.stringify(result));
     if (result.status?.ok === 'failed') process.exitCode = 2;
+    }
   } catch (e) {
     // Fixed error metadata only. Do not print response bodies, tokens, paths or stack traces.
-    const code = /^(GCS|IDENTITY|COLLECTOR|INVALID)_[A-Z0-9_]+$/.test(e.message) ? e.message : 'RUN_FAILED';
+    const code = /^(GCS|IDENTITY|COLLECTOR|INVALID|BROWSER)_[A-Z0-9_]+$/.test(e.message) ? e.message : 'RUN_FAILED';
     console.error(JSON.stringify({code})); process.exitCode = 1;
   }
 }
