@@ -4,7 +4,7 @@ const header={shop:'そうてつローゼン たいら店',period:'2026/11/18 �
 const card={name:'fixture item',maker:'fixture maker',unit:'1個',net:'100',price_label:'本体',gross:'税込108.00円',notices:['fixture condition'],raw_text:'fixture item 本体100円 税込108.00円'};
 const views=()=>header.days.flatMap(day_label=>header.categories.map(category=>({day_label,category,cards:[structuredClone(card)],notes:'fixture paper note',observed_at:'2026-11-20T00:00:00Z'})));
 const source='https://rosen.mikke-sales.com/stores/taira/flyers/1';
-test('every day/category is required; all fields and repeated placements survive exact-text dedup',async()=>{
+test('complete day/category coverage remains explicit; repeated placements survive exact-text dedup',async()=>{
  const {packetFromViews}=await import('../scripts/supermarket/rosen-dom.mjs'),{ingestCorpus,readCorpus,corpusCatalog}=await import('../scripts/supermarket/whole-corpus-store.mjs');
  const v=views();v.at(-1).cards.push({...card,name:'nonfood fixture',net:'?',gross:'税込不明円',raw_text:'nonfood fixture 本体不鮮明円 税込不明円'});
  const p=packetFromViews(source,header,v),db=new DatabaseSync(':memory:');
@@ -15,9 +15,10 @@ test('every day/category is required; all fields and repeated placements survive
   assert.match(items[0].validity_raw_text,/2026-11-18〜2026-11-20/);assert.ok(!items[0].validity_raw_text.includes('observed_dates'));
   assert.equal(items[1].product_type,'nonfood');assert.equal(items[1].price_state,'unreadable');assert.equal(items[1].prices.length,0);
   const r=ingestCorpus(db,p);assert.deepEqual(readCorpus(db,r.corpus_id).packet,p);
-  const out=corpusCatalog(db);assert.equal(out.schema,2);assert.ok(out.catalogs[0].pages.flatMap(p=>p.items).every(i=>i.geometry_verification==='dom_region_unverified'));
+  const out=corpusCatalog(db);assert.equal(out.schema,2);assert.equal(out.catalogs[0].geometry_verification,'dom_region_unverified');assert.equal(out.catalogs[0].store_condition_link_verification,'unverified');assert.ok(out.catalogs[0].pages.flatMap(p=>p.items).every(i=>i.geometry_verification===undefined&&i.store_condition_link_verification===undefined));
   assert.ok(!JSON.stringify(out).includes('raw_dom_fields'));assert.ok(out.catalogs[0].pages.flatMap(p=>p.items).every(i=>i.verification_state==='needs_review'));
-  assert.throws(()=>packetFromViews(source,header,v.slice(1)),/VIEW_COVERAGE/);
+  const partial=packetFromViews(source,header,v.slice(1));assert.equal(partial.coverage.state,'partial');assert.equal(partial.coverage.missing_view_count,1);
+  assert.throws(()=>packetFromViews(source,header,[]),/VIEW_COVERAGE/);
   const duplicate=views();duplicate[1]=duplicate[0];assert.throws(()=>packetFromViews(source,header,duplicate),/VIEW_DUPLICATE/);
   assert.throws(()=>packetFromViews(source.replace('/taira/','/other/'),header,views()),/STORE_SCOPE/);
  }finally{db.close();}

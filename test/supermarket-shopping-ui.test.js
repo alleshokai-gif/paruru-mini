@@ -180,3 +180,85 @@ test('verified offers from additional stores remain inspectable outside the unch
   assert.match(details[0].text(),/1080\.00円/);assert.match(details[0].text(),/5件/);
   assert.doesNotMatch(details[0].text(),/採用禁止/);
 });
+
+function imageCorpus(store,source_document) {
+ return {schema:1,store,source_kind:'image',verification_state:'needs_review',issue_id:store+'-fixture',
+  physical_pdf_pages:null,logical_faces:1,obtained_at:'2026-11-20T00:00:00Z',source_document,
+  document_from:'2026-11-18',document_until:'2026-11-24',coverage:{state:'partial'},
+  pages:[{face:'front',items:[{name:'参考候補',product_type:'food',price_state:'priced',
+   prices:[{role:'reference_basis',net_yen:99,raw_text:'99円'}],
+   validity_raw_text:'20（金）限り',variants:[],conditions:[]}]}]};
+}
+
+test('partial image observations show exact store sources, observed extent and saved/displayed counts',async()=>{
+ const app=setup(),data=result(app.date),offersBefore=JSON.stringify(data.supermarketPoc.offers);
+ const catalogs=[
+  imageCorpus('iy','https://promo.hatobase.jp/flyers/00521/1298/50089'),
+  imageCorpus('yaoko','https://yap-pd.yaoko-net.com/app/flyer/1221/'),
+  imageCorpus('life','https://store.lifecorp.jp/detail/east648/')
+ ];
+ catalogs[0].display_counts={total:10,shown:1,omitted:9};
+ catalogs[1].display_counts={total:93,shown:1,omitted:92};
+ catalogs[2].display_counts={total:2,shown:1,omitted:1};
+ data.supermarketPoc.corpus={schema:2,verification_state:'needs_review',catalogs};
+ app.authenticate(async()=>data);await app.open();
+ assert.match(app.preview.text(),/保存全105枠 \/ 画面3枠 \/ 未表示102枠/);
+ const readings=app.preview.all('details').filter(e=>e.className==='supermarket-corpus');
+ assert.equal(readings.length,3);
+ assert.match(readings[1].text(),/ヤオコー 川崎枡形店/);
+ assert.match(readings[1].text(),/保存全93枠 \/ 画面1枠 \/ 未表示92枠/);
+ for(const [index,reading] of readings.entries()) {
+  assert.match(reading.text(),/観測1面 \/ 全号枚数未確認/);
+  assert.match(reading.text(),/保存記録の時刻（実取得時刻は未確認） 2026-11-20T00:00:00Z/);
+  assert.match(reading.text(),/参考価格あり 1枠・価格未確認 0枠・確定0枠/);
+  assert.match(reading.text(),/期間は原本との対応要確認/);
+  assert.match(reading.text(),/部分データ/);assert.match(reading.text(),/表（1枠）/);
+  assert.doesNotMatch(reading.text(),/null PDF|PDF null|全紙面のAI|商品ごとの販売日は未確認|学芸大学/);
+  const links=reading.all('a');assert.equal(links.length,1);
+  assert.equal(links[0].href,catalogs[index].source_document);
+  assert.equal(links[0].textContent,'公式のチラシ原本');
+  assert.equal(links[0].rel,'noopener noreferrer');
+ }
+ assert.equal(app.preview.all('li').length,6);
+ assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+ assert.equal(JSON.stringify(data.supermarketPoc.offers),offersBefore);
+ assert.match(app.list.text(),/納豆/);
+});
+
+test('new reference links reject other stores, paths, query strings and nonimage sources',async()=>{
+ const forbidden=[
+  ['iy','https://promo.hatobase.jp/flyers/00522/1298/50089'],
+  ['iy','https://promo.hatobase.jp/flyers/00521/1298/50089?next=other'],
+  ['yaoko','https://yap-pd.yaoko-net.com/app/flyer/1210/'],
+  ['yaoko','https://yap-pd.yaoko-net.com/assets/flyer/1210/flyer_C_0_1794796304.jpg'],
+  ['yaoko','https://yap-pd.yaoko-net.com/app/flyer/1221/#other'],
+  ['life','https://store.lifecorp.co.jp/detail/east648/'],
+  ['life','https://store.lifecorp.jp/detail/east649/'],
+  ['life','https://store.lifecorp.jp.example.test/detail/east648/'],
+  ['iy','https://yap-pd.yaoko-net.com/app/flyer/1221/'],
+  ['maruetsu','https://store.lifecorp.jp/detail/east648/']
+ ];
+ for(const [store,url] of forbidden) {
+  const app=setup(),data=result(app.date);data.supermarketPoc.corpus=imageCorpus(store,url);
+  app.authenticate(async()=>data);await app.open();
+  const reading=app.preview.all('details').find(e=>e.className==='supermarket-corpus');
+  assert.equal(reading.all('a').length,0,url);
+ }
+ const app=setup(),data=result(app.date);
+ data.supermarketPoc.corpus={...imageCorpus('yaoko','https://yap-pd.yaoko-net.com/app/flyer/1221/'),source_kind:'dom'};
+ app.authenticate(async()=>data);await app.open();
+ assert.equal(app.preview.all('details').find(e=>e.className==='supermarket-corpus').all('a').length,0);
+});
+
+test('display totals accept consistent integer legacy counts and ignore inconsistent metadata',async()=>{
+ const app=setup(),data=result(app.date),corpus=imageCorpus('yaoko','https://yap-pd.yaoko-net.com/app/flyer/1221/');
+ data.supermarketPoc.corpus=corpus;
+ corpus.display_total_frames=93;corpus.displayed_frames=1;
+ app.authenticate(async()=>data);await app.open();
+ assert.match(app.preview.text(),/保存全93枠 \/ 画面1枠 \/ 未表示92枠/);
+ for(const counts of [{total:'93',shown:1,omitted:92},{total:93,shown:2,omitted:91},
+  {total:93,shown:1,omitted:91},{total:-1,shown:1,omitted:-2}]) {
+  corpus.display_counts=counts;
+  await app.open();assert.doesNotMatch(app.preview.text(),/保存全/);
+ }
+});

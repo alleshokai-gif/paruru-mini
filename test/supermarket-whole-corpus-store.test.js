@@ -69,7 +69,9 @@ test('a previously readable 440-460 KiB OK issue survives a larger newly added D
   const h={shop:'そうてつローゼン たいら店',period:'2026/11/18 ～ 2026/11/20',days:['11/20(金)'],categories:['家庭用品']};
   const cards=Array.from({length:50},(_,i)=>({name:'fixture '+i,maker:'z'.repeat(1000),unit:'1個',net:'100',price_label:'本体',gross:'税込110円',notices:[],raw_text:'fixture 100円'}));
   ingestCorpus(db,packetFromViews('https://rosen.mikke-sales.com/stores/taira/flyers/1',h,[{day_label:h.days[0],category:h.categories[0],cards,notes:''}]));
-  const out=snapshot(db,'2026-11-20');assert.equal(out.corpus_status,'partial');assert.equal(out.corpus.catalogs.length,1);assert.equal(out.corpus.catalogs[0].store,'ok');assert.equal(out.corpus_omitted_count,1);
+  const out=snapshot(db,'2026-11-20');assert.equal(out.corpus_status,'partial');assert.equal(out.corpus.catalogs.length,2);assert.equal(out.corpus.catalogs[0].store,'ok');assert.equal(out.corpus_omitted_count,0);
+  assert.equal(out.corpus.catalogs[0].pages.flatMap(p=>p.items).length,88,'all existing OK rows preserved');
+  const rosen=out.corpus.catalogs[1];assert.ok(rosen.display_counts.shown>=1&&rosen.display_counts.omitted>=1);assert.equal(rosen.display_counts.total,50);assert.equal(rosen.display_counts.shown+rosen.display_counts.omitted,50);
   assert.ok(Buffer.byteLength(JSON.stringify(out))<480*1024);assert.equal(db.prepare('SELECT count(*) n FROM flyer_corpus_listings').get().n,138);
  }finally{db.close();}
 });

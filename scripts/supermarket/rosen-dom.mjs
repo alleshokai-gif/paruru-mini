@@ -23,9 +23,31 @@ export function selectedDay(label,range){
 }
 const yen=s=>{const m=clean(s).match(/^(\d{1,3}(?:,\d{3})*|\d+)(?:\.(\d{1,2}))?$/);return m?Number(m[0].replaceAll(',','')):null;};
 const dateSummary=dates=>{const spans=[];for(const d of dates){const last=spans.at(-1);if(last&&Date.parse(d)-Date.parse(last[1])===86400000)last[1]=d;else spans.push([d,d]);}return spans.map(([a,b])=>a===b?a:a+'〜'+b).join('、');};
+function viewCoverage(header,views){
+ demand(Array.isArray(header.days)&&header.days.length>=1&&header.days.length<=31&&new Set(header.days).size===header.days.length&&Array.isArray(header.categories)&&header.categories.length>=1&&header.categories.length<=15&&new Set(header.categories).size===header.categories.length,'ROSEN_NAV_FORMAT');
+ const expected=header.days.length*header.categories.length;
+ demand(Array.isArray(views)&&views.length>=1&&views.length<=expected,'ROSEN_VIEW_COVERAGE');
+ const seen=new Set();
+ for(const view of views){
+  demand(header.days.includes(view.day_label)&&header.categories.includes(view.category),'ROSEN_NAV_SCOPE');
+  const cell=view.day_label+'\0'+view.category;demand(!seen.has(cell),'ROSEN_VIEW_DUPLICATE');seen.add(cell);
+ }
+ const missing=header.days.flatMap(day_label=>header.categories.filter(category=>!seen.has(day_label+'\0'+category)).map(category=>({day_label,category})));
+ return {state:missing.length?'partial':'complete',expected_views:expected,observed_views:views.length,missing_view_count:missing.length,missing_views:missing};
+}
+// Incomplete observations are usable references, never a complete acquisition cache.
+// Legacy packets qualify only when their raw navigation matrix proves completeness.
+export function isCompleteRosenPacket(packet){
+ try{
+  if(packet?.store!=='rosen'||!documentURL(packet.source_document)||packet.raw_dom_header?.shop!=='そうてつローゼン たいら店'||packet.acquisition?.partial_reason)return false;
+  const range=period(packet.raw_dom_header.period);for(const view of packet.raw_dom_views)selectedDay(view.day_label,range);
+  return viewCoverage(packet.raw_dom_header,packet.raw_dom_views).state==='complete';
+ }catch{return false;}
+}
 export function packetFromViews(source,header,views,metrics={}){
  demand(documentURL(source)&&header.shop==='そうてつローゼン たいら店','ROSEN_STORE_SCOPE');
- const range=period(header.period);demand(views.length===header.days.length*header.categories.length&&views.length<=512,'ROSEN_VIEW_COVERAGE');
+ const range=period(header.period),coverage=viewCoverage(header,views);
+ coverage.observed_dates=[...new Set(views.map(v=>selectedDay(v.day_label,range)))].sort();
  const byCategory=new Map(header.categories.map((s,i)=>[s,{face:'category-'+i,label:s,selected_day:null,examined_tiles:[],document_period_raw:header.period,global_conditions:[],unresolved_regions:[],items:[]} ]));
  const seenCells=new Set(),unique=new Map();let total=0;
  for(const view of views){
@@ -60,11 +82,12 @@ export function packetFromViews(source,header,views,metrics={}){
   }
  }
  for(const item of unique.values()){item.observed_dates.sort();item.validity_raw_text='公開画面で選択した日：'+dateSummary(item.observed_dates)+'（商品の販売期限は未照合）';}
- const pages=[...byCategory.values()],notes=[...new Set(views.map(v=>clean(v.notes)).filter(Boolean))];
+ const observedCategories=new Set(views.map(v=>v.category));
+ const pages=[...byCategory.values()].filter(p=>observedCategories.has(p.label)),notes=[...new Set(views.map(v=>clean(v.notes)).filter(Boolean))];
  const sourceRevision=hash(JSON.stringify({source,header,views,index_fingerprint:metrics.index_fingerprint??null}));
  return {schema:'supermarket-whole-corpus-v2',source_kind:'dom',store:'rosen',issue_id:'rosen-taira-'+source.match(/flyers\/(\d+)/)[1],source_revision:sourceRevision,analysis_revision:implementation,obtained_at:new Date().toISOString(),source_document:source,physical_pdf_pages:null,logical_faces:null,logical_views:views.length,document_from:range.from,document_until:range.until,pages,
-  source_notes:notes.map(raw_text=>({face:pages[0].face,kind:'publisher_notice',raw_text,verification_state:'needs_review'})),unresolved_source_notes:[],raw_dom_header:header,raw_dom_views:views,
-  analyzed_at:new Date().toISOString(),acquisition:{kind:'normal_public_browser_dom',all_day_category_views:views.length,raw_card_observations:total,exact_dom_text_deduplicated_frames:unique.size,complete_original_sku_denominator:null,model_calls:0,manual_product_selection:false,images_redistributed:false,...metrics}};
+  coverage,source_notes:notes.map(raw_text=>({face:pages[0].face,kind:'publisher_notice',raw_text,verification_state:'needs_review'})),unresolved_source_notes:[],raw_dom_header:header,raw_dom_views:views,
+  analyzed_at:new Date().toISOString(),acquisition:{...metrics,kind:'normal_public_browser_dom',coverage_state:coverage.state,expected_day_category_views:coverage.expected_views,observed_day_category_views:views.length,all_day_category_views:views.length,raw_card_observations:total,exact_dom_text_deduplicated_frames:unique.size,complete_original_sku_denominator:null,model_calls:0,manual_product_selection:false,images_redistributed:false}};
 }
 export async function readIssueViews(page,{onView=()=>{},check=()=>{}}={}){
  const header=await page.evaluate(()=>({shop:document.querySelector('.FlyerHeader__ShopName')?.textContent?.trim(),period:document.querySelector('.FlyerHeader__Date')?.textContent?.trim(),days:[...document.querySelectorAll('.FlyerSelect button')].map(b=>b.textContent.trim()),categories:[...document.querySelectorAll('.Flyer__CategoryList button')].map(b=>b.textContent.trim())}));
@@ -86,6 +109,26 @@ export async function readIssueViews(page,{onView=()=>{},check=()=>{}}={}){
   }
  }
  return {header,views};
+}
+// A later read failure preserves already-settled views without retrying I/O.
+export async function readIssueWithPartial(page,{source,onPacket=()=>{},onView=()=>{},check=()=>{},metrics={},expectedRange=null,read=readIssueViews}={}){
+ let header,views=[];
+ const persist=async(extra={})=>{
+  const packet=packetFromViews(source,header,views,{...(typeof metrics==='function'?metrics():metrics),...extra});
+  if(expectedRange)demand(packet.document_from===expectedRange.from&&packet.document_until===expectedRange.until,'ROSEN_DOCUMENT_PERIOD_CHANGED');
+  await onPacket(packet);return packet;
+ };
+ try{
+  const result=await read(page,{check,onView:async part=>{
+   if(header)demand(JSON.stringify(header)===JSON.stringify(part.header),'ROSEN_NAV_CHANGED');
+   await onView(part);header=part.header;views.push(part.view);
+  }});
+  header=result.header;views=result.views;
+ }catch(error){
+  if(views.length)await persist({partial_reason:/^ROSEN_[A-Z0-9_]+$/.test(error.message)?error.message:'ROSEN_READ_FAILED'});
+  throw error;
+ }
+ return persist();
 }
 export async function readRosen(date,{knownIssues=new Map(),onPacket=()=>{},onView=()=>{},policy,onSourceRequest=()=>{},onSourceResponse=()=>{},budgetMs=180000,runtime=null}={}){
  if(process.getuid?.()===0)throw Error('BROWSER_ROOT_FORBIDDEN');
@@ -121,7 +164,7 @@ export async function readRosen(date,{knownIssues=new Map(),onPacket=()=>{},onVi
   demand(active.length>=1&&active.length<=12,'ROSEN_NO_ACTIVE_ISSUE');const results=[];
   for(const link of active){check();const id='rosen-taira-'+link.url.match(/flyers\/(\d+)/)[1],fingerprint=hash(JSON.stringify({url:link.url,text:clean(link.text),from:link.from,until:link.until}));
    const cached=knownIssues.get(id);
-   if(cached?.acquisition?.index_fingerprint===fingerprint){
+   if(isCompleteRosenPacket(cached)&&cached.acquisition?.index_fingerprint===fingerprint){
     if(cached.analysis_revision===implementation){results.push({issue_id:id,disposition:'unchanged'});continue;}
     if(cached.raw_dom_header&&cached.raw_dom_views){
      const revised=packetFromViews(link.url,cached.raw_dom_header,cached.raw_dom_views,{index_fingerprint:fingerprint,reanalyzed_cached_source:true,source_requests:requests,robots_status:policy.status,robots_observed_at:policy.observed_at});
@@ -132,10 +175,8 @@ export async function readRosen(date,{knownIssues=new Map(),onPacket=()=>{},onVi
    }
    const response=await page.goto(link.url,{waitUntil:'domcontentloaded',timeout:25000});demand(response?.status()===200,'ROSEN_HTTP_'+(response?.status()??'UNKNOWN'));
    await page.locator('.Product__Inner').first().waitFor({state:'attached'});
-   const {header,views}=await readIssueViews(page,{check,onView:part=>onView({source:link.url,issue_id:id,index_fingerprint:fingerprint,...part})});
-   const packet=packetFromViews(link.url,header,views,{index_fingerprint:fingerprint,source_requests:requests,blocked_nonessential_requests:blocked,robots_status:policy.status,robots_observed_at:policy.observed_at});
-   demand(packet.document_from===link.from&&packet.document_until===link.until,'ROSEN_DOCUMENT_PERIOD_CHANGED');await onPacket(packet);
-   results.push({issue_id:id,disposition:'stored_for_verification',frames:packet.acquisition.exact_dom_text_deduplicated_frames,views:views.length});
+   const packet=await readIssueWithPartial(page,{source:link.url,check,onPacket,expectedRange:link,onView:part=>onView({source:link.url,issue_id:id,index_fingerprint:fingerprint,...part}),metrics:()=>({index_fingerprint:fingerprint,source_requests:requests,blocked_nonessential_requests:blocked,robots_status:policy.status,robots_observed_at:policy.observed_at})});
+   results.push({issue_id:id,disposition:packet.coverage.state==='partial'?'partial_for_verification':'stored_for_verification',frames:packet.acquisition.exact_dom_text_deduplicated_frames,views:packet.logical_views});
   }
   return {issues:results,source_requests:requests,blocked_nonessential_requests:blocked,blocked_robots_requests:blockedRobots,model_calls:0};
  }finally{if(browser)await browser.close();demand(dirname(resolve(dir))===resolve(tmpdir())&&basename(dir).startsWith('paluru-rosen-'),'ROSEN_TEMP_SCOPE');await rm(dir,{recursive:true,force:true});}
