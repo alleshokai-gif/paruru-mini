@@ -1,5 +1,17 @@
 # Whole-flyer observations (#219, incomplete acceptance)
 
+## Rosen public whole-issue path (acceptance pending)
+
+The public Taira store viewer exposes product cards for each date/category, including household items. The new adapter discovers every currently active issue from the normal store landing page and visits the complete date/category matrix. It does not select products or call a hidden API. Exact identical card text is deduplicated while every source date/category/ordinal remains in private evidence. Printed net and tax amounts are parsed independently; missing/unclear fields stay unresolved. All rows remain `needs_review`, outside confirmed offers and menus.
+
+The existing Collector and private SQLite/GCS keys are reused. A separate create-only daily `-rosen` claim precedes source requests; existing failed claims are never replayed. Each completed view is saved privately before later views, and incomplete views do not become complete issue caches. A 180-second acquisition deadline leaves time within the existing 300-second Job to persist outcomes. Essential HTTP failures, unsettled product DOM and empty views without an explicit publisher empty-state stop acquisition. A new issue is discovered by its actual store link; the same issue/index fingerprint reuses saved complete views. Undetectable same-URL changes without index metadata changes remain a limitation.
+
+REP is checked from a provenance-backed cached observation. Missing/expired observations stop with **zero requests**. Previously denied robots URLs are not retried by this adapter. A fresh unavailable robots response does not authorize private/protected content. This intentionally does not prove indefinite unattended daily operation when the observation expires; any policy refresh requires a separately permitted path.
+
+Multiple issues use a bounded catalog bundle. Gateway/LINE consumer support must be deployed before this Collector flag is enabled. Source acquisition time remains unchanged on offline reanalysis; analysis time breaks freshness ties. Expired Rosen issues leave the current public projection but immutable history remains in SQLite. If the existing 480-KiB reader budget is approached, whole issues are omitted explicitly, keeping the existing OK issue preferentially; private evidence remains complete. No IAM, credentials, public access, cron or LINE-send behavior changes are required. Rollback is the previous pinned image plus the previous feature flag; claims/evidence are retained.
+
+Acceptance requires exact private DB and latest-object readback, source/view counts, authenticated issue/category/row display and source-free same-day duplicate execution. Local tests or a merged PR alone do not establish those outcomes. Whole-paper image extraction for the other four stores and a daily image-model lane remain unfinished.
+
 The previous three fixed OK crops were a connectivity test, not whole-paper extraction. Their production entry points and SKU/crop array are retired. Existing persisted confirmed offers, shopping, other store paths and create-only daily claims remain compatible. A new OK issue without a whole-image worker result is `needs_review / OCR_WHOLE_READER_NOT_CONNECTED`; it cannot silently fall back to three products. `identifyEdition.pages` enumerates official Kanto front/back assets instead of counting one PDF page as one printed face.
 
 ## Observation and recommendation are separate

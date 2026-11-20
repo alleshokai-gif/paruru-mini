@@ -10,11 +10,17 @@ const box=b=>Array.isArray(b)&&b.length===4&&b.every(n=>Number.isInteger(n)&&n>=
 const strings=(v,max=100,n=3000)=>Array.isArray(v)&&v.length<=max&&v.every(s=>typeof s==='string'&&s.length<=n&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(s));
 const pick=(o,keys)=>Object.fromEntries(keys.filter(k=>Object.hasOwn(o,k)).map(k=>[k,o[k]]));
 const pdf=s=>typeof s==='string'&&/^https:\/\/ok-corporation\.jp\/media-download\/\d+\/[a-f0-9]+\/PDF\/$/.test(s);
+export function documentSource(store,s){
+ if(typeof s!=='string')return false;
+ if(store==='ok')return pdf(s);
+ if(store==='rosen')return /^https:\/\/rosen\.mikke-sales\.com\/stores\/taira\/flyers\/\d+\/?$/.test(s);
+ return false;
+}
 const image=s=>typeof s==='string'&&/^https:\/\/ok-corporation\.jp\/archives\/\d{3}\/20\d{4}\/[a-f0-9]+\.jpg$/.test(s);
 const timestamp=s=>typeof s==='string'&&s.length<=40&&/^20\d{2}-.+(?:Z|[+-]\d{2}:\d{2})$/.test(s)&&Number.isFinite(Date.parse(s));
 // Publication is a narrow projection of observations, never the raw model body.
 export function catalogItem(item){
- const out=pick(item,['name','spec','variants','product_type','price_state','valid_from','valid_until','validity_raw_text','conditions','bbox','confidence','review_reasons']);
+ const out=pick(item,['name','spec','variants','product_type','price_state','valid_from','valid_until','validity_raw_text','conditions','bbox','confidence','review_reasons','observed_dates']);
  out.prices=item.prices.map(p=>pick(p,['role','net_yen','tax_included_yen','discount_percent','raw_text','unit_text','payment_condition','other_conditions','bbox','confidence','review_reasons']));
  return {...out,verification_state:'needs_review',geometry_verification:'unverified_model_bbox',store_condition_link_verification:'unverified'};
 }
@@ -27,20 +33,22 @@ export function openCorpusTables(db){
    name TEXT,product_type TEXT NOT NULL,price_state TEXT NOT NULL,verification_state TEXT NOT NULL,
    observation_json TEXT NOT NULL,PRIMARY KEY(corpus_id,face,ordinal));`);
 }
-export function validateObservation(page){
- demand(['front','back'].includes(page.face)&&Array.isArray(page.items)&&page.items.length<=1000,'CORPUS_PAGE_SCOPE');
+export function validateObservation(page,{dom=false,modern=false}={}){
+ const region=b=>dom&&b===null||box(b);
+ demand((modern?/^[a-z0-9-]{1,80}$/.test(page.face):['front','back'].includes(page.face))&&Array.isArray(page.items)&&page.items.length<=1000,'CORPUS_PAGE_SCOPE');
  demand(Array.isArray(page.examined_tiles)&&page.examined_tiles.every(s=>typeof s==='string'&&s.length<80),'CORPUS_TILES');
  for(const item of page.items){
-  demand(text(item.name,500)&&text(item.spec,2000)&&box(item.bbox)&&states.has(item.price_state),'CORPUS_ITEM_FIELDS');
+  demand(text(item.name,500)&&text(item.spec,2000)&&region(item.bbox)&&states.has(item.price_state),'CORPUS_ITEM_FIELDS');
   demand(['food','nonfood','service','promotion','other','unknown'].includes(item.product_type),'CORPUS_PRODUCT_TYPE');
   demand(Array.isArray(item.variants)&&item.variants.length<=100&&item.variants.every(s=>typeof s==='string'&&s.length<=500),'CORPUS_VARIANTS');
   demand(Array.isArray(item.prices)&&item.prices.length<=100,'CORPUS_QUOTES');
+  demand(item.observed_dates===undefined||Array.isArray(item.observed_dates)&&item.observed_dates.length<=62&&item.observed_dates.every(day),'CORPUS_OBSERVED_DATES');
   demand(item.conditions===undefined||strings(item.conditions),'CORPUS_CONDITIONS');
   demand(item.review_reasons===undefined||strings(item.review_reasons),'CORPUS_REASONS');
   demand(text(item.validity_raw_text??null,3000)&&text(item.confidence??null,40),'CORPUS_LABELS');
   demand(item.valid_from===null||day(item.valid_from),'CORPUS_FROM_DAY');demand(item.valid_until===null||day(item.valid_until),'CORPUS_UNTIL_DAY');
   for(const price of item.prices){
-   demand(roles.has(price.role)&&text(price.raw_text,3000)&&text(price.unit_text,500)&&box(price.bbox),'CORPUS_PRICE_FIELDS');
+   demand(roles.has(price.role)&&text(price.raw_text,3000)&&text(price.unit_text,500)&&region(price.bbox),'CORPUS_PRICE_FIELDS');
    demand(text(price.payment_condition??null,1000)&&(price.other_conditions===undefined||strings(price.other_conditions))&&(price.review_reasons===undefined||strings(price.review_reasons))&&text(price.confidence??null,40),'CORPUS_PRICE_LABELS');
    for(const key of ['net_yen','tax_included_yen','discount_percent'])demand(price[key]===null||typeof price[key]==='number'&&Number.isFinite(price[key])&&price[key]>=0&&price[key]<=10000000,'CORPUS_NUMBER');
   }
@@ -48,18 +56,22 @@ export function validateObservation(page){
  return page;
 }
 export function ingestCorpus(db,packet){
- demand(packet.schema==='supermarket-whole-corpus-v1'&&packet.store==='ok'&&/^[a-z0-9-]{1,100}$/.test(packet.issue_id),'CORPUS_SCOPE');
+ const dom=packet.schema==='supermarket-whole-corpus-v2'&&packet.source_kind==='dom'&&packet.store==='rosen';
+ const modern=packet.schema==='supermarket-whole-corpus-v2';
+ demand((dom||packet.schema==='supermarket-whole-corpus-v1'&&packet.store==='ok')&&/^[a-z0-9-]{1,100}$/.test(packet.issue_id),'CORPUS_SCOPE');
  demand(/^[a-f0-9]{64}$/.test(packet.source_revision)&&/^[a-f0-9]{64}$/.test(packet.analysis_revision),'CORPUS_REVISION');
- demand(timestamp(packet.obtained_at)&&pdf(packet.source_document)&&packet.physical_pdf_pages===1&&packet.logical_faces===2,'CORPUS_PROVENANCE');
- demand(Array.isArray(packet.pages)&&packet.pages.length===2&&new Set(packet.pages.map(p=>p.face)).size===2,'CORPUS_FACES');
- for(const p of packet.pages)validateObservation(p);
+ demand(timestamp(packet.obtained_at)&&documentSource(packet.store,packet.source_document)&&(dom?packet.physical_pdf_pages===null&&packet.logical_faces===null:packet.physical_pdf_pages===1&&packet.logical_faces===2),'CORPUS_PROVENANCE');
+ demand(Array.isArray(packet.pages)&&(modern?packet.pages.length>=1&&packet.pages.length<=64:packet.pages.length===2)&&new Set(packet.pages.map(p=>p.face)).size===packet.pages.length,'CORPUS_FACES');
+ if(dom){demand(Number.isInteger(packet.logical_views)&&packet.logical_views>=packet.pages.length&&packet.logical_views<=512,'CORPUS_DOM_VIEWS');demand(day(packet.document_from)&&day(packet.document_until)&&packet.document_from<=packet.document_until,'CORPUS_DOCUMENT_PERIOD');}
+ for(const p of packet.pages){validateObservation(p,{dom,modern});if(dom)demand(text(p.label,160)&&(p.selected_day===null||day(p.selected_day)),'CORPUS_DOM_PAGE');}
  for(const p of packet.pages){
   demand(text(p.document_period_raw??null,3000),'CORPUS_PERIOD');
-  demand(p.global_conditions===undefined||Array.isArray(p.global_conditions)&&p.global_conditions.length<=100&&p.global_conditions.every(c=>text(c.text,3000)&&text(c.scope,3000)&&box(c.bbox)&&text(c.confidence??null,40)),'CORPUS_GLOBAL_CONDITIONS');
-  demand(p.unresolved_regions===undefined||Array.isArray(p.unresolved_regions)&&p.unresolved_regions.length<=1000&&p.unresolved_regions.every(c=>box(c.bbox)&&text(c.reason,3000)),'CORPUS_UNRESOLVED');
+  demand(p.global_conditions===undefined||Array.isArray(p.global_conditions)&&p.global_conditions.length<=100&&p.global_conditions.every(c=>text(c.text,3000)&&text(c.scope,3000)&&(dom&&c.bbox===null||box(c.bbox))&&text(c.confidence??null,40)),'CORPUS_GLOBAL_CONDITIONS');
+  demand(p.unresolved_regions===undefined||Array.isArray(p.unresolved_regions)&&p.unresolved_regions.length<=1000&&p.unresolved_regions.every(c=>(dom&&c.bbox===null||box(c.bbox))&&text(c.reason,3000)),'CORPUS_UNRESOLVED');
  }
- demand(packet.source_notes===undefined||Array.isArray(packet.source_notes)&&packet.source_notes.length<=200&&packet.source_notes.every(n=>['front','back'].includes(n.face)&&text(n.kind,40)&&text(n.raw_text,6000)),'CORPUS_SOURCE_NOTES');
- demand(packet.unresolved_source_notes===undefined||Array.isArray(packet.unresolved_source_notes)&&packet.unresolved_source_notes.length<=200&&packet.unresolved_source_notes.every(n=>['front','back'].includes(n.face)&&text(n.reason,3000)),'CORPUS_UNRESOLVED_NOTES');
+ const faceAllowed=face=>modern?typeof face==='string'&&packet.pages.some(p=>p.face===face):['front','back'].includes(face);
+ demand(packet.source_notes===undefined||Array.isArray(packet.source_notes)&&packet.source_notes.length<=200&&packet.source_notes.every(n=>faceAllowed(n.face)&&text(n.kind,40)&&text(n.raw_text,6000)),'CORPUS_SOURCE_NOTES');
+ demand(packet.unresolved_source_notes===undefined||Array.isArray(packet.unresolved_source_notes)&&packet.unresolved_source_notes.length<=200&&packet.unresolved_source_notes.every(n=>faceAllowed(n.face)&&text(n.reason,3000)),'CORPUS_UNRESOLVED_NOTES');
  const evidence=JSON.stringify(packet);demand(Buffer.byteLength(evidence)<=4*1024*1024,'CORPUS_SIZE');
  const id=sha(packet.issue_id+'|'+packet.source_revision+'|'+packet.analysis_revision);openCorpusTables(db);
  const old=db.prepare('SELECT evidence_json FROM flyer_corpus_runs WHERE corpus_id=?').get(id);
@@ -80,17 +92,31 @@ export function readCorpus(db,id){
  const packet=JSON.parse(row.evidence_json),listings=db.prepare('SELECT face,ordinal,verification_state,observation_json FROM flyer_corpus_listings WHERE corpus_id=? ORDER BY face,ordinal').all(id);
  return {packet,listings:listings.map(r=>({...r,observation:JSON.parse(r.observation_json)}))};
 }
-export function corpusCatalog(db){
- if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='flyer_corpus_runs'").get())return null;
- const row=db.prepare('SELECT corpus_id,evidence_json FROM flyer_corpus_runs ORDER BY julianday(obtained_at) DESC,corpus_id LIMIT 1').get();
- if(!row)return null;const packet=JSON.parse(row.evidence_json);
+function singleCatalog(row){
+ const packet=JSON.parse(row.evidence_json);
  // Source facts only: execution paths, model prompts and account metadata stay private.
  return {schema:1,corpus_id:row.corpus_id,store:packet.store,issue_id:packet.issue_id,source_revision:packet.source_revision,
   analysis_revision:packet.analysis_revision,obtained_at:packet.obtained_at,source_document:packet.source_document,
-  physical_pdf_pages:packet.physical_pdf_pages,logical_faces:packet.logical_faces,verification_state:'needs_review',
+  physical_pdf_pages:packet.physical_pdf_pages,logical_faces:packet.logical_faces,source_kind:packet.source_kind??'image',logical_views:packet.logical_views??packet.logical_faces,document_from:packet.document_from??null,document_until:packet.document_until??null,verification_state:'needs_review',
   source_notes:(packet.source_notes??[]).map(n=>({face:n.face,kind:n.kind,raw_text:n.raw_text,verification_state:'needs_review',scope_status:'unverified'})),
   unresolved_source_notes:(packet.unresolved_source_notes??[]).map(n=>({face:n.face,reason:n.reason})),
-  pages:packet.pages.map(page=>({face:page.face,document_period_raw:page.document_period_raw,
+  pages:packet.pages.map(page=>({face:page.face,label:page.label??null,selected_day:page.selected_day??null,document_period_raw:page.document_period_raw,
    global_conditions:(page.global_conditions??[]).map(c=>pick(c,['text','scope','bbox','confidence'])),
-   items:page.items.map(catalogItem),unresolved_regions:(page.unresolved_regions??[]).map(c=>pick(c,['bbox','reason']))}))};
+   items:page.items.map(item=>({...catalogItem(item),geometry_verification:packet.source_kind==='dom'?'dom_region_unverified':'unverified_model_bbox'})),unresolved_regions:(page.unresolved_regions??[]).map(c=>pick(c,['bbox','reason']))}))};
+}
+export function corpusCatalog(db,{date=null}={}){
+ if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='flyer_corpus_runs'").get())return null;
+ const rows=db.prepare(`SELECT corpus_id,evidence_json FROM (
+   SELECT corpus_id,evidence_json,ROW_NUMBER() OVER(PARTITION BY store,issue_id ORDER BY julianday(obtained_at) DESC,julianday(COALESCE(json_extract(evidence_json,'$.analyzed_at'),obtained_at)) DESC,corpus_id DESC) AS rank
+   FROM flyer_corpus_runs) WHERE rank=1`).all();
+ if(!rows.length)return null;
+ let okSeen=false;
+ const catalogs=rows.sort((a,b)=>Date.parse(JSON.parse(b.evidence_json).obtained_at)-Date.parse(JSON.parse(a.evidence_json).obtained_at))
+  .filter(r=>{const p=JSON.parse(r.evidence_json);if(date&&p.document_until&&p.document_until<date)return false;
+   // OK's official index has one current Kanto issue. Older observations remain
+   // immutable privately; offline reanalysis never refreshes acquisition time.
+   if(p.store==='ok'){if(okSeen)return false;okSeen=true;}return true;})
+  .map(singleCatalog).sort((a,b)=>a.store.localeCompare(b.store)||a.issue_id.localeCompare(b.issue_id));
+ if(!catalogs.length)return null;
+ return catalogs.length===1&&catalogs[0].source_kind==='image'?catalogs[0]:{schema:2,verification_state:'needs_review',catalogs};
 }

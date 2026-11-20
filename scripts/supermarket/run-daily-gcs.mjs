@@ -4,7 +4,7 @@ import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { collect, collectIy, collectYaoko, collectTokubai, openDb, snapshot, portableResult } from './collector.mjs';
+import { collect, collectIy, collectYaoko, collectTokubai, collectRosen, openDb, snapshot, portableResult } from './collector.mjs';
 import { extractIyFront } from './iy-ocr.mjs';
 import { extractYaokoFront } from './yaoko-ocr.mjs';
 import {extractTokubaiFront} from './tokubai-ocr.mjs';
@@ -42,7 +42,7 @@ export async function makeGcs(bucket, fetcher = fetch) {
   const storage = 'https://storage.googleapis.com';
   const meta = '/storage/v1/b/' + bucket;
   const scUrl = key => {
-    if (!/^family-supermarket\/v1\/(?:collector-state\.sqlite|latest\.json|claims\/\d{4}-\d{2}-\d{2}(?:-(?:iy|yaoko|maruetsu|life))?\.json)$/.test(key)) {
+    if (!/^family-supermarket\/v1\/(?:collector-state\.sqlite|latest\.json|claims\/\d{4}-\d{2}-\d{2}(?:-(?:iy|yaoko|maruetsu|life|rosen))?\.json)$/.test(key)) {
       throw new Error('GCS_OBJECT_OUT_OF_SCOPE');
     }
     return meta + '/o/' + encodeURIComponent(key);
@@ -113,6 +113,7 @@ export async function runDaily(store,date,{collector,ocr,sourceFetch,workspaceFa
   enableIy=false,iyCollector=collectIy,iyOcr=extractIyFront,
   enableYaoko=false,yaokoCollector=collectYaoko,yaokoOcr=extractYaokoFront,
   enableMaruetsu=false,enableLife=false,
+  enableRosen=false,rosenCollector=collectRosen,
   maruetsuCollector=(...a)=>collectTokubai('maruetsu',...a),maruetsuOcr=(...a)=>extractTokubaiFront('maruetsu',...a),
   lifeCollector=(...a)=>collectTokubai('life',...a),lifeOcr=(...a)=>extractTokubaiFront('life',...a)} = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) ||
@@ -144,7 +145,8 @@ export async function runDaily(store,date,{collector,ocr,sourceFetch,workspaceFa
         const activation=[...(enableIy?[['iy',iyCollector,iyOcr]]:[]),
           ...(enableYaoko?[['yaoko',yaokoCollector,yaokoOcr]]:[]),
           ...(enableMaruetsu?[['maruetsu',maruetsuCollector,maruetsuOcr]]:[]),
-          ...(enableLife?[['life',lifeCollector,lifeOcr]]:[])].find(([id])=>result.states[id]==='held');
+          ...(enableLife?[['life',lifeCollector,lifeOcr]]:[]),
+          ...(enableRosen?[['rosen',rosenCollector,null]]:[])].find(([id])=>result.states[id]==='held');
         if(activation) {
           const [id,run,scan]=activation;activatedStore=id;
           storeLease=await store.put(prefix+'/claims/'+date+'-'+id+'.json',
@@ -154,7 +156,7 @@ export async function runDaily(store,date,{collector,ocr,sourceFetch,workspaceFa
           if(!storeLease) return {date,disposition:'store_already_claimed',requests};
           if(storeLease) {
             const start=performance.now();
-            result=await run(db,date,fetcher,{ocr:scan});
+            result=await run(db,date,fetcher,{ocr:scan,...(id==='rosen'?{onSourceRequest:()=>{requests++;}}:{})});
             elapsed=Math.round(performance.now()-start);
           }
         }
@@ -165,6 +167,7 @@ export async function runDaily(store,date,{collector,ocr,sourceFetch,workspaceFa
         if(enableYaoko) result=await yaokoCollector(db,date,fetcher,{ocr:yaokoOcr});
         if(enableMaruetsu) result=await maruetsuCollector(db,date,fetcher,{ocr:maruetsuOcr});
         if(enableLife) result=await lifeCollector(db,date,fetcher,{ocr:lifeOcr});
+        if(enableRosen) result=await rosenCollector(db,date,fetcher,{onSourceRequest:()=>{requests++;}});
         elapsed = Math.round(performance.now()-start);
         if (!result.states.ok) throw new Error('COLLECTOR_DAY_NOT_WRITTEN');
       }
@@ -206,7 +209,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
     const result = await runDaily(await makeGcs(process.env.PALURU_SUPERMARKET_BUCKET || ''),poc.dayTokyo(),
       {enableIy:process.env.PALURU_SUPERMARKET_IY==='1',enableYaoko:process.env.PALURU_SUPERMARKET_YAOKO==='1',
-        enableMaruetsu:process.env.PALURU_SUPERMARKET_MARUETSU==='1',enableLife:process.env.PALURU_SUPERMARKET_LIFE==='1'});
+        enableMaruetsu:process.env.PALURU_SUPERMARKET_MARUETSU==='1',enableLife:process.env.PALURU_SUPERMARKET_LIFE==='1',
+        enableRosen:process.env.PALURU_SUPERMARKET_ROSEN==='1'});
     console.log(JSON.stringify(result));
     if (result.status?.ok === 'failed') process.exitCode = 2;
     }

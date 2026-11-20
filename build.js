@@ -1,2 +1,2 @@
 // Family Inbox school print release.
-globalThis.BUILD_ID = "v20261120-supermarket-whole-corpus-v1";
+globalThis.BUILD_ID = "v20261120-supermarket-reference-counts";

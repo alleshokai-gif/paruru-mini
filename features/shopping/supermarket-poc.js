@@ -98,16 +98,26 @@
     // These values remain unverified readings, including nonfood and no-price rows.
     const corpus=today&&snapshot.corpus;
     if(today&&snapshot.corpus_status==='too_large')target.append(el('p','全紙面の読取はDBに保存されています。表示サイズの上限を超えたため、ここでは確認済み商品だけを表示しています。'));
-    if(corpus?.schema===1&&corpus.verification_state==='needs_review'&&Array.isArray(corpus.pages)&&corpus.pages.length<=20) {
+    if(today&&snapshot.corpus_status==='partial')target.append(el('p','全号の読取はDBに保存されています。表示容量を超えた号は、この画面から省略しています。'));
+    const catalogs=corpus?.schema===2&&Array.isArray(corpus.catalogs)&&corpus.catalogs.length<=24?corpus.catalogs:[corpus];
+    for(const corpus of catalogs)if(corpus?.schema===1&&corpus.verification_state==='needs_review'&&Array.isArray(corpus.pages)&&corpus.pages.length<=64) {
       const count=corpus.pages.reduce((n,p)=>n+(Array.isArray(p.items)?p.items.length:0),0);
       if(count<=2000) {
         const details=el('details');details.className='supermarket-corpus';
-        details.append(el('summary','全紙面のAI読取（'+count+'枠・条件未照合）'));
+        const dom=corpus.source_kind==='dom';
+        const rows=corpus.pages.flatMap(p=>Array.isArray(p.items)?p.items:[]);
+        const referenceCount=rows.filter(item=>item.price_state!=='discount_only'&&Array.isArray(item.prices)&&
+          item.prices.some(price=>price&&(Number.isFinite(price.net_yen)||Number.isFinite(price.tax_included_yen)))).length;
+        const store=Object.hasOwn(stores,corpus.store)?stores[corpus.store]:'店舗未確認';
+        details.append(el('summary',(dom?'公開明細の読取':'全紙面のAI読取')+'（'+count+'枠・条件未照合）'));
+        details.append(el('p','店舗：'+store+' / 号：'+corpus.issue_id));
+        details.append(el('p','参考価格あり '+referenceCount+'枠・価格未確認 '+(count-referenceCount)+'枠・確定0枠（この読取内）'));
+        details.append(el('p','紙面期間：'+(corpus.document_from&&corpus.document_until?corpus.document_from+'〜'+corpus.document_until:'未確認')+'。商品ごとの販売日は未確認です。'));
         details.append(el('p','食品以外・価格非掲載・表示例・案内を含みます。読取値は確定売価ではなく、献立や買い物先の判断には使っていません。'));
-        details.append(el('p',corpus.issue_id+'・'+corpus.physical_pdf_pages+' PDFページ / '+corpus.logical_faces+'面・取得 '+corpus.obtained_at));
+        details.append(el('p',corpus.issue_id+'・'+(dom?corpus.logical_views+' 日付・カテゴリ表示':corpus.physical_pdf_pages+' PDFページ / '+corpus.logical_faces+'面')+'・取得 '+corpus.obtained_at));
         for(const page of corpus.pages) {
           const rows=Array.isArray(page.items)?page.items:[];
-          details.append(el('h4',(page.face==='front'?'表':'裏')+'（'+rows.length+'枠）'));
+          details.append(el('h4',(dom?(page.label||page.face):page.face==='front'?'表':'裏')+'（'+rows.length+'枠）'));
           if(page.document_period_raw)details.append(el('p','紙面の期間表記：'+page.document_period_raw));
           for(const item of rows) {
             const row=el('article');row.className='supermarket-corpus-item';
@@ -126,8 +136,8 @@
           for(const n of corpus.source_notes)notes.append(el('p',n.raw_text));details.append(notes);
         }
         if(corpus.unresolved_source_notes?.length)for(const n of corpus.unresolved_source_notes)details.append(el('p','未確定：'+n.reason));
-        try{const url=new URL(corpus.source_document);if(url.protocol==='https:'&&url.hostname==='ok-corporation.jp') {
-          const a=el('a','公式の全号PDF');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';details.append(a);
+        try{const url=new URL(corpus.source_document);if((!dom&&/^https:\/\/ok-corporation\.jp\/media-download\/\d+\/[a-f0-9]+\/PDF\/$/.test(url.href))||(dom&&/^https:\/\/rosen\.mikke-sales\.com\/stores\/taira\/flyers\/\d+\/?$/.test(url.href))) {
+          const a=el('a',dom?'公開元の全カテゴリ明細':'公式の全号PDF');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';details.append(a);
         }}catch(_){}
         target.append(details);
       }
