@@ -59,3 +59,17 @@ test('large optional corpus remains complete privately without breaking the exis
   assert.equal(readCorpus(db,saved.corpus_id).listings.length,101);assert.ok(Buffer.byteLength(JSON.stringify(out))<480*1024);
  }finally{db.close();}
 });
+
+test('a previously readable 440-460 KiB OK issue survives a larger newly added DOM issue',async()=>{
+ const {ingestCorpus}=await modulePromise,{openDb,snapshot}=await import('../scripts/supermarket/collector.mjs'),{packetFromViews}=await import('../scripts/supermarket/rosen-dom.mjs'),db=openDb(':memory:');
+ try{
+  const p=packet(),seed=p.pages[1].items[0];seed.spec='x'.repeat(2000);seed.prices[0].raw_text='y'.repeat(2600);
+  p.pages[1].items=Array.from({length:87},()=>structuredClone(seed));ingestCorpus(db,p);
+  const first=snapshot(db,'2026-11-20');assert.ok(first.corpus);const size=Buffer.byteLength(JSON.stringify(first));assert.ok(size>440*1024&&size<=460*1024,'fixture must cover old readable boundary: '+size);
+  const h={shop:'そうてつローゼン たいら店',period:'2026/11/18 ～ 2026/11/20',days:['11/20(金)'],categories:['家庭用品']};
+  const cards=Array.from({length:50},(_,i)=>({name:'fixture '+i,maker:'z'.repeat(1000),unit:'1個',net:'100',price_label:'本体',gross:'税込110円',notices:[],raw_text:'fixture 100円'}));
+  ingestCorpus(db,packetFromViews('https://rosen.mikke-sales.com/stores/taira/flyers/1',h,[{day_label:h.days[0],category:h.categories[0],cards,notes:''}]));
+  const out=snapshot(db,'2026-11-20');assert.equal(out.corpus_status,'partial');assert.equal(out.corpus.catalogs.length,1);assert.equal(out.corpus.catalogs[0].store,'ok');assert.equal(out.corpus_omitted_count,1);
+  assert.ok(Buffer.byteLength(JSON.stringify(out))<480*1024);assert.equal(db.prepare('SELECT count(*) n FROM flyer_corpus_listings').get().n,138);
+ }finally{db.close();}
+});

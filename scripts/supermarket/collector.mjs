@@ -3,7 +3,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFile, stat, rename, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import {corpusCatalog} from './whole-corpus-store.mjs';
+import {corpusCatalog,ingestCorpus} from './whole-corpus-store.mjs';
+import {readRosen,ROSEN_STORE} from './rosen-dom.mjs';
+import {rosenPolicy} from './rosen-policy.mjs';
 import { identifyIyEdition, IY_SOURCE, IY_IMAGE } from './iy-ocr.mjs';
 import { identifyYaokoEdition, YAOKO_SOURCE, YAOKO_STORE, YAOKO_IMAGE } from './yaoko-ocr.mjs';
 import {TOKUBAI_EDITIONS,TOKUBAI_ROBOTS,verifyTokubaiRobots,identifyTokubaiEdition} from './tokubai-ocr.mjs';
@@ -210,6 +212,30 @@ export function verifyImport(db,edition) {
   return saveEdition(db,edition,'visually_verified');
 }
 
+export async function collectRosen(db,date,fetcher=fetch,{read=readRosen,onSourceRequest=()=>{}}={}){
+ if(!realDay(date))throw Error('INVALID_RUN_DAY');
+ const previous=db.prepare('SELECT * FROM status WHERE store=?').get('rosen');
+ if(previous?.day===date&&previous.state!=='held')return snapshot(db,date);
+ const set=db.prepare('INSERT OR REPLACE INTO status VALUES (?,?,?,?,?,?)');
+ set.run('rosen',date,'failed',ROSEN_STORE,null,'INCOMPLETE_RUN');
+ try{
+  const knownIssues=new Map();
+  if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='flyer_corpus_runs'").get()){
+   for(const row of db.prepare("SELECT issue_id,evidence_json FROM flyer_corpus_runs WHERE store='rosen' ORDER BY julianday(obtained_at) DESC,julianday(COALESCE(json_extract(evidence_json,'$.analyzed_at'),obtained_at)) DESC,corpus_id DESC").all())if(!knownIssues.has(row.issue_id))knownIssues.set(row.issue_id,JSON.parse(row.evidence_json));
+  }
+  const policy=await rosenPolicy(db,{fetcher});
+  // Incomplete acquisition evidence is private and cannot become a complete
+  // issue cache or replace the last published whole catalog.
+  db.exec('CREATE TABLE IF NOT EXISTS rosen_dom_views (observation_id TEXT PRIMARY KEY, issue_id TEXT NOT NULL, observed_at TEXT NOT NULL, evidence_json TEXT NOT NULL)');
+  const result=await read(date,{knownIssues,policy,onSourceRequest,onPacket:packet=>ingestCorpus(db,packet),onView:part=>{
+   const raw=JSON.stringify(part);db.prepare('INSERT OR IGNORE INTO rosen_dom_views VALUES(?,?,?,?)').run(sha(raw),part.issue_id,part.view.observed_at,raw);
+  }});
+  if(!Array.isArray(result.issues)||!result.issues.length)throw Error('ROSEN_NO_ACTIVE_ISSUE');
+  set.run('rosen',date,'needs_review',ROSEN_STORE,null,null);
+ }catch(error){set.run('rosen',date,'failed',ROSEN_STORE,null,/^(?:ROSEN|BROWSER)_[A-Z0-9_]+$/.test(error.message)?error.message:'ROSEN_READ_FAILED');}
+ return snapshot(db,date);
+}
+
 // Explicitly separate from OK so enabling one store cannot re-fetch another.
 // Its caller owns a durable once-a-day claim before this function can do I/O.
 export async function collectIy(db,date,fetcher=fetch,{ocr}={}) {
@@ -345,14 +371,26 @@ export function snapshot(db, date) {
   const offers = db.prepare(`SELECT e.* FROM editions e JOIN status s USING(evidence_id)
     WHERE s.day=? AND s.state IN ('checked','unchanged') AND e.from_day<=? AND e.until_day>=?`).all(date,date,date)
     .flatMap(e => JSON.parse(e.offers).map(o => ({...o,store:e.store,source:e.source,from:e.from_day,until:e.until_day,obtained_at:e.obtained_at})));
-  const corpus=corpusCatalog(db);
+  const corpus=corpusCatalog(db,{date});
   const base={schema:1,date,states,sources,offers};
   if(!corpus)return base;
   // ShoppingGcs has an existing 480KiB read cap. A large optional corpus must
   // never make existing confirmed offers/list metadata unreadable. Keep the
   // complete observations in SQLite; leave headroom for portable diagnostics.
-  return Buffer.byteLength(JSON.stringify({...base,corpus}))<=460*1024
-    ? {...base,corpus} : {...base,corpus_status:'too_large'};
+  if(Buffer.byteLength(JSON.stringify({...base,corpus}))<=460*1024)return {...base,corpus};
+  if(corpus.schema===2){
+    // Whole issues only. A large new store cannot erase a previously readable
+    // OK issue. Omitted issue counts remain explicit; full rows stay private.
+    const included=[],omitted=[];
+    const ordered=[...corpus.catalogs].sort((a,b)=>Number(b.store==='ok')-Number(a.store==='ok')||a.store.localeCompare(b.store)||a.issue_id.localeCompare(b.issue_id));
+    for(const c of ordered){const candidate={...base,corpus:{schema:2,verification_state:'needs_review',catalogs:[...included,c]},corpus_status:'partial',corpus_omitted_count:ordered.length};
+      const legacyOK=c.store==='ok'&&!included.length&&Buffer.byteLength(JSON.stringify({...base,corpus:c}))<=460*1024;
+      if(legacyOK||Buffer.byteLength(JSON.stringify(candidate))<=460*1024)included.push(c);
+      else omitted.push({store:c.store,issue_id:c.issue_id,frames:c.pages.reduce((n,p)=>n+p.items.length,0)});
+    }
+    if(included.length)return {...base,corpus:{schema:2,verification_state:'needs_review',catalogs:included},corpus_status:'partial',corpus_omitted_count:omitted.length};
+  }
+  return {...base,corpus_status:'too_large'};
 }
 
 async function main() {

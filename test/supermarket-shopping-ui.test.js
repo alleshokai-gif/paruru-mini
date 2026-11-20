@@ -104,6 +104,20 @@ test('stale or omitted offers and failed source do not suppress existing shoppin
   assert.match(app.list.text(),/納豆/);
 });
 
+test('two DOM issues remain separately visible beside the original OK paper without menu promotion',async()=>{
+ const app=setup(),data=result(app.date),item={name:'fixture household product',product_type:'nonfood',price_state:'not_printed',prices:[]};
+ const issue=id=>({schema:1,store:'rosen',source_kind:'dom',logical_views:6,verification_state:'needs_review',issue_id:id,obtained_at:app.date+'T00:00:00Z',source_document:'https://rosen.mikke-sales.com/stores/taira/flyers/1',pages:[{face:'category-0',label:'家庭用品',items:[item]}]});
+ data.supermarketPoc.corpus={schema:2,verification_state:'needs_review',catalogs:[issue('fixture-one'),issue('fixture-two')]};
+ data.supermarketPoc.corpus_status='partial';
+ app.authenticate(async()=>data);assert.equal(await app.open(),true);
+ assert.equal(app.preview.all('details').filter(e=>e.className==='supermarket-corpus').length,2);
+ assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+ assert.match(app.preview.text(),/fixture-one/);assert.match(app.preview.text(),/fixture-two/);assert.match(app.preview.text(),/6 日付・カテゴリ表示/);
+ assert.match(app.preview.text(),/家庭用品/);assert.match(app.preview.text(),/省略しています/);
+ assert.equal(app.preview.all('a').filter(e=>e.href==='https://rosen.mikke-sales.com/stores/taira/flyers/1').length,2);
+ app.lock();assert.ok(!app.preview.text().includes('fixture household product'));
+});
+
 test('late response after lock or identity replacement never reveals the previous list or offers', async () => {
   const app=setup();
   let resolve;

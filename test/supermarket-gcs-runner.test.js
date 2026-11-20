@@ -232,3 +232,19 @@ test('Maruetsu and Life activate under separate claims without re-fetching each 
   assert.deepEqual(await store.describe(latest),before);assert.deepEqual(await store.describe(claim),original);
   for(const id of ['maruetsu','life'])assert.ok(store.attempts.some(([key])=>key===prefix+'/claims/'+date+'-'+id+'.json'));
 });
+
+test('Rosen uses its own durable claim before browser I/O; failed Maruetsu is never replayed',async()=>{
+ const {runDaily}=await import('../scripts/supermarket/run-daily-gcs.mjs'),{snapshot}=await import('../scripts/supermarket/collector.mjs');
+ const store=storeMock();let calls=0;
+ const initial=async(db,day)=>{const set=db.prepare('INSERT INTO status VALUES(?,?,?,?,?,?)');
+  for(const id of ['ok','iy','yaoko','life'])set.run(id,day,'checked','existing',null,null);
+  set.run('maruetsu',day,'failed','existing',null,'old failure');set.run('rosen',day,'held','old',null,'old');return snapshot(db,day);};
+ const flags={workspaceFactory:inMemoryWorkspace,collector:initial};await runDaily(store,date,flags);
+ const oldClaim=await store.describe(claim),never=async()=>{throw Error('OLD_STORE_REPLAY');};
+ const enabled={...flags,enableRosen:true,enableMaruetsu:true,maruetsuCollector:never,rosenCollector:async(db,day,fetch,{onSourceRequest})=>{
+  assert.ok(await store.describe(prefix+'/claims/'+date+'-rosen.json'));calls++;onSourceRequest();onSourceRequest();
+  db.prepare("UPDATE status SET state='needs_review',error=NULL WHERE store='rosen'").run();return snapshot(db,day);}};
+ const r=await runDaily(store,date,enabled);assert.equal(r.requests,2);assert.equal(r.activatedStore,'rosen');assert.equal(r.status.maruetsu,'failed');
+ const latestMeta=await store.describe(latest);const again=await runDaily(store,date,enabled);
+ assert.equal(again.requests,0);assert.equal(calls,1);assert.deepEqual(await store.describe(claim),oldClaim);assert.deepEqual(await store.describe(latest),latestMeta);
+});
