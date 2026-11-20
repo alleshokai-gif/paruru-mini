@@ -206,3 +206,29 @@ test('Yaoko activation claims its own day without re-collecting already checked 
   assert.ok(store.attempts.some(([key])=>key===prefix+'/claims/'+date+'-yaoko.json'));
   await runDaily(store,date,enabled);assert.equal(calls,1);
 });
+
+test('Maruetsu and Life activate under separate claims without re-fetching each other or old stores',async()=>{
+  const {runDaily}=await import('../scripts/supermarket/run-daily-gcs.mjs');
+  const {snapshot}=await import('../scripts/supermarket/collector.mjs');
+  const store=storeMock(),calls=[];
+  const initial=async(db,day)=>{
+    const set=db.prepare('INSERT INTO status VALUES(?,?,?,?,?,?)');
+    for(const id of ['ok','iy','yaoko'])set.run(id,day,'checked','existing',null,null);
+    for(const id of ['maruetsu','life'])set.run(id,day,'held','old',null,'old');return snapshot(db,day);
+  };
+  const flags={workspaceFactory:inMemoryWorkspace,collector:initial};await runDaily(store,date,flags);
+  const run=id=>async(db,day,fetch)=>{await fetch('https://tokubai.co.jp/'+id);calls.push(id);
+    db.prepare("UPDATE status SET state='checked',error=NULL WHERE store=?").run(id);return snapshot(db,day);};
+  const never=async()=>{throw new Error('OLD_STORE_MUST_NOT_REPLAY');};
+  const enabled={...flags,enableIy:true,enableYaoko:true,enableMaruetsu:true,enableLife:true,
+    iyCollector:never,yaokoCollector:never,maruetsuCollector:run('maruetsu'),lifeCollector:run('life'),sourceFetch:async()=>{}};
+  const original=await store.describe(claim);
+  assert.equal((await runDaily(store,date,enabled)).activatedStore,'maruetsu');
+  assert.deepEqual(calls,['maruetsu']);
+  assert.equal((await runDaily(store,date,enabled)).activatedStore,'life');
+  assert.deepEqual(calls,['maruetsu','life']);
+  const before=await store.describe(latest);
+  assert.equal((await runDaily(store,date,enabled)).requests,0);
+  assert.deepEqual(await store.describe(latest),before);assert.deepEqual(await store.describe(claim),original);
+  for(const id of ['maruetsu','life'])assert.ok(store.attempts.some(([key])=>key===prefix+'/claims/'+date+'-'+id+'.json'));
+});
