@@ -24,12 +24,23 @@ export function parseTsv(tsv,pass,origin={x:0,y:0}) {
   }return out;
 }
 const norm=s=>s.normalize('NFKC').replace(/\s/g,'');
+export function textBlocks(words){
+  const blocks=new Map();for(const w of words){const id=w.pass+':'+w.line.split(':').slice(0,2).join(':');if(!blocks.has(id))blocks.set(id,[]);blocks.get(id).push(w);}
+  return [...blocks.entries()].map(([id,items])=>{
+    const lines=new Map();for(const w of items){if(!lines.has(w.line))lines.set(w.line,[]);lines.get(w.line).push(w);}
+    const text=[...lines.values()].sort((a,b)=>a[0].y-b[0].y).map(line=>line.sort((a,b)=>a.x-b.x).map(w=>w.text).join('')).join('\n');
+    const x=Math.min(...items.map(w=>w.x)),y=Math.min(...items.map(w=>w.y));
+    const heights=items.map(w=>w.h).sort((a,b)=>a-b);
+    return {id,pass:items[0].pass,text,bbox:{x,y,w:Math.max(...items.map(w=>w.x+w.w))-x,h:Math.max(...items.map(w=>w.y+w.h))-y},median_glyph_height:heights[Math.floor(heights.length/2)],minimum_ocr:Math.min(...items.map(w=>w.confidence))};
+  });
+}
 const middle=t=>[t.x+t.w/2,t.y+t.h/2];
 const near=(a,b)=>{const [x,y]=middle(a),[u,v]=middle(b);
   const intersection=Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y));
   return intersection/Math.min(a.w*a.h,b.w*b.h)>=.55&&Math.abs(x-u)<=Math.max(a.w,b.w)*.6&&Math.abs(y-v)<=Math.max(a.h,b.h)*.35;};
 // Numeric anchors are candidates, never silently treated as confirmed prices.
 export function regionsFromWords(words,width,height) {
+  const blocks=textBlocks(words);
   const groups=new Map();
   for(const t of words){const k=t.pass+':'+t.line;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(t);}
   const anchors=[];
@@ -55,12 +66,15 @@ export function regionsFromWords(words,width,height) {
   }
   return regions.map((r,index)=>{
     const a=r.anchor,cx=a.x+a.w/2,cy=a.y+a.h/2;
-    const box={x:Math.max(0,Math.floor(cx-300)),y:Math.max(0,Math.floor(cy-230)),w:0,h:0};
-    box.w=Math.min(width,Math.ceil(cx+300))-box.x;box.h=Math.min(height,Math.ceil(cy+120))-box.y;
+    // This is a search window, not a claim that the whole window is one SKU.
+    const box={x:Math.max(0,Math.floor(cx-width*.2)),y:Math.max(0,Math.floor(cy-height*.1)),w:0,h:0};
+    box.w=Math.min(width,Math.ceil(cx+width*.04))-box.x;box.h=Math.min(height,Math.ceil(cy+height*.04))-box.y;
     const context=words.filter(t=>t.x>=box.x&&t.x<box.x+box.w&&t.y>=box.y&&t.y<box.y+box.h);
     // Keep each read separate so neighbouring columns and date scopes are auditable.
     const reads=[...new Set(context.map(t=>t.pass))].map(pass=>({pass,text:context.filter(t=>t.pass===pass).sort((a,b)=>a.y-b.y||a.x-b.x).map(t=>t.text).join(' ')}));
     const text=reads.find(r=>r.pass==='full-psm11')?.text||reads[0]?.text||'';
+    const names=blocks.filter(b=>b.bbox.x>=box.x&&b.bbox.x<box.x+box.w&&b.bbox.y>=box.y&&b.bbox.y<a.y&&/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(b.text)&&!/(?:税込|税抜|本体価格|会員現金払)/.test(norm(b.text)))
+      .sort((b,c)=>Math.abs(a.y-b.bbox.y)-Math.abs(a.y-c.bbox.y)).slice(0,12);
     const contextualLines=new Map();
     for(const t of context){const k=t.pass+':'+t.line;if(!contextualLines.has(k))contextualLines.set(k,[]);contextualLines.get(k).push(t);}
     const labels=[...contextualLines.values()].map(line=>({pass:line[0].pass,text:line.sort((a,b)=>a.x-b.x).map(t=>t.text).join(' '),
@@ -69,7 +83,7 @@ export function regionsFromWords(words,width,height) {
     const agreement=Math.max(...values.map(value=>new Set(r.observations.filter(o=>o.values.join('|')===value).map(o=>o.pass)).size));
     return {id:index+1,bbox:box,anchor:{x:a.x,y:a.y,w:a.w,h:a.h},kind:a.kind,status:'needs_review',
       product_name:null,spec:null,unit:null,net_yen:null,tax_included_yen:null,member_condition:null,valid_from:null,valid_until:null,
-      proposals:{label_lines:labels.filter(l=>/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(l.text)),numeric_strings:[...new Set(r.observations.flatMap(o=>o.values))],unit_text:text.match(/\d+(?:\.\d+)?\s*(?:kg|g|ml|mL|L|本|個|袋|パック|枚)/g)||[],
+      proposals:{name_candidates:names,label_lines:labels.filter(l=>/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(l.text)),numeric_strings:[...new Set(r.observations.flatMap(o=>o.values))],unit_text:text.match(/\d+(?:\.\d+)?\s*(?:kg|g|ml|mL|L|本|個|袋|パック|枚)/g)||[],
         tax_text:text.match(/(?:税込|本体|税抜)[^\s]{0,12}/g)||[],member_text:text.match(/[^\s]*(?:会員|カード|ポイント)[^\s]*/g)||[],date_text:text.match(/\d+\s*[月日][^\s]{0,12}/g)||[]},
       confidence:{minimum_ocr:Math.min(...r.observations.map(o=>o.confidence)),observed_passes:new Set(r.observations.map(o=>o.pass)).size,agreeing_passes:agreement,semantic_verified:false},
       review_reasons:['PRODUCT_BOUNDARY_UNVERIFIED','LABEL_PRICE_ASSOCIATION_UNVERIFIED','ITEM_DATE_SCOPE_UNVERIFIED','TAX_UNIT_MEMBER_SCOPE_UNVERIFIED',...(values.length>1?['NUMERIC_READ_DISAGREEMENT']:[])],reads,observations:r.observations};
@@ -82,8 +96,8 @@ export async function extractPage(input,{run=exec,prior=null}={}) {
   try{
     const dim=(await run('identify',['-ping','-format','%w %h',input],options)).stdout.trim().split(' ').map(Number);
     const [width,height]=dim;if(!dim.every(Number.isInteger)||width<1||height<1||width*height>24000000)throw Error('IMAGE_DIMENSIONS');
-    const plan=[{id:'full-psm11',x:0,y:0,w:width,h:height,psm:11,render_scale:Math.min(1,4000/Math.max(width,height))},...tiles(width,height).map((t,i)=>({...t,id:'tile-'+i+'-psm11',psm:11,render_scale:1}))];
-    if(prior&&(prior.width!==width||prior.height!==height||prior.language!=='jpn'))throw Error('PRIOR_OCR_SCOPE');
+    const plan=[{id:'full-psm11',x:0,y:0,w:width,h:height,psm:11,language:'jpn',render_scale:Math.min(1,4000/Math.max(width,height))},...tiles(width,height).map((t,i)=>({...t,id:'tile-'+i+'-best-psm11',psm:11,language:'jpn_best',render_scale:1}))];
+    if(prior&&(prior.width!==width||prior.height!==height||!['jpn','jpn_full+jpn_best_tiles'].includes(prior.language)))throw Error('PRIOR_OCR_SCOPE');
     const words=prior?[...prior.words]:[],passes=prior?[...prior.passes]:[],failed=[];
     for(const p of plan){const file=join(work,'pass.png');
       if(passes.some(q=>q.id===p.id&&q.x===p.x&&q.y===p.y&&q.w===p.w&&q.h===p.h))continue;
@@ -92,12 +106,13 @@ export async function extractPage(input,{run=exec,prior=null}={}) {
       const args=[input];if(p.w!==width||p.h!==height)args.push('-crop',`${p.w}x${p.h}+${p.x}+${p.y}`,'+repage');
       if(p.render_scale!==1)args.push('-resize',String(p.render_scale*100)+'%');
       await run('convert',[...args,'-grayscale','Rec601Luma','-depth','8',file],options);
-      operation='tesseract';const passStarted=Date.now(),tsv=(await run('tesseract',[file,'stdout','-l','jpn','--psm',String(p.psm),'tsv'],options)).stdout;
+      operation='tesseract';const passStarted=Date.now(),tsv=(await run('tesseract',[file,'stdout','-l',p.language,'--psm',String(p.psm),'tsv'],options)).stdout;
       const parsed=parseTsv(tsv,p.id,p);words.push(...parsed);passes.push({...p,implementation_sha256:implementationSha,word_count:parsed.length,tsv_sha256:hash(tsv),elapsed_ms:Date.now()-passStarted});
       process.stderr.write(JSON.stringify({stage:'ocr_pass',pass:p.id,word_count:parsed.length,elapsed_ms:Date.now()-passStarted})+'\n');
       }catch(e){failed.push({...p,operation,exit_code:typeof e.code==='number'?e.code:null,signal:e.signal??null,reason:e.killed||e.code==='ETIMEDOUT'?'OCR_TIMEOUT':'OCR_PASS_FAILED'});}
     }
-    return {width,height,status:failed.length?'page_partial':'processed',pixel_coverage:rectangleCoverage(passes,width,height),language:'jpn',passes,failed_passes:failed,previous_failed_passes:prior?.failed_passes??[],words,regions:regionsFromWords(words,width,height),elapsed_ms:Date.now()-started};
+    const regions=regionsFromWords(words,width,height);
+    return {width,height,status:failed.length?'page_partial':'processed',pixel_coverage:rectangleCoverage(passes,width,height),language:'jpn_full+jpn_best_tiles',passes,failed_passes:failed,previous_failed_passes:prior?.failed_passes??[],words,text_blocks:textBlocks(words),regions,elapsed_ms:Date.now()-started};
   }finally{await rm(work,{recursive:true,force:true});}
 }
 export function rectangleCoverage(rectangles,width,height){
@@ -145,7 +160,7 @@ export async function reindexCorpus(source,outdir) {
       if(!/^[a-z0-9-]+$/.test(issue.id)||!Number.isInteger(page.ordinal))throw Error('CORPUS_ID_SCOPE');
       const name=issue.id+'-p'+page.ordinal+'.json.gz',original=await readFile(join(source,name)),evidence=JSON.parse(gunzipSync(original));
       if(evidence.issue!==issue.id||evidence.page!==page.ordinal||evidence.image_sha256!==page.image_sha256)throw Error('CORPUS_PROVENANCE_MISMATCH');
-      if(evidence.words)evidence.regions=regionsFromWords(evidence.words,evidence.width,evidence.height);
+      if(evidence.words){evidence.text_blocks=textBlocks(evidence.words);evidence.regions=regionsFromWords(evidence.words,evidence.width,evidence.height);}
       evidence.parent_evidence_sha256=hash(original);const compressed=gzipSync(JSON.stringify(evidence));
       db.prepare('INSERT INTO corpus_pages VALUES (?,?,?,?,?)').run(issue.id,page.ordinal,page.image_sha256,evidence.source,compressed);
       await writeFile(join(outdir,name),compressed,{mode:0o600});

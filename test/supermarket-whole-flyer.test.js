@@ -85,3 +85,11 @@ test('duplicate or path-shaped issue ids fail before creating or overwriting evi
   await assert.rejects(fs.stat(out),{code:'ENOENT'});
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+test('nonfood and price-absent printed text remains indexed without a commodity filter',async()=>{
+ const {textBlocks}=await modulePromise;
+ const words=[{text:'薬用せっけん',pass:'full-psm11',line:'1:10:1:1',x:10,y:10,w:100,h:20,confidence:90},
+  {text:'価格未表示',pass:'full-psm11',line:'1:10:1:2',x:10,y:40,w:100,h:20,confidence:90},
+  {text:'生鮮品',pass:'full-psm11',line:'1:11:1:1',x:200,y:10,w:100,h:20,confidence:80}];
+ const blocks=textBlocks(words);assert.equal(blocks.length,2);assert.equal(blocks[0].text,'薬用せっけん\n価格未表示');
+ assert.deepEqual(blocks[0].bbox,{x:10,y:10,w:100,h:50});assert.equal(blocks[1].text,'生鮮品');
+});
