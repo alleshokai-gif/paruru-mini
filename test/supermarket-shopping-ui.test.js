@@ -181,6 +181,28 @@ test('verified offers from additional stores remain inspectable outside the unch
   assert.doesNotMatch(details[0].text(),/採用禁止/);
 });
 
+test('main selection groups confirmed offers, filters by store and compares only identical specs',async()=>{
+  const app=setup(),data=result(app.date);
+  data.supermarketPoc.states.iy='checked';
+  const base=data.supermarketPoc.offers[1];
+  data.supermarketPoc.offers.push({...base,store:'iy',net_yen:250,tax_included_sen:27000},
+    {...base,store:'iy',title:'銀鮭',spec:'別規格',unit:'1切',net_yen:100,tax_included_sen:10800},
+    {...base,store:'iy',title:'キャベツ',spec:'1玉',unit:'1玉',net_yen:150,tax_included_sen:16200},
+    {...base,store:'iy',title:'期限切れ',until:'2000-01-01'});
+  app.authenticate(async()=>data);await app.open();
+  const picker=app.preview.children.find(c=>c.className==='supermarket-picker');
+  assert.ok(picker);
+  assert.match(picker.text(),/肉（/);assert.match(picker.text(),/魚（/);assert.match(picker.text(),/野菜（/);
+  assert.match(picker.text(),/同じ品名・規格・単位の掲載/);
+  assert.match(picker.text(),/単位の換算や全店の最安・合計は示しません/);
+  assert.doesNotMatch(picker.text(),/期限切れ/);
+  const chip=text=>picker.all('button').find(b=>b.textContent.startsWith(text));
+  chip('ヤオコー').callbacks.get('click')();
+  assert.match(picker.text(),/ヤオコー 川崎枡形店：期限切れ。今日の確認済み商品はありません/);
+  assert.equal(chip('ヤオコー').attributes['aria-pressed'],'true');
+  assert.equal(app.preview.all('li').length,6);
+});
+
 function imageCorpus(store,source_document) {
  return {schema:1,store,source_kind:'image',verification_state:'needs_review',issue_id:store+'-fixture',
   physical_pdf_pages:null,logical_faces:1,obtained_at:'2026-11-20T00:00:00Z',source_document,
@@ -271,4 +293,19 @@ test('display totals accept consistent integer legacy counts and ignore inconsis
   corpus.display_counts=counts;
   await app.open();assert.doesNotMatch(app.preview.text(),/保存全/);
  }
+});
+
+
+test('comparison does not merge recommendation aliases and reference badge requires a numeric reading',async()=>{
+ const app=setup(),data=result(app.date);
+ data.supermarketPoc.offers=[{...data.supermarketPoc.offers[0],title:'鶏むね肉',store:'ok',spec:'100g',unit:'100g'},
+  {...data.supermarketPoc.offers[0],title:'鶏むね',store:'iy',spec:'100g',unit:'100g'}];
+ data.supermarketPoc.states.iy='checked';
+ data.supermarketPoc.corpus={schema:1,store:'life',source_kind:'image',verification_state:'needs_review',issue_id:'synthetic',physical_pdf_pages:null,logical_faces:1,obtained_at:app.date+'T00:00:00Z',pages:[{face:'front',items:[{name:'合成・価格文字のみ',product_type:'food',price_state:'unreadable',prices:[{raw_text:'判読できない価格',net_yen:'100',tax_included_yen:null}]}]}]};
+ app.authenticate(async()=>data);await app.open();
+ assert.equal(app.preview.all('div').filter(e=>e.className==='supermarket-compare').length,0);
+ const corpus=app.preview.all('details').find(e=>e.className==='supermarket-corpus');
+ assert.match(corpus.text(),/参考価格あり 0枠・価格未確認 1枠/);
+ assert.equal(corpus.all('span').filter(e=>e.className==='supermarket-badge is-reference').length,0);
+ assert.equal(corpus.all('span').filter(e=>e.className==='supermarket-badge is-unknown').length,1);
 });

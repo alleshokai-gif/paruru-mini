@@ -18,3 +18,35 @@
 #supermarketPocPreview p,#supermarketPocPreview h3 {margin:0}
 #supermarketPocPreview ul {display:grid;gap:4px;margin:0;padding-inline-start:1.25rem;font-size:.9rem}
 .supermarket-plan {display:grid;gap:6px;min-width:0;padding:10px;border:1px solid #d9deec;border-radius:10px;background:#fff}
+#supermarketPocPreview h3 {font-size:1.02rem}
+#supermarketPocPreview h4 {margin:.4rem 0 0;font-size:.95rem}
+#supermarketPocPreview a {display:inline-block;min-height:44px;line-height:44px;overflow-wrap:anywhere}
+.supermarket-legend,.supermarket-meta {font-size:.84rem;color:#4a5068}
+.supermarket-note {padding:8px 10px;border-radius:10px;background:#f4f6fb;font-size:.92rem}
+.supermarket-store {font-weight:700}
+.supermarket-label {font-size:.8rem;color:#4a5068}
+.supermarket-ingredient {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;align-items:start;min-width:0}
+.supermarket-ingredient .supermarket-price {grid-column:1/-1}
+.supermarket-price {font-weight:700;font-variant-numeric:tabular-nums}
+.supermarket-badge {display:inline-block;justify-self:end;padding:1px 8px;border-radius:999px;border:1px solid;font-size:.75rem;line-height:1.5;white-space:nowrap}
+.supermarket-badge.is-confirmed {color:#14532d;background:#e8f6ec;border-color:#14532d}
+.supermarket-badge.is-reference {color:#7a4a00;background:#fff4de;border-color:#7a4a00}
+.supermarket-badge.is-unknown {color:#4a5068;background:#eef0f5;border-color:#4a5068;border-style:dashed}
+.supermarket-picker,.supermarket-results,.supermarket-group,.supermarket-compare {display:grid;gap:8px;min-width:0}
+.supermarket-chips {display:flex;flex-wrap:wrap;gap:6px}
+#shoppingView .supermarket-chip {min-height:44px;padding:0 12px;border:1px solid #9aa3bf;border-radius:999px;background:#fff;color:inherit;font-size:.9rem;cursor:pointer}
+#shoppingView .supermarket-chip[aria-pressed="true"] {background:#26304f;border-color:#26304f;color:#fff;font-weight:700}
+.supermarket-chip:focus-visible,#supermarketPocPreview a:focus-visible,#shoppingView summary:focus-visible {outline:3px solid #2563eb;outline-offset:2px}
+.supermarket-offer-card {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;min-width:0;padding:10px;border:1px solid #d9deec;border-radius:10px;background:#fff}
+.supermarket-offer-card .supermarket-price,.supermarket-offer-card .supermarket-meta {grid-column:1/-1;margin:0}
+.supermarket-offer-title {font-weight:700;overflow-wrap:anywhere}
+.supermarket-corpus-item {display:grid;gap:4px;padding:8px 0;border-top:1px solid #e6e9f3;min-width:0}
+.supermarket-corpus-item .supermarket-badge {justify-self:start}
+.supermarket-offer {margin:.5rem 0}
+@media (min-width:760px) {
+  .supermarket-group {grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+  .supermarket-group h4 {grid-column:1/-1}
+  .supermarket-compare {grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+  .supermarket-compare h4,.supermarket-compare>.supermarket-meta:first-of-type {grid-column:1/-1}
+}
+@media (prefers-reduced-motion:reduce) {#supermarketPocPreview * {transition:none!important;animation:none!important}}
