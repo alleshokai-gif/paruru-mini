@@ -1,0 +1,341 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "face": {
+      "type": "string",
+      "enum": [
+        "front",
+        "back"
+      ]
+    },
+    "examined_tiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "document_period_raw": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "global_conditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "bbox": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "evidence_tiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "clear",
+              "uncertain",
+              "unreadable"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "scope",
+          "bbox",
+          "evidence_tiles",
+          "confidence"
+        ]
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spec": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "group_members_complete": {
+            "type": "boolean"
+          },
+          "product_type": {
+            "type": "string",
+            "enum": [
+              "food",
+              "nonfood",
+              "service",
+              "promotion",
+              "other",
+              "unknown"
+            ]
+          },
+          "price_state": {
+            "type": "string",
+            "enum": [
+              "priced",
+              "discount_only",
+              "not_printed",
+              "unreadable",
+              "ambiguous",
+              "example_only"
+            ]
+          },
+          "prices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "member_cash",
+                    "nonmember_or_card",
+                    "general",
+                    "reference_basis",
+                    "discount_rate",
+                    "reservation",
+                    "addon",
+                    "example",
+                    "unknown"
+                  ]
+                },
+                "raw_text": {
+                  "type": "string"
+                },
+                "net_yen": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "tax_included_yen": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "discount_percent": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "unit_text": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "payment_condition": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "other_conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "bbox": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "evidence_tiles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": [
+                    "clear",
+                    "uncertain",
+                    "unreadable"
+                  ]
+                },
+                "review_reasons": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "role",
+                "raw_text",
+                "net_yen",
+                "tax_included_yen",
+                "discount_percent",
+                "unit_text",
+                "payment_condition",
+                "other_conditions",
+                "bbox",
+                "evidence_tiles",
+                "confidence",
+                "review_reasons"
+              ]
+            }
+          },
+          "valid_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid_until": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "validity_raw_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bbox": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "evidence_tiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "clear",
+              "uncertain",
+              "unreadable"
+            ]
+          },
+          "review_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "spec",
+          "variants",
+          "group_members_complete",
+          "product_type",
+          "price_state",
+          "prices",
+          "valid_from",
+          "valid_until",
+          "validity_raw_text",
+          "conditions",
+          "bbox",
+          "evidence_tiles",
+          "confidence",
+          "review_reasons"
+        ]
+      }
+    },
+    "unresolved_regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bbox": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "evidence_tiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bbox",
+          "evidence_tiles",
+          "reason"
+        ]
+      }
+    }
+  },
+  "required": [
+    "face",
+    "examined_tiles",
+    "document_period_raw",
+    "global_conditions",
+    "items",
+    "unresolved_regions"
+  ]
+}

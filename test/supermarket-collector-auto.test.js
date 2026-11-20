@@ -90,3 +90,14 @@ test('portable results preserve exact gateway reasons without internal diagnosti
     assert.equal(state.error,error);
   }
 });
+test('whole issue discovery includes both faces and a new issue cannot run retired SKU crops',async()=>{
+ const {identifyEdition,collect,openDb}=await import('../scripts/supermarket/collector.mjs');
+ const back=img.replace('0bf5efc12c2c08a6','5c12e59855dd6af0');
+ const html=page().replace('<a href=', '<img alt="【関東】オーケー商品情報 裏" data-src="'+back+'"><a href=');
+ assert.deepEqual(identifyEdition(html).pages,[{face:'front',source:img},{face:'back',source:back}]);
+ const db=openDb(':memory:'),calls=[];try{
+  const r=await collect(db,'2026-11-20',fake(calls,html),{daily:true});
+  assert.equal(r.states.ok,'needs_review');assert.equal(r.offers.length,0);assert.equal(calls.length,2);
+  assert.equal(r.sources.find(s=>s.store==='ok').error,'OCR_WHOLE_READER_NOT_CONNECTED');
+ }finally{db.close();}
+});
