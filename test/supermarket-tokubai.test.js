@@ -65,3 +65,33 @@ test('each store fails independently; daily duplicate and expired template make 
   assert.ok(calls.every(s=>!s.includes('/api/')));
  }finally{db.close();}
 });
+
+test('only the observed image robots 302 delegates to canonical REP; denial and changed hops stop',async()=>{
+ const {collectTokubai,openDb}=await import('../scripts/supermarket/collector.mjs');
+ const {TOKUBAI_EDITIONS,TOKUBAI_ROBOTS,validateTokubaiOffer}=await import('../scripts/supermarket/tokubai-ocr.mjs');
+ for(const scenario of ['known','foreign','denied','loop']) {
+  const db=openDb(':memory:'),calls=[];let main=0;
+  try {
+   const fetch=async(url,opts)=>{
+    calls.push({url,redirect:opts.redirect});
+    if(url===TOKUBAI_ROBOTS[0]) {
+     main++;
+     if(scenario==='loop'&&main===2)return new Response('',{status:302,headers:{Location:TOKUBAI_ROBOTS[1]}});
+     return new Response(policy,{headers:{'Content-Type':'text/plain'}});
+    }
+    if(url===TOKUBAI_ROBOTS[1])return scenario==='denied'?new Response('',{status:403}):
+     new Response('',{status:302,headers:{Location:scenario==='foreign'?'https://example.com/robots.txt':TOKUBAI_ROBOTS[0]}});
+    const c=TOKUBAI_EDITIONS.life;
+    if(url===c.source)return new Response(page(c),{headers:{'Content-Type':'text/html'}});
+    if(url===c.image)return new Response(Uint8Array.of(255,216,255,217),{headers:{'Content-Type':'image/jpeg'}});
+    throw new Error('OUT_OF_SCOPE');
+   };
+   const opts={ocr:async()=>({from:'2026-11-20',until:'2026-11-20',offers:[validateTokubaiOffer('life',verified.life)]})};
+   const r=await collectTokubai('life',db,'2026-11-20',fetch,opts);
+   assert.equal(r.states.life,scenario==='known'?'checked':'failed');
+   assert.equal(calls.length,scenario==='known'?5:scenario==='loop'?3:2);
+   if(main===2)assert.equal(calls[2].redirect,'error');
+   const before=calls.length;await collectTokubai('life',db,'2026-11-20',fetch,opts);assert.equal(calls.length,before);
+  }finally{db.close();}
+ }
+});

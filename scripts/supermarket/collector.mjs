@@ -58,10 +58,18 @@ export function identifyEdition(html) {
 }
 
 async function get(url, fetcher) {
-  const result = await fetcher(url, {
-    method:'GET', redirect:'error', signal:AbortSignal.timeout(12000),
+  let result = await fetcher(url, {
+    method:'GET', redirect:url===TOKUBAI_ROBOTS[1]?'manual':'error', signal:AbortSignal.timeout(12000),
     headers:{'User-Agent': USER_AGENT, 'Accept':'text/html, text/plain;q=0.9'}
   });
+  // The image host explicitly delegates REP to the publisher. Permit only
+  // this independently observed 302, never redirects from print/assets or a
+  // denial, and never a second hop. Changed destinations require review.
+  if(url===TOKUBAI_ROBOTS[1]&&result.status===302&&result.headers.get('location')===TOKUBAI_ROBOTS[0]) {
+    if(result.body)await result.body.cancel();
+    result=await fetcher(TOKUBAI_ROBOTS[0],{method:'GET',redirect:'error',signal:AbortSignal.timeout(12000),
+      headers:{'User-Agent':USER_AGENT,'Accept':'text/html, text/plain;q=0.9'}});
+  }
   if ([ROBOTS,IY_ROBOTS,IY_CONTENT_ROBOTS,YAOKO_ROBOTS,YAOKO_IMAGE_ROBOTS].includes(url) && [404,410].includes(result.status)) {
     if (result.body) await result.body.cancel();
     return '';
