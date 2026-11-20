@@ -9,13 +9,13 @@ import {join} from 'node:path';
 const exec=promisify(execFile),compact=s=>s.normalize('NFKC').replace(/\s/g,'');
 export const TOKUBAI_EDITIONS=Object.freeze({
   maruetsu:Object.freeze({
-    source:'https://tokubai.co.jp/3541/leaflets/108663201/print',store:'マルエツ 川崎坂戸店',
+    source:'https://tokubai.co.jp/%E3%83%9E%E3%83%AB%E3%82%A8%E3%83%84/3541/leaflets/108663201/print',store:'マルエツ 川崎坂戸店',
     image:'https://image.tokubai.co.jp/images/bargain_office_leaflets/o=true/9855746.jpg?1794794992',
     hash:'089c73f17125db62d55a4d5664d2e9151b538c9ff152d27a67180ac7741078ce',
     dimensions:'4000 2836',origin:[1355,1720],parser:'maruetsu-3541-20261120-pork-v1',
   }),
   life:Object.freeze({
-    source:'https://tokubai.co.jp/224224/leaflets/108692763/print',store:'ライフ 溝口店',
+    source:'https://tokubai.co.jp/%E3%83%A9%E3%82%A4%E3%83%95/224224/leaflets/108692763/print',store:'ライフ 溝口店',
     image:'https://image.tokubai.co.jp/images/bargain_office_leaflets/o=true/9859979.jpg?1794816523',
     hash:'12d826afd74e1a7117577b37a0b09a2c3e8c04de4b8ad4cf614340e839a11644',
     dimensions:'4000 2812',origin:[2019,1267],parser:'life-224224-20261120-pork-v1',
