@@ -81,7 +81,8 @@
       if(corpus.source_kind === 'image' && (
         corpus.store === 'iy' && /^https:\/\/promo\.hatobase\.jp\/flyers\/00521\/\d+\/\d+\/?$/.test(href) ||
         corpus.store === 'yaoko' && href === 'https://yap-pd.yaoko-net.com/app/flyer/1221/' ||
-        corpus.store === 'life' && href === 'https://store.lifecorp.jp/detail/east648/'
+        corpus.store === 'life' && href === 'https://store.lifecorp.jp/detail/east648/' ||
+        corpus.store === 'maruetsu' && href === 'https://tokubai.co.jp/%E3%83%9E%E3%83%AB%E3%82%A8%E3%83%84/3541/leaflets/108663201/print'
       )) return {href, label:'公式のチラシ原本'};
     } catch (_) {}
     return null;

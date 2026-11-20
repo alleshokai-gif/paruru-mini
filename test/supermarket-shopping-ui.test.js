@@ -190,6 +190,16 @@ function imageCorpus(store,source_document) {
    validity_raw_text:'20（金）限り',variants:[],conditions:[]}]}]};
 }
 
+test('Maruetsu saved reference links only the exact existing 3541 print source without clearing failure or authorizing recommendations',async()=>{
+ const source='https://tokubai.co.jp/%E3%83%9E%E3%83%AB%E3%82%A8%E3%83%84/3541/leaflets/108663201/print';
+ for(const url of [source,source.replace('/3541/','/3542/'),source.replace('108663201','108663202'),source+'?other=1',source+'#other']){
+  const app=setup(),data=result(app.date),before=JSON.stringify(data.supermarketPoc.offers);data.supermarketPoc.corpus=imageCorpus('maruetsu',url);data.supermarketPoc.corpus.document_from=null;data.supermarketPoc.corpus.document_until=null;
+  app.authenticate(async()=>data);await app.open();const reading=app.preview.all('details').find(e=>e.className==='supermarket-corpus');
+  assert.ok(reading);assert.equal(reading.all('a').length,url===source?1:0);if(url===source)assert.equal(reading.all('a')[0].href,source);
+  assert.match(reading.text(),/マルエツ 川崎坂戸店/);assert.match(reading.text(),/確定0枠/);assert.match(reading.text(),/観測1面/);assert.equal(data.supermarketPoc.states.maruetsu,'failed');assert.equal(JSON.stringify(data.supermarketPoc.offers),before);assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+ }
+});
+
 test('partial image observations show exact store sources, observed extent and saved/displayed counts',async()=>{
  const app=setup(),data=result(app.date),offersBefore=JSON.stringify(data.supermarketPoc.offers);
  const catalogs=[
