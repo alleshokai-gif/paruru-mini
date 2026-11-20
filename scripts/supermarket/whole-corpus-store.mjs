@@ -17,6 +17,7 @@ export function documentSource(store,s){
  if(store==='iy')return /^https:\/\/promo\.hatobase\.jp\/flyers\/00521\/\d+\/\d+\/?$/.test(s);
  if(store==='yaoko')return s==='https://yap-pd.yaoko-net.com/app/flyer/1221/';
  if(store==='life')return s==='https://store.lifecorp.jp/detail/east648/';
+ if(store==='maruetsu')return s==='https://tokubai.co.jp/%E3%83%9E%E3%83%AB%E3%82%A8%E3%83%84/3541/leaflets/108663201/print';
  return false;
 }
 const image=s=>typeof s==='string'&&/^https:\/\/ok-corporation\.jp\/archives\/\d{3}\/20\d{4}\/[a-f0-9]+\.jpg$/.test(s);
@@ -64,7 +65,8 @@ export function ingestCorpus(db,packet){
  const imageReference=modern&&packet.source_kind==='image'&&(
   packet.store==='iy'&&/^iy-00521-\d+$/.test(packet.issue_id)&&typeof packet.source_document==='string'&&packet.issue_id==='iy-00521-'+packet.source_document.match(/\/flyers\/00521\/\d+\/(\d+)\/?$/)?.[1]||
   packet.store==='yaoko'&&/^yaoko-1221-\d{8}$/.test(packet.issue_id)||
-  packet.store==='life'&&/^life-224224-\d{8}$/.test(packet.issue_id));
+  packet.store==='life'&&/^life-224224-\d{8}$/.test(packet.issue_id)||
+  packet.store==='maruetsu'&&packet.issue_id==='maruetsu-3541-20261117');
  demand((dom||imageReference||packet.schema==='supermarket-whole-corpus-v1'&&packet.store==='ok')&&/^[a-z0-9-]{1,100}$/.test(packet.issue_id),'CORPUS_SCOPE');
  demand(/^[a-f0-9]{64}$/.test(packet.source_revision)&&/^[a-f0-9]{64}$/.test(packet.analysis_revision),'CORPUS_REVISION');
  demand(text(packet.obtained_at_precision??null,1000)&&text(packet.completeness_scope??null,6000),'CORPUS_SOURCE_LABELS');
