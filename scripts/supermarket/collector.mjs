@@ -4,6 +4,7 @@ import { readFile, stat, rename, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { extractOkFront } from './ok-ocr.mjs';
+import { identifyIyEdition, IY_SOURCE, IY_IMAGE } from './iy-ocr.mjs';
 import poc from '../../features/shopping/supermarket-poc.js';
 
 export const INDEX = 'https://ok-corporation.jp/flyer/';
@@ -19,6 +20,8 @@ const HELD = Object.freeze({
   yaoko:['https://yap-pd.yaoko-net.com/app/flyer/1221/','JAVASCRIPT_VIEWER_APPROVAL_UNVERIFIED'],
 });
 const MAX_IMAGE = 8 * 1024 * 1024;
+const IY_ROBOTS='https://promo.hatobase.jp/robots.txt';
+const IY_CONTENT_ROBOTS='https://content.hatobase.jp/robots.txt';
 const IMAGE_URL = /^https:\/\/ok-corporation\.jp\/archives\/\d{3}\/20\d{4}\/[a-f0-9]+\.jpg$/;
 const sha = data => createHash('sha256').update(data).digest('hex');
 const publisherPdf = s => /^https:\/\/ok-corporation\.jp\/media-download\/\d+\/[a-f0-9]+\/PDF\/$/.test(s);
@@ -55,7 +58,7 @@ async function get(url, fetcher) {
     method:'GET', redirect:'error', signal:AbortSignal.timeout(12000),
     headers:{'User-Agent': USER_AGENT, 'Accept':'text/html, text/plain;q=0.9'}
   });
-  if (url === ROBOTS && [404,410].includes(result.status)) {
+  if ([ROBOTS,IY_ROBOTS,IY_CONTENT_ROBOTS].includes(url) && [404,410].includes(result.status)) {
     if (result.body) await result.body.cancel();
     return '';
   }
@@ -77,7 +80,7 @@ async function get(url, fetcher) {
 }
 
 async function getImage(url, fetcher) {
-  if (!IMAGE_URL.test(url)) throw new Error('OCR_SOURCE_MISSING');
+  if (!IMAGE_URL.test(url) && url!==IY_IMAGE) throw new Error('OCR_SOURCE_MISSING');
   const r = await fetcher(url,{method:'GET',redirect:'error',signal:AbortSignal.timeout(18000),
     headers:{'User-Agent':USER_AGENT,'Accept':'image/jpeg'}});
   if (!r.ok || !/^image\/jpeg(?:[;\s]|$)/i.test(r.headers.get('content-type') || '')) {
@@ -141,8 +144,10 @@ function realDay(value) {
     Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 }
 function saveEdition(db, edition, confidence, evidence) {
-  const current = db.prepare('SELECT * FROM status WHERE store=?').get(STORE);
-  if (edition?.store !== STORE || !current?.source || current.source !== edition.source || !publisherPdf(edition.source) ||
+  const store=edition?.store;
+  const current = db.prepare('SELECT * FROM status WHERE store=?').get(store||'');
+  const publisher=store===STORE ? publisherPdf(edition.source) : store==='iy' && edition.source===IY_SOURCE;
+  if (!publisher || !current?.source || current.source !== edition.source ||
       !realDay(edition.from) || !realDay(edition.until) || edition.from > edition.until ||
       (!evidence && (edition.from > current.day || edition.until < current.day)) ||
       (Date.parse(edition.until) - Date.parse(edition.from)) / 86400000 > 14 ||
@@ -167,20 +172,60 @@ function saveEdition(db, edition, confidence, evidence) {
     }
     if (!existing) {
       db.prepare('INSERT INTO editions VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(current.evidence_id, STORE, edition.source, edition.from, edition.until, new Date().toISOString(), normalized);
+        .run(current.evidence_id, store, edition.source, edition.from, edition.until, new Date().toISOString(), normalized);
       if (evidence) db.prepare('INSERT INTO ocr_evidence VALUES (?, ?, ?, ?)')
         .run(current.evidence_id,evidence.source,evidence.hash,evidence.parser);
     }
     db.prepare("UPDATE status SET state=?, error=NULL WHERE store=? AND evidence_id=?")
       .run(edition.until < current.day ? 'expired' : edition.from > current.day ? 'needs_review' :
-        existing ? 'unchanged' : 'checked', STORE, current.evidence_id);
+        existing ? 'unchanged' : 'checked', store, current.evidence_id);
     db.exec('COMMIT');
     return { duplicate: !!existing, offers: offers.length };
   } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
 export function verifyImport(db,edition) {
+  if (edition?.store!==STORE) throw new Error('INVALID_EDITION');
   return saveEdition(db,edition,'visually_verified');
+}
+
+// Explicitly separate from OK so enabling one store cannot re-fetch another.
+// Its caller owns a durable once-a-day claim before this function can do I/O.
+export async function collectIy(db,date,fetcher=fetch,{ocr}={}) {
+  if (!realDay(date)) throw new Error('INVALID_RUN_DAY');
+  const previous=db.prepare('SELECT * FROM status WHERE store=?').get('iy');
+  if(previous?.day===date && previous.state!=='held') return snapshot(db,date);
+  const set=db.prepare('INSERT OR REPLACE INTO status VALUES (?, ?, ?, ?, ?, ?)');
+  // This template is current-edition only. Never substitute its weekly paper
+  // end date for the item's three-day limit, or assume it covers future papers.
+  if(date<'2026-11-18'||date>'2026-11-20') {
+    set.run('iy',date,'needs_review',IY_SOURCE,null,'OCR_TEMPLATE_REVIEW_REQUIRED');
+    return snapshot(db,date);
+  }
+  const evidenceId=sha(IY_IMAGE);
+  set.run('iy',date,'failed',IY_SOURCE,evidenceId,'INCOMPLETE_RUN');
+  try {
+    const loaded=db.prepare('SELECT * FROM editions WHERE evidence_id=?').get(evidenceId);
+    if(loaded) {
+      set.run('iy',date,'unchanged',IY_SOURCE,evidenceId,null);
+      return snapshot(db,date);
+    }
+    for(const url of [IY_ROBOTS,IY_CONTENT_ROBOTS]) {
+      if((await get(url,fetcher)).trim()) throw new Error('ROBOTS_POLICY_REVIEW_REQUIRED');
+    }
+    const edition=identifyIyEdition(await get(IY_SOURCE,fetcher),date);
+    if(!ocr) {set.run('iy',date,'needs_review',IY_SOURCE,evidenceId,'OCR_DEPENDENCY_MISSING');return snapshot(db,date);}
+    const bytes=await getImage(edition.image,fetcher);
+    const scanned=await ocr(bytes,edition);
+    if(scanned.from!==edition.from||scanned.until!==edition.until) throw new Error('OCR_DATE_UNVERIFIED');
+    saveEdition(db,{store:'iy',source:IY_SOURCE,...scanned},'ocr_validated',
+      {source:IY_IMAGE,hash:sha(bytes),parser:'iy-00521-20261118-front-v1'});
+  } catch(error) {
+    const code=/^(HTTP_\d{3}|CONTENT_TYPE|BODY_LIMIT|ROBOTS_POLICY_REVIEW_REQUIRED|INDEX_FORMAT_OR_SCOPE_CHANGED|OCR_[A-Z_]+)$/.test(error.message)
+      ?error.message:error.name==='TimeoutError'?'TIMEOUT':error.code==='ENOENT'?'OCR_DEPENDENCY_MISSING':'REQUEST_OR_OCR_FAILED';
+    set.run('iy',date,'failed',IY_SOURCE,evidenceId,code);
+  }
+  return snapshot(db,date);
 }
 
 // Private SQLite/log codes are separate from the shared API allowlist.

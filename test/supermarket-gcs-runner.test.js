@@ -108,3 +108,81 @@ test('rejects bucket missing public-access enforcement without reading objects',
   assert.equal(called.length,2);
   assert.ok(called[1].endsWith('?fields=iamConfiguration'));
 });
+
+test('new IY store uses a separate daily claim and never re-fetches OK',async()=>{
+  const {runDaily}=await import('../scripts/supermarket/run-daily-gcs.mjs');
+  const store=storeMock();let okCalls=0,iyCalls=0;
+  const initial=async(db,day)=>{
+    okCalls++;
+    const set=db.prepare('INSERT INTO status VALUES(?,?,?,?,?,?)');
+    set.run('ok',day,'checked','existing',null,null);
+    set.run('iy',day,'held','old-held-source',null,'PUBLISHER_NOFOLLOW_MANUAL_ONLY');
+    return {schema:1,date:day,states:{ok:'checked',iy:'held'},sources:[
+      {store:'ok',state:'checked',source:'existing',error:null},
+      {store:'iy',state:'held',source:'old-held-source',error:'PUBLISHER_NOFOLLOW_MANUAL_ONLY'}],offers:[]};
+  };
+  const iyCollector=async(db,day,fetch)=>{
+    await fetch('https://promo.hatobase.jp/flyers/00521/1298/50089');iyCalls++;
+    db.prepare("UPDATE status SET state='checked',error=NULL WHERE store='iy'").run();
+    const {snapshot}=await import('../scripts/supermarket/collector.mjs');return snapshot(db,day);
+  };
+  const flags={workspaceFactory:inMemoryWorkspace,collector:initial,iyCollector,sourceFetch:async()=>{}};
+  await runDaily(store,date,flags);
+  const originalClaim=await store.describe(claim);
+  const r=await runDaily(store,date,{...flags,enableIy:true});
+  assert.equal(r.disposition,'store_activated');assert.equal(r.requests,1);
+  assert.equal(r.status.iy,'checked');assert.equal(okCalls,1);assert.equal(iyCalls,1);
+  assert.deepEqual(await store.describe(claim),originalClaim);
+  const current=await store.describe(latest);
+  const again=await runDaily(store,date,{...flags,enableIy:true});
+  assert.equal(again.requests,0);assert.equal(iyCalls,1);assert.equal(okCalls,1);
+  assert.deepEqual(await store.describe(latest),current);
+});
+
+test('ambiguous IY activation keeps its claim and cannot republish an old snapshot',async()=>{
+  const {runDaily}=await import('../scripts/supermarket/run-daily-gcs.mjs');
+  const store=storeMock();
+  const initial=async(db,day)=>{
+    const set=db.prepare('INSERT INTO status VALUES(?,?,?,?,?,?)');
+    set.run('ok',day,'checked','existing',null,null);set.run('iy',day,'held','old',null,'old');
+    const {snapshot}=await import('../scripts/supermarket/collector.mjs');return snapshot(db,day);
+  };
+  const flags={workspaceFactory:inMemoryWorkspace,collector:initial};
+  await runDaily(store,date,flags);const before=await store.describe(latest);let attempts=0;
+  const activate={...flags,enableIy:true,iyCollector:async()=>{attempts++;throw new Error('UNKNOWN_OUTCOME');}};
+  await assert.rejects(runDaily(store,date,activate),/UNKNOWN_OUTCOME/);
+  const again=await runDaily(store,date,activate);
+  assert.equal(again.disposition,'store_already_claimed');assert.equal(again.requests,0);assert.equal(attempts,1);
+  assert.deepEqual(await store.describe(latest),before);
+});
+
+test('an IY-disabled duplicate cannot overwrite a concurrent activation with its older DB',async()=>{
+  const {runDaily}=await import('../scripts/supermarket/run-daily-gcs.mjs');
+  const {snapshot}=await import('../scripts/supermarket/collector.mjs');
+  const store=storeMock();
+  const initial=async(db,day)=>{
+    const set=db.prepare('INSERT INTO status VALUES(?,?,?,?,?,?)');
+    set.run('ok',day,'checked','existing',null,null);set.run('iy',day,'held','old',null,'old');
+    return snapshot(db,day);
+  };
+  const flags={workspaceFactory:inMemoryWorkspace,collector:initial};
+  await runDaily(store,date,flags);
+  let loaded,release;
+  const hasLoaded=new Promise(resolve=>{loaded=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const pausedWorkspace=async()=>{
+    const ws=await inMemoryWorkspace();
+    return {...ws,async open(bytes){const db=await ws.open(bytes);loaded();await gate;return db;}};
+  };
+  const stale=runDaily(store,date,{...flags,workspaceFactory:pausedWorkspace});
+  // Observe rejection immediately, avoiding an unhandled rejection while paused.
+  const rejected=assert.rejects(stale,/GCS_LATEST_WRITE_CONFLICT/);
+  await hasLoaded;
+  await runDaily(store,date,{...flags,enableIy:true,iyCollector:async(db,day)=>{
+    db.prepare("UPDATE status SET state='checked',error=NULL WHERE store='iy'").run();return snapshot(db,day);
+  }});
+  const current=await store.describe(latest);
+  release();await rejected;
+  assert.deepEqual(await store.describe(latest),current);
+  assert.equal(JSON.parse(await store.read(latest,current)).states.iy,'checked');
+});
