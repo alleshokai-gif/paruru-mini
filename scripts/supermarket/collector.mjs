@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { extractOkFront } from './ok-ocr.mjs';
 import { identifyIyEdition, IY_SOURCE, IY_IMAGE } from './iy-ocr.mjs';
 import { identifyYaokoEdition, YAOKO_SOURCE, YAOKO_STORE, YAOKO_IMAGE } from './yaoko-ocr.mjs';
+import {TOKUBAI_EDITIONS,TOKUBAI_ROBOTS,verifyTokubaiRobots,identifyTokubaiEdition} from './tokubai-ocr.mjs';
 import poc from '../../features/shopping/supermarket-poc.js';
 
 export const INDEX = 'https://ok-corporation.jp/flyer/';
@@ -83,7 +84,8 @@ async function get(url, fetcher) {
 }
 
 async function getImage(url, fetcher) {
-  if (!IMAGE_URL.test(url) && url!==IY_IMAGE && url!==YAOKO_IMAGE) throw new Error('OCR_SOURCE_MISSING');
+  if (!IMAGE_URL.test(url) && url!==IY_IMAGE && url!==YAOKO_IMAGE &&
+      !Object.values(TOKUBAI_EDITIONS).some(c=>c.image===url)) throw new Error('OCR_SOURCE_MISSING');
   const r = await fetcher(url,{method:'GET',redirect:'error',signal:AbortSignal.timeout(18000),
     headers:{'User-Agent':USER_AGENT,'Accept':'image/jpeg'}});
   if (!r.ok || !/^image\/jpeg(?:[;\s]|$)/i.test(r.headers.get('content-type') || '')) {
@@ -150,7 +152,8 @@ function saveEdition(db, edition, confidence, evidence) {
   const store=edition?.store;
   const current = db.prepare('SELECT * FROM status WHERE store=?').get(store||'');
   const publisher=store===STORE ? publisherPdf(edition.source) :
-    store==='iy' && edition.source===IY_SOURCE || store==='yaoko' && edition.source===YAOKO_SOURCE;
+    store==='iy' && edition.source===IY_SOURCE || store==='yaoko' && edition.source===YAOKO_SOURCE ||
+    Object.hasOwn(TOKUBAI_EDITIONS,store) && edition.source===TOKUBAI_EDITIONS[store].source;
   if (!publisher || !current?.source || current.source !== edition.source ||
       !realDay(edition.from) || !realDay(edition.until) || edition.from > edition.until ||
       (!evidence && (edition.from > current.day || edition.until < current.day)) ||
@@ -268,6 +271,35 @@ export async function collectYaoko(db,date,fetcher=fetch,{ocr}={}) {
     const code=/^(HTTP_\d{3}|CONTENT_TYPE|BODY_LIMIT|ROBOTS_POLICY_REVIEW_REQUIRED|INDEX_FORMAT_OR_SCOPE_CHANGED|OCR_[A-Z_]+)$/.test(error.message)
       ?error.message:error.name==='TimeoutError'?'TIMEOUT':error.code==='ENOENT'?'OCR_DEPENDENCY_MISSING':'REQUEST_OR_OCR_FAILED';
     set.run('yaoko',date,'failed',YAOKO_SOURCE,evidenceId,code);
+  }
+  return snapshot(db,date);
+}
+
+export async function collectTokubai(id,db,date,fetcher=fetch,{ocr}={}) {
+  const c=TOKUBAI_EDITIONS[id];if(!c)throw new Error('INVALID_STORE');
+  if(!realDay(date))throw new Error('INVALID_RUN_DAY');
+  const previous=db.prepare('SELECT * FROM status WHERE store=?').get(id);
+  if(previous?.day===date&&previous.state!=='held')return snapshot(db,date);
+  const set=db.prepare('INSERT OR REPLACE INTO status VALUES (?, ?, ?, ?, ?, ?)');
+  if(date!=='2026-11-20') {
+    set.run(id,date,'needs_review',c.source,null,'OCR_TEMPLATE_REVIEW_REQUIRED');return snapshot(db,date);
+  }
+  const evidenceId=sha(c.image);set.run(id,date,'failed',c.source,evidenceId,'INCOMPLETE_RUN');
+  try {
+    if(db.prepare('SELECT 1 FROM editions WHERE evidence_id=?').get(evidenceId)) {
+      set.run(id,date,'unchanged',c.source,evidenceId,null);return snapshot(db,date);
+    }
+    for(const url of TOKUBAI_ROBOTS)verifyTokubaiRobots(await get(url,fetcher));
+    const edition=identifyTokubaiEdition(id,await get(c.source,fetcher),date);
+    if(!ocr){set.run(id,date,'needs_review',c.source,evidenceId,'OCR_DEPENDENCY_MISSING');return snapshot(db,date);}
+    const bytes=await getImage(c.image,fetcher),scanned=await ocr(bytes,edition);
+    if(scanned.from!==date||scanned.until!==date)throw new Error('OCR_DATE_UNVERIFIED');
+    saveEdition(db,{store:id,source:c.source,...scanned},'ocr_validated',
+      {source:c.image,hash:sha(bytes),parser:c.parser});
+  }catch(error){
+    const code=/^(HTTP_\d{3}|CONTENT_TYPE|BODY_LIMIT|ROBOTS_POLICY_REVIEW_REQUIRED|INDEX_FORMAT_OR_SCOPE_CHANGED|OCR_[A-Z_]+)$/.test(error.message)
+      ?error.message:error.name==='TimeoutError'?'TIMEOUT':error.code==='ENOENT'?'OCR_DEPENDENCY_MISSING':'REQUEST_OR_OCR_FAILED';
+    set.run(id,date,'failed',c.source,evidenceId,code);
   }
   return snapshot(db,date);
 }
