@@ -21,6 +21,17 @@
     return ['year', 'month', 'day'].map(type => parts.find(p => p.type === type).value).join('-');
   }
   const eligibleState = state => state === 'checked' || state === 'unchanged';
+  function isTodayProjection(snapshot, date) {
+    if (snapshot?.schema !== 1 || snapshot.date !== date) return false;
+    // Older same-day Gateway DTOs remain compatible. Raw yesterday snapshots
+    // are never accepted here; only the Gateway revalidates individual offers.
+    if (snapshot.snapshot_date === undefined && snapshot.freshness === undefined) return true;
+    if (snapshot.freshness === 'current') return snapshot.snapshot_date === date;
+    const previous = new Date(date + 'T00:00:00Z');
+    if (!Number.isFinite(previous.getTime()) || previous.toISOString().slice(0,10) !== date) return false;
+    previous.setUTCDate(previous.getUTCDate() - 1);
+    return snapshot.freshness === 'previous_day' && snapshot.snapshot_date === previous.toISOString().slice(0,10);
+  }
   function isOffer(o, date) {
     try {
       return !!stores[o.store] && /^\d{4}-\d{2}-\d{2}$/.test(o.from) &&
@@ -35,7 +46,7 @@
     } catch (_) { return false; }
   }
   function recommend(snapshot, items, date = dayTokyo()) {
-    const rows = snapshot?.schema === 1 && snapshot.date === date &&
+    const rows = isTodayProjection(snapshot, date) &&
         Array.isArray(snapshot.offers) && snapshot.offers.length <= 1000
       ? snapshot.offers.filter(o => isOffer(o, date) && eligibleState(snapshot.states?.[o.store])) : [];
     const pending = items.filter(i => i.status === 'pending' && (!i.due_date || i.due_date <= date));
@@ -130,12 +141,15 @@
     const linkTo = (text, href) => { const a = el('a', text); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; };
     target.replaceChildren(el('h2', '今日のスーパー'), el('p', date + ' の夕食案・各案1店舗'),
       el('p', '確認済み＝今日有効と照合できた掲載価格 / 参考＝読み取った価格（未照合） / 未確認＝価格不明', 'supermarket-legend'));
-    const today = snapshot?.schema === 1 && snapshot.date === date;
+    const today = isTodayProjection(snapshot, date);
+    const previousDay = today && snapshot.freshness === 'previous_day';
+    if (previousDay) target.append(el('p', '表示日：' + date + ' / 保存スナップショット：' + snapshot.snapshot_date +
+      '。本日の再収集ではありません。前日照合分から、商品別の有効期間内にある確認済み価格だけで再計算しています。', 'supermarket-note'));
     const confirmed = today && Array.isArray(snapshot.offers) && snapshot.offers.length <= 1000
       ? snapshot.offers.filter(o => isOffer(o,date) && eligibleState(snapshot.states?.[o.store])) : [];
     const stateLabel = id => {
       const code = today && snapshot.states?.[id];
-      return Object.hasOwn(statusLabels, code) ? statusLabels[code] : '未確認';
+      return previousDay && eligibleState(code) ? '前日照合（当日再取得なし）' : Object.hasOwn(statusLabels, code) ? statusLabels[code] : '未確認';
     };
     const plans = today ? recommend(snapshot, items, date) : [];
     if (!today) target.append(el('p', '当日のチラシ情報を確認できません。買い物リストは引き続き使えます。', 'supermarket-note'));
@@ -148,6 +162,7 @@
       const main = el('div', undefined, 'supermarket-ingredient');
       main.append(el('p', o.title + '・' + o.spec), badge('confirmed', '確認済み'),
         el('p', priceText(o) + '（' + o.conditions + '、' + kindText(o) + '）', 'supermarket-price'));
+      if (previousDay) main.append(el('p', '商品取得日時（元時刻）：' + (o.obtained_at || '未確認'), 'supermarket-meta'));
       const rest = el('div', undefined, 'supermarket-ingredient');
       rest.append(el('p', '価格未確認：' + plan.rest.join('、') + '。合計額・在庫は不明です。'), badge('unknown', '未確認'));
       a.append(el('h3', plan.name), el('p', '買い物先：' + plan.store, 'supermarket-store'), el('p', '必要な材料', 'supermarket-label'), main, rest);
@@ -186,6 +201,7 @@
         c.append(el('p', o.title, 'supermarket-offer-title'), badge('confirmed', '確認済み'),
           el('p', shortName(o.store) + '・' + o.spec, 'supermarket-meta'),
           el('p', priceText(o), 'supermarket-price'), when);
+        if (previousDay) c.append(el('p', '商品取得日時（元時刻）：' + (o.obtained_at || '未確認'), 'supermarket-meta'));
         return c;
       };
       function draw() {

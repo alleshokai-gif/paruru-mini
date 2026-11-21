@@ -51,6 +51,53 @@ function setup() {
 }
 
 const item = {item_id:'a'.repeat(32),name:'納豆',quantity:1,unit:'組',memo:'',status:'pending',revision:1,due_date:null,updated_at:'2026-11-19T07:00:00.000Z'};
+test('previous-day Gateway projection recalculates today and distinguishes missing from zero eligible offers', async () => {
+  const app = setup();
+  const yesterday = new Date(app.date + 'T00:00:00Z'); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const previous = yesterday.toISOString().slice(0,10);
+  const data = result(app.date);
+  Object.assign(data.supermarketPoc, {snapshot_date:previous, freshness:'previous_day',
+    plans:[{name:'DO NOT REUSE YESTERDAY PLAN'}]});
+  for (const offer of data.supermarketPoc.offers) offer.from = previous;
+  data.supermarketPoc.offers.push({...data.supermarketPoc.offers[0], title:'expired fixture', until:previous});
+  app.authenticate(async () => data);
+  await app.open();
+  assert.equal(app.preview.all('article').filter(e => e.className === 'supermarket-plan').length,3);
+  assert.match(app.preview.text(), /本日の再収集ではありません/);
+  assert.match(app.preview.text(), /前日照合（当日再取得なし）/);
+  assert.ok(app.preview.text().includes(previous));
+  assert.ok(!app.preview.text().includes('DO NOT REUSE YESTERDAY PLAN'));
+  assert.ok(!app.preview.text().includes('expired fixture'));
+  data.supermarketPoc.offers = [];
+  await app.open();
+  assert.match(app.preview.text(), /本日の再収集ではありません/);
+  assert.equal(app.preview.all('article').length,0);
+  delete data.supermarketPoc;
+  await app.open();
+  assert.ok(!app.preview.text().includes('本日の再収集ではありません'));
+  assert.ok(app.list.text().length > 0);
+});
+
+test('raw yesterday, future or older projection metadata and reference prices cannot enter menus', async () => {
+  const app = setup();
+  const data = result(app.date);
+  app.authenticate(async () => data);
+  for (const patch of [
+    {date:'2000-01-01'},
+    {date:app.date, snapshot_date:'2000-01-01',freshness:'previous_day'},
+    {date:app.date, snapshot_date:'2999-01-01',freshness:'previous_day'},
+    {date:app.date, snapshot_date:app.date,freshness:'previous_day'},
+  ]) {
+    Object.assign(data.supermarketPoc,patch);
+    await app.open();
+    assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
+  }
+  Object.assign(data.supermarketPoc,{snapshot_date:app.date,freshness:'current'});
+  data.supermarketPoc.offers=data.supermarketPoc.offers.map(o=>({...o,confidence:'reference'}));
+  await app.open();
+  assert.equal(app.preview.all('article').length,0);
+});
+
 function result(date, state='checked') {
   const offers = ['鶏むね肉','銀鮭','ラム','納豆'].map(title => ({title,store:'ok',from:date,until:date,confidence:'ocr_validated',
     kind:'weekly_information',source:'https://ok-corporation.jp/',spec:'規格',unit:'100g',net_yen:199,tax_included_sen:21492,conditions:'非会員価格'}));
