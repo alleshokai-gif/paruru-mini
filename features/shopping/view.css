@@ -40,6 +40,12 @@
 .supermarket-offer-card {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;min-width:0;padding:10px;border:1px solid #d9deec;border-radius:10px;background:#fff}
 .supermarket-offer-card .supermarket-price,.supermarket-offer-card .supermarket-meta {grid-column:1/-1;margin:0}
 .supermarket-offer-title {font-weight:700;overflow-wrap:anywhere}
+.supermarket-tabs {flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.supermarket-tabs .supermarket-chip {flex:0 0 auto;white-space:nowrap}
+#shoppingView .supermarket-more {width:100%;border:1px solid #9aa3bf;border-radius:10px;background:#fff;color:inherit}
+.supermarket-offer-card.is-unknown {border-style:dashed}
+.supermarket-offer-card .supermarket-row-details {grid-column:1/-1}
+.supermarket-unknown,.supermarket-states {min-width:0}
 .supermarket-corpus-item {display:grid;gap:4px;padding:8px 0;border-top:1px solid #e6e9f3;min-width:0}
 .supermarket-corpus-item .supermarket-badge {justify-self:start}
 .supermarket-offer {margin:.5rem 0}

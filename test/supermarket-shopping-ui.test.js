@@ -68,7 +68,7 @@ test('versioned previous-day status does not promote edition dates and is distin
   assert.match(app.preview.text(), /前日照合（当日再取得なし）/);
   assert.ok(app.preview.text().includes(previous));
   assert.ok(!app.preview.text().includes('DO NOT REUSE YESTERDAY PLAN'));
-  assert.match(app.preview.text(), /商品別の適用日の根拠が未確認/);
+  assert.match(app.preview.text(), /商品別の適用日が未確認/);
   data.supermarketPreviousDayV1.carry_forward_status = 'no_offers';
   await app.open();
   assert.match(app.preview.text(), /本日の再収集ではありません/);
@@ -140,11 +140,12 @@ test('PALURU real-host UI uses the existing authenticated list result and shows 
   assert.equal(await app.open(),true);
   assert.equal(reads,1);
   assert.equal(app.preview.hidden,false);
-  assert.equal(app.preview.all('article').length,3);
+  assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
+  assert.ok(app.preview.all('article').some(e=>e.className?.startsWith('supermarket-offer-card')));
   assert.equal(app.preview.all('li').length,6);
   assert.match(app.preview.text(),/オーケー 溝ノ口店/);
   assert.match(app.preview.text(),/納豆/);
-  assert.match(app.preview.text(),/6店舗の合計額を比較したものではありません/);
+  assert.match(app.preview.text(),/店舗の順位や最安の判定ではありません/);
   assert.match(app.preview.text(),/取得失敗/);
   assert.match(app.list.text(),/納豆/);
 });
@@ -155,7 +156,7 @@ test('whole-paper readings retain nonfood and no-price rows outside confirmed pr
   {face:'back',items:[{name:'価格を載せていない野菜',product_type:'food',price_state:'not_printed',prices:[]}]}
  ]};
  app.authenticate(async()=>data);assert.equal(await app.open(),true);
- assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+ assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
  assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-corpus-item').length,2);
  assert.match(app.preview.text(),/全紙面のAI読取（2枠・条件未照合）/);assert.match(app.preview.text(),/価格非掲載/);
  assert.match(app.preview.text(),/確定売価ではなく/);assert.match(app.list.text(),/納豆/);
@@ -185,7 +186,7 @@ test('two DOM issues remain separately visible beside the original OK paper with
  data.supermarketPoc.corpus_status='partial';
  app.authenticate(async()=>data);assert.equal(await app.open(),true);
  assert.equal(app.preview.all('details').filter(e=>e.className==='supermarket-corpus').length,2);
- assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+ assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
  assert.match(app.preview.text(),/fixture-one/);assert.match(app.preview.text(),/fixture-two/);assert.match(app.preview.text(),/6 日付・カテゴリ表示/);
  assert.match(app.preview.text(),/家庭用品/);assert.match(app.preview.text(),/省略しています/);
  assert.equal(app.preview.all('a').filter(e=>e.href==='https://rosen.mikke-sales.com/stores/taira/flyers/1').length,2);
@@ -212,10 +213,10 @@ test('reference corpus counts numeric-price frames separately from unknown and d
  assert.match(corpus.text(),/店舗：そうてつローゼン たいら店 \/ 号：rosen-taira-5170/);
  assert.match(corpus.text(),/参考価格あり 2枠・価格未確認 4枠・確定0枠（この読取内）/);
  assert.match(corpus.text(),/紙面期間：2026-11-01〜2026-11-30。商品ごとの販売日は未確認/);
- assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+ assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
  assert.equal(JSON.stringify(data.supermarketPoc.offers),before);assert.match(app.list.text(),/納豆/);
  const offers=app.preview.all('details').find(e=>e.className==='supermarket-offers');
- assert.match(offers.text(),/当日有効な掲載商品（6件）/);assert.doesNotMatch(offers.text(),/本体価格の参考|割引欄の数字/);
+ assert.match(offers.text(),/価格確認済み掲載商品（6件）/);assert.doesNotMatch(offers.text(),/本体価格の参考|割引欄の数字/);
 });
 
 test('late response after lock or identity replacement never reveals the previous list or offers', async () => {
@@ -240,22 +241,23 @@ test('late response after lock or identity replacement never reveals the previou
   assert.doesNotMatch(app.preview.text(),/納豆/);
 });
 
-test('verified offers from additional stores remain inspectable outside the unchanged menu selection',async()=>{
+test('verified offers from additional stores remain inspectable while meal selection is paused',async()=>{
   const app=setup();const data=result(app.date);
   data.supermarketPoc.states.iy='checked';
   const iy={...data.supermarketPoc.offers[0],store:'iy',title:'塩銀鮭',unit:'1パック',net_yen:1000,tax_included_sen:108000};
   data.supermarketPoc.offers.push(iy,{...iy,title:'期限切れ採用禁止',until:'2000-01-01'},
     {...iy,title:'保留店採用禁止',store:'rosen'});
   app.authenticate(async()=>data);await app.open();
-  assert.equal(app.preview.all('article').length,3);
+  assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
+  assert.ok(app.preview.all('article').some(e=>e.className?.startsWith('supermarket-offer-card')));
   assert.equal(app.preview.all('li').length,6);
-  const details=app.preview.all('details');assert.equal(details.length,1);
-  assert.match(details[0].text(),/塩銀鮭/);assert.match(details[0].text(),/1000円 \/ 1パック/);
+  const details=app.preview.all('details').filter(e=>e.className==='supermarket-offers');assert.equal(details.length,1);
+  assert.match(details[0].text(),/塩銀鮭/);assert.match(details[0].text(),/1000円.*1パック/);
   assert.match(details[0].text(),/1080\.00円/);assert.match(details[0].text(),/5件/);
   assert.doesNotMatch(details[0].text(),/採用禁止/);
 });
 
-test('main selection groups confirmed offers, filters by store and compares only identical specs',async()=>{
+test('main selection groups confirmed offers, filters by store and never ranks incomparable prices',async()=>{
   const app=setup(),data=result(app.date);
   data.supermarketPoc.states.iy='checked';
   const base=data.supermarketPoc.offers[1];
@@ -266,13 +268,13 @@ test('main selection groups confirmed offers, filters by store and compares only
   app.authenticate(async()=>data);await app.open();
   const picker=app.preview.children.find(c=>c.className==='supermarket-picker');
   assert.ok(picker);
-  assert.match(picker.text(),/肉（/);assert.match(picker.text(),/魚（/);assert.match(picker.text(),/野菜（/);
-  assert.match(picker.text(),/同じ品名・規格・単位の掲載/);
-  assert.match(picker.text(),/単位の換算や全店の最安・合計は示しません/);
+  assert.match(picker.text(),/肉（/);assert.match(picker.text(),/魚・魚介（/);assert.match(picker.text(),/野菜（/);
+  assert.match(picker.text(),/金額順や最安の判定はしていません/);
+  assert.match(picker.text(),/価格・単位・内容量が異なる商品/);
   assert.doesNotMatch(picker.text(),/期限切れ/);
   const chip=text=>picker.all('button').find(b=>b.textContent.startsWith(text));
   chip('ヤオコー').callbacks.get('click')();
-  assert.match(picker.text(),/ヤオコー 川崎枡形店：期限切れ。今日の確認済み商品はありません/);
+  assert.match(picker.text(),/ヤオコー 川崎枡形店（期限切れ）/);assert.match(picker.text(),/掲載はありません/);
   assert.equal(chip('ヤオコー').attributes['aria-pressed'],'true');
   assert.equal(app.preview.all('li').length,6);
 });
@@ -292,7 +294,7 @@ test('Maruetsu saved reference links only the exact existing 3541 print source w
   const app=setup(),data=result(app.date),before=JSON.stringify(data.supermarketPoc.offers);data.supermarketPoc.corpus=imageCorpus('maruetsu',url);data.supermarketPoc.corpus.document_from=null;data.supermarketPoc.corpus.document_until=null;
   app.authenticate(async()=>data);await app.open();const reading=app.preview.all('details').find(e=>e.className==='supermarket-corpus');
   assert.ok(reading);assert.equal(reading.all('a').length,url===source?1:0);if(url===source)assert.equal(reading.all('a')[0].href,source);
-  assert.match(reading.text(),/マルエツ 川崎坂戸店/);assert.match(reading.text(),/確定0枠/);assert.match(reading.text(),/観測1面/);assert.equal(data.supermarketPoc.states.maruetsu,'failed');assert.equal(JSON.stringify(data.supermarketPoc.offers),before);assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+  assert.match(reading.text(),/マルエツ 川崎坂戸店/);assert.match(reading.text(),/確定0枠/);assert.match(reading.text(),/観測1面/);assert.equal(data.supermarketPoc.states.maruetsu,'failed');assert.equal(JSON.stringify(data.supermarketPoc.offers),before);assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
  }
 });
 
@@ -326,7 +328,7 @@ test('partial image observations show exact store sources, observed extent and s
   assert.equal(links[0].rel,'noopener noreferrer');
  }
  assert.equal(app.preview.all('li').length,6);
- assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,3);
+ assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
  assert.equal(JSON.stringify(data.supermarketPoc.offers),offersBefore);
  assert.match(app.list.text(),/納豆/);
 });
