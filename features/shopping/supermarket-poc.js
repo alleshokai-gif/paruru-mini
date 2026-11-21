@@ -5,6 +5,10 @@
     maruetsu: 'マルエツ 川崎坂戸店', life: 'ライフ 溝口店',
     rosen: 'そうてつローゼン たいら店', yaoko: 'ヤオコー 川崎枡形店'
   });
+  // PAUSED (2026-11-21): automatic meal plans and recommended-store surfaces are
+  // paused by the user. recommend() and its recipe data are kept as history only;
+  // render() never calls them.
+  const paused = Object.freeze({meal_plans: true, recommended_stores: true, since: '2026-11-21'});
   const recipes = [
     {name: '鶏むねの照り焼き・温野菜・ごはん', main: '鶏むね', rest: ['温野菜用の野菜', '米']},
     {name: '焼き銀鮭・青菜のおひたし・みそ汁', main: '銀鮭', rest: ['青菜', 'みそ汁の具']},
@@ -75,6 +79,7 @@
         new URL(o.source).protocol === 'https:';
     } catch (_) { return false; }
   }
+  // HISTORICAL / PAUSED: not used by render(). Kept so old data and tests remain readable.
   function recommend(snapshot, items, date = dayTokyo()) {
     const rows = isTodayProjection(snapshot, date) &&
         Array.isArray(snapshot.offers) && snapshot.offers.length <= 1000
@@ -88,7 +93,6 @@
         listed: pending.filter(i => rows.some(other => other.store === offer.store
           && normalize(i.name).length > 1 && normalize(other.title).includes(normalize(i.name))))
       }));
-      // Prefer observed overlap, not cross-store unit prices or invented basket totals.
       candidates.sort((a,b) => b.listed.length - a.listed.length);
       const best = candidates[0];
       if (!best) continue;
@@ -128,94 +132,142 @@
     } catch (_) {}
     return null;
   }
-  // Display-only grouping from the product name; it never affects recommend().
-  const categories = [['meat', '肉'], ['fish', '魚'], ['veg', '野菜'], ['other', 'その他']];
-  const categoryPatterns = [
-    ['fish', /鮭|さけ|サーモン|魚|ぶり|鰤|さば|鯖|サバ|あじ|アジ|鯵|いわし|イワシ|まぐろ|マグロ|刺身|えび|エビ|イカ|タラ|鱈|ほっけ|ホッケ|かじき|カジキ|さんま|サンマ|あさり|貝|かつお|カツオ|鯛|ししゃも|干物|切身|切り身/],
-    ['meat', /肉|鶏|豚|牛|ラム|羊|ひき|挽|ハム|ベーコン|ソーセージ|ウインナー|ステーキ|ささみ|手羽/],
-    ['veg', /野菜|キャベツ|レタス|トマト|きゅうり|キュウリ|胡瓜|じゃがいも|ジャガイモ|玉ねぎ|たまねぎ|玉葱|にんじん|人参|大根|白菜|ほうれん|小松菜|ねぎ|ネギ|もやし|ナス|茄子|ピーマン|ブロッコリー|きのこ|キノコ|しいたけ|えのき|しめじ|かぼちゃ|さつまいも|ごぼう|れんこん|アスパラ|サラダ|青菜/]
-  ];
-  const categoryOf = title => {
-    const t = String(title).normalize('NFKC');
-    const hit = categoryPatterns.find(([, re]) => re.test(t));
-    return hit ? hit[0] : 'other';
+
+  // ---- Category prices (今日何が安いか) ----
+  // Ordered fallback contract matches the backend's versioned public rules.
+  const categoryContract = {"schema":1,"categories":[{"id":"meat","label":"肉"},{"id":"fish","label":"魚・魚介"},{"id":"vegetable","label":"野菜"},{"id":"eggs","label":"卵"},{"id":"processed","label":"加工品・惣菜"},{"id":"other","label":"その他"}],"rules":[{"category":"processed","pattern":"卵豆腐|玉子豆腐|厚焼|だし巻|茶碗蒸|魚肉ソーセージ|ソーセージ|ハム|ベーコン|チキンナゲット|ナゲット|餃子|ギョーザ|ぎょうざ|寿司|すし|焼きそば|やきそば|弁当|コロッケ|カキフライ|唐揚|からあげ|天ぷら|蒲焼|かば焼|ハンバーグ|カレー|レトルト|缶詰"},{"category":"other","pattern":"牛乳|乳飲料|ヨーグルト|チーズ|バター|マーガリン|アイス"},{"category":"eggs","pattern":"卵|たまご|玉子"},{"category":"fish","pattern":"魚|鮭|さけ|サケ|鯖|さば|サバ|鯵|あじ|まぐろ|マグロ|ぶり|ブリ|ほっけ|かつお|鯛|たい|いわし|さんま|えび|エビ|海老|いか|イカ|たこ|タコ|かき|牡蠣|ほたて|帆立|しらす|うなぎ"},{"category":"meat","pattern":"牛|豚|鶏|とり肉|ラム|ひき肉|挽肉|むね肉|もも肉|手羽|焼肉|ステーキ"},{"category":"vegetable","pattern":"野菜|キャベツ|白菜|ほうれん|小松菜|レタス|トマト|玉ねぎ|たまねぎ|にんじん|人参|じゃが|大根|ブロッコリー|きゅうり|なす|ピーマン|もやし|ねぎ|かぼちゃ|きのこ|しめじ|えのき"}],"fixtures":[["寿司","processed"],["焼きそば","processed"],["卵豆腐","processed"],["厚焼き卵","processed"],["生卵","eggs"],["魚肉ソーセージ","processed"],["チキンナゲット","processed"],["冷凍餃子","processed"],["いか","fish"],["たこ","fish"],["えび","fish"],["牛乳","other"],["冷凍むきエビ","fish"],["冷凍ブロッコリー","vegetable"]]};
+  const categories = Object.freeze(categoryContract.categories.map(c=>[c.id,c.label]));
+  const categoryIds = categories.map(c=>c[0]);
+  const classificationRules = categoryContract.rules.map(r=>[r.category,new RegExp(r.pattern,'i')]);
+  const classify = (name,spec='') => {
+    const t=(String(name??'')+' '+String(spec??'')).normalize('NFKC').toLowerCase();
+    return classificationRules.find(([,pattern])=>pattern.test(t))?.[0] || 'other';
   };
   const storeIds = Object.keys(stores);
   const shortName = id => stores[id].split(' ')[0];
-  const shortDate = s => s.slice(5).replace('-', '/');
-  const priceText = o => '税抜 ' + o.net_yen + '円 / ' + o.unit + '・税込参考 ' + (o.tax_included_sen / 100).toFixed(2) + '円';
+  const priceText = o => '税抜 ' + o.net_yen + '円・税込参考 ' + (o.tax_included_sen / 100).toFixed(2) + '円';
   const kindText = o => o.kind === 'special' ? '特売' : '週間掲載価格';
-  const byStoreThenTitle = (a, b) => storeIds.indexOf(a.store) - storeIds.indexOf(b.store) || (a.title < b.title ? -1 : a.title > b.title ? 1 : 0);
-  // Round-robin across stores so one store does not fill the short list.
-  function pickSome(rows, limit) {
-    const lanes = storeIds.map(id => rows.filter(o => o.store === id)).filter(l => l.length);
-    const out = [];
-    for (let i = 0; out.length < limit && lanes.some(l => i < l.length); i++)
-      for (const l of lanes) if (i < l.length && out.length < limit) out.push(l[i]);
+  const httpsUrl = s => { try { return new URL(s).protocol === 'https:' ? new URL(s).href : null; } catch (_) { return null; } };
+  const statusRank = {confirmed: 0, reference: 1, unknown: 2};
+  const dayLimited = raw => typeof raw === 'string' && /限り|限定|のみ/.test(raw.normalize('NFKC'));
+  const inRange = (from, until, date) => (from == null || validDay(from) && from <= date) && (until == null || validDay(until) && date <= until);
+
+  function rowsFromDto(dto, date, snapshot) {
+    if (dto?.schema!==1 || dto.display_date!==date || dto.snapshot_date!==(snapshot.snapshot_date||snapshot.date) ||
+        dto.freshness!==snapshot.freshness || !Array.isArray(dto.categories) || dto.categories.length>12) return null;
+    // The additive DTO cannot invent a store, quote or period. Match it back to
+    // the already validated source rows; raw source facts remain authoritative.
+    const canonical=rowsFromLegacy(snapshot,date),out=[],seen=new Set();
+    for(const cat of dto.categories) {
+      if(!categoryIds.includes(cat?.id)||!Array.isArray(cat.rows)||cat.rows.length>1000)continue;
+      for(const r of cat.rows) {
+        if(!r||r.category!==cat.id||!Object.hasOwn(stores,r.store)||!Array.isArray(r.conditions))continue;
+        const c=canonical.find(c=>c.price_status===r.price_status&&c.store===r.store&&c.source===r.source&&
+          c.name===r.name&&(c.spec||null)===(r.spec||null)&&c.category===r.category&&
+          (r.price_status!=='confirmed'||(c.unit||null)===(typeof r.unit==='string'?r.unit.trim()||null:null)&&
+            c.price_text.replace(/[\s/・]/g,'')===String(r.price_text||'').replace(/[\s/・]/g,'')&&
+            JSON.stringify(c.quote_conditions.filter(Boolean))===JSON.stringify((r.conditions||[]).filter(Boolean)))&&
+          (r.price_status==='confirmed'||c.id===r.id));
+        if(!c||seen.has(c.id))continue;
+        seen.add(c.id);out.push(c);
+      }
+    }
     return out;
   }
-  // Same title, spec and explicit unit only. No unit conversion, no ranking.
-  function comparable(rows) {
-    const groups = new Map();
-    for (const o of rows) {
-      if (!o.spec.trim() || !o.unit.trim()) continue;
-      const key = JSON.stringify([o.title.trim(), o.spec.trim(), o.unit.trim()]);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(o);
+  function rowsFromLegacy(snapshot,date) {
+    const out=[],fresh=snapshot.freshness;
+    if(fresh!=='previous_day'&&fresh!=='edition_reference'&&Array.isArray(snapshot.offers)&&snapshot.offers.length<=1000)
+      for(const o of snapshot.offers) {
+        if(!isOffer(o,date)||!eligibleState(snapshot.states?.[o.store]))continue;
+        const unit=o.unit.trim()||null;
+        out.push({id:'o:'+out.length,category:classify(o.title,o.spec),name:o.title,spec:o.spec,
+          store:o.store,price_status:'confirmed',price_text:priceText(o),unit,unit_status:unit?'known':'unknown',
+          item_validity:'unconfirmed',valid_from:null,valid_until:null,edition_from:o.from,edition_until:o.until,
+          obtained_at:typeof o.obtained_at==='string'?o.obtained_at:null,source:httpsUrl(o.source),quote_conditions:[o.conditions||''],conditions:[o.conditions,kindText(o)].filter(Boolean)});
+      }
+    const corpus=fresh==='previous_day'?null:fresh==='edition_reference'?snapshot.reference_corpus:snapshot.corpus;
+    const catalogs=corpus?.schema===2&&Array.isArray(corpus.catalogs)&&corpus.catalogs.length<=24?corpus.catalogs:[corpus];
+    for(const c of catalogs) {
+      if(!editionCatalogValid(c,date,snapshot.snapshot_date||snapshot.date))continue;
+      const source=referenceSource(c,c.source_kind==='dom');if(!source)continue;
+      for(const page of c.pages) for(const [ordinal,i] of page.items.entries()) {
+        if(!i?.name?.trim()||['promotion','service'].includes(i.product_type)||!inRange(i.valid_from,i.valid_until,date))continue;
+        const dated=i.item_validity==='dated'&&validDay(i.valid_from)&&validDay(i.valid_until);
+        if(!dated&&i.item_validity===undefined&&dayLimited(i.validity_raw_text))continue;
+        const quotes=Array.isArray(i.prices)?i.prices.filter(q=>q&&typeof q.raw_text==='string'&&q.raw_text):[];
+        const known=i.price_state==='priced'&&quotes.some(q=>Number.isFinite(q.net_yen)||Number.isFinite(q.tax_included_yen));
+        const units=[...new Set(quotes.map(q=>q.unit_text).filter(u=>typeof u==='string'&&u))];
+        const conditions=[...(Array.isArray(i.conditions)?i.conditions:[])];
+        const raw=quotes.map(q=>{if(q.payment_condition)conditions.push(q.payment_condition);conditions.push(...(q.other_conditions||[]));
+          return q.raw_text+' / '+(q.unit_text||'単位未確認')+(q.payment_condition?'（'+q.payment_condition+'）':'')+
+            (q.other_conditions?.length?'・'+q.other_conditions.join('、'):'');}).join(' / ');
+        out.push({id:c.corpus_id+':'+page.face+':'+(i.source_ordinal??ordinal),category:classify(i.name,i.spec),name:i.name.trim(),spec:i.spec,
+          store:c.store,price_status:known?'reference':'unknown',price_text:known?raw:'価格未確認',unit:units.join(' / ')||null,
+          unit_status:quotes.length&&quotes.every(q=>q.unit_text)?'known':'unknown',item_validity:dated?'dated':'unconfirmed',
+          valid_from:dated?i.valid_from:null,valid_until:dated?i.valid_until:null,edition_from:c.document_from,edition_until:c.document_until,
+          obtained_at:c.obtained_at,source:source.href,conditions:[...new Set(conditions.filter(x=>typeof x==='string'))]});
+      }
     }
-    return [...groups.values()].filter(g => new Set(g.map(o => o.store)).size >= 2);
+    return out;
   }
+  function categoryRows(snapshot, date) {
+    if (!isTodayProjection(snapshot, date)) return [];
+    const dto = snapshot.category_prices_v1 === undefined ? null : rowsFromDto(snapshot.category_prices_v1, date, snapshot);
+    return dto ?? rowsFromLegacy(snapshot, date);
+  }
+  // Grouped by status then store order (round-robin across stores within a status).
+  // No numeric price comparison or sorting anywhere.
+  function arrange(rows) {
+    const out = [];
+    for (const status of ['confirmed', 'reference', 'unknown']) {
+      const lanes = storeIds.map(id => rows.filter(r => r.price_status === status && r.store === id)
+        .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)).filter(l => l.length);
+      for (let i = 0; lanes.some(l => i < l.length); i++) for (const l of lanes) if (i < l.length) out.push(l[i]);
+    }
+    return out;
+  }
+
+  const PAGE = 8;
   function render(doc, target, snapshot, items, date = dayTokyo()) {
     const el = (tag, value, cls) => { const n = doc.createElement(tag); if (value !== undefined) n.textContent = value; if (cls) n.className = cls; return n; };
     const badge = (kind, text) => el('span', text, 'supermarket-badge is-' + kind);
     const linkTo = (text, href) => { const a = el('a', text); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; return a; };
-    target.replaceChildren(el('h2', '今日のスーパー'), el('p', date + ' の夕食案・各案1店舗'),
-      el('p', '確認済み＝今日有効と照合できた掲載価格 / 参考＝読み取った価格（未照合） / 未確認＝価格不明', 'supermarket-legend'));
     const today = isTodayProjection(snapshot, date);
     const previousDay = today && snapshot.freshness === 'previous_day';
     const editionReference = today && snapshot.freshness === 'edition_reference';
     const referenceOnly = previousDay || editionReference;
-    if (editionReference) target.append(el('p', '表示日：'+date+' / 保存スナップショット：'+snapshot.snapshot_date+
-      '。号の掲載期間が有効な参考情報です。当日再取得・価格確認済みの意味ではありません。', 'supermarket-note'));
-    if (previousDay) target.append(el('p', '表示日：' + date + ' / 保存スナップショット：' + snapshot.snapshot_date +
-      '。本日の再収集ではありません。', 'supermarket-note'));
-    if (previousDay && snapshot.carry_forward_status === 'item_validity_unproven') target.append(el('p',
-      '商品別の適用日の根拠が未確認です。号全体の期間だけでは、今日の確認済み商品・献立に持ち越しません。', 'supermarket-note'));
-    const confirmed = today && Array.isArray(snapshot.offers) && snapshot.offers.length <= 1000
-      ? snapshot.offers.filter(o => isOffer(o,date) && eligibleState(snapshot.states?.[o.store])) : [];
+    target.replaceChildren(el('h2', '今日何が安いか'),
+      el('p', '自動の献立・おすすめ店舗の表示は一時停止中です。以下は掲載品の一覧で、店舗の順位や最安の判定ではありません。', 'supermarket-note'),
+      el('p', '価格確認済み＝原本価格の照合済み（商品日付・在庫は別） / 参考＝読み取った価格（未照合） / 価格不明＝価格を読み取れていない', 'supermarket-legend'),
+      el('p', '表示日：' + date + (today && snapshot.snapshot_date ? ' / 保存スナップショット：' + snapshot.snapshot_date : ''), 'supermarket-meta'));
+    if (editionReference) target.append(el('p',
+      '号の掲載期間が有効な参考情報です。当日再取得・価格確認済みの意味ではありません。', 'supermarket-note'));
+    if (previousDay) target.append(el('p',
+      '本日の再収集ではありません。商品別の適用日が未確認のため、前日分は今日の掲載として表示しません。', 'supermarket-note'));
+    if (!today) target.append(el('p', '当日のチラシ情報を確認できません。買い物リストは引き続き使えます。', 'supermarket-note'));
     const stateLabel = id => {
       const code = today && snapshot.states?.[id];
       return editionReference ? '保存済みの号を参照（当日再取得なし）' : previousDay && eligibleState(code) ? '前日照合（当日再取得なし）' : Object.hasOwn(statusLabels, code) ? statusLabels[code] : '未確認';
     };
-    const plans = today ? recommend(snapshot, items, date) : [];
-    if (!today) target.append(el('p', '当日のチラシ情報を確認できません。買い物リストは引き続き使えます。', 'supermarket-note'));
-    else if (!plans.length) target.append(el('p', '今日有効で確認済みの献立候補はありません。', 'supermarket-note'));
-    else if (plans.length < 3) target.append(el('p', '掲載価格を確認できた材料に絞って表示しています。', 'supermarket-note'));
-    if (plans.length) target.append(el('p', '掲載品を基にした候補です。6店舗の合計額を比較したものではありません。', 'supermarket-note'));
-    for (const plan of plans) {
-      const a = el('article'); a.className = 'supermarket-plan';
-      const o = plan.offer;
-      const main = el('div', undefined, 'supermarket-ingredient');
-      main.append(el('p', o.title + '・' + o.spec), badge('confirmed', '確認済み'),
-        el('p', priceText(o) + '（' + o.conditions + '、' + kindText(o) + '）', 'supermarket-price'));
-      const rest = el('div', undefined, 'supermarket-ingredient');
-      rest.append(el('p', '価格未確認：' + plan.rest.join('、') + '。合計額・在庫は不明です。'), badge('unknown', '未確認'));
-      a.append(el('h3', plan.name), el('p', '買い物先：' + plan.store, 'supermarket-store'), el('p', '必要な材料', 'supermarket-label'), main, rest);
-      if (plan.listed.length) a.append(el('p', 'リストの同系統掲載品（数量・規格・在庫は別途確認）：' + plan.listed.join('、')));
-      if (plan.unknown.length) a.append(el('p', 'リスト掲載・価格未確認：' + plan.unknown.join('、')));
-      a.append(linkTo('公式資料 ' + o.from + '〜' + o.until, o.source));
-      target.append(a);
-    }
-    // Short, filterable selection of today's confirmed offers. Never ranked across stores.
-    if (confirmed.length) {
-      const sorted = [...confirmed].sort(byStoreThenTitle);
-      const filter = {store: 'all', cat: 'all'};
-      const box = el('section', undefined, 'supermarket-picker');
-      box.setAttribute('aria-label', '今日の確認済み商品');
-      const results = el('div', undefined, 'supermarket-results');
+    const confirmed = today && !referenceOnly && Array.isArray(snapshot.offers) && snapshot.offers.length <= 1000
+      ? snapshot.offers.filter(o => isOffer(o,date) && eligibleState(snapshot.states?.[o.store])) : [];
+    const all = today ? categoryRows(snapshot, date) : [];
+    const dc=today&&snapshot.category_prices_v1?.display_counts;
+    if(dc&&[dc.total,dc.shown,dc.omitted].every(n=>Number.isSafeInteger(n)&&n>=0)&&dc.total===dc.shown+dc.omitted&&dc.omitted)
+      target.append(el('p','カテゴリ価格一覧は表示容量により一部省略：全'+dc.total+'行 / 配信'+dc.shown+'行 / 省略'+dc.omitted+'行（現在の絞込み件数とは別）','supermarket-note'));
+    if(today&&snapshot.category_status==='omitted_response_budget')target.append(el('p','カテゴリ価格一覧は表示容量により省略しました。保存済み資料から表示できる情報を参照しています。','supermarket-note'));
+    if (today && !all.length) target.append(el('p', '今日表示できる掲載商品はありません。', 'supermarket-note'));
+    if (all.length) {
+      const countIn = cat => all.filter(r => r.category === cat).length;
+      const firstFilled = categoryIds.find(id => countIn(id)) || categoryIds[0];
+      const filter = {cat: firstFilled, store: 'all'};
+      const more = {};
       const chips = [];
-      const bar = (label, defs, key) => {
-        const g = el('div', undefined, 'supermarket-chips');
+      const box = el('section', undefined, 'supermarket-picker');
+      box.setAttribute('aria-label', 'カテゴリ別の掲載価格');
+      const results = el('div', undefined, 'supermarket-results');
+      const bar = (label, defs, key, cls) => {
+        const g = el('div', undefined, 'supermarket-chips' + (cls ? ' ' + cls : ''));
         g.setAttribute('role', 'group'); g.setAttribute('aria-label', label);
         for (const [value, text] of defs) {
           const b = el('button', text); b.type = 'button'; b.className = 'supermarket-chip';
@@ -229,68 +281,80 @@
         }
         return g;
       };
-      const card = o => {
-        const c = el('div', undefined, 'supermarket-offer-card');
-        const when = el('p', o.conditions + '・' + kindText(o) + '・' + shortDate(o.from) + '〜' + shortDate(o.until) + ' ', 'supermarket-meta');
-        when.append(linkTo('公式資料', o.source));
-        c.append(el('p', o.title, 'supermarket-offer-title'), badge('confirmed', '確認済み'),
-          el('p', shortName(o.store) + '・' + o.spec, 'supermarket-meta'),
-          el('p', priceText(o), 'supermarket-price'), when);
+      const validityLine = r => r.item_validity === 'dated'
+        ? '商品の販売日：' + r.valid_from + '〜' + r.valid_until
+        : '商品の販売日：未確認' + (r.edition_from && r.edition_until ? '（紙面の掲載期間 ' + r.edition_from + '〜' + r.edition_until + '）' : '（紙面期間も未確認）');
+      const label = {confirmed: '価格確認済み', reference: '参考', unknown: '価格不明'};
+      const rowNode = r => {
+        const c = el('article', undefined, 'supermarket-offer-card is-' + r.price_status);
+        c.append(el('p', r.name+(r.spec?'・'+r.spec:''), 'supermarket-offer-title'), badge(r.price_status, label[r.price_status]),
+          el('p', '店舗：' + stores[r.store], 'supermarket-meta'));
+        if (r.price_status === 'unknown') c.append(el('p', '価格不明 / '+(r.unit||'単位不明'), 'supermarket-meta'));
+        else c.append(el('p', (r.price_text || '価格表記なし') + (r.unit_status === 'known' ? ' / ' + r.unit : '（単位不明）'), 'supermarket-price'));
+        if(r.price_status==='confirmed'&&r.quote_conditions?.some(Boolean))c.append(el('p','販売条件：'+r.quote_conditions.filter(Boolean).join(' / '),'supermarket-price-conditions supermarket-meta'));
+        if(r.item_validity!=='dated')c.append(el('p','商品別適用日：未確認','supermarket-meta'));
+        const d = el('details', undefined, 'supermarket-row-details'); d.append(el('summary', '日付・条件・出典'));
+        d.append(el('p', validityLine(r), 'supermarket-meta'));
+        if (r.obtained_at) d.append(el('p', '取得・保存：' + r.obtained_at, 'supermarket-meta'));
+        d.append(el('p', r.price_status === 'confirmed' ? '原本価格の照合済み。商品日付・在庫は別です。' : '読取値・条件との対応は未照合', 'supermarket-meta'));
+        if (r.conditions.length) d.append(el('p', '条件：' + r.conditions.join(' / '), 'supermarket-meta'));
+        if (r.source) d.append(linkTo('出典を開く', r.source));
+        c.append(d);
         return c;
+      };
+      const list = (rows, key, title) => {
+        const wrap = el('div', undefined, 'supermarket-group');
+        const shown = rows.slice(0, PAGE * (1 + (more[key] || 0)));
+        if (title) wrap.append(el('h4', title + '（' + shown.length + '/' + rows.length + '件）'));
+        for (const r of shown) wrap.append(rowNode(r));
+        if (shown.length < rows.length) {
+          const b = el('button', 'さらに表示（残り' + (rows.length - shown.length) + '件）', 'supermarket-more'); b.type = 'button';
+          b.addEventListener('click', () => { more[key] = (more[key] || 0) + 1; draw(); });
+          wrap.append(b);
+        }
+        return wrap;
       };
       function draw() {
         results.replaceChildren();
-        const inStore = sorted.filter(o => filter.store === 'all' || o.store === filter.store);
-        const rows = inStore.filter(o => filter.cat === 'all' || categoryOf(o.title) === filter.cat);
-        results.append(el('p', '表示条件に合う確認済み商品：' + rows.length + '件', 'supermarket-meta'));
-        if (filter.store !== 'all' && !inStore.length)
-          results.append(el('p', stores[filter.store] + '：' + stateLabel(filter.store) + '。今日の確認済み商品はありません。', 'supermarket-note'));
-        else if (!rows.length) results.append(el('p', 'この条件の確認済み商品はありません。', 'supermarket-note'));
-        const limit = filter.cat === 'all' ? 3 : 8;
-        for (const [id, label] of categories) {
-          const group = rows.filter(o => categoryOf(o.title) === id);
-          if (!group.length) continue;
-          const shown = pickSome(group, limit);
-          const wrap = el('div', undefined, 'supermarket-group');
-          wrap.append(el('h4', label + '（' + shown.length + '/' + group.length + '件）'));
-          for (const o of shown) wrap.append(card(o));
-          results.append(wrap);
-        }
-        if (rows.length > 0) results.append(el('p', '全件は下の「当日有効な掲載商品」で開けます。', 'supermarket-meta'));
-        const pairs = comparable(rows).slice(0, 3);
-        if (pairs.length) {
-          const cmp = el('div', undefined, 'supermarket-compare');
-          cmp.append(el('h4', '同じ品名・規格・単位の掲載'),
-            el('p', '表記が完全に同じものだけを並べています。単位の換算や全店の最安・合計は示しません。', 'supermarket-meta'));
-          for (const g of pairs) {
-            cmp.append(el('p', g[0].title + '・' + g[0].spec + '（' + g[0].unit + '）', 'supermarket-offer-title'));
-            for (const o of g) cmp.append(el('p', shortName(o.store) + '：' + priceText(o) + '（' + o.conditions + '）', 'supermarket-meta'));
-          }
-          results.append(cmp);
+        const catLabel = categories.find(c => c[0] === filter.cat)[1];
+        const inCat = all.filter(r => r.category === filter.cat);
+        const rows = arrange(inCat.filter(r => filter.store === 'all' || r.store === filter.store));
+        const priced = rows.filter(r => r.price_status !== 'unknown'), unknown = rows.filter(r => r.price_status === 'unknown');
+        const n = s => rows.filter(r => r.price_status === s).length;
+        results.append(el('p', catLabel + (filter.store === 'all' ? '・全店舗' : '・' + stores[filter.store]) + '：確認済み' + n('confirmed') + ' / 参考' + n('reference') + ' / 価格不明' + n('unknown') + '件', 'supermarket-meta'));
+        results.append(el('p', '価格・単位・内容量が異なる商品を並べています。金額順や最安の判定はしていません。', 'supermarket-meta'));
+        if (!rows.length) results.append(el('p', (filter.store === 'all' ? '' : stores[filter.store] + '（' + stateLabel(filter.store) + '）：') + '「' + catLabel + '」の掲載はありません。', 'supermarket-note'));
+        if (priced.length) results.append(list(priced, filter.cat + '|' + filter.store + '|p', null));
+        if (unknown.length) {
+          const d = el('details', undefined, 'supermarket-unknown');
+          d.append(el('summary', '価格不明（' + unknown.length + '件）・順位なし'));
+          d.append(list(unknown, filter.cat + '|' + filter.store + '|u', null));
+          results.append(d);
         }
       }
-      box.append(el('h3', '今日の確認済み商品'),
-        bar('店舗で絞り込み', [['all', '全店舗'], ...storeIds.map(id => [id, shortName(id) + '（' + confirmed.filter(o => o.store === id).length + '）'])], 'store'),
-        bar('種類で絞り込み', [['all', 'すべて'], ...categories.map(([id, label]) => [id, label])], 'cat'),
+      box.append(bar('種類で絞り込み', categories.map(([id, l]) => [id, l + '（' + countIn(id) + '）']), 'cat', 'supermarket-tabs'),
+        bar('店舗で絞り込み（任意）', [['all', '全店舗'], ...storeIds.map(id => [id, shortName(id) + '（' + all.filter(r => r.store === id).length + '）'])], 'store'),
         results);
       draw();
       target.append(box);
-    } else if (today) target.append(el('p', '今日有効で確認済みの掲載商品はまだありません。', 'supermarket-note'));
+    }
+    const stateBox = el('details', undefined, 'supermarket-states');
+    stateBox.append(el('summary', '6店舗の取得状況'));
     const state = el('ul');
     state.setAttribute('aria-label', '6店舗の取得状況');
     for (const [id, name] of Object.entries(stores)) {
-      const label = stateLabel(id);
-      const count=confirmed.filter(o=>o.store===id).length;
-      state.append(el('li', name + '：' + label + (count ? '（' + count + '商品）' : '')));
+      const count = all.filter(r => r.store === id).length;
+      state.append(el('li', name + '：' + stateLabel(id) + (count ? '（' + count + '件）' : '')));
     }
-    target.append(state);
-    // Whole-paper observations are independent of confirmed offers and menus.
+    stateBox.append(state);
+    target.append(stateBox);
+    // Whole-paper observations are independent of confirmed offers.
     // These values remain unverified readings, including nonfood and no-price rows.
     const corpus=today&&(referenceOnly?snapshot.reference_corpus:snapshot.corpus);
     if (editionReference && corpus) target.append(el('h3','掲載期間内のチラシ・参考'),
-      el('p','取得・保存時刻、号の掲載期間、商品別の適用日は別です。商品日付未確認の掲載も参考として残します。確定価格・在庫・献立・最安比較には使いません。','supermarket-note'));
+      el('p','取得・保存時刻、号の掲載期間、商品別の適用日は別です。商品日付未確認の掲載も参考として残します。確定価格・在庫・最安比較には使いません。','supermarket-note'));
     if (previousDay && corpus) target.append(el('h3','前回のチラシ・参考'),
-      el('p','保存日：'+snapshot.snapshot_date+'。以下は前回紙面の読取です。今日の特売・有効商品数・献立・価格比較には使っていません。', 'supermarket-note'));
+      el('p','保存日：'+snapshot.snapshot_date+'。以下は前回紙面の読取です。今日の特売・有効商品数・価格比較には使っていません。', 'supermarket-note'));
     if(today&&snapshot.corpus_status==='too_large')target.append(el('p','全紙面の読取はDBに保存されています。表示サイズの上限を超えたため、ここでは確認済み商品だけを表示しています。'));
     if(today&&snapshot.corpus_status==='partial')target.append(el('p','読取はDBに保存されています。表示容量を超えた分は、この画面から省略しています。'));
     const catalogs=corpus?.schema===2&&Array.isArray(corpus.catalogs)&&corpus.catalogs.length<=24?corpus.catalogs:[corpus];
@@ -300,8 +364,6 @@
         const frames=catalog.pages.reduce((n,p)=>n+(Array.isArray(p.items)?p.items.length:0),0);
         return frames<=2000?displayCounts(catalog,frames):null;
       });
-      // The Gateway projects counts per catalog. Aggregate only known totals;
-      // missing metadata must not become an invented bundle-wide saved count.
       if(catalogCounts.length&&catalogCounts.every(Boolean)) {
         const counts=catalogCounts.reduce((sum,c)=>({total:sum.total+c.total,shown:sum.shown+c.shown,omitted:sum.omitted+c.omitted}),{total:0,shown:0,omitted:0});
         if(Object.values(counts).every(Number.isSafeInteger))target.append(el('p',countLabel(counts)));
@@ -328,7 +390,7 @@
         const hasPrintedPeriod=rows.some(item=>typeof item.validity_raw_text==='string'&&item.validity_raw_text.trim()||item.valid_from||item.valid_until);
         details.append(el('p','紙面期間：'+(corpus.document_from&&corpus.document_until?corpus.document_from+'〜'+corpus.document_until:'未確認')+
           (hasPrintedPeriod?'。期間は原本との対応要確認です。':'。商品ごとの販売日は未確認です。')));
-        details.append(el('p','食品以外・価格非掲載・表示例・案内を含みます。読取値は確定売価ではなく、献立や買い物先の判断には使っていません。'));
+        details.append(el('p','食品以外・価格非掲載・表示例・案内を含みます。読取値は確定売価ではなく、買い物先の判断には使っていません。'));
         const faceCount=Number.isSafeInteger(corpus.logical_faces)&&corpus.logical_faces>0?corpus.logical_faces:corpus.pages.length;
         const extent=dom?corpus.logical_views+' 日付・カテゴリ表示':corpus.physical_pdf_pages===null?
           '観測'+faceCount+'面 / 全号枚数未確認':corpus.physical_pdf_pages+' PDFページ / '+corpus.logical_faces+'面';
@@ -369,17 +431,14 @@
         target.append(details);
       }
     }
-    // Coverage is separate from the three menu recommendations. A newly
-    // collected store's verified prices must remain inspectable even when
-    // the unchanged recommendation logic chooses another store for a menu.
     if(confirmed.length) {
       const details=el('details');details.className='supermarket-offers';
-      details.append(el('summary','当日有効な掲載商品（'+confirmed.length+'件）'));
+      details.append(el('summary','価格確認済み掲載商品（'+confirmed.length+'件）'));
       for(const [id,name] of Object.entries(stores)) {
         const offers=confirmed.filter(o=>o.store===id);if(!offers.length)continue;
         details.append(el('h4',name));
         for(const o of offers) {
-          const row=el('p',o.title+'・'+o.spec+'：'+priceText(o)+'（'+o.conditions+'） '+o.from+'〜'+o.until+' ');
+          const row=el('p',o.title+'・'+o.spec+'：'+priceText(o)+' / '+o.unit+'（'+o.conditions+'） '+o.from+'〜'+o.until+' ');
           row.className='supermarket-offer';
           const link=el('a','公式資料');link.href=o.source;link.target='_blank';link.rel='noopener noreferrer';
           row.append(link);details.append(row);
@@ -388,7 +447,7 @@
       target.append(details);
     }
   }
-  const api = Object.freeze({stores, dayTokyo, recommend, render});
+  const api = Object.freeze({stores, dayTokyo, recommend, render, paused, classify, categoryRows});
   root.PALURUSupermarketPoc = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);
