@@ -81,12 +81,21 @@
   function renderDisplayOnlyOption(doc, option) {
     const section = node(doc, 'section', 'bus-home-route-option bus-home-route-display-only', '');
     const station = railStationName[option.stationId] ?? option.stationLabel ?? '乗換駅';
+    const railQuality = option.railTimingQuality === 'delay_projection'
+      ? '・遅延に基づく見込み' : '';
+    const transferLabel = option.placeId === 'noborito-tamagawa' ? '多摩川口側へ移動'
+      : option.placeId === 'mizonokuchi' ? '溝の口駅南口へ移動' : null;
     const header = node(doc, 'div', 'bus-home-route-option-header', '');
     header.append(node(doc, 'h3', 'bus-home-route-station', `${station}で下車`));
+    if (option.placeId === 'noborito-tamagawa')
+      header.append(node(doc, 'span', 'bus-home-route-area', '多摩川口'));
     section.append(header);
     if (Number.isFinite(option.stationTimeAt) && option.stationTimeAt >= 0)
       section.append(node(doc, 'p', 'bus-home-route-rail',
-        `🚃 ${station} ${clock(option.stationTimeAt)}着`));
+        `🚃 ${station} ${clock(option.stationTimeAt)}着${railQuality}`));
+    if (transferLabel) section.append(node(doc, 'p', 'bus-home-route-arrow', '↓'),
+      node(doc, 'p', 'bus-home-route-walk', `🚶 ${transferLabel}`),
+      node(doc, 'p', 'bus-home-route-arrow', '↓'));
     if (option.transferMode === 'rush')
       section.append(node(doc, 'p', 'bus-home-route-rush', '🏃 急げば間に合う'));
     section.append(
