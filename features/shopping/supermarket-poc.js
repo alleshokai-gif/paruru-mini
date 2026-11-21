@@ -21,12 +21,40 @@
     return ['year', 'month', 'day'].map(type => parts.find(p => p.type === type).value).join('-');
   }
   const eligibleState = state => state === 'checked' || state === 'unchanged';
+  const validDay = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
+    Number.isFinite(Date.parse(s+'T00:00:00Z')) && new Date(s+'T00:00:00Z').toISOString().slice(0,10) === s;
+  function editionCatalogValid(c, date, snapshotDate) {
+    if(c?.schema!==1 || !Object.hasOwn(stores,c.store) || c.verification_state!=='needs_review' ||
+       !validDay(c.document_from) || !validDay(c.document_until) ||
+       c.document_from>date || date>c.document_until || c.document_from>c.document_until ||
+       (Date.parse(c.document_until)-Date.parse(c.document_from))/86400000>62 ||
+       !Array.isArray(c.pages) || !c.pages.length || c.pages.length>64 ||
+       typeof c.obtained_at!=='string' || !Number.isFinite(Date.parse(c.obtained_at)) ||
+       Date.parse(c.obtained_at)>=Date.parse(snapshotDate+'T15:00:00Z')) return false;
+    const dom=c.source_kind==='dom';
+    if(c.store==='ok' && (dom || !/^https:\/\/ok-corporation\.jp\/media-download\//.test(c.source_document)))return false;
+    if(c.store==='rosen' && !dom)return false;
+    if(!referenceSource(c,dom))return false;
+    return c.pages.every(p=>Array.isArray(p.items)&&p.items.length<=1000&&p.items.every(i=>
+      i && i.verification_state==='needs_review' &&
+      (i.valid_from==null || validDay(i.valid_from)&&i.valid_from<=date) &&
+      (i.valid_until==null || validDay(i.valid_until)&&date<=i.valid_until) &&
+      !(i.valid_from && i.valid_until && i.valid_from>i.valid_until)));
+  }
   function isTodayProjection(snapshot, date) {
-    if (snapshot?.schema !== 1 || snapshot.date !== date) return false;
+    if (!validDay(date) || snapshot?.schema !== 1 || snapshot.date !== date) return false;
     // Older same-day Gateway DTOs remain compatible. Raw yesterday snapshots
     // are never accepted here; only the Gateway revalidates individual offers.
     if (snapshot.snapshot_date === undefined && snapshot.freshness === undefined) return true;
     if (snapshot.freshness === 'current') return snapshot.snapshot_date === date;
+    if (snapshot.freshness === 'edition_reference') {
+      const sourceDate=snapshot.snapshot_date;
+      if(!validDay(sourceDate)||sourceDate>date || (Date.parse(date)-Date.parse(sourceDate))/86400000>62 ||
+         !Array.isArray(snapshot.offers)||snapshot.offers.length!==0) return false;
+      const c=snapshot.reference_corpus;
+      const catalogs=c?.schema===2&&Array.isArray(c.catalogs)&&c.catalogs.length<=24?c.catalogs:[c];
+      return catalogs.length>0&&catalogs.every(c=>editionCatalogValid(c,date,sourceDate));
+    }
     const previous = new Date(date + 'T00:00:00Z');
     if (!Number.isFinite(previous.getTime()) || previous.toISOString().slice(0,10) !== date) return false;
     previous.setUTCDate(previous.getUTCDate() - 1);
@@ -87,9 +115,9 @@
   function referenceSource(corpus, dom) {
     try {
       const url = new URL(corpus.source_document), href = url.href;
-      if(!dom && /^https:\/\/ok-corporation\.jp\/media-download\/\d+\/[a-f0-9]+\/PDF\/$/.test(href))
+      if(!dom && corpus.store === 'ok' && /^https:\/\/ok-corporation\.jp\/media-download\/\d+\/[a-f0-9]+\/PDF\/$/.test(href))
         return {href, label:'公式の全号PDF'};
-      if(dom && /^https:\/\/rosen\.mikke-sales\.com\/stores\/taira\/flyers\/\d+\/?$/.test(href))
+      if(dom && corpus.store === 'rosen' && /^https:\/\/rosen\.mikke-sales\.com\/stores\/taira\/flyers\/\d+\/?$/.test(href))
         return {href, label:'公開元の全カテゴリ明細'};
       if(corpus.source_kind === 'image' && (
         corpus.store === 'iy' && /^https:\/\/promo\.hatobase\.jp\/flyers\/00521\/\d+\/\d+\/?$/.test(href) ||
@@ -145,6 +173,10 @@
       el('p', '確認済み＝今日有効と照合できた掲載価格 / 参考＝読み取った価格（未照合） / 未確認＝価格不明', 'supermarket-legend'));
     const today = isTodayProjection(snapshot, date);
     const previousDay = today && snapshot.freshness === 'previous_day';
+    const editionReference = today && snapshot.freshness === 'edition_reference';
+    const referenceOnly = previousDay || editionReference;
+    if (editionReference) target.append(el('p', '表示日：'+date+' / 保存スナップショット：'+snapshot.snapshot_date+
+      '。号の掲載期間が有効な参考情報です。当日再取得・価格確認済みの意味ではありません。', 'supermarket-note'));
     if (previousDay) target.append(el('p', '表示日：' + date + ' / 保存スナップショット：' + snapshot.snapshot_date +
       '。本日の再収集ではありません。', 'supermarket-note'));
     if (previousDay && snapshot.carry_forward_status === 'item_validity_unproven') target.append(el('p',
@@ -153,7 +185,7 @@
       ? snapshot.offers.filter(o => isOffer(o,date) && eligibleState(snapshot.states?.[o.store])) : [];
     const stateLabel = id => {
       const code = today && snapshot.states?.[id];
-      return previousDay && eligibleState(code) ? '前日照合（当日再取得なし）' : Object.hasOwn(statusLabels, code) ? statusLabels[code] : '未確認';
+      return editionReference ? '保存済みの号を参照（当日再取得なし）' : previousDay && eligibleState(code) ? '前日照合（当日再取得なし）' : Object.hasOwn(statusLabels, code) ? statusLabels[code] : '未確認';
     };
     const plans = today ? recommend(snapshot, items, date) : [];
     if (!today) target.append(el('p', '当日のチラシ情報を確認できません。買い物リストは引き続き使えます。', 'supermarket-note'));
@@ -254,7 +286,9 @@
     target.append(state);
     // Whole-paper observations are independent of confirmed offers and menus.
     // These values remain unverified readings, including nonfood and no-price rows.
-    const corpus=today&&(previousDay?snapshot.reference_corpus:snapshot.corpus);
+    const corpus=today&&(referenceOnly?snapshot.reference_corpus:snapshot.corpus);
+    if (editionReference && corpus) target.append(el('h3','掲載期間内のチラシ・参考'),
+      el('p','取得・保存時刻、号の掲載期間、商品別の適用日は別です。商品日付未確認の掲載も参考として残します。確定価格・在庫・献立・最安比較には使いません。','supermarket-note'));
     if (previousDay && corpus) target.append(el('h3','前回のチラシ・参考'),
       el('p','保存日：'+snapshot.snapshot_date+'。以下は前回紙面の読取です。今日の特売・有効商品数・献立・価格比較には使っていません。', 'supermarket-note'));
     if(today&&snapshot.corpus_status==='too_large')target.append(el('p','全紙面の読取はDBに保存されています。表示サイズの上限を超えたため、ここでは確認済み商品だけを表示しています。'));
@@ -287,7 +321,7 @@
         details.append(el('p','店舗：'+store+' / 号：'+corpus.issue_id));
         const counts=displayCounts(corpus,count);
         if(counts)details.append(el('p',countLabel(counts)));
-        if(previousDay && Number.isSafeInteger(corpus.reference_excluded_frames) && corpus.reference_excluded_frames>0)
+        if(referenceOnly && Number.isSafeInteger(corpus.reference_excluded_frames) && corpus.reference_excluded_frames>0)
           details.append(el('p','日付・期限条件で除外：'+corpus.reference_excluded_frames+'枠。全掲載が表示されるとは限りません。'));
         if(partialCoverage(corpus))details.append(el('p','部分データです。原本の全掲載商品・全号を確認したものではありません。'));
         details.append(el('p','参考価格あり '+referenceCount+'枠・価格未確認 '+(count-referenceCount)+'枠・確定0枠（この読取内）'));
@@ -316,6 +350,9 @@
             if(!quotes.length)row.append(el('p',item.price_state==='not_printed'?'価格非掲載':'価格読取未確定'));
             for(const price of quotes)row.append(el('p','未照合の読取：'+price.raw_text+(price.unit_text?' / '+price.unit_text:'')+(price.payment_condition?'（'+price.payment_condition+'）':'')));
             if(item.conditions?.length)row.append(el('p','条件の読取・商品との対応未照合：'+item.conditions.join(' / ')));
+            row.append(el('p',item.valid_from&&item.valid_until ?
+              '商品別適用日の読取：'+item.valid_from+'〜'+item.valid_until+'（価格・条件は未照合）' :
+              '商品別適用日：未確認（号の掲載期間とは別）'));
             row.append(el('p','商品への期間・店舗条件・位置の対応は要確認。'+(item.validity_raw_text||'')));
             details.append(row);
           }
