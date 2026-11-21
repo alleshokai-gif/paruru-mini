@@ -47,8 +47,10 @@ test('IY is isolated from OK, persists provenance and never re-reads a same-day 
     assert.equal(calls.length,4);assert.ok(calls.every(u=>!u.includes('/images')&&!u.includes('ok-corporation')));
     assert.equal(db.prepare('SELECT parser FROM ocr_evidence').get().parser,'iy-00521-20261118-front-v1');
     await collectIy(db,'2026-11-20',fetcher,opts);assert.equal(calls.length,4);
-    r=await collectIy(db,'2026-11-21',fetcher,opts);assert.equal(calls.length,4);
-    assert.equal(r.states.iy,'needs_review');assert.equal(snapshot(db,'2026-11-21').offers.length,0);
+    // The old fixture has no official-store chain. Future discovery fails
+    // closed there rather than calling the old product template again.
+    r=await collectIy(db,'2026-11-21',fetcher,opts);assert.equal(calls.length,6);
+    assert.equal(r.states.iy,'failed');assert.equal(snapshot(db,'2026-11-21').offers.length,0);
   } finally{db.close();}
 });
 
