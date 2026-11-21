@@ -287,3 +287,21 @@ test('PALURU Bus view mounts the accepted manual train selector with a productio
   assert.match(preview, /window\.PALURUBusHomeRoute\?\.setActive\(true\)/);
   assert.doesNotMatch(preview, /nav\.innerHTML/);
 });
+
+
+test('arrival difference belongs to the alternate card and requires both known arrivals', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  const fastest = {stationId:'noborito', stationLabel:'登戸', departureAt:epoch('18:10'),
+    provider:'kawasaki', routeLabel:'A', homeArrivalAt:epoch('18:20'), timingQuality:'static_only'};
+  const alternate = {...fastest, routeLabel:'B', homeArrivalAt:epoch('18:25')};
+  const render = (other, gap) => {
+    ui.renderDecision(doc,mount,{status:'available',fastest,alternate:other,differenceMinutes:gap});
+    return mount.children;
+  };
+  let children = render(alternate,5);
+  assert.doesNotMatch(renderedText(children[1]),/5分差/);
+  assert.match(renderedText(children[2]),/5分差/);
+  assert.equal(children.length,3);
+  assert.doesNotMatch(renderedText({children:render({...alternate,homeArrivalAt:null},5)}),/5分差/);
+  assert.doesNotMatch(renderedText({children:render(alternate,-1)}),/分差/);
+});
