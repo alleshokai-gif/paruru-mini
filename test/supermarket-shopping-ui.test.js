@@ -105,7 +105,7 @@ test('previous flyer reference shows its dates and readings without today offers
   const reference={schema:1,store:'ok',verification_state:'needs_review',issue_id:'ok-kanto-20261116',
     source_document:'https://ok-corporation.jp/media-download/1764/f75516cf12ff8d76/PDF/',
     obtained_at:'2026-11-20T00:00:00Z',document_from:'2026-11-16',document_until:'2026-11-22',
-    physical_pdf_pages:1,logical_faces:2,pages:[{face:'front',items:[{name:'previous reference fixture',
+    physical_pdf_pages:1,logical_faces:2,reference_excluded_frames:2,display_counts:{total:3,shown:1,omitted:2},pages:[{face:'front',items:[{name:'previous reference fixture',
       product_type:'food',price_state:'priced',prices:[{raw_text:'100 yen',net_yen:100,unit_text:'100g'}]}]},
       {face:'back',items:[]}]};
   const projected={schema:1,date:app.date,snapshot_date:previous.toISOString().slice(0,10),freshness:'previous_day',
@@ -115,6 +115,7 @@ test('previous flyer reference shows its dates and readings without today offers
   assert.match(app.preview.text(),/2026-11-16〜2026-11-22/);
   assert.ok(app.preview.text().includes('previous reference fixture'));
   assert.ok(app.preview.text().includes('100 yen'));
+  assert.match(app.preview.text(),/日付・期限条件で除外：2枠/);
   assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-corpus-item').length,1);
   assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
   assert.equal(app.preview.all('section').filter(e=>e.className==='supermarket-picker').length,0);

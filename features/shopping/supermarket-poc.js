@@ -287,6 +287,8 @@
         details.append(el('p','店舗：'+store+' / 号：'+corpus.issue_id));
         const counts=displayCounts(corpus,count);
         if(counts)details.append(el('p',countLabel(counts)));
+        if(previousDay && Number.isSafeInteger(corpus.reference_excluded_frames) && corpus.reference_excluded_frames>0)
+          details.append(el('p','日付・期限条件で除外：'+corpus.reference_excluded_frames+'枠。全掲載が表示されるとは限りません。'));
         if(partialCoverage(corpus))details.append(el('p','部分データです。原本の全掲載商品・全号を確認したものではありません。'));
         details.append(el('p','参考価格あり '+referenceCount+'枠・価格未確認 '+(count-referenceCount)+'枠・確定0枠（この読取内）'));
         const hasPrintedPeriod=rows.some(item=>typeof item.validity_raw_text==='string'&&item.validity_raw_text.trim()||item.valid_from||item.valid_until);
