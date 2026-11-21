@@ -1,2 +1,2 @@
 // Family Inbox school print release.
-globalThis.BUILD_ID = "v20261121-cashflow-menu-v1";
+globalThis.BUILD_ID = "v20261121-supermarket-reference-cashflow";

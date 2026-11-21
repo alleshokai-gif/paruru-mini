@@ -51,6 +51,80 @@ function setup() {
 }
 
 const item = {item_id:'a'.repeat(32),name:'納豆',quantity:1,unit:'組',memo:'',status:'pending',revision:1,due_date:null,updated_at:'2026-11-19T07:00:00.000Z'};
+test('versioned previous-day status does not promote edition dates and is distinct from missing data', async () => {
+  const app = setup();
+  const yesterday = new Date(app.date + 'T00:00:00Z'); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const previous = yesterday.toISOString().slice(0,10);
+  const data = result(app.date);
+  Object.assign(data.supermarketPoc, {snapshot_date:previous, freshness:'previous_day',offers:[],
+    carry_forward_status:'item_validity_unproven',
+    plans:[{name:'DO NOT REUSE YESTERDAY PLAN'}]});
+  data.supermarketPreviousDayV1=data.supermarketPoc;
+  delete data.supermarketPoc;
+  app.authenticate(async () => data);
+  await app.open();
+  assert.equal(app.preview.all('article').filter(e => e.className === 'supermarket-plan').length,0);
+  assert.match(app.preview.text(), /本日の再収集ではありません/);
+  assert.match(app.preview.text(), /前日照合（当日再取得なし）/);
+  assert.ok(app.preview.text().includes(previous));
+  assert.ok(!app.preview.text().includes('DO NOT REUSE YESTERDAY PLAN'));
+  assert.match(app.preview.text(), /商品別の適用日の根拠が未確認/);
+  data.supermarketPreviousDayV1.carry_forward_status = 'no_offers';
+  await app.open();
+  assert.match(app.preview.text(), /本日の再収集ではありません/);
+  assert.equal(app.preview.all('article').length,0);
+  assert.ok(!app.preview.text().includes('商品別の適用日の根拠が未確認'));
+  delete data.supermarketPreviousDayV1;
+  await app.open();
+  assert.ok(!app.preview.text().includes('本日の再収集ではありません'));
+  assert.ok(app.list.text().length > 0);
+});
+
+test('raw yesterday, future or older projection metadata and reference prices cannot enter menus', async () => {
+  const app = setup();
+  const data = result(app.date);
+  app.authenticate(async () => data);
+  for (const patch of [
+    {date:'2000-01-01'},
+    {date:app.date, snapshot_date:'2000-01-01',freshness:'previous_day'},
+    {date:app.date, snapshot_date:'2999-01-01',freshness:'previous_day'},
+    {date:app.date, snapshot_date:app.date,freshness:'previous_day'},
+  ]) {
+    Object.assign(data.supermarketPoc,patch);
+    await app.open();
+    assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
+  }
+  Object.assign(data.supermarketPoc,{snapshot_date:app.date,freshness:'current'});
+  data.supermarketPoc.offers=data.supermarketPoc.offers.map(o=>({...o,confidence:'reference'}));
+  await app.open();
+  assert.equal(app.preview.all('article').length,0);
+});
+
+test('previous flyer reference shows its dates and readings without today offers or plans', async () => {
+  const app=setup(),previous=new Date(app.date+'T00:00:00Z');previous.setUTCDate(previous.getUTCDate()-1);
+  const reference={schema:1,store:'ok',verification_state:'needs_review',issue_id:'ok-kanto-20261116',
+    source_document:'https://ok-corporation.jp/media-download/1764/f75516cf12ff8d76/PDF/',
+    obtained_at:'2026-11-20T00:00:00Z',document_from:'2026-11-16',document_until:'2026-11-22',
+    physical_pdf_pages:1,logical_faces:2,reference_excluded_frames:2,display_counts:{total:3,shown:1,omitted:2},pages:[{face:'front',items:[{name:'previous reference fixture',
+      product_type:'food',price_state:'priced',prices:[{raw_text:'100 yen',net_yen:100,unit_text:'100g'}]}]},
+      {face:'back',items:[]}]};
+  const projected={schema:1,date:app.date,snapshot_date:previous.toISOString().slice(0,10),freshness:'previous_day',
+    offers:[],carry_forward_status:'item_validity_unproven',states:{ok:'checked'},reference_corpus:reference};
+  app.authenticate(async()=>({items:[item],supermarketPreviousDayV1:projected}));await app.open();
+  assert.match(app.preview.text(),/前回のチラシ・参考/);
+  assert.match(app.preview.text(),/2026-11-16〜2026-11-22/);
+  assert.ok(app.preview.text().includes('previous reference fixture'));
+  assert.ok(app.preview.text().includes('100 yen'));
+  assert.match(app.preview.text(),/日付・期限条件で除外：2枠/);
+  assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-corpus-item').length,1);
+  assert.equal(app.preview.all('article').filter(e=>e.className==='supermarket-plan').length,0);
+  assert.equal(app.preview.all('section').filter(e=>e.className==='supermarket-picker').length,0);
+  assert.equal(app.preview.all('details').filter(e=>e.className==='supermarket-offers').length,0);
+  assert.ok(app.preview.all('a').some(a=>a.href===reference.source_document));
+  assert.ok(app.list.text().length>0);
+  app.lock();assert.ok(!app.preview.text().includes('previous reference fixture'));
+});
+
 function result(date, state='checked') {
   const offers = ['鶏むね肉','銀鮭','ラム','納豆'].map(title => ({title,store:'ok',from:date,until:date,confidence:'ocr_validated',
     kind:'weekly_information',source:'https://ok-corporation.jp/',spec:'規格',unit:'100g',net_yen:199,tax_included_sen:21492,conditions:'非会員価格'}));
