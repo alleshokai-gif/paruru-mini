@@ -76,3 +76,42 @@ are `[]` / `unreadable`, product dates are null. Paper dates never become produc
 validity. Product boundary and label-price/unit/date association remain missing;
 this is a repeatable local OCR/DB experiment, not scheduled extraction or safe
 production pricing. It must not be deployed merely to move the image size limit.
+
+## Built-in vision association (local acceptance only)
+
+`vision-observations.mjs SOURCE_DB MANIFEST READINGS OCR_DIR NEW_OUTPUT_DIR`
+consumes explicit built-in-vision readings and the same saved image/whole-OCR
+evidence. It does not invoke a model, fetch a source or publish. The image region
+manifest, image hashes, attempted regions and OCR provenance are checked. Name,
+spec and unit plus overlapping position deduplicate repeated crop observations;
+conflicting duplicate values stop ingestion. Approximate card bounds and OCR
+numeric-presence evidence stay private. Neither caller-supplied verification nor
+matching OCR digits can authorize a confirmed offer. Unknown item periods stay
+null; paper dates never fill them. The existing typed corpus and reference UI
+are used unchanged.
+
+Actual 51034 follow-up used Codex's built-in image understanding: two overviews
+and 24 regular overlapping 2000×2000 crops covering both originals. Exact runtime
+model identifier is unavailable. 29 image-view tool calls included three images
+discarded by the tool-output limit and subsequently redisplayed; 26 distinct
+images were read. This was interactive included execution, not a paid model API
+or proof of scheduled, noninteractive image extraction.
+
+The readback contains 173 name/spec/unit offering rows (front 67, back 106),
+161 distinct printed-name groups, including two nonfood offers. These are
+structured image-associated readings, separate from the 1,359 OCR text labels.
+All 173 have reference price readings; **confirmed prices remain zero**.
+58 rows also have both numbers present in OCR within the approximate card;
+this is a numeric crosscheck, not semantic or store/period verification.
+36 rows retain an explicitly read item-period bound; the other 137 retain null
+periods. Nine source/ad notes and two unresolved scope/variant regions are
+separate. Unnamed variants and the true product denominator/recall remain unknown.
+Lucky-box contents, points-adjusted effective prices and mix-and-match bundles
+are not expanded into individually priced products.
+
+Private product DB: 610,304 bytes, no image column, immutable readback matched.
+Existing DB→snapshot→reference-renderer local acceptance displayed 173 reference
+articles including price/unit and nonfood, with 0 confirmed offers/badges and
+0 menu plans. This was not a production browser acceptance or production write.
+Original images, real readings and DBs stay outside Git. Scheduled extraction,
+archive integration, production pricing and deployment remain unaccepted.
