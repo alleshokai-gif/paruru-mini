@@ -36,12 +36,13 @@
 .supermarket-chips {display:flex;flex-wrap:wrap;gap:6px}
 #shoppingView .supermarket-chip {min-height:44px;padding:0 12px;border:1px solid #9aa3bf;border-radius:999px;background:#fff;color:inherit;font-size:.9rem;cursor:pointer}
 #shoppingView .supermarket-chip[aria-pressed="true"] {background:#26304f;border-color:#26304f;color:#fff;font-weight:700}
-.supermarket-chip:focus-visible,#supermarketPocPreview a:focus-visible,#shoppingView summary:focus-visible {outline:3px solid #2563eb;outline-offset:2px}
+.supermarket-category-field {display:grid;gap:4px;min-width:0}
+#shoppingView .supermarket-category-label {font-size:.9rem;font-weight:700}
+#shoppingView .supermarket-category-select {display:block;width:100%;min-width:0;box-sizing:border-box;min-height:44px;padding:0 10px;border:1px solid #9aa3bf;border-radius:10px;background:#fff;color:inherit;font-size:16px}
+.supermarket-category-select:focus-visible,.supermarket-chip:focus-visible,#supermarketPocPreview a:focus-visible,#shoppingView summary:focus-visible {outline:3px solid #2563eb;outline-offset:2px}
 .supermarket-offer-card {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;min-width:0;padding:10px;border:1px solid #d9deec;border-radius:10px;background:#fff}
 .supermarket-offer-card .supermarket-price,.supermarket-offer-card .supermarket-meta {grid-column:1/-1;margin:0}
 .supermarket-offer-title {font-weight:700;overflow-wrap:anywhere}
-.supermarket-tabs {flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
-.supermarket-tabs .supermarket-chip {flex:0 0 auto;white-space:nowrap}
 #shoppingView .supermarket-more {width:100%;border:1px solid #9aa3bf;border-radius:10px;background:#fff;color:inherit}
 .supermarket-offer-card.is-unknown {border-style:dashed}
 .supermarket-offer-card .supermarket-row-details {grid-column:1/-1}

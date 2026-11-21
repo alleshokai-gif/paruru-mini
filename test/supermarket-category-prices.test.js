@@ -50,7 +50,7 @@ test('unknown price and unknown units stay unranked without guessing a pack',()=
  const i=item('卵豆腐');i.prices=[];i.price_state='unreadable';const s=snapshot([i]);s.offers=[offer('豚肉','')];
  const rows=ui.categoryRows(s,day),u=rows.find(r=>r.price_status==='unknown');
  assert.equal(u.category,'processed');assert.equal(u.unit,null);assert.equal(rows.find(r=>r.price_status==='confirmed').unit_status,'unknown');
- const out=render(s);const chip=out.all('button').find(n=>n.textContent.startsWith('加工品'));chip.callbacks.get('click')();
+ const out=render(s);const select=out.all('select')[0];select.value='processed';select.callbacks.get('change')();
  assert.match(out.text(),/価格不明/);assert.match(out.text(),/順位なし/);assert.match(out.text(),/単位不明/);
 });
 test('different pack prices are displayed separately without numeric ordering or comparison claims',()=>{
@@ -73,4 +73,35 @@ test('expired, future or mismatched snapshot never creates current category rows
 test('DTO capacity omissions are disclosed without claiming every stored row is displayed',()=>{
  const s=snapshot();s.category_prices_v1={schema:1,display_date:day,snapshot_date:day,freshness:'current',categories:[],display_counts:{total:100,shown:0,omitted:100}};
  assert.match(render(s).text(),/全100行.*省略100行/);
+});
+
+test('category dropdown has a visible linked label, all counts and valid selection updates',()=>{
+ const out=render(snapshot()),select=out.all('select')[0],label=out.all('label').find(n=>n.htmlFor===select.id);
+ assert.ok(label);assert.equal(label.textContent,'種類で絞り込み');
+ assert.deepEqual(select.all('option').map(n=>n.value),contract.categories.map(c=>c.id));
+ assert.ok(select.all('option').every(n=>/（\d+）$/.test(n.textContent)));
+ assert.equal(select.all('option').find(n=>n.selected).value,'meat');
+ assert.equal(out.all('button').some(n=>n.textContent==='肉（1）'),false);
+ select.value='processed';select.callbacks.get('change')();
+ assert.match(out.text(),/加工品・惣菜・全店舗/);assert.match(out.text(),/魚肉ソーセージ/);
+ select.value='not-a-category';select.callbacks.get('change')();
+ assert.match(out.text(),/加工品・惣菜・全店舗/);
+ const again=render(snapshot()).all('select')[0];assert.notEqual(again.id,select.id);
+});
+
+test('native category changes retain optional store selection and honest empty results',()=>{
+ const out=render(snapshot()),select=out.all('select')[0];
+ out.all('button').find(n=>n.textContent.startsWith('イトーヨーカドー')).callbacks.get('click')();
+ select.value='processed';select.callbacks.get('change')();
+ assert.match(out.text(),/加工品・惣菜・イトーヨーカドー/);assert.match(out.text(),/魚肉ソーセージ/);
+ select.value='fish';select.callbacks.get('change')();
+ assert.match(out.text(),/魚・魚介・イトーヨーカドー/);assert.match(out.text(),/掲載はありません/);
+ assert.equal(out.all('article').filter(n=>String(n.className).startsWith('supermarket-offer-card')).length,0);assert.equal(ui.paused.meal_plans,true);
+});
+
+test('category native control fits touch widths without horizontal tab scrolling CSS',()=>{
+ const fs=require('node:fs'),css=fs.readFileSync(require('node:path').join(__dirname,'../features/shopping/view.css'),'utf8');
+ assert.doesNotMatch(css,/\.supermarket-tabs/);
+ assert.match(css,/\.supermarket-category-select\s*\{[^}]*width:100%[^}]*min-width:0[^}]*box-sizing:border-box[^}]*min-height:44px/);
+ assert.match(css,/\.supermarket-chips\s*\{[^}]*flex-wrap:wrap/);
 });
