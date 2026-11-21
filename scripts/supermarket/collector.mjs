@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import {corpusCatalog,ingestCorpus} from './whole-corpus-store.mjs';
 import {readRosen,ROSEN_STORE,isCompleteRosenPacket} from './rosen-dom.mjs';
 import {rosenPolicy} from './rosen-policy.mjs';
+import {collectCurrentEdition,OFFICIAL} from './edition-discovery.mjs';
 import { identifyIyEdition, IY_SOURCE, IY_IMAGE } from './iy-ocr.mjs';
 import { identifyYaokoEdition, YAOKO_SOURCE, YAOKO_STORE, YAOKO_IMAGE } from './yaoko-ocr.mjs';
 import {TOKUBAI_EDITIONS,TOKUBAI_ROBOTS,verifyTokubaiRobots,identifyTokubaiEdition} from './tokubai-ocr.mjs';
@@ -246,8 +247,7 @@ export async function collectIy(db,date,fetcher=fetch,{ocr}={}) {
   // This template is current-edition only. Never substitute its weekly paper
   // end date for the item's three-day limit, or assume it covers future papers.
   if(date<'2026-11-18'||date>'2026-11-20') {
-    set.run('iy',date,'needs_review',IY_SOURCE,null,'OCR_TEMPLATE_REVIEW_REQUIRED');
-    return snapshot(db,date);
+    return collectDiscovered('iy',db,date,fetcher);
   }
   const evidenceId=sha(IY_IMAGE);
   set.run('iy',date,'failed',IY_SOURCE,evidenceId,'INCOMPLETE_RUN');
@@ -322,6 +322,7 @@ export async function collectTokubai(id,db,date,fetcher=fetch,{ocr}={}) {
   if(previous?.day===date&&previous.state!=='held')return snapshot(db,date);
   const set=db.prepare('INSERT OR REPLACE INTO status VALUES (?, ?, ?, ?, ?, ?)');
   if(date!=='2026-11-20') {
+    if(id==='life')return collectDiscovered('life',db,date,fetcher);
     set.run(id,date,'needs_review',c.source,null,'OCR_TEMPLATE_REVIEW_REQUIRED');return snapshot(db,date);
   }
   const evidenceId=sha(c.image);set.run(id,date,'failed',c.source,evidenceId,'INCOMPLETE_RUN');
@@ -345,6 +346,14 @@ export async function collectTokubai(id,db,date,fetcher=fetch,{ocr}={}) {
 }
 
 // Private SQLite/log codes are separate from the shared API allowlist.
+async function collectDiscovered(id,db,date,fetcher){
+  const discovery=await collectCurrentEdition(id,db,date,fetcher);
+  const edition=discovery.edition_id?db.prepare('SELECT source FROM flyer_discovered_editions WHERE edition_id=?').get(discovery.edition_id):null;
+  db.prepare('INSERT OR REPLACE INTO status VALUES(?,?,?,?,?,?)').run(id,date,
+    discovery.phase==='failed'?'failed':'needs_review',edition?.source||OFFICIAL[id],null,
+    discovery.error||'DISCOVERY_ANALYSIS_NOT_CONNECTED');
+  return snapshot(db,date);
+}
 export function portableResult(result) {
   const explicit = {
     PUBLISHER_NOFOLLOW_MANUAL_ONLY:'manual_only', AUTOMATED_USE_NOT_CONFIRMED:'manual_only', TOKUBAI_AUTOMATED_USE_NOT_CONFIRMED:'permission_unconfirmed',
@@ -356,6 +365,8 @@ export function portableResult(result) {
     OCR_DEPENDENCY_MISSING:'not_configured', OCR_SOURCE_MISSING:'layout_changed',
     CONTENT_TYPE:'unsupported_format', BODY_LIMIT:'unsupported_format', NOT_ENABLED:'not_configured',
     INCOMPLETE_RUN:'source_unavailable', HTTP_404:'source_unavailable',
+    DISCOVERY_ANALYSIS_NOT_CONNECTED:'not_configured',DISCOVERY_PRIOR_DENIAL:'http_denied',
+    DISCOVERY_ROBOTS_DISALLOW:'robots_disallow',DISCOVERY_ROBOTS_UNAVAILABLE:'robots_unreachable',
   };
   const reason = e => (Object.hasOwn(explicit,e) ? explicit[e] : null) || (e?.startsWith('ROBOTS_') ? 'robots_unreachable' :
     e?.startsWith('OCR_') ? 'extract_unverified' : e?.startsWith('HTTP_') ? 'http_error' : null);

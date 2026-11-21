@@ -36,7 +36,7 @@ test('independent price/day reads, cut/origin/unit and store-specific printed ta
  assert.equal(validateTokubaiOffer('maruetsu',{...verified.maruetsu,cut:'薄切り'}),null);
  assert.equal(validateTokubaiOffer('life',{...verified.life,tax:'183',taxAgain:'183'}),null);
 });
-test('each store fails independently; daily duplicate and expired template make no new requests',async()=>{
+test('stores fail independently; duplicate does not repeat and future discovery never uses the expired template',async()=>{
  const {collectTokubai,openDb,snapshot}=await import('../scripts/supermarket/collector.mjs');
  const {TOKUBAI_EDITIONS,TOKUBAI_ROBOTS,validateTokubaiOffer}=await import('../scripts/supermarket/tokubai-ocr.mjs');
  const db=openDb(':memory:');const calls=[];
@@ -60,7 +60,8 @@ test('each store fails independently; daily duplicate and expired template make 
   for(const id of ['ok','iy','yaoko'])assert.equal(r.states[id],'checked');
   assert.equal(r.offers[0].tax_included_sen,18200);
   await collectTokubai('life',db,'2026-11-20',fetch,opts);assert.equal(calls.length,7);
-  await collectTokubai('life',db,'2026-11-21',fetch,opts);assert.equal(calls.length,7);
+  // The historical print-only fixture has no official-store discovery chain.
+  await collectTokubai('life',db,'2026-11-21',fetch,opts);assert.equal(calls.length,8);
   assert.equal(snapshot(db,'2026-11-21').offers.length,0);
   assert.ok(calls.every(s=>!s.includes('/api/')));
  }finally{db.close();}

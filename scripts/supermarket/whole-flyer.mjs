@@ -89,13 +89,13 @@ export function regionsFromWords(words,width,height) {
       review_reasons:['PRODUCT_BOUNDARY_UNVERIFIED','LABEL_PRICE_ASSOCIATION_UNVERIFIED','ITEM_DATE_SCOPE_UNVERIFIED','TAX_UNIT_MEMBER_SCOPE_UNVERIFIED',...(values.length>1?['NUMERIC_READ_DISAGREEMENT']:[])],reads,observations:r.observations};
   });
 }
-export async function extractPage(input,{run=exec,prior=null}={}) {
+export async function extractPage(input,{run=exec,prior=null,maxPixels=24000000}={}) {
   const started=Date.now();
   const work=await mkdtemp(join(tmpdir(),'paluru-whole-'));
   const options={timeout:90000,maxBuffer:12*1024*1024,windowsHide:true,env:{PATH:process.env.PATH,LANG:'C.UTF-8',OMP_THREAD_LIMIT:'1',MAGICK_THREAD_LIMIT:'1',MAGICK_MEMORY_LIMIT:'256MiB',MAGICK_MAP_LIMIT:'256MiB',MAGICK_DISK_LIMIT:'512MiB'}};
   try{
     const dim=(await run('identify',['-ping','-format','%w %h',input],options)).stdout.trim().split(' ').map(Number);
-    const [width,height]=dim;if(!dim.every(Number.isInteger)||width<1||height<1||width*height>24000000)throw Error('IMAGE_DIMENSIONS');
+    const [width,height]=dim;if(!Number.isInteger(maxPixels)||maxPixels<1||maxPixels>48000000||!dim.every(Number.isInteger)||width<1||height<1||width*height>maxPixels)throw Error('IMAGE_DIMENSIONS');
     const plan=[{id:'full-psm11',x:0,y:0,w:width,h:height,psm:11,language:'jpn',render_scale:Math.min(1,4000/Math.max(width,height))},...tiles(width,height).map((t,i)=>({...t,id:'tile-'+i+'-best-psm11',psm:11,language:'jpn_best',render_scale:1}))];
     if(prior&&(prior.width!==width||prior.height!==height||!['jpn','jpn_full+jpn_best_tiles'].includes(prior.language)))throw Error('PRIOR_OCR_SCOPE');
     const words=prior?[...prior.words]:[],passes=prior?[...prior.passes]:[],failed=[];
