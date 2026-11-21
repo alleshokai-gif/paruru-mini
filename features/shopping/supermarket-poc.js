@@ -30,7 +30,9 @@
     const previous = new Date(date + 'T00:00:00Z');
     if (!Number.isFinite(previous.getTime()) || previous.toISOString().slice(0,10) !== date) return false;
     previous.setUTCDate(previous.getUTCDate() - 1);
-    return snapshot.freshness === 'previous_day' && snapshot.snapshot_date === previous.toISOString().slice(0,10);
+    return snapshot.freshness === 'previous_day' && snapshot.snapshot_date === previous.toISOString().slice(0,10) &&
+      ['item_validity_unproven','no_offers'].includes(snapshot.carry_forward_status) &&
+      Array.isArray(snapshot.offers) && snapshot.offers.length === 0;
   }
   function isOffer(o, date) {
     try {
@@ -144,7 +146,9 @@
     const today = isTodayProjection(snapshot, date);
     const previousDay = today && snapshot.freshness === 'previous_day';
     if (previousDay) target.append(el('p', '表示日：' + date + ' / 保存スナップショット：' + snapshot.snapshot_date +
-      '。本日の再収集ではありません。前日照合分から、商品別の有効期間内にある確認済み価格だけで再計算しています。', 'supermarket-note'));
+      '。本日の再収集ではありません。', 'supermarket-note'));
+    if (previousDay && snapshot.carry_forward_status === 'item_validity_unproven') target.append(el('p',
+      '商品別の適用日の根拠が未確認です。号全体の期間だけでは、今日の確認済み商品・献立に持ち越しません。', 'supermarket-note'));
     const confirmed = today && Array.isArray(snapshot.offers) && snapshot.offers.length <= 1000
       ? snapshot.offers.filter(o => isOffer(o,date) && eligibleState(snapshot.states?.[o.store])) : [];
     const stateLabel = id => {
@@ -162,7 +166,6 @@
       const main = el('div', undefined, 'supermarket-ingredient');
       main.append(el('p', o.title + '・' + o.spec), badge('confirmed', '確認済み'),
         el('p', priceText(o) + '（' + o.conditions + '、' + kindText(o) + '）', 'supermarket-price'));
-      if (previousDay) main.append(el('p', '商品取得日時（元時刻）：' + (o.obtained_at || '未確認'), 'supermarket-meta'));
       const rest = el('div', undefined, 'supermarket-ingredient');
       rest.append(el('p', '価格未確認：' + plan.rest.join('、') + '。合計額・在庫は不明です。'), badge('unknown', '未確認'));
       a.append(el('h3', plan.name), el('p', '買い物先：' + plan.store, 'supermarket-store'), el('p', '必要な材料', 'supermarket-label'), main, rest);
@@ -201,7 +204,6 @@
         c.append(el('p', o.title, 'supermarket-offer-title'), badge('confirmed', '確認済み'),
           el('p', shortName(o.store) + '・' + o.spec, 'supermarket-meta'),
           el('p', priceText(o), 'supermarket-price'), when);
-        if (previousDay) c.append(el('p', '商品取得日時（元時刻）：' + (o.obtained_at || '未確認'), 'supermarket-meta'));
         return c;
       };
       function draw() {

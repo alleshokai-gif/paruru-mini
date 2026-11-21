@@ -103,7 +103,7 @@
       if (at !== epoch) return false;
       const items = validItems(result);
       render(items);
-      if (operation.action === 'list') supermarketSnapshot = result.supermarketPoc || null;
+      if (operation.action === 'list') supermarketSnapshot = result.supermarketPoc || result.supermarketPreviousDayV1 || null;
       renderSupermarket(items);
       current = true;
       status.textContent = result.duplicates ? '同じ商品は登録済みです。数量は変更していません。'

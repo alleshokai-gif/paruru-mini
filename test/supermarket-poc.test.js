@@ -37,6 +37,24 @@ test('collects only official index, waits for review and safely reconciles an un
   } finally { db.close(); }
 });
 
+test('edition dates are not item-validity provenance for a weekly issue containing daily specials', async () => {
+  const {openDb, collect, verifyImport, snapshot} = await import('../scripts/supermarket/collector.mjs');
+  const db = openDb(':memory:');
+  try {
+    await collect(db,date,fakeFetch({html:index(pdf)}));
+    const daily={...row('daily special'),kind:'special',from:'2026-11-20',until:'2026-11-20'};
+    verifyImport(db,{...edition,offers:[row('weekly item'),daily]});
+    const saved=snapshot(db,date);
+    assert.equal(saved.offers.length,2);
+    // Current persistence drops the supplied item dates, so neither kind nor
+    // the copied week-long dates can authorize a previous-day confirmed price.
+    assert.deepEqual(saved.offers.map(o=>[o.from,o.until]),[
+      [edition.from,edition.until],[edition.from,edition.until]
+    ]);
+    assert.equal(poc.recommend(saved,[],'2026-11-21').length,0);
+  } finally { db.close(); }
+});
+
 test('store failure, scope drift, robots and changed documents fail closed', async () => {
   const {openDb, collect, verifyImport, snapshot} = await import('../scripts/supermarket/collector.mjs');
   const db = openDb(':memory:');

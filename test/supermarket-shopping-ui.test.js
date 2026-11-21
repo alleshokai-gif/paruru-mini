@@ -51,28 +51,30 @@ function setup() {
 }
 
 const item = {item_id:'a'.repeat(32),name:'納豆',quantity:1,unit:'組',memo:'',status:'pending',revision:1,due_date:null,updated_at:'2026-11-19T07:00:00.000Z'};
-test('previous-day Gateway projection recalculates today and distinguishes missing from zero eligible offers', async () => {
+test('versioned previous-day status does not promote edition dates and is distinct from missing data', async () => {
   const app = setup();
   const yesterday = new Date(app.date + 'T00:00:00Z'); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   const previous = yesterday.toISOString().slice(0,10);
   const data = result(app.date);
-  Object.assign(data.supermarketPoc, {snapshot_date:previous, freshness:'previous_day',
+  Object.assign(data.supermarketPoc, {snapshot_date:previous, freshness:'previous_day',offers:[],
+    carry_forward_status:'item_validity_unproven',
     plans:[{name:'DO NOT REUSE YESTERDAY PLAN'}]});
-  for (const offer of data.supermarketPoc.offers) offer.from = previous;
-  data.supermarketPoc.offers.push({...data.supermarketPoc.offers[0], title:'expired fixture', until:previous});
+  data.supermarketPreviousDayV1=data.supermarketPoc;
+  delete data.supermarketPoc;
   app.authenticate(async () => data);
   await app.open();
-  assert.equal(app.preview.all('article').filter(e => e.className === 'supermarket-plan').length,3);
+  assert.equal(app.preview.all('article').filter(e => e.className === 'supermarket-plan').length,0);
   assert.match(app.preview.text(), /本日の再収集ではありません/);
   assert.match(app.preview.text(), /前日照合（当日再取得なし）/);
   assert.ok(app.preview.text().includes(previous));
   assert.ok(!app.preview.text().includes('DO NOT REUSE YESTERDAY PLAN'));
-  assert.ok(!app.preview.text().includes('expired fixture'));
-  data.supermarketPoc.offers = [];
+  assert.match(app.preview.text(), /商品別の適用日の根拠が未確認/);
+  data.supermarketPreviousDayV1.carry_forward_status = 'no_offers';
   await app.open();
   assert.match(app.preview.text(), /本日の再収集ではありません/);
   assert.equal(app.preview.all('article').length,0);
-  delete data.supermarketPoc;
+  assert.ok(!app.preview.text().includes('商品別の適用日の根拠が未確認'));
+  delete data.supermarketPreviousDayV1;
   await app.open();
   assert.ok(!app.preview.text().includes('本日の再収集ではありません'));
   assert.ok(app.list.text().length > 0);
