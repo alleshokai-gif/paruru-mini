@@ -52,11 +52,23 @@ export function summarizePreoriginRows(values, targetDate) {
       duplicateRows++;
     } else { seen.set(id, identity); rows.push(value); }
   }
-  const samples = new Map(), chains = new Map(), trips = new Set(), runIds = new Set();
+  const samples = new Map(), chains = new Map(), trips = new Set(), runIds = new Set(), partialDescriptors = new Map();
   for (const value of rows) {
     runIds.add(String(value.run_id)); trips.add(String(value.target_trip_id));
     const sampleKey = [value.run_id, value.sample_index, value.feed_timestamp].join(':');
     if (!samples.has(sampleKey)) samples.set(sampleKey, value);
+    if (String(value.vehicle_classification) === 'partial_assignment' && VEHICLE_HASH.test(String(value.vehicle_hash))) {
+      const detailKey = `${sampleKey}:${value.vehicle_hash}`;
+      if (!partialDescriptors.has(detailKey)) {
+        const bits = [
+          `trip:${value.observed_trip_id ? 'yes' : 'no'}`,
+          `route:${value.observed_route_id ? 'yes' : 'no'}`,
+          `start:${value.observed_start_date ? 'yes' : 'no'}`,
+          `schedule:${value.observed_schedule_relationship !== '' && value.observed_schedule_relationship !== null ? 'yes' : 'no'}`
+        ].join('|');
+        partialDescriptors.set(detailKey, bits);
+      }
+    }
     if (!VEHICLE_HASH.test(String(value.vehicle_hash))) continue;
     const chainKey = [value.service_date, value.target_trip_id, value.vehicle_hash].join(':');
     if (!chains.has(chainKey)) chains.set(chainKey, { tripId: String(value.target_trip_id), candidates: [], assigned: [] });
@@ -84,8 +96,11 @@ export function summarizePreoriginRows(values, targetDate) {
     metrics.gpsMissing += integer(value.gps_missing_count);
     metrics.runtimeDropped += integer(value.runtime_dropped_count);
   }
+  const partialDescriptorPatterns = {};
+  for (const pattern of partialDescriptors.values()) partialDescriptorPatterns[pattern] = (partialDescriptorPatterns[pattern] || 0) + 1;
   return Object.freeze({ targetDate, executionsWithRows: runIds.size, rows: rows.length, uniqueObservationIds: seen.size,
     duplicateRows, targetTripsObserved: trips.size, samples: samples.size, metrics: Object.freeze(metrics),
+    partialDescriptorObservations: partialDescriptors.size, partialDescriptorPatterns: Object.freeze(partialDescriptorPatterns),
     levelA: Object.freeze({ chains: levelA.length, trips: levelATrips.size }), levelBCandidateTrips: levelBTrips.size,
     levelC: null, levelCStatus: 'not_auto_classified', vehicleHashesValid: rows.every((value) =>
       value.vehicle_hash === '' || VEHICLE_HASH.test(String(value.vehicle_hash))) });
