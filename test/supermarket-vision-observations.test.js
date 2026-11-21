@@ -14,7 +14,9 @@ test('image-associated numbers remain reference even with OCR matches or caller 
  assert.equal(i.prices[0].net_yen,100);assert.equal(i.prices[0].tax_included_yen,108);assert.equal(i.prices[0].unit_text,'1袋');
  assert.equal(i.valid_from,null);assert.equal(i.valid_until,null);assert.equal(i.verified_price,false);assert.equal(i.recommendation_eligible,false);
  assert.deepEqual(i.vision_evidence.numeric_crosscheck.net_seen_passes,['ocr-one']);assert.equal(i.vision_evidence.numeric_crosscheck.confers_verification,false);
- assert.deepEqual(i.vision_evidence.intersecting_tiles,['front-full']);assert.equal(p.coverage.state,'partial');
+ assert.deepEqual(i.vision_evidence.intersecting_tiles,['front-full']);assert.equal(p.vision_region_coverage.state,'partial');assert.equal(p.coverage,undefined);
+ f.readings.paper_period_readings={front:'11/21〜24',back:'11/21〜24'};const withHeader=visionPacket(f);
+ assert.equal(withHeader.pages[0].document_period_raw,'11/21〜24');assert.equal(withHeader.pages[0].items[0].valid_until,null,'paper header must not fill an unknown item period');
 });
 test('unknown price/unit stay unknown, explicit item dates stay separate from paper dates',async()=>{
  const {visionPacket}=await import('../scripts/supermarket/vision-observations.mjs'),f=fixture();
@@ -41,6 +43,7 @@ test('existing DB/catalog/snapshot/render path displays reference prices and nev
  try{const f=fixture();f.readings.rows.push({...f.readings.rows[0],id:'back-a',face:'back',name:'合成日用品',product_type:'nonfood'});
   const p=visionPacket(f);ingestCorpus(db,p);const out=snapshot(db,'2026-11-21');assert.deepEqual(out.offers,[]);assert.equal(out.corpus.pages.flatMap(p=>p.items).length,2);
   assert(out.corpus.pages.every(p=>p.items.every(i=>i.verification_state==='needs_review')));assert.deepEqual(ui.recommend(out,[],'2026-11-21'),[]);
+  assert.equal(out.corpus.coverage,null,'image walk audit must not enter Gateway DOM-only coverage contract');
   const target=new E('root');ui.render({createElement:tag=>new E(tag)},target,out,[],'2026-11-21');
   assert(target.text().includes('参考価格あり 2枠'));assert(target.text().includes('本体100円'));assert(target.text().includes('合成日用品'));
  }finally{db.close();}

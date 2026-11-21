@@ -57,7 +57,7 @@ export function visionPacket({manifest,readings,edition,pages,ocrPages,manifestH
   demand(!r.item_period||typeof r.period_raw_text==='string'&&r.period_raw_text.trim(),'PERIOD_EVIDENCE');
  }
  const unique=deduplicateVisionRows(readings.rows),resultPages=['front','back'].map((face,index)=>({face,
-  examined_tiles:manifest.tiles.filter(t=>t.face===face).map(t=>t.id),document_period_raw:null,
+  examined_tiles:manifest.tiles.filter(t=>t.face===face).map(t=>t.id),document_period_raw:readings.paper_period_readings?.[face]??null,
   items:unique.filter(r=>r.row.face===face).map(({row:r,ids})=>{
    const b=normalized(r.pixel_bbox,w,h),hasPrice=r.net_yen!==null||r.tax_included_yen!==null;
    return {name:r.name,spec:r.spec??null,variants:[],product_type:r.product_type??'unknown',price_state:hasPrice?'priced':'unreadable',
@@ -73,7 +73,8 @@ export function visionPacket({manifest,readings,edition,pages,ocrPages,manifestH
  return {schema:'supermarket-whole-corpus-v2',source_kind:'image',store:'iy',issue_id:'iy-00521-'+edition.source.match(/\/(\d+)$/)?.[1],source_document:edition.source,
   source_revision:sha(JSON.stringify(pages.map(p=>({ordinal:p.ordinal,source:p.source,sha256:p.sha256})))),analysis_revision:sha(implementation+inputRevision),
   obtained_at:edition.observed_at,physical_pdf_pages:null,logical_faces:2,document_from:edition.from_day,document_until:edition.until_day,
-  coverage:{state:'partial',expected_views:manifest.tiles.length,observed_views:readings.examined_tiles.length,missing_view_count:0,observed_dates:[]},
+  // Shared `coverage` is a DOM-view contract. Keep image walk audit private.
+  vision_region_coverage:{state:'partial',expected_views:manifest.tiles.length,observed_views:readings.examined_tiles.length,missing_view_count:0,observed_dates:[]},
   completeness_scope:'All planned image regions attempted with interactive built-in vision. Structured printed-name/spec/unit offers, not OCR text candidates. Approximate positions and reference prices; unknown product denominator/recall. Not scheduled extraction.',
   source_notes:readings.source_notes??[],pages:resultPages};
 }

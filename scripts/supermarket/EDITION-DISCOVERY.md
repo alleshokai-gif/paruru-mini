@@ -115,3 +115,63 @@ articles including price/unit and nonfood, with 0 confirmed offers/badges and
 0 menu plans. This was not a production browser acceptance or production write.
 Original images, real readings and DBs stay outside Git. Scheduled extraction,
 archive integration, production pricing and deployment remain unaccepted.
+
+## Source-bound lot import and Gateway contract
+
+The explicit image-region audit uses private `vision_region_coverage`.
+The shared `coverage` field is reserved for Rosen DOM views: Gateway rejects
+that field on image catalogs. Image audit must not silently remove the lot
+from the consumer. Explicitly read paper headers can populate each page's
+`document_period_raw`; this does not populate unknown item dates.
+
+The existing `ingestCorpus` private-DB append path already supplies immutable
+idempotency; no new import command, publisher or service is needed. Collector's
+`verified-import` command is for confirmed OK offers and must **not** be used
+for this reference lot. The compact private 51034 artifact is 225,224 bytes,
+SHA256 `1daa807bf7a8ca97af17ab979a3b7a06a06490edda87fe0e86cda9964d5dd963`.
+No image bytes are required. All 173 item objects and original source revision /
+acquisition time are unchanged from the image readback; explicit paper headers
+and private image audit are separate from item-period trust.
+
+Local acceptance used a synthetic six-store 842-row DB and the real public lot:
+842→1,015 private rows, duplicate import +0, all prior corpus/status/editions/
+OCR tables preserved. Three synthetic confirmed offers and their menu results
+were unchanged; added IY confirmed offers remained 0. The 173 target rows were
+all projected (67/106), snapshot 332,135 bytes, prepared DB 1,130,496 bytes.
+The existing `runDaily` publication-recovery path was tested with memory-only
+GCS and an existing daily claim: first recovered publication, then unchanged
+duplicate; no source requests or claim mutation. This is not a real Job run.
+
+Gateway main `5560624e84094c7188184c21090b0e44bd3f9889` was tested locally;
+its module matched the cached previously serving `d0f9734d` source (runtime
+not re-read). Fresh exported snapshots on 21/22/24 November preserve all 173
+references and 137 unknown item periods, without refreshing acquisition time
+or creating confirmed IY offers. Paper expiry on 25 November removes the lot.
+This is reference retention, not item-expiry filtering: within the paper period,
+main can retain already-expired item readings with their original dates.
+Wrong-store/host/query sources were rejected. Main still rejects an unchanged
+previous-day snapshot. A separate local comparison with pending #372 produced
+171 prior-day references, including 137 unknown-period rows, with expired rows
+excluded and no legacy `corpus` / confirmed offers. That comparison requires
+the unmerged UI/Gateway work; it is not current production behavior.
+
+For a later authorized production import: respect owner-only merge and required
+CI; pin this artifact; obtain a fresh authorized dedicated DB copy and both
+object generations during a non-overlapping window; append via `ingestCorpus`,
+read back and repeat-import locally; preserve all old tables/claims; publish DB
+then a current-date export using the existing two object keys and CAS, with exact
+readback after each. A conflict stops publication, never a blind retry. Do not
+upload the synthetic fixture, execute the historical date-pinned release script,
+delete claims, or start a manual collection to import references. The current
+lot does not require a new model or a Collector image rollout. Observe the next
+natural daily publication separately. No production step was executed here.
+
+The documented Windows `read-public-flyer-once.py` worker supports only OK's
+allowlisted manifest, one CLI process / face and a 900-second deadline; provider
+HTTP retry count and USD cost are unknown. Documentation explicitly says it is
+not an enabled Controller/Cloud Run daily vision lane. Current repository
+Controller defaults keep the night worker off and mechanically disable image
+tools. Installed credential/config values were not inspected. Therefore an
+authorized unattended **IY** route with an enforced cost bound was not proven;
+no route was wired, invoked or scheduled. This does not block the source-bound
+reference artifact import above.
