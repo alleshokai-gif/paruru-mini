@@ -254,7 +254,9 @@
     target.append(state);
     // Whole-paper observations are independent of confirmed offers and menus.
     // These values remain unverified readings, including nonfood and no-price rows.
-    const corpus=today&&snapshot.corpus;
+    const corpus=today&&(previousDay?snapshot.reference_corpus:snapshot.corpus);
+    if (previousDay && corpus) target.append(el('h3','前回のチラシ・参考'),
+      el('p','保存日：'+snapshot.snapshot_date+'。以下は前回紙面の読取です。今日の特売・有効商品数・献立・価格比較には使っていません。', 'supermarket-note'));
     if(today&&snapshot.corpus_status==='too_large')target.append(el('p','全紙面の読取はDBに保存されています。表示サイズの上限を超えたため、ここでは確認済み商品だけを表示しています。'));
     if(today&&snapshot.corpus_status==='partial')target.append(el('p','読取はDBに保存されています。表示容量を超えた分は、この画面から省略しています。'));
     const catalogs=corpus?.schema===2&&Array.isArray(corpus.catalogs)&&corpus.catalogs.length<=24?corpus.catalogs:[corpus];
