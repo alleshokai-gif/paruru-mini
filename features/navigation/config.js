@@ -8,6 +8,7 @@
     district: "宮前区:向丘地区",
   }).toString();
   const ecoCuteMonitorUrl = "https://docs.google.com/spreadsheets/d/1YtQ51e0sslKqxgoXnEU4--zz4UuYHkoZxYXASwfzavQ/edit#gid=1466702603";
+  const cashflowDashboardUrl = "https://script.google.com/macros/s/AKfycbxOdedxLYb-uKHWbN5xPg-nSNq3jIGTYamfYbN_buBf3x12R4WCmqBw2h-DpqOSlmsG/exec";
 
   const items = Object.freeze([
     { id: "family-schedules", label: "家族予定", note: "学校・部活などの予定", icon: "📅", view: "family-schedules", home: true, menu: true, section: "毎日のこと" },
@@ -18,6 +19,7 @@
     { id: "nurse", label: "ナースおかん", note: "健康記録", icon: "🌿", view: "nurse-okan", home: true, menu: true, section: "暮らし" },
     { id: "popio", label: "ぽぴお", note: "ペットの健康", icon: "🐶", view: "popio-health", home: true, menu: true, section: "暮らし" },
     { id: "ecocute", label: "エコキュート", icon: "♨️", href: ecoCuteMonitorUrl, external: true, menu: true, section: "暮らし" },
+    { id: "cashflow", label: "キャッシュフロー", icon: "💰", href: cashflowDashboardUrl, external: true, menu: true, section: "暮らし" },
     { id: "kaz-os", label: "Kaz OS", note: "やること・予定・確認", icon: "▦", view: "kaz-os", page: "today", menu: true, section: "やること・確認" },
     { id: "memo", label: "ぱるるメモ", note: "思いついたことを残す", icon: "📝", view: "home", capability: "memo.self.create", openMemo: true, menu: true, section: "その他" },
     { id: "settings", label: "設定", icon: "⚙️", view: "settings", menu: true, section: "その他" },

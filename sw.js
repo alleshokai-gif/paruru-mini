@@ -1,4 +1,4 @@
-importScripts("./build.js?v=v20261120-supermarket-shopping-v1");
+importScripts("./build.js?v=v20261121-cashflow-menu-v1");
 // Release: v20261107-location-history-page
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
