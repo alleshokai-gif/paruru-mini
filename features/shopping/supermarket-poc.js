@@ -228,6 +228,7 @@
   }
 
   const PAGE = 8;
+  let selectSeq = 0;
   function render(doc, target, snapshot, items, date = dayTokyo()) {
     const el = (tag, value, cls) => { const n = doc.createElement(tag); if (value !== undefined) n.textContent = value; if (cls) n.className = cls; return n; };
     const badge = (kind, text) => el('span', text, 'supermarket-badge is-' + kind);
@@ -266,8 +267,8 @@
       const box = el('section', undefined, 'supermarket-picker');
       box.setAttribute('aria-label', 'カテゴリ別の掲載価格');
       const results = el('div', undefined, 'supermarket-results');
-      const bar = (label, defs, key, cls) => {
-        const g = el('div', undefined, 'supermarket-chips' + (cls ? ' ' + cls : ''));
+      const bar = (label, defs, key) => {
+        const g = el('div', undefined, 'supermarket-chips');
         g.setAttribute('role', 'group'); g.setAttribute('aria-label', label);
         for (const [value, text] of defs) {
           const b = el('button', text); b.type = 'button'; b.className = 'supermarket-chip';
@@ -332,7 +333,23 @@
           results.append(d);
         }
       }
-      box.append(bar('種類で絞り込み', categories.map(([id, l]) => [id, l + '（' + countIn(id) + '）']), 'cat', 'supermarket-tabs'),
+      const selectId = 'supermarketCategorySelect' + (++selectSeq);
+      const catField = el('div', undefined, 'supermarket-category-field');
+      const catLabel = el('label', '種類で絞り込み', 'supermarket-category-label');
+      catLabel.htmlFor = selectId;
+      const catSelect = el('select', undefined, 'supermarket-category-select');
+      catSelect.id = selectId;
+      for (const [id, l] of categories) {
+        const o = el('option', l + '（' + countIn(id) + '）'); o.value = id; o.selected = id === filter.cat;
+        catSelect.append(o);
+      }
+      catSelect.addEventListener('change', () => {
+        if (!categoryIds.includes(catSelect.value)) return;
+        filter.cat = catSelect.value;
+        draw();
+      });
+      catField.append(catLabel, catSelect);
+      box.append(catField,
         bar('店舗で絞り込み（任意）', [['all', '全店舗'], ...storeIds.map(id => [id, shortName(id) + '（' + all.filter(r => r.store === id).length + '）'])], 'store'),
         results);
       draw();
