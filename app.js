@@ -2642,9 +2642,22 @@ async function callHomeControlReadOnlyApi_(payload) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const controller = new AbortController();
     const startedAt = Date.now();
-    const timer = setTimeout(() => controller.abort(), KAZ_OS_READ_TIMEOUT_MS);
+    let timer;
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        const cause = new Error("Kaz read deadline exceeded");
+        cause.name = "AbortError";
+        reject(createHomeControlError("HOME_CONTROL_UNAVAILABLE", {
+          cause, transportClassification: "timeout",
+        }));
+      }, KAZ_OS_READ_TIMEOUT_MS);
+    });
     try {
-      const result = await callHomeControlApi({ ...requestPayload, transport_attempt: attempt + 1 }, { signal: controller.signal });
+      const result = await Promise.race([
+        callHomeControlApi({ ...requestPayload, transport_attempt: attempt + 1 }, { signal: controller.signal }),
+        deadline,
+      ]);
       logKazOsReadDiagnostic_(diagnostic, requestPayload?.action, attempt, Date.now() - startedAt, null, "success");
       return result;
     } catch (error) {

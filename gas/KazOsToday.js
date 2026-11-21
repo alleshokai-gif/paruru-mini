@@ -19,8 +19,9 @@ function readKazOsToday_(transportTrace) {
     throw error;
   }
   recordKazOsTransport_(transportTrace, 'DECISION_LEDGER_READ_START', { outcome: 'progress' });
-  const classifications = buildKazOsTodayPlanningClassifications_();
-  const planning = buildKazOsTodayPlanningEvidence_();
+  const decisionRows = readKazOsTodayDecisionRows_();
+  const classifications = buildKazOsTodayPlanningClassifications_(decisionRows);
+  const planning = buildKazOsTodayPlanningEvidence_(decisionRows);
   const workBusy = buildKazOsWorkBusyToday_(planning.planning_date);
   recordKazOsTransport_(transportTrace, 'DECISION_LEDGER_READ_END', { outcome: 'progress' });
   recordKazOsTransport_(transportTrace, 'CLOUD_RUN_START', { outcome: 'progress' });
@@ -58,12 +59,24 @@ function readKazOsToday_(transportTrace) {
   return JSON.parse(text);
 }
 
-function buildKazOsTodayPlanningClassifications_() {
+function readKazOsTodayDecisionRows_() {
+  if (typeof isKazOsInboxAnswerEnabled_ === 'function' && !isKazOsInboxAnswerEnabled_()) return [];
+  if (typeof readKazOsDecisionLedger_ !== 'function') return [];
+  try {
+    const rows = readKazOsDecisionLedger_();
+    return Array.isArray(rows) ? rows : [];
+  } catch (_) {
+    // One request-local snapshot; unavailable evidence retains existing fail-safe behavior.
+    return [];
+  }
+}
+
+function buildKazOsTodayPlanningClassifications_(decisionRows) {
   if (typeof isKazOsInboxAnswerEnabled_ === 'function' && !isKazOsInboxAnswerEnabled_()) return [];
   if (typeof readKazOsDecisionLedger_ !== 'function') return [];
   let rows;
   try {
-    rows = readKazOsDecisionLedger_();
+    rows = decisionRows === undefined ? readKazOsDecisionLedger_() : decisionRows;
   } catch (_) {
     // Missing/unavailable ledger means "no current human classification evidence".
     // Backend will fail safe and will not treat unanswered Calendar time as free.
@@ -102,7 +115,7 @@ function buildKazOsTodayPlanningClassifications_() {
   return Object.keys(byKey).sort().map(function(key) { return byKey[key]; });
 }
 
-function buildKazOsTodayPlanningEvidence_() {
+function buildKazOsTodayPlanningEvidence_(decisionRows) {
   const timezone = 'Asia/Tokyo';
   const planningDate = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
   const empty = { timezone: timezone, planning_date: planningDate, preferences: [], daily_estimates: [] };
@@ -110,7 +123,7 @@ function buildKazOsTodayPlanningEvidence_() {
   if (typeof readKazOsDecisionLedger_ !== 'function') return empty;
   let rows;
   try {
-    rows = readKazOsDecisionLedger_();
+    rows = decisionRows === undefined ? readKazOsDecisionLedger_() : decisionRows;
   } catch (_) {
     // Human planning evidence enriches TODAY but is not an availability prerequisite.
     // Calendar remains fail-safe; missing ledger evidence must not take TODAY offline.
