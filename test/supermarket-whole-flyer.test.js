@@ -1,6 +1,13 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const modulePromise=import('../scripts/supermarket/whole-flyer.mjs');
+test('large local originals require an explicit bounded pixel budget; normal default is unchanged',async()=>{
+ const {extractPage}=await modulePromise;let reads=0;
+ const run=async cmd=>{if(cmd==='identify')return {stdout:'7510 5374'};if(cmd==='tesseract')reads++;return {stdout:''};};
+ await assert.rejects(extractPage('synthetic',{run}),/IMAGE_DIMENSIONS/);assert.equal(reads,0);
+ const p=await extractPage('synthetic',{run,maxPixels:48000000});assert.equal(p.pixel_coverage,1);assert.equal(p.passes.length,25);
+ await assert.rejects(extractPage('synthetic',{run,maxPixels:48000001}),/IMAGE_DIMENSIONS/);
+});
 test('overlapping tiles cover every original pixel including portrait/landscape edges',async()=>{
  const {tiles}=await modulePromise;
  for(const [w,h] of [[4000,2812],[2813,4000],[500,300],[1601,1601]]){
