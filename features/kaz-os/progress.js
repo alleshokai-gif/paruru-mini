@@ -9,11 +9,19 @@
   const time = value => value ? new Date(value).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '不明';
   const tests = value => value ? `Tests ${value.passed}/${value.total}` : 'Tests 不明';
   function section(title) { const e = node('section', '', 'kaz-section'); e.append(node('h2', title)); byId('kazOsContent').append(e); return e; }
+  // Issue #240: state codes are shown in Japanese first; the raw code stays as a suffix/title.
+  const pillText = { LIVE:'稼働中', DONE:'完了', ACCEPTED:'受入済み', OK:'正常', BUILDING:'構築中',
+    DRAFT:'下書き', STALE:'期限切れ', PARTIAL:'一部', RUNNING:'実行中', 'READ-ONLY':'閲覧のみ',
+    BLOCKED:'停止', FAILED:'失敗', REJECTED:'却下', 'NOT CONNECTED':'未観測', NOT_CONNECTED:'未観測',
+    'STAGE UNDEFINED':'段階未定義' };
   function pill(label) {
     const tone = ['LIVE','GO','DONE','ACCEPTED','OK'].includes(label) ? 'good'
       : ['BUILDING','PoC','DRAFT','STALE','PARTIAL','RUNNING'].includes(label) ? 'warm'
       : label === 'READ-ONLY' ? 'read' : ['BLOCKED','FAILED','REJECTED'].includes(label) ? 'stop' : 'quiet';
-    return node('span', label, `kaz-status kaz-${tone}`);
+    const jp = pillText[label];
+    const e = node('span', jp ? (['FAILED','BLOCKED','STALE'].includes(label) ? `${jp}（${label}）` : jp) : label, `kaz-status kaz-${tone}`);
+    e.dataset.code = label; e.title = label;
+    return e;
   }
   const uniqueCount = (values, key) => Array.isArray(values) ? new Set(values.map(v => v[key])).size : null;
   const planLabel = label => ({
@@ -47,7 +55,7 @@
     const latest = achievements?.[0];
     byId('kazOsDiagnosticsStatus').textContent = current
       ? latest?.label || data.overview?.stage || 'Overviewを確認'
-      : `Source ${data.source.status.toUpperCase()}`;
+      : `Source ${pillText[String(data.source.status).toUpperCase().replace('_', ' ')] || ''}（${String(data.source.status).toUpperCase()}）`;
     const status = section('Progress'); status.classList.add('kaz-overview');
     status.append(pill(data.overview?.stage || 'STAGE UNDEFINED'));
     const reviewItems = current && Array.isArray(data.waiting_for_review) ? data.waiting_for_review : null;
@@ -66,7 +74,10 @@
     const arrival = node('div', '', 'kaz-progress-arrival');
     arrival.append(node('small', 'LATEST ACHIEVEMENT'), node('p', latest?.label || (current && Array.isArray(achievements) ? '確認できた成果はまだありません。' : '現在の到達点は再確認が必要です。'), 'kaz-arrival'));
     status.append(arrival, node('p', data.overview?.scope || data.scope_label, 'kaz-muted'));
-    if (!current) status.append(node('p', `一部情報を取得できていない、または古い状態です：${data.source.status.toUpperCase()}`, 'kaz-warning'));
+    if (!current) {
+      const code = String(data.source.status || 'unknown').toUpperCase().replace('_', ' ');
+      status.append(node('p', `一部情報を取得できていない、または古い状態です：${pillText[code] || '状態未確認'}（${code}）`, 'kaz-warning'));
+    }
     const active = section('Active Work'); active.classList.add('kaz-active');
     const draftPlan = data.roadmap?.status === 'draft' && data.roadmap.source === 'user' ? data.roadmap : null;
     const laneItems = phase => draftPlan?.lanes.find(l => l.phase === phase)?.items || [];
@@ -99,6 +110,8 @@
     data.system_status.forEach(s => {
       const row = node('details', '', 'kaz-system'), summary = node('summary');
       summary.append(node('strong', s.label), pill(s.state)); row.append(summary, node('p', s.basis, 'kaz-muted'));
+      if (s.state === 'FAILED') row.append(node('p', `失敗の詳細: Component「${s.label}」の状態コード FAILED。上の根拠を確認し、直らない場合はこのComponent名を開発担当へ伝えてください。`, 'kaz-warning'));
+      if (s.state === 'FAILED' || s.state === 'BLOCKED') row.open = true;
       const healthName = s.id === 'context' ? 'GitHub Context' : s.id === 'calendar' ? 'Calendar' : null;
       const health = data.source_health.find(h => h.name === healthName);
       if (health) { summary.append(node('small', `記録 ${health.status.toUpperCase()}`)); row.append(node('p', `${time(health.fetched_at)} JST · ${health.scope}`, 'kaz-muted')); }
@@ -135,10 +148,13 @@
     if (data.recent_runs === null) runs.append(node('p', 'Run取得失敗。0件として扱いません。'));
     else if (!data.recent_runs.length) runs.append(node('p', 'この取得範囲のRunは0件です。'));
     else data.recent_runs.forEach(r => {
-      const card = disclosure(`Codex Run ${r.execution_status === 'completed' ? '✓' : ''} · ${r.execution_status}`, 'kaz-run');
+      const runJp = { completed: '完了', failed: '失敗', running: '実行中', cancelled: '中止' }[r.execution_status];
+      const card = disclosure(`Codex Run ${r.execution_status === 'completed' ? '✓' : ''} · ${runJp ? `${runJp}（${r.execution_status}）` : r.execution_status}`, 'kaz-run');
+      if (r.execution_status === 'failed') card.classList.add('kaz-run-failed');
       const summary = card.querySelector('summary'); summary.append(node('small', r.project, 'kaz-muted'));
       card.append(node('h3', r.work_item), node('p', `${r.execution_status} / capture ${r.capture_status}`),
         node('p', `${time(r.started_at)} → ${time(r.finished_at)} JST`), node('p', `${tests(r.tests)} · Human Review ${r.human_review} · Acceptance ${r.acceptance}`), node('small', `Run ${r.run_id}`));
+      if (r.execution_status === 'failed') card.append(node('p', `失敗の詳細: このRunは失敗として記録されています（capture ${r.capture_status}）。成果としては扱いません。`, 'kaz-warning'));
       runs.append(card); runTargets.set(r.run_id, card);
     });
     const details = section('記録とEvidence');

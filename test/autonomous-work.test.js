@@ -42,8 +42,10 @@ async function main(){
   assert.equal(feature.workHistory(ownerView,evaluatedAt).decisions.size,0);
 
   const empty=new Node('div');await feature.append(empty,{read:async()=>({schema_version:'kaz-autonomous-view-v1',status:'no_results',run:null,raw_payload_stored:false}),current:()=>true});
-  assert.ok(all(empty).some(x=>x.textContent==='新しい部分成果 0件 · 今夜の判断待ち 0件'));
+  assert.ok(all(empty).some(x=>x.textContent?.startsWith('新しい部分成果 0件 · 今夜の判断待ち 0件')));
   assert.equal(all(empty).filter(x=>x.tag==='article').length,0,'no false result on an empty night');
+  assert.ok(all(empty).some(x=>x.textContent==='判断待ちの有無は未確認'));
+  assert.ok(all(empty).some(x=>x.textContent==='記録確認待ち'));
   const partial={work_label:'WI-51',title:'Context Feedback',status:'partial_completed',work_done:false,
     completed_at:new Date().toISOString(),summary:'利用結果を記録',next_action:'参照方針の見直し',
     decision_required:false,evidence_refs:[`https://github.com/alleshokai-gif/kaz-context/blob/${'b'.repeat(40)}/intermediate/context-feedback.json`]};
@@ -100,7 +102,7 @@ async function main(){
   assert.ok(all(nightlyHost).some(x=>x.textContent==='依頼を受けて先に進めた仕事'));
   assert.ok(!all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-51'));
   assert.ok(!historyBox.open,'history starts collapsed');
-  assert.ok(all(recentBox).some(x=>x.textContent==='新しい部分成果 1件 · 今夜の判断待ち 0件'));
+  assert.ok(all(recentBox).some(x=>x.textContent?.startsWith('新しい部分成果 1件 · 今夜の判断待ち 0件')));
   const batch=fixture(), second=fixture().run;
   batch.as_of=asOf;
   batch.run.night_day=second.night_day='2026-11-04';
@@ -117,17 +119,17 @@ async function main(){
       auto_apply_allowed:false,canonical_writes:0,provider_calls:0};
   }});
   const batchRecent=all(batchHost).find(x=>x.className==='kai-autonomous-latest');
-  assert.ok(all(batchRecent).some(x=>x.textContent==='新しい部分成果 2件 · 今夜の判断待ち 2件'));
+  assert.ok(all(batchRecent).some(x=>x.textContent?.startsWith('新しい部分成果 2件 · 今夜の判断待ち 2件')));
   assert.ok(all(batchRecent).some(x=>x.textContent?.includes('入力 300 · 出力 25')));
   await all(all(batchRecent).find(x=>x.dataset.autonomousWork==='second'))
     .find(x=>x.dataset.autonomousDecision==='approve').listeners.click();
-  assert.ok(all(batchRecent).some(x=>x.textContent==='新しい部分成果 2件 · 今夜の判断待ち 1件'));
+  assert.ok(all(batchRecent).some(x=>x.textContent?.startsWith('新しい部分成果 2件 · 今夜の判断待ち 1件')));
   const oldRun=fixture();oldRun.as_of=asOf;oldRun.run.night_day='2026-11-03';
   const oldRunHost=new Node('div');
   await feature.append(oldRunHost,{read:async()=>oldRun,current:()=>true});
   const oldRunRecent=all(oldRunHost).find(x=>x.className==='kai-autonomous-latest');
   const oldRunHistory=all(oldRunHost).find(x=>x.className==='kai-autonomous-history');
-  assert.ok(all(oldRunRecent).some(x=>x.textContent==='新しい部分成果 0件 · 今夜の判断待ち 0件'));
+  assert.ok(all(oldRunRecent).some(x=>x.textContent?.startsWith('新しい部分成果 0件 · 今夜の判断待ち 0件')));
   assert.ok(all(oldRunHistory).some(x=>x.dataset.autonomousWork==='w'));
   const reviewed=fixture();reviewed.as_of=asOf;reviewed.run.night_day='2026-11-03';
   reviewed.run.status='complete';
@@ -169,14 +171,14 @@ async function main(){
     assert.equal(calls,1);assert.ok(all(host).some(x=>x.textContent?.includes('読み戻せました')));
     assert.equal(v.run.status,'review_pending','review acknowledgement does not apply or merge');
     assert.ok(all(host).filter(x=>x.tag==='button').every(x=>x.disabled),'one explicit immutable review per report');
-    assert.ok(all(host).some(x=>x.textContent==='新しい部分成果 1件 · 今夜の判断待ち 0件'));
+    assert.ok(all(host).some(x=>x.textContent?.startsWith('新しい部分成果 1件 · 今夜の判断待ち 0件')));
   }
   for(const change of [{status:'failed'},{owner_decision:null},{review_state:'investigation_pending'},
       {validation:'tracking_ref_stale'}]){
     const failure=fixture(), failureHost=new Node('div');Object.assign(failure.run.items[0],change);
     await feature.append(failureHost,{read:async()=>failure,current:()=>true,review:async()=>{throw Error('must not submit')}});
     assert.equal(all(failureHost).filter(x=>x.tag==='button').length,0);
-    assert.ok(all(failureHost).some(x=>x.textContent?.includes('自動調査・再評価待ち 1件')));
+    assert.ok(all(failureHost).some(x=>x.textContent?.includes(change.status === 'failed' ? '失敗 1件' : '自動調査・再評価待ち 1件')));
     assert.ok(all(failureHost).some(x=>x.textContent==='根拠資料（任意）'));
   }
   const unavailable=fixture();unavailable.run.items[0].review_read_status='unavailable';

@@ -158,9 +158,34 @@
     OUTSIDE_SCOPE:'実行権限の対象外', NO_ACTION:'実装指示なし・調査候補',
     PR_EVIDENCE:'既存PR記録あり', RESERVED:'同じ作業が予約済み'
   };
+  // Issue #240: one label per state; FAILED is always Japanese plus a code detail.
+  const nightStateLabel={completed:'完了',skipped:'正常スキップ',no_output:'新しい成果なし',failed:'失敗',
+    unavailable:'記録を取得できない',unknown:'結果未確認',running:'実行中の記録あり',time_limit:'時間上限で終了',
+    budget_limit:'実行枠上限で終了',work_limit:'件数上限で終了',scheduled:'開始前'};
+  const itemStateLabel={complete:'完了',running:'実行中',review_pending:'判断待ち',failed:'失敗',
+    blocked:'停止（ブロック）',unknown:'結果未確認'};
+  const itemStateTone={complete:'ok',running:'ok',review_pending:'warn',failed:'stop',blocked:'stop',unknown:'warn'};
+  const code=value=>typeof value==='string'&&/^[A-Za-z0-9_.:-]{1,80}$/.test(value)?value:null;
+  const jstClock=value=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',
+    hour:'2-digit',minute:'2-digit'}).format(new Date(value))+' JST';
+  const jstDay=value=>{const d=new Date(value);return Number.isFinite(d.getTime())
+    ?new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(d):null;};
+  const runLabel=id=>'Run '+String(id).slice(0,8);
+  function chips(parent,values){
+    const row=text(parent,'p','','kai-entry-meta');
+    for(const [label,tone] of values)if(label)text(row,'span',label,'kai-chip'+(tone?' kai-chip-'+tone:''));
+    return row;
+  }
+  function failureDetail(parent,fields){
+    const details=document.createElement('details');details.className='kai-failure-detail';
+    text(details,'summary','失敗の詳細（技術情報）');
+    text(details,'p',fields.filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join(' · '),'kai-action-source');
+    text(details,'p','この記録だけで成果採用・Work完了とは扱いません。同じ作業を再実行する前に、この詳細を開発担当へ伝えてください。','kai-action-source');
+    parent.appendChild(details);
+  }
   function renderNightStatus(parent,execution,day,hasResult){
     if(!execution||execution.day!==day){
-      if(!hasResult)text(parent,'p',nightMessages.unknown,'kp-notice');
+      if(!hasResult)text(parent,'p',`${day} 夜の実行記録は未観測です。`+nightMessages.unknown,'kp-notice');
       return;
     }
     const status=execution.status;
@@ -168,10 +193,14 @@
     const message=status==='skipped'&&['no_eligible_work','no_testable_step','legacy_preflight_skip','already_reserved'].includes(reason)
       ? nightMessages[reason] : status==='no_output'&&reason==='evidence_only'?nightMessages.evidence_only : status==='unavailable'&&reason==='inventory_unavailable'
         ? nightMessages.inventory_unavailable : status==='failed'&&reason==='preflight_failed'
-          ? nightMessages.preflight_failed : Object.hasOwn(nightMessages,status)?nightMessages[status]:nightMessages.unknown;
+          ? nightMessages.preflight_failed
+          : status==='running'&&!hasResult?'夜間処理の開始記録があります。実行IDを確認できるまでAI対応中とは扱いません。'
+          : Object.hasOwn(nightMessages,status)?nightMessages[status]:nightMessages.unknown;
     if(['time_limit','budget_limit','work_limit'].includes(reason))
       text(parent,'p',nightMessages[reason],'kai-action-source');
     else if(status!=='completed'||!hasResult)text(parent,'p',message,'kp-notice');
+    if(['failed','unavailable','unknown'].includes(status)||!Object.hasOwn(nightStateLabel,status))
+      failureDetail(parent,[['対象夜',day],['状態コード',code(status)||'不明'],['理由コード',code(reason)]]);
     if(status==='skipped'&&Number.isInteger(execution.inventory_count)
       &&execution.inventory_count>=0&&execution.inventory_count<=200){
       const details=document.createElement('details');
@@ -204,9 +233,15 @@
     const attempts=(view.night_attempts||[]).filter(r=>nightDay(r.started_at,true)===todayNight&&Date.parse(r.started_at)<=now);
     const pastRun=view.run&&!recentRuns.some(r=>r.run_id===view.run.run_id)?view.run:null;
     text(section,'h2','AIが進めた仕事');
+    // Issue #240 brief: 今日の判断 → 理由・影響 → 対応証拠 → 次担当.
+    const brief=document.createElement('dl');
+    brief.className='kp-brief';brief.dataset.autonomousBrief='true';
+    const cell=label=>{text(brief,'dt',label);return text(brief,'dd','');};
+    const decisionCell=cell('今日の判断'),reasonCell=cell('理由・影響'),summary=cell('対応証拠'),ownerCell=cell('次担当');
     const report=document.createElement('div');
     report.className='kai-autonomous-latest';
     text(report,'h3',todayNight+' 夜の作業');
+    report.appendChild(brief);
     const completedRecent=recent.length+recentRuns.flatMap(r=>r.items).filter(i=>i.substep_completed&&i.pr_url).length;
     const usage=[...recent.map(i=>i.usage),...recentRuns.filter(r=>r.codex_cli_attempts>0).map(r=>r.metrics?.usage)];
     if(usage.length){
@@ -215,24 +250,48 @@
       const amounts=known.length?`入力 ${totals[0].toLocaleString()} · 出力 ${totals[2].toLocaleString()} トークン`:'取得できません';
       text(report,'p',`Codex利用量 ${amounts}${known.length<usage.length?'（一部未計測）':''} · 費用 未計測`,'kai-action-source');
     }
-    const summary=text(report,'p','','kai-action-source');
+    const execution=view.night_execution?.day===todayNight?view.night_execution:null;
+    const recentItems=recentRuns.flatMap(r=>r.items);
+    const failedItems=recentItems.filter(i=>i.status==='failed').length;
+    const unconfirmedCount=attempts.filter(a=>['unconfirmed','unknown'].includes(a.status)).length
+      +recentItems.filter(i=>i.status==='unknown').length;
+    // "AI実行中" only with a real run ID from a validated run record.
+    const liveRun=recentRuns.find(r=>r.items.some(i=>i.status==='running'));
     const updateSummary=()=>{
       const pending=recent.filter(i=>i.decision_required).length+recentRuns.flatMap(r=>r.items).filter(i=>ready(i)&&!i.review).length;
-      const completed=view.partial_progress_unavailable?'集計できません':completedRecent+'件';
+      const completed=view.partial_progress_unavailable?'集計できません（未観測）':completedRecent+'件';
       const finishedWorks=recentRuns.flatMap(r=>r.items).filter(i=>i.work_done===true&&i.status==='complete').length;
       summary.textContent=`新しい部分成果 ${completed} · 今夜の判断待ち ${pending}件`
-        +(finishedWorks?` · Work完了 ${finishedWorks}件`:'');
+        +(finishedWorks?` · Work完了 ${finishedWorks}件`:'')
+        +` · 実行記録 ${recentRuns.length}件 · 失敗 ${failedItems}件`
+        +(unconfirmedCount?` · 結果未確認 ${unconfirmedCount}件`:'');
+      const failed=failedItems>0||execution?.status==='failed';
+      const unobserved=view.partial_progress_unavailable || !execution
+        || !['completed','skipped'].includes(execution.status);
+      decisionCell.textContent=pending?`あなたの判断待ち ${pending}件`
+        :failed?'失敗あり · 下の詳細を確認':unobserved?'判断待ちの有無は未確認':'本人の判断は不要';
+      reasonCell.textContent=execution
+        ?`${todayNight} 夜: ${nightStateLabel[execution.status]||'結果未確認'}`+(failed?' · 失敗した成果は採用されていません':'')
+        :`${todayNight} 夜の実行記録は未観測（0件ではありません）`;
+      ownerCell.textContent=pending?'本人（下の判断ボタン）'
+        :liveRun?`AI · ${runLabel(liveRun.run_id)} 実行中`
+        :execution?.status==='running'?'実行記録待ち（実行ID未確認のためAI対応中とは扱わない）'
+        :failed?'開発担当（失敗の詳細を確認）':unobserved?'記録確認待ち':'なし（次回の夜間実行で再確認）';
+      if(failed)brief.dataset.tone='stop';else if(pending||unobserved)brief.dataset.tone='warn';else delete brief.dataset.tone;
     };
     updateSummary();
     renderNightStatus(report,view.night_execution,todayNight,Boolean(completedRecent||recentRuns.length));
     for(const attempt of attempts){
       if(attempt.status==='artifact_verified'&&recent.some(row=>row.work_label===attempt.work_label&&row.started_at===attempt.started_at))continue;
-      const card=document.createElement('article');
+      const card=document.createElement('article');card.className='kai-entry';
       text(card,'h4',`${attempt.work_label} · 夜間の成果物作成`);
+      const attemptLabel={no_output:['成果なし',''],artifact_verified:['成果物を確認済み','ok'],
+        unconfirmed:['結果未確認','warn'],unknown:['起動準備のみ確認','warn']}[attempt.status];
+      chips(card,[[jstClock(attempt.started_at),''],[attempt.work_label,''],attemptLabel]);
       const messages={no_output:'Codexは実行済み。既存資料を調べたものの、新しい成果案は返りませんでした。',
         artifact_verified:'成果物の保存と検証を確認済み。成果欄への反映待ちです。',
         unconfirmed:'途中で結果を確認できなくなりました。自動再送はしません。',
-        unknown:'起動準備の記録まで確認。実行結果は未確認です。'};
+        unknown:'起動準備の記録まで確認。実行結果は未確認です（AI対応中とは扱いません）。'};
       text(card,'p',messages[attempt.status]);
       if(attempt.status==='no_output')text(card,'p','本人判断の依頼はありません。次回は未処理の一手を候補から探します。','kai-action-source');
       report.appendChild(card);
@@ -240,9 +299,12 @@
     section.appendChild(report);
     function renderPartial(parent,item){
       const card=document.createElement('article');card.dataset.autonomousPartial=item.work_label;
+      card.className='kai-entry';
       text(card,'h4',`${item.work_label} ${item.title}`);
-      text(card,'p','一手完了 · Work全体は未完了','kai-action-source');
-      if(item.started_at)text(card,'p','夜間実行 '+new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(item.started_at))+' JST','kai-action-source');
+      const origin={manual:'依頼で実施',night_artifact:'夜間実行',night_evidence:'夜間の検証記録'}[item.origin]||'記録元未確認';
+      chips(card,[['完了 '+jstClock(item.completed_at),''],[item.work_label,''],['一手完了 · Work全体は未完了','ok'],
+        [item.started_at?`${origin} ${jstClock(item.started_at)}`:origin,''],
+        [item.decision_required?'本人の判断が必要':'',item.decision_required?'warn':'']]);
       text(card,'h5','進んだこと');text(card,'p',item.summary);
       text(card,'h5','次に進めること');text(card,'p',item.next_action);
       text(card,'p',item.decision_required?'本人の判断が必要です。':'今は本人の判断は不要です。');
@@ -274,8 +336,20 @@
       return archive;
     }
     if(history.length){
+      // Older WI results are grouped by JST completion date, newest first, then WI number.
       const container=archiveSection();
-      for(const item of history)renderPartial(container,item);
+      const groups=new Map();
+      for(const item of history){
+        const day=jstDay(item.completed_at)||'日付不明';
+        if(!groups.has(day))groups.set(day,[]);
+        groups.get(day).push(item);
+      }
+      const wiNumber=label=>Number(/^WI-([0-9]+)$/.exec(label)?.[1]||Number.MAX_SAFE_INTEGER);
+      for(const day of [...groups.keys()].sort().reverse()){
+        const items=groups.get(day).sort((a,b)=>wiNumber(a.work_label)-wiNumber(b.work_label));
+        text(container,'h3',`${day} · 以前のWI成果 ${items.length}件`,'kai-history-day');
+        for(const item of items)renderPartial(container,item);
+      }
     }
     if(view.partial_progress_unavailable)
       text(section,'p','一部の成果履歴を読み戻せません。','kp-notice');
@@ -283,21 +357,44 @@
       const currentRun=run!==pastRun||view.status==='current';
       const runParent=run===pastRun?archiveSection():report;
       section.dataset.autonomousRun=run.run_id;
+      if(run===pastRun)text(runParent,'h3',`${run.night_day||jstDay(run.finished_at)||'日付不明'} · 以前の実行 ${runLabel(run.run_id)}`,'kai-history-day');
       const completed=run.items.filter(x=>x.substep_completed).length;
-      const internal=run.items.filter(x=>!ready(x)&&x.status!=='complete'&&x.status!=='running').length;
-      const counts=text(runParent,'p','');
+      const internal=run.items.filter(x=>!ready(x)&&!['complete','running','failed','blocked','unknown'].includes(x.status)).length;
+      const failedCount=run.items.filter(x=>x.status==='failed').length;
+      const blockedCount=run.items.filter(x=>x.status==='blocked').length;
+      const unknownCount=run.items.filter(x=>x.status==='unknown').length;
+      const counts=text(runParent,'p','','kai-run-counts');
       const updateCounts=()=>{updateSummary();const pending=run.items.filter(x=>ready(x)&&!x.review).length;
-        counts.textContent=`あなたの判断待ち ${pending}件 · 自動調査・再評価待ち ${internal}件 · 完了した一手 ${completed}件`;};
+        counts.textContent=`あなたの判断待ち ${pending}件 · 自動調査・再評価待ち ${internal}件 · 完了した一手 ${completed}件 · 失敗 ${failedCount}件`
+          +(blockedCount?` · 停止 ${blockedCount}件`:'')+(unknownCount?` · 結果未確認 ${unknownCount}件`:'');};
       updateCounts();
-      text(runParent,'p',run.manual_general_once?'手動実行の記録':`${run.night_day} 夜の実行記録。`,'kai-action-source');
+      chips(runParent,[[run.manual_general_once?'手動実行の記録':`${run.night_day} 夜の実行記録`,''],
+        [runLabel(run.run_id),''],['終了 '+jstClock(run.finished_at),'']]);
       if(!currentRun)text(runParent,'p','以前の実行記録です。','kp-notice');
       for(const item of [...run.items].sort((a,b)=>Number(!!ready(b))-Number(!!ready(a)))){
         const card=document.createElement('article');card.dataset.autonomousWork=item.work_id;
+        card.className='kai-entry';
         const eligible=ready(item);
         const heading=eligible ? (item.review?'判断を記録済み':'あなたの判断待ち')
           : item.status==='complete'?(item.substep_completed?'部分成果完了':'調査完了')
-            :item.status==='running'?'実行中':'自動調査・再評価待ち';
+            :item.status==='running'?'実行中'
+            :item.status==='failed'?'失敗'
+            :item.status==='blocked'?'停止（ブロック）'
+            :item.status==='unknown'?'結果未確認':'自動調査・再評価待ち';
         text(card,'h3',`${item.title} · ${heading}`);
+        chips(card,[[itemStateLabel[item.status]||'状態未確認',itemStateTone[item.status]||'warn'],
+          [runLabel(run.run_id),''],[item.pr_url?'PRあり':'','']]);
+        if(item.status==='failed'){
+          text(card,'p','AIの実行が失敗として記録されています。成果は採用されていません。','kp-notice');
+          failureDetail(card,[['Run',String(run.run_id).slice(0,8)],['状態コード','failed'],['理由コード',code(item.error_code)]]);
+        }else if(item.status==='blocked'){
+          text(card,'p','AIの実行が停止しています（ブロック）。今は本人の操作は不要です。','kp-notice');
+          if(code(item.error_code))failureDetail(card,[['Run',String(run.run_id).slice(0,8)],['状態コード','blocked'],['理由コード',code(item.error_code)]]);
+        }else if(item.status==='unknown'){
+          text(card,'p','実行結果を確認できません（0件・成功とは扱いません）。同じ作業を再実行する前に実行記録を確認してください。','kp-notice');
+        }else if(item.status==='running'){
+          text(card,'p',`AIが実行中です（${runLabel(run.run_id)}）。`,'kai-action-source');
+        }
         let details;
         if(eligible){
           const d=item.owner_decision;

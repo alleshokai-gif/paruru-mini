@@ -6,7 +6,22 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const source = (old, current) => ({ ...old, snapshot_status: current?.status || 'failed' });
+  // Only bounded operational metadata crosses this boundary. Never copy raw
+  // provider exceptions, request bodies, or private source records.
+  const source = (old, current) => {
+    const result = { ...old, snapshot_status: current?.status || 'failed' };
+    const instant = value => typeof value === 'string' && value.length <= 64
+      && Number.isFinite(Date.parse(value)) ? value : null;
+    result.snapshot_updated_at = instant(current?.updated_at);
+    result.snapshot_valid_until = instant(current?.valid_until);
+    result.snapshot_last_success_at = instant(current?.last_success_at);
+    const code = current?.failure_code || current?.error_code;
+    result.snapshot_error_code = typeof code === 'string'
+      && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : null;
+    result.snapshot_source_revision = typeof current?.source_revision === 'string'
+      && /^[a-f0-9]{64}$/.test(current.source_revision) ? current.source_revision : null;
+    return result;
+  };
 
   function dashboard(snapshot, page, observedAt) {
     if (snapshot?.schema_version !== 'kaz-os-dashboard-v3'
@@ -44,7 +59,7 @@
           now,
           next,
           kaz_free_windows: snapshot.today.kaz_free_windows,
-          confirmations: snapshot.today.confirmations || [],
+          confirmations: Array.isArray(snapshot.today.confirmations) ? snapshot.today.confirmations : null,
           unassigned: snapshot.today.unassigned || [],
           company_free_windows: snapshot.today.company_free_windows,
           calendar_free_windows: snapshot.today.personal_free_windows,

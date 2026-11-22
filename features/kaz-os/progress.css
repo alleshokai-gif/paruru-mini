@@ -78,4 +78,30 @@
 .kaz-source { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:9px 0; }
 .kaz-source small { width:100%; }
 .kaz-system summary:focus-visible,.kaz-detail summary:focus-visible,.kaz-achievement summary:focus-visible,.kaz-run summary:focus-visible { outline:2px solid #5c67bf; outline-offset:3px; }
-@media(max-width:359px) { .kaz-overview { padding:15px; } .kaz-kpi strong { font-size:34px; } .kaz-kpi { padding-left:8px; } .kaz-heading { gap:6px; } .kaz-active-row { grid-template-columns:51px minmax(0,1fr); gap:8px; } }
+/* Issue #240: compact mobile density; failed runs are marked, never hidden. */
+.kaz-run-failed > summary { color:#a13838; }
+.kaz-system .kaz-warning, .kaz-run .kaz-warning { margin:0 0 10px; padding:8px; }
+@media(max-width:430px) {
+  .kaz-section { margin-bottom:20px; }
+  .kaz-section h2 { margin-bottom:8px; }
+  .kaz-overview { padding:14px; border-radius:12px; }
+  .kaz-kpis { margin-top:10px; }
+  .kaz-kpi strong { font-size:30px; }
+  .kaz-progress-arrival { margin-top:10px; }
+  .kaz-active-row { padding:8px 0; }
+  .kaz-attention { gap:10px; padding-top:10px; }
+}
+@media(max-width:359px) { .kaz-overview { padding:12px; } .kaz-kpi strong { font-size:28px; } .kaz-kpi { padding-left:8px; } .kaz-heading { gap:6px; } .kaz-active-row { grid-template-columns:51px minmax(0,1fr); gap:8px; } }
+
+/* Issue240 development metrics: 判定保留の表示と360/390/430px での非テーブル折返し */
+#kazPersonalContent .development-productivity .development-metrics-held strong { font-size:16px; color:#78441b; }
+#kazPersonalContent .development-productivity .development-metrics-held { border-color:#ecd9b4; background:#fffaf0; }
+.development-productivity .development-productivity-note { font-size:12px; line-height:1.55; color:#566763; }
+.development-productivity .development-productivity-held { color:#78441b; }
+.development-productivity-point > * { min-width:0; overflow-wrap:anywhere; }
+@media(max-width:430px) {
+  #kazPersonalContent .development-productivity .development-metrics-dashboard { grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr)); gap:8px; }
+  #kazPersonalContent .development-productivity .development-metrics-card { padding:10px; }
+  .development-productivity label { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 10px; }
+  .development-productivity select { flex:1 1 120px; min-width:0; }
+}

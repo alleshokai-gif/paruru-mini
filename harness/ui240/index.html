@@ -1,0 +1,78 @@
+<!doctype html>
+<!-- Issue #240 mobile UI harness. Fixture-only (全件架空). Open via a local static server from the repository root:
+     http://localhost:<port>/harness/ui240/index.html?scenario=normal#kaz-os/today -->
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Kaz OS UI #240 harness (fixture)</title>
+  <link rel="stylesheet" href="../../features/kaz-os/personal.css">
+  <link rel="stylesheet" href="../../features/kaz-os/progress.css">
+  <style>
+    /* Minimal stand-in for the app shell (not under test). */
+    html,body{margin:0;padding:0}
+    body{font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;color:#263e35;background:#fbfcfb;font-size:16px}
+    .harness-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 10px;background:#fff7d6;font-size:12px;border-bottom:1px solid #e5d9a6}
+    .harness-bar select,.harness-bar button{font-size:13px;min-height:32px}
+    #harnessResult{white-space:pre-wrap;font-size:11px;max-height:40vh;overflow:auto;margin:0;padding:6px 10px;background:#f2f2f2}
+    #harnessResult:empty{display:none}
+    .view{display:none;padding:12px 14px 0}
+    .view.is-active{display:block}
+    #kazOsDiagnostics{padding:12px 14px calc(104px + env(safe-area-inset-bottom))}
+    #kazOsDiagnostics[hidden]{display:none}
+    .kp-button,.secondary-button{min-height:44px;font-size:16px;border:1px solid #afc4b8;border-radius:6px;background:#fff;color:#285e49;padding:6px 10px}
+    .kp-card{margin:0 0 16px}
+    #harnessBottomNav{position:fixed;left:0;right:0;bottom:0;height:64px;padding-bottom:env(safe-area-inset-bottom);display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid #d9e1df;z-index:10}
+    #harnessBottomNav span{display:flex;align-items:center;justify-content:center;font-size:11px;color:#566763}
+  </style>
+</head>
+<body>
+  <div class="harness-bar" role="region" aria-label="harness controls">
+    <strong>#240 harness · 架空fixture</strong>
+    <label>scenario <select id="harnessScenario"></select></label>
+    <button type="button" id="harnessView"></button>
+    <button type="button" id="harnessCheck">自己点検（JSON）</button>
+  </div>
+  <pre id="harnessResult"></pre>
+
+  <main id="kazOsView" class="view" aria-label="">
+    <div class="kaz-heading">
+      <h1>Kaz OS</h1>
+      <a id="kazOsDevelopmentMetricsLink" class="kaz-metrics-link" href="#kaz-os/v3/metrics" aria-label="開発実績" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      </a>
+    </div>
+    <nav id="kazOsNav" class="kp-nav" aria-label="Kaz OS">
+      <a data-kaz-page="today" href="#kaz-os/today">TODAY</a>
+      <a data-kaz-page="work" href="#kaz-os/work">WORK</a>
+      <a data-kaz-page="projects" href="#kaz-os/projects">PROJECTS</a>
+      <a data-kaz-page="capa" href="#kaz-os/capa">CAPA</a>
+      <a data-kaz-page="context" href="#kaz-os/context">CONTEXT</a>
+      <a data-kaz-page="inbox" href="#kaz-os/inbox" hidden>INBOX</a>
+    </nav>
+    <div id="kazPersonalContent"></div>
+  </main>
+
+  <section id="kazOsDiagnostics" class="kaz-progress" hidden>
+    <div class="kaz-heading"><h1>Progress</h1><button type="button" id="kazOsRefresh">再取得</button></div>
+    <p id="kazOsDiagnosticsStatus"></p>
+    <div id="kazOsContent"></div>
+  </section>
+
+  <nav id="harnessBottomNav" aria-label="下ナビ（模擬）">
+    <span>ホーム</span><span>予定</span><span>Kaz OS</span><span>家族</span><span>設定</span>
+  </nav>
+
+  <script src="../../build.js"></script>
+  <script src="../../features/kaz-os/time-fit.js"></script>
+  <script src="../../features/kaz-os/inbox.js"></script>
+  <script src="../../features/kaz-os/today.js"></script>
+  <script src="../../features/kaz-os/personal.js"></script>
+  <script src="../../features/kaz-os/v3-component-data.js"></script>
+  <script src="../../features/kaz-os/autonomous-work.js"></script>
+  <script src="../../features/kaz-os/navigation.js"></script>
+  <script src="../../features/kaz-os/progress.js"></script>
+  <script src="fixtures.js"></script>
+  <script src="harness.js"></script>
+</body>
+</html>

@@ -223,3 +223,96 @@
 .development-productivity-point meter{width:100%;height:10px}
 .development-productivity .development-metrics-card{margin:6px 0}
 .development-productivity .development-metrics-card a{display:inline-block;margin-right:10px}
+
+/* Issue #240: one decision brief + state vocabulary across TODAY/WORK/PROJECTS/CAPA/CONTEXT/開発実績.
+   Text-height boxes, no fixed heights, no horizontal overflow at 360/390/430px. */
+.kp-brief{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 10px;margin:8px 0 12px;padding:7px 10px;border-left:3px solid #4b8967;background:#f4f8f5;border-radius:0 6px 6px 0;font-size:13px;line-height:1.45;min-width:0}
+.kp-brief[data-tone=warn]{border-left-color:#ae7632;background:#fff8ec}
+.kp-brief[data-tone=stop]{border-left-color:#9c3525;background:#fff2ef}
+.kp-brief>dt{margin:0;font-size:11px;font-weight:750;color:#55665f;white-space:nowrap;padding-top:2px}
+.kp-brief>dd{margin:0;min-width:0;overflow-wrap:anywhere;color:#263e35}
+.kp-brief>dd:first-of-type{font-weight:700}
+.kp-states{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;min-width:0}
+.kp-states>.kp-muted{font-size:11px}
+.kp-state{display:inline-flex;align-items:center;padding:0 6px;border-radius:4px;font-size:11px;font-weight:700;line-height:1.6;white-space:nowrap;border:1px solid transparent}
+.kp-state-ok{background:#dcefe4;color:#185c3f}
+.kp-state-zero{background:#e6edf3;color:#34556e}
+.kp-state-partial{background:#fff0c8;color:#78500b}
+.kp-state-stale{background:#ffe9d1;color:#8a4b12}
+.kp-state-failed{background:#ffe1d9;color:#9c3525}
+.kp-state-unobserved{background:transparent;color:#58645e;border:1px dashed #9aa8a2}
+.kp-state-last_ok{background:transparent;color:#245e48;border-color:#7ca18f}
+.kp-kpi-unobserved strong{font-size:15px!important;color:#64736c;font-weight:650}
+/* CONTEXT: separate populations; compact tiles instead of fixed-ratio circles. */
+[data-context-population]{padding-top:2px}
+[data-context-population=legacy_raw]>h2{color:#5d4a1f}
+.kc-population{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 10px;margin:6px 0;font-size:12px;line-height:1.5}
+.kc-population>dt{color:#55665f;font-weight:700;margin:0}
+.kc-population>dd{margin:0;min-width:0}
+.kc-unobserved{color:#64736c}
+.kc-population-label{margin:8px 0 0;font-size:11px;font-weight:700;color:#5d4a1f}
+.kc-kpis-sub{margin-top:4px}
+.kc-kpis-sub strong{font-size:20px}
+.kc-flow-node{padding:8px 10px;min-height:48px;border-radius:8px}
+.kc-flow-node>strong{font-size:18px}
+.kc-flow-node.kc-unobserved>strong,.kc-profile-bubble.kc-unobserved>strong{font-size:13px;color:#64736c}
+.kc-profile-bubble{aspect-ratio:auto;border-radius:8px;flex-direction:row;justify-content:space-between;min-height:48px;padding:8px 10px;text-align:left;gap:8px}
+.kc-profile-bubble>strong{font-size:18px;order:2}
+.kc-profile-bubble>span{font-size:12px}
+.kc-flow-detail{padding:8px 10px}
+/* TODAY: AI work grouped by date / ID / outcome. */
+.kai-entry{padding:8px 0;border-top:1px solid #dce4df;min-width:0}
+.kai-entry>h3,.kai-entry>h4{margin:0 0 3px;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
+.kai-entry>p{margin:4px 0;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.kai-entry-meta{display:flex;flex-wrap:wrap;gap:3px 5px;margin:2px 0 4px!important}
+.kai-chip{display:inline-block;padding:0 6px;border-radius:4px;background:#eef2f1;color:#46534e;font-size:11px;font-weight:650;line-height:1.6;white-space:nowrap;font-variant-numeric:tabular-nums}
+.kai-chip-ok{background:#dcefe4;color:#185c3f}
+.kai-chip-warn{background:#fff0c8;color:#78500b}
+.kai-chip-stop{background:#ffe1d9;color:#9c3525}
+.kai-history-day{margin:12px 0 2px;font-size:13px;letter-spacing:.02em;color:#355348}
+.kai-run-counts{font-size:13px;margin:6px 0 2px}
+.kai-failure-detail>summary{min-height:48px;display:flex;align-items:center;cursor:pointer;color:#9c3525;font-size:13px}
+.kai-failure-detail>p{font-size:12px;margin:3px 0}
+/* 開発実績: incomplete populations are held, not shown large. */
+#kazPersonalContent .development-metrics-dashboard{gap:8px}
+#kazPersonalContent .development-metrics-card{padding:10px;border-radius:8px}
+#kazPersonalContent .development-metrics-card h3,#kazPersonalContent .development-metrics-card h4{margin:0 0 4px;font-size:12px;color:#566763}
+#kazPersonalContent .development-metrics-card p{margin:4px 0 0}
+#kazPersonalContent .development-metrics-card[data-metric-verdict=hold]{border-style:dashed;background:#fbfbf8}
+#kazPersonalContent .development-metrics-card[data-metric-verdict=hold] strong{font-size:16px;color:#78500b}
+#kazPersonalContent .development-metrics-reference{font-size:11px!important;color:#64736c!important}
+#kazPersonalContent .development-metrics-hold-note{font-size:12px;line-height:1.5;margin:8px 0;padding:6px 8px;border-left:3px solid #ae7632;background:#fff8ec;color:#734d1b}
+#kazPersonalContent .development-productivity label{display:inline-flex;flex-direction:column;gap:3px;margin:0 10px 8px 0;font-size:13px}
+#kazPersonalContent .development-productivity-point{padding:6px 8px;gap:2px;font-size:13px}
+#kazPersonalContent .development-metrics-table-wrap{-webkit-overflow-scrolling:touch}
+@media(max-width:600px){
+ #kazPersonalContent .development-metrics-table-wrap{overflow:visible}
+ #kazPersonalContent .development-metrics-table{display:block;width:100%;max-width:100%;min-width:0}
+ #kazPersonalContent .development-metrics-table thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+ #kazPersonalContent .development-metrics-table tbody{display:block}
+ #kazPersonalContent .development-metrics-table tbody tr{display:grid;grid-template-columns:minmax(0,1fr);border-bottom:1px solid #cddbd3;padding:8px 0}
+ #kazPersonalContent .development-metrics-table tbody td{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;min-width:0;white-space:normal;overflow-wrap:anywhere;padding:5px 0}
+ #kazPersonalContent .development-metrics-table tbody td:before{content:attr(data-label);font-weight:700;color:#566763}
+}
+#kazPersonalContent .development-metrics-table{font-size:12px;border-collapse:collapse}
+#kazPersonalContent .development-metrics-table th,#kazPersonalContent .development-metrics-table td{padding:4px 6px;border-bottom:1px solid #e2e8e4;white-space:nowrap;text-align:left}
+#kazPersonalContent .development-metrics-details ul{padding-left:18px;font-size:12px;line-height:1.5}
+#kazPersonalContent .development-metrics-details li{overflow-wrap:anywhere}
+@media(max-width:430px){
+  .kp-section{margin-bottom:16px}
+  .kp-kpis{gap:10px 16px;margin:10px 0 8px}
+  .kp-kpis strong{font-size:22px}
+  .kp-free-window{padding:8px 10px}
+  .kp-free-section{margin-bottom:14px}
+  .kc-flow-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .kc-flow-grid.kc-flow-grid-classify{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .kc-profile-bubbles{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  #kazPersonalContent .development-metrics-dashboard{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:360px){
+  .kp-brief{grid-template-columns:minmax(0,1fr);gap:0}
+  .kp-brief>dt{padding-top:4px}
+  .kc-population{grid-template-columns:minmax(0,1fr)}
+  .kc-flow-grid-classify{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .kc-flow-node{padding:6px 8px}
+}
