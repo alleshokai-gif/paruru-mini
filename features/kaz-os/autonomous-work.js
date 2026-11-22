@@ -242,13 +242,22 @@
     report.className='kai-autonomous-latest';
     text(report,'h3',todayNight+' 夜の作業');
     report.appendChild(brief);
+    // WI-54: the concise brief above stays visible; every existing record and
+    // control below is built directly inside one native details (no cloning/moving).
+    const nightDetails=document.createElement('details');
+    nightDetails.className='kai-night-details';
+    text(nightDetails,'summary','夜間結果の詳細');
+    const latestBody=document.createElement('div');
+    latestBody.className='kai-night-latest';
+    nightDetails.appendChild(latestBody);
+    report.appendChild(nightDetails);
     const completedRecent=recent.length+recentRuns.flatMap(r=>r.items).filter(i=>i.substep_completed&&i.pr_url).length;
     const usage=[...recent.map(i=>i.usage),...recentRuns.filter(r=>r.codex_cli_attempts>0).map(r=>r.metrics?.usage)];
     if(usage.length){
       const known=usage.filter(validUsage);
       const totals=usageKeys.map(k=>known.reduce((total,u)=>total+u[k],0));
       const amounts=known.length?`入力 ${totals[0].toLocaleString()} · 出力 ${totals[2].toLocaleString()} トークン`:'取得できません';
-      text(report,'p',`Codex利用量 ${amounts}${known.length<usage.length?'（一部未計測）':''} · 費用 未計測`,'kai-action-source');
+      text(latestBody,'p',`Codex利用量 ${amounts}${known.length<usage.length?'（一部未計測）':''} · 費用 未計測`,'kai-action-source');
     }
     const execution=view.night_execution?.day===todayNight?view.night_execution:null;
     const recentItems=recentRuns.flatMap(r=>r.items);
@@ -280,7 +289,7 @@
       if(failed)brief.dataset.tone='stop';else if(pending||unobserved)brief.dataset.tone='warn';else delete brief.dataset.tone;
     };
     updateSummary();
-    renderNightStatus(report,view.night_execution,todayNight,Boolean(completedRecent||recentRuns.length));
+    renderNightStatus(latestBody,view.night_execution,todayNight,Boolean(completedRecent||recentRuns.length));
     for(const attempt of attempts){
       if(attempt.status==='artifact_verified'&&recent.some(row=>row.work_label===attempt.work_label&&row.started_at===attempt.started_at))continue;
       const card=document.createElement('article');card.className='kai-entry';
@@ -294,7 +303,7 @@
         unknown:'起動準備の記録まで確認。実行結果は未確認です（AI対応中とは扱いません）。'};
       text(card,'p',messages[attempt.status]);
       if(attempt.status==='no_output')text(card,'p','本人判断の依頼はありません。次回は未処理の一手を候補から探します。','kai-action-source');
-      report.appendChild(card);
+      latestBody.appendChild(card);
     }
     section.appendChild(report);
     function renderPartial(parent,item){
@@ -317,12 +326,12 @@
       }
       card.appendChild(details);parent.appendChild(card);
     }
-    for(const item of recent)renderPartial(report,item);
+    for(const item of recent)renderPartial(latestBody,item);
     if(manual.length){
       const earlier=document.createElement('div');
       text(earlier,'h3','依頼を受けて先に進めた仕事');
       for(const item of manual)renderPartial(earlier,item);
-      section.appendChild(earlier);
+      nightDetails.appendChild(earlier);
     }
     let archive=null;
     function archiveSection(){
@@ -331,7 +340,7 @@
         archive.className='kai-autonomous-history';
         const historyCount=history.length+(pastRun?.items.length||0);
         text(archive,'summary',`過去の成果・実行記録を見る（${historyCount}件）`);
-        section.appendChild(archive);
+        nightDetails.appendChild(archive);
       }
       return archive;
     }
@@ -352,10 +361,10 @@
       }
     }
     if(view.partial_progress_unavailable)
-      text(section,'p','一部の成果履歴を読み戻せません。','kp-notice');
+      text(nightDetails,'p','一部の成果履歴を読み戻せません。','kp-notice');
     for(const run of [...recentRuns,...(pastRun?[pastRun]:[])]){
       const currentRun=run!==pastRun||view.status==='current';
-      const runParent=run===pastRun?archiveSection():report;
+      const runParent=run===pastRun?archiveSection():latestBody;
       section.dataset.autonomousRun=run.run_id;
       if(run===pastRun)text(runParent,'h3',`${run.night_day||jstDay(run.finished_at)||'日付不明'} · 以前の実行 ${runLabel(run.run_id)}`,'kai-history-day');
       const completed=run.items.filter(x=>x.substep_completed).length;
@@ -467,7 +476,11 @@
         runParent.appendChild(card);
       }
     }
-    if(current())host.prepend(section);
+    if(current()){
+      // WI-54: async completion must never land ahead of the TODAY summary card.
+      const anchor=Array.from(host.children||[]).find(node=>node?.dataset?.todaySummary==='true');
+      if(anchor&&typeof anchor.after==='function')anchor.after(section);else host.prepend(section);
+    }
   }
   root.KazAutonomousWork=Object.freeze({append,validate,reviewWindow,workHistory});
 })(globalThis);

@@ -309,8 +309,26 @@
   .kc-profile-bubbles{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   #kazPersonalContent .development-metrics-dashboard{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+/* WI-54: compact TODAY summary (text-height, wraps, no clamp) and collapsed night details. */
+.kai-today-summary{min-width:0;padding:10px 12px;overflow-wrap:anywhere}
+.kai-today-summary-heading{margin:0 0 6px;font-size:13px;letter-spacing:.04em;color:#55665f}
+.kai-today-summary-fields{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 10px;margin:0;font-size:14px;line-height:1.45;min-width:0}
+.kai-today-summary-label{margin:0;padding-top:1px;font-size:12px;font-weight:750;color:#55665f;white-space:nowrap}
+.kai-today-summary-value{margin:0;min-width:0;overflow-wrap:anywhere;word-break:normal;color:#263e35}
+.kai-today-summary-fields>.kai-today-summary-value:first-of-type{font-weight:700}
+.kai-today-summary-link{color:#245e48;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+.kai-today-summary-link:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
+.kai-today-summary-origin{margin-left:2px;font-size:11px;font-weight:400;color:#52695e}
+.kai-today-summary-note{margin:6px 0 0;font-size:12px;line-height:1.45;color:#52695e;overflow-wrap:anywhere}
+.kai-today-summary[data-summary-state=loading],.kai-today-summary[data-summary-state=unavailable],.kai-today-summary[data-summary-state=none]{border-left:3px solid #ae7632}
+.kai-night-details{margin-top:4px;min-width:0;overflow-wrap:anywhere}
+.kai-night-details>summary{display:list-item;min-height:48px;padding-block:12px;margin-left:1em;box-sizing:border-box;cursor:pointer;color:#2e715b;font-weight:650;line-height:1.4}
+.kai-night-details>summary:focus-visible{outline:3px solid #ba8850;outline-offset:2px}
+.kai-night-latest{min-width:0}
 @media(max-width:360px){
   .kp-brief{grid-template-columns:minmax(0,1fr);gap:0}
+  .kai-today-summary-fields{grid-template-columns:minmax(0,1fr);gap:0}
+  .kai-today-summary-label{padding-top:4px}
   .kp-brief>dt{padding-top:4px}
   .kc-population{grid-template-columns:minmax(0,1fr)}
   .kc-flow-grid-classify{grid-template-columns:repeat(3,minmax(0,1fr))}
