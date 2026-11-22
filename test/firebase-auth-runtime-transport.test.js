@@ -19,7 +19,7 @@ function response(status, body, jsonError = null) {
   };
 }
 
-function harness(fetchImpl) {
+function harness(fetchImpl, timers = {}) {
   const context = {
     console,
     Object,
@@ -27,8 +27,8 @@ function harness(fetchImpl) {
     Error,
     TypeError,
     Promise,
-    setTimeout,
-    clearTimeout,
+    setTimeout: timers.setTimeout || setTimeout,
+    clearTimeout: timers.clearTimeout || clearTimeout,
     AbortController,
     fetch: fetchImpl,
     document: {
@@ -47,6 +47,39 @@ function harness(fetchImpl) {
 }
 
 (async () => {
+  {
+    // Headers arriving does not finish a read: a stalled body must also time out.
+    let now = 0, sequence = 0, calls = 0, outcome = null;
+    const pending = new Map(), signals = [];
+    const timers = {
+      setTimeout(fn, delay) { const id = ++sequence; pending.set(id, { at:now + delay, fn }); return id; },
+      clearTimeout(id) { pending.delete(id); },
+    };
+    const flush = async () => { for (let i=0;i<20;i++) await Promise.resolve(); };
+    const advance = async delay => {
+      const end = now + delay;
+      for (;;) {
+        const next = [...pending].filter(([,v])=>v.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];
+        if (!next) break;
+        now=next[1].at;pending.delete(next[0]);next[1].fn();await flush();
+      }
+      now=end;await flush();
+    };
+    const h = harness(async (_url, options) => {
+      calls++;signals.push(options.signal);
+      return {status:200,ok:true,json:()=>new Promise(()=>{})};
+    }, timers);
+    h.PALURUFirebaseAuthRuntime.create({gasWebAppUrl:'https://example.invalid/exec'})
+      .then(()=>{outcome={unexpectedSuccess:true};},error=>{outcome=error;});
+    await flush();assert.equal(calls,1);
+    await advance(8000);await advance(120);await advance(8000);
+    assert.equal(calls,2,'stalled response bodies get exactly one bounded retry');
+    assert.equal(outcome?.code,'TRANSPORT_FAILURE','body read must not stay pending beyond both attempts');
+    assert.equal(outcome?.transportClassification,'timeout');
+    assert(signals.every(signal=>signal.aborted));
+    assert.equal(pending.size,0,'completed transport must leave no timer running');
+  }
+
   {
     let calls = 0;
     const h = harness((_url, options) => {
