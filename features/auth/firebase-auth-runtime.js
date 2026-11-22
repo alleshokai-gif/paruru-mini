@@ -72,24 +72,19 @@
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const attemptStartedAt = Date.now();
       try {
-        const response = await fetchWithTimeout_(url, {
+        const result = await fetchWithTimeout_(url, {
           method: 'POST',
           cache: 'no-store',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(Object.assign({}, requestBody, { transport_attempt: attempt + 1 })),
-        }, READ_ONLY_REQUEST_TIMEOUT_MS);
-        if (response.status >= 500 && response.status <= 599) {
-          lastError = codedError_('TRANSPORT_FAILURE', { transportClassification: 'http', httpStatus: response.status });
-          if (attempt === 0) {
-            recordDiagnostic_(diagnostics, diagnostic, attempt, attemptStartedAt, lastError, 'retry');
-            await shortDelay_();
-            continue;
+        }, READ_ONLY_REQUEST_TIMEOUT_MS, async function(response) {
+          if (response.status >= 500 && response.status <= 599) {
+            throw codedError_('TRANSPORT_FAILURE', { transportClassification: 'http', httpStatus: response.status });
           }
-          throw lastError;
-        }
-        const payload = await parseEnvelope_(response, fallbackCode);
-        recordDiagnostic_(diagnostics, diagnostic, attempt, attemptStartedAt, null, 'success', response.status);
-        return payload;
+          return { status:response.status, payload:await parseEnvelope_(response, fallbackCode) };
+        });
+        recordDiagnostic_(diagnostics, diagnostic, attempt, attemptStartedAt, null, 'success', result.status);
+        return result.payload;
       } catch (error) {
         const code = safeCode_(error);
         if (code !== 'TRANSPORT_FAILURE' && !(error instanceof TypeError)) {
@@ -113,13 +108,23 @@
     return new Promise(function(resolve) { setTimeout(resolve, 120); });
   }
 
-  async function fetchWithTimeout_(url, options, timeoutMs) {
+  async function fetchWithTimeout_(url, options, timeoutMs, readResponse) {
     const controller = new AbortController();
-    const timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+    let timer;
+    const deadline = new Promise(function(_resolve, reject) {
+      timer = setTimeout(function() {
+        controller.abort();
+        reject(codedError_('TRANSPORT_FAILURE', { transportClassification:'timeout' }));
+      }, timeoutMs);
+    });
     try {
-      return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+      // Read-only bootstrap is complete only after the response body is parsed.
+      return await Promise.race([deadline, (async function() {
+        const response = await fetch(url, Object.assign({}, options, { signal:controller.signal }));
+        return readResponse ? await readResponse(response) : response;
+      })()]);
     } catch (error) {
-      if (error && error.name === 'AbortError') throw codedError_('TRANSPORT_FAILURE', { transportClassification: 'timeout' });
+      if (controller.signal.aborted || error && error.name === 'AbortError') throw codedError_('TRANSPORT_FAILURE', { transportClassification: 'timeout' });
       throw error;
     } finally {
       clearTimeout(timer);
