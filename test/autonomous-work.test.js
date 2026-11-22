@@ -92,7 +92,7 @@ async function main(){
   await feature.append(nightlyHost,{read:async()=>({schema_version:'kaz-autonomous-view-v1',
     as_of:asOf,status:'no_results',run:null,raw_payload_stored:false,
     partial_progress:[older,lastNight,daytime]}),current:()=>true});
-  const recentBox=all(nightlyHost).find(x=>x.className==='kai-autonomous-latest');
+  const recentBox=all(nightlyHost).find(x=>x.className==='kai-night-latest');
   const historyBox=all(nightlyHost).find(x=>x.className==='kai-autonomous-history');
   assert.ok(recentBox&&historyBox,'latest and history are separate');
   assert.ok(all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-50'));
@@ -102,7 +102,11 @@ async function main(){
   assert.ok(all(nightlyHost).some(x=>x.textContent==='依頼を受けて先に進めた仕事'));
   assert.ok(!all(recentBox).some(x=>x.dataset.autonomousPartial==='WI-51'));
   assert.ok(!historyBox.open,'history starts collapsed');
-  assert.ok(all(recentBox).some(x=>x.textContent?.startsWith('新しい部分成果 1件 · 今夜の判断待ち 0件')));
+  assert.ok(all(nightlyHost).some(x=>x.textContent?.startsWith('新しい部分成果 1件 · 今夜の判断待ち 0件')));
+  const nightDetails=all(nightlyHost).find(x=>x.className==='kai-night-details');
+  assert.ok(nightDetails&&!nightDetails.open,'night evidence starts collapsed');
+  assert.ok(all(nightDetails).includes(recentBox)&&all(nightDetails).includes(historyBox));
+  assert.ok(!all(nightDetails).some(x=>x.dataset.autonomousBrief==='true'), 'concise status stays outside details');
   const batch=fixture(), second=fixture().run;
   batch.as_of=asOf;
   batch.run.night_day=second.night_day='2026-11-04';

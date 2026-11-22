@@ -219,8 +219,10 @@ function createHarness(options = {}) {
   assert.equal(dashboardUnavailable.rendered.at(-1).data.schema_version, 'kaz-today-plan-v2',
     'a healthy company/home planning response remains visible when the independent dashboard snapshot fails');
   assert.equal(dashboardUnavailable.rendered.at(-1).data.today.now.items[0].id, 'confirmed-now');
-  assert(dashboardUnavailable.context.document.getElementById('kazPersonalContent').children[0].textContent
-    .includes('進捗情報を取得できない'), 'the unavailable progress-data portion must be stated explicitly');
+  assert(dashboardUnavailable.context.document.getElementById('kazPersonalContent').children
+    .some(node => node.textContent?.includes('進捗情報を取得できない')), 'the unavailable progress-data portion must be stated explicitly');
+  assert.equal(dashboardUnavailable.context.document.getElementById('kazPersonalContent').children[0].dataset.summaryState,
+    'unavailable', 'unread progress keeps the new leading summary unconfirmed while the healthy plan remains visible');
   assert(dashboardUnavailable.diagnosticRecords.some(item => item.backendStage === 'TODAY_PLAN_PARTIAL_DISPLAY'
     && item.outcome === 'success' && item.errorCode === 'DASHBOARD_SNAPSHOT_UNAVAILABLE'));
 

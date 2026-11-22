@@ -105,11 +105,54 @@
     return null;
   }
 
-  function createTodayActionBrief(host, snapshot, plan, current, controlsHost = host) {
+  // WI-54: compact TODAY summary. It only displays values handed to it by the
+  // existing action brief selection; it never selects, ranks, or reads data itself.
+  function todaySummaryCard() {
+    const node = document.createElement('section');
+    node.className = 'kp-card kai-today-summary';
+    node.dataset.todaySummary = 'true';
+    const put = (parent, tag, value, className = '') => {
+      const element = document.createElement(tag);
+      element.className = className;
+      element.textContent = value;
+      parent.appendChild(element);
+      return element;
+    };
+    const show = ({ state, item = null, title = '', reason = '', reasonOrigin = '',
+      step = '', stepOrigin = '', note = '' }) => {
+      node.dataset.summaryState = state;
+      node.replaceChildren();
+      put(node, 'h2', '今日の要約', 'kai-today-summary-heading');
+      const list = document.createElement('dl');
+      list.className = 'kai-today-summary-fields';
+      const field = (label, value, origin, href = null) => {
+        put(list, 'dt', label, 'kai-today-summary-label');
+        const cell = put(list, 'dd', '', 'kai-today-summary-value');
+        if (href) put(cell, 'a', value, 'kai-today-summary-link').href = href;
+        else put(cell, 'span', value);
+        if (origin) put(cell, 'span', `（${origin}）`, 'kai-today-summary-origin');
+      };
+      field('今やること', title, '', item ? `#kaz-os/work/${encodeURIComponent(item.id)}` : null);
+      field('理由', reason, reasonOrigin);
+      field('最初の一手', step, stepOrigin);
+      node.appendChild(list);
+      if (note) put(node, 'p', note, 'kai-today-summary-note');
+    };
+    const unknown = (state, reason, note = '') => show({ state,
+      title: state === 'loading' ? '未確認（確認中）' : '未確認', reason, step: '未確認', note });
+    return { node, show, unknown };
+  }
+
+  function createTodayActionBrief(host, snapshot, plan, current, controlsHost = host, summaryCard = null) {
     const section = document.createElement('section');
     section.className = 'kp-card kai-action-brief';
     section.dataset.aiActionBrief = 'true';
     host.prepend(section);
+    // The summary is a separate sibling card that always stays ahead of the brief;
+    // the autonomous night section inserts itself directly after it.
+    const topSummary = summaryCard || todaySummaryCard();
+    if (!summaryCard) topSummary.unknown('loading', '未確認', 'NOWを確認しています…');
+    host.prepend(topSummary.node);
     let rows = [], renderEpoch = 0, aiState = 'loading', aiError = '';
     let dashboard = snapshot, dailyPlan = plan;
     const progress = new Map();
@@ -345,6 +388,7 @@
       addText(section, 'h2', '今、何をする？');
       if (!valid) {
         addText(section, 'p', '今日の予定またはWorkを確認できません。最新のAI判断と空き時間は未確認です。', 'kp-notice');
+        topSummary.unknown('unavailable', '未確認（今日の予定またはWorkを確認できません）');
         return;
       }
       const latest = new Map();
@@ -382,6 +426,43 @@
       const useStepNow = stepFit && globalThis.KazWorkTimeFit.precedes(
         {...dailyTarget,planning_preference:plannedTarget?.planning_preference},canonicalNow,now);
       const nowCandidate = useStepNow ? dailyTarget : canonicalNow;
+      const nowReason = nowCandidate && !useStepNow
+        ? globalThis.KazWorkTimeFit?.reason?.(nowCandidate) || '確認済みのWork順から選定' : '';
+      if (nowCandidate) {
+        // Same target, reason, and first step that the full brief below renders.
+        const recommendation = useStepNow ? dailyRow.recommendation : null;
+        const fullTitle = nowCandidate.title || '名称未設定のWork';
+        const titleExcerpt = Array.from(fullTitle).slice(0, 72).join('');
+        let step = '', stepOrigin = '';
+        if (recommendation) {
+          step = typeof recommendation.first_step === 'string' && recommendation.first_step.trim()
+            ? recommendation.first_step : '未確認';
+          stepOrigin = recommendation.step_kind === 'substep' ? '元Workの分割提案'
+            : recommendation.action_origin === 'work_record' ? 'Work記録' : 'AI具体化・未確定';
+        } else {
+          const fullAction = typeof nowCandidate.next_action === 'string' ? nowCandidate.next_action.trim() : '';
+          const firstSentence = fullAction.split(/[。\n]/, 1)[0];
+          const excerpt = Array.from(firstSentence).slice(0, 110).join('');
+          const shortened = Array.from(firstSentence).length > 110 || firstSentence.length < fullAction.length;
+          step = fullAction ? `${excerpt}${shortened ? '…' : ''}` : '未記録（Workの詳細を確認）';
+          stepOrigin = fullAction ? 'Work記録' : '';
+        }
+        const aiReason = typeof recommendation?.reason === 'string' ? recommendation.reason.trim() : '';
+        topSummary.show({ state: 'selected', item: nowCandidate,
+          title: `${titleExcerpt}${titleExcerpt.length < fullTitle.length ? '…' : ''}`,
+          reason: recommendation ? aiReason || '未確認' : nowReason,
+          reasonOrigin: recommendation ? 'AI提案・未確定' : '決定的Planner',
+          step, stepOrigin,
+          note: aiState === 'loading' ? 'AI Plannerの判断を確認中です。確定後にNOWが変わる場合があります。' : '' });
+      } else if (unresolvedProgress.size) {
+        topSummary.unknown('unavailable', '未確認（進捗の読み戻しが不完全です）',
+          '着手候補は保留中です。候補なしとは扱いません。');
+      } else {
+        topSummary.show({ state: 'none', title: '候補なし（現在時刻に実行可能と確認できたWorkはありません）',
+          reason: '候補なし', step: '候補なし',
+          note: aiState === 'loading' ? 'AI Plannerの判断を確認中です。NEXT候補はNOWに繰り上げていません。'
+            : 'NEXT候補はNOWに繰り上げていません。下の「今、何をする？」で確認できます。' });
+      }
       const renderStep = (target, recommendation, fit) => {
         const origin = {work_record:'Work正本',daily_estimate:'本人の日次見積り',ai_estimated:'AI推定・未確定',unknown:'未推定'};
         addText(section,'p',`最初の一手（${recommendation.step_kind==='substep'?'元Workの分割提案':recommendation.action_origin==='work_record'?'Work記録':'AI具体化・未確定'}）: ${recommendation.first_step}`,'kai-action-first-step');
@@ -404,7 +485,7 @@
         addWork(section, nowCandidate, useStepNow?'時間枠に収まる一手のAI提案 · 元Workの見積りは変更していません':'決定的Plannerの現在候補 · Calendar・Work状態を反映', { prominentAction: !useStepNow });
         if(useStepNow)renderStep(dailyTarget,dailyRow.recommendation,stepFit);
         else {
-          addText(section,'p',`選んだ理由: ${globalThis.KazWorkTimeFit?.reason?.(nowCandidate) || '確認済みのWork順から選定'}`,'kai-action-reason');
+          addText(section,'p',`選んだ理由: ${nowReason}`,'kai-action-reason');
           timeFit(section, nowCandidate, now);
         }
         addProgressButton(section, nowCandidate);
@@ -524,6 +605,7 @@
       localProgress.add(itemId);
       unresolvedProgress.delete(itemId);
       progress.set(itemId, action);
+      if (current()) topSummary.unknown('loading', '未確認', '記録した進捗を反映してNOWを再確認しています…');
       void update(rows, aiState, aiError);
     }, unavailable(error) {
       const code = typeof error === 'string' && /^[A-Z0-9_]{1,80}$/.test(error) ? error : '';
@@ -1286,6 +1368,12 @@
       const host = byId('kazPersonalContent');
       if (!host) return;
       host.textContent = `${pageLabel}を確認中…`;
+      // WI-54: show the TODAY summary immediately as 未確認 while existing reads run.
+      const todaySummary = selection.page === 'today' ? todaySummaryCard() : null;
+      if (todaySummary) {
+        todaySummary.unknown('loading', '未確認', '今日の予定とWorkを確認しています…');
+        host.prepend(todaySummary.node);
+      }
       const appendAutonomous = (target, snapshot) => {
         if (selection.page === 'today' && globalThis.KazAutonomousWork)
           void globalThis.KazAutonomousWork.append(target,{read:autonomousWorkApi,
@@ -1325,6 +1413,11 @@
           todayFailureStage = 'TODAY_RENDER';
           globalThis.KazPersonalView.render(planHost, selection, planResult.value);
           recordTodayDiagnostic('TODAY_PLAN_PARTIAL_DISPLAY', 'success', 'none', 'DASHBOARD_SNAPSHOT_UNAVAILABLE');
+          if (todaySummary) {
+            todaySummary.unknown('unavailable', '未確認（進捗情報を取得できません）',
+              '確認済みのNOWを選べないため要約は未確認です。下の計画表示を確認してください。');
+            host.prepend(todaySummary.node);
+          }
           appendAutonomous(host, null);
           return;
         }
@@ -1373,7 +1466,7 @@
         }
         let brief = null;
         if (selection.page === 'today') {
-          brief = createTodayActionBrief(briefHost, snapshot, dailyPlan, current, actionHost);
+          brief = createTodayActionBrief(briefHost, snapshot, dailyPlan, current, actionHost, todaySummary);
           appendAiObservationControls(actionHost, snapshot, current, async (id, action) => {
             brief?.onProgress(id, action);
             const [freshSnapshot, refreshedPlan] = await Promise.allSettled([
@@ -1434,6 +1527,13 @@
           status: 'failed', complete: false, snapshot_error_code: safeCode,
           failure_stage: todayFailureStage,
         } } });
+        if (todaySummary) {
+          // A fresh card: a brief created before the failure must not overwrite this state.
+          todaySummary.node.remove?.();
+          const failedSummary = todaySummaryCard();
+          failedSummary.unknown('unavailable', '未確認（今日の情報を読み込めません）');
+          host.prepend(failedSummary.node);
+        }
         appendAutonomous(host, null);
       }
       return;
