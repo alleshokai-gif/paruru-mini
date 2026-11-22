@@ -1,0 +1,14 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BUS adoption synthetic acceptance</title>
+<link rel="stylesheet" href="../../features/bus/home-route.css">
+<style>body{font-family:sans-serif;margin:12px;background:#f4f6fb}main{max-width:480px;margin:auto}section{margin-bottom:12px}h1{font-size:18px}</style>
+<main><h1>合成データ：WI-11 / WI-23</h1><div id="comparison"></div><div id="unknown"></div></main>
+<script src="../../features/bus/home-route.js"></script><script>
+const epoch=t=>Date.parse('2026-09-28T'+t+':00+09:00')/1000;
+const fastest={stationId:'noborito',stationLabel:'登戸駅',departureAt:epoch('18:10'),provider:'kawasaki',routeLabel:'架空A',homeArrivalAt:epoch('18:20'),timingQuality:'static_only'};
+PALURUBusHomeRoute.renderDecision(document,document.querySelector('#comparison'),{status:'available',fastest,alternate:{...fastest,stationId:'musashi_mizonokuchi',stationLabel:'溝の口駅南口',routeLabel:'架空B',homeArrivalAt:epoch('18:25')},differenceMinutes:5});
+PALURUBusHomeRoute.renderDecision(document,document.querySelector('#unknown'),{status:'insufficient_data',options:[
+{placeId:'noborito-tamagawa',stationId:'noborito',stationLabel:'登戸駅多摩川口',routeLabel:'架空C'},
+{placeId:'mizonokuchi',stationId:'musashi_mizonokuchi',stationLabel:'溝の口駅南口',routeLabel:'架空D'}
+].map(o=>({...o,provider:'kawasaki',stationTimeAt:epoch('18:18'),railTimingQuality:'delay_projection',departureAt:epoch('18:31'),boardingAt:epoch('18:26'),homeArrivalAt:null,timingQuality:'arrival_unknown',recommendable:false}))});
+</script></html>

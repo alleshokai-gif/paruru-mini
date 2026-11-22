@@ -287,3 +287,80 @@ test('PALURU Bus view mounts the accepted manual train selector with a productio
   assert.match(preview, /window\.PALURUBusHomeRoute\?\.setActive\(true\)/);
   assert.doesNotMatch(preview, /nav\.innerHTML/);
 });
+
+test('unknown-arrival options retain transfer guidance and rail delay notes', () => {
+  const cases = [
+    { placeId: 'noborito-tamagawa', stationId: 'noborito', stationLabel: '登戸駅多摩川口',
+      station: '登戸', walk: '多摩川口側へ移動', routeLabel: '登０６' },
+    { placeId: 'mizonokuchi', stationId: 'musashi_mizonokuchi', stationLabel: '溝の口駅南口',
+      station: '武蔵溝ノ口', walk: '溝の口駅南口へ移動', routeLabel: '溝１８' }
+  ];
+  for (const entry of cases) {
+    const doc = fakeDocument(), mount = doc.createElement('div');
+    const option = { ...entry, stationTimeAt: epoch('18:18'), stationTimeSource: 'departure',
+      railTimingQuality: 'delay_projection', boardingAt: epoch('18:26'),
+      departureAt: epoch('18:31'), provider: 'kawasaki', tripId: entry.placeId,
+      homeArrivalAt: null, timingQuality: 'arrival_unknown', recommendable: false };
+    const original = { ...option };
+    ui.renderDecision(doc, mount, { status: 'insufficient_data', fastest: null,
+      alternate: null, options: [option], unavailablePlaces: [] });
+    const text = renderedText(mount);
+    assert.match(text, /帰宅時刻を比較できません.*到着時刻不明の乗車候補/s);
+    assert.ok(text.includes(`${entry.station}で下車`));
+    assert.ok(text.includes(`乗り場：${entry.stationLabel}`));
+    const card = mount.children.find((child) =>
+      child.className === 'bus-home-route-option bus-home-route-display-only');
+    const railIndex = card.children.findIndex((child) => child.className === 'bus-home-route-rail');
+    assert.deepEqual(card.children.slice(railIndex, railIndex + 5).map((child) => child.textContent), [
+      `🚃 ${entry.station} 18:18着・遅延に基づく見込み`, '↓', `🚶 ${entry.walk}`, '↓',
+      `🚌 18:31 川崎市バス ${entry.routeLabel}`
+    ]);
+    const badges = card.children[0].children.filter((child) => child.className === 'bus-home-route-area');
+    assert.deepEqual(badges.map((child) => child.textContent),
+      entry.placeId === 'noborito-tamagawa' ? ['多摩川口'] : []);
+    assert.match(text, /到着時刻は不明.*最速比較・推薦の対象外/s);
+    assert.doesNotMatch(text, /神木本町 .*着|到着予測|時刻表上の最速候補/);
+    assert.deepEqual(option, original);
+  }
+});
+
+
+
+test('arrival difference belongs to the alternate card and requires both known arrivals', () => {
+  const doc = fakeDocument(), mount = doc.createElement('div');
+  const fastest = {stationId:'noborito', stationLabel:'登戸', departureAt:epoch('18:10'),
+    provider:'kawasaki', routeLabel:'A', homeArrivalAt:epoch('18:20'), timingQuality:'static_only'};
+  const alternate = {...fastest, routeLabel:'B', homeArrivalAt:epoch('18:25')};
+  const render = (other, gap) => {
+    ui.renderDecision(doc,mount,{status:'available',fastest,alternate:other,differenceMinutes:gap});
+    return mount.children;
+  };
+  let children = render(alternate,5);
+  assert.doesNotMatch(renderedText(children[1]),/5分差/);
+  assert.match(renderedText(children[2]),/5分差/);
+  assert.equal(children.length,3);
+  assert.doesNotMatch(renderedText({children:render({...alternate,homeArrivalAt:null},5)}),/5分差/);
+  assert.doesNotMatch(renderedText({children:render(alternate,-1)}),/分差/);
+  for (const invalid of [null, undefined, NaN, Infinity, -1, 1e99, '18:25']) {
+    assert.doesNotMatch(renderedText({children:render({...alternate,homeArrivalAt:invalid},5)}),/分差/);
+    ui.renderDecision(doc,mount,{status:'available',fastest:{...fastest,homeArrivalAt:invalid},
+      alternate,differenceMinutes:5});
+    assert.doesNotMatch(renderedText(mount),/分差/);
+  }
+  assert.doesNotMatch(renderedText({children:render({...alternate,homeArrivalAt:epoch('18:19')},5)}),/分差/);
+  for (const invalid of [null, NaN, Infinity, -1, '5'])
+    assert.doesNotMatch(renderedText({children:render(alternate,invalid)}),/分差/);
+});
+
+test('unknown-arrival walking guidance does not imply a rail delay without evidence', () => {
+  for (const placeId of ['noborito-tamagawa','mizonokuchi']) {
+    const doc=fakeDocument(), mount=doc.createElement('div');
+    ui.renderDecision(doc,mount,{status:'insufficient_data',options:[{
+      placeId,stationId:'noborito',stationLabel:'架空の乗り場',stationTimeAt:epoch('18:18'),
+      departureAt:epoch('18:31'),boardingAt:epoch('18:26'),homeArrivalAt:null,
+      timingQuality:'arrival_unknown',recommendable:false
+    }]});
+    assert.match(renderedText(mount),/🚶/);
+    assert.doesNotMatch(renderedText(mount),/遅延に基づく見込み|分差/);
+  }
+});
