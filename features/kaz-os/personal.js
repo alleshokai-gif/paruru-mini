@@ -9,7 +9,7 @@
   const WORK_STATES = ['IDEA','BACKLOG','READY','SCHEDULED','DOING','WAITING','BLOCKED','CODEX_RUNNING','HUMAN_REVIEW','ACCEPTANCE','DONE','CANCELLED'];
   const WORK_PRIORITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
   const WORK_STAGES = { IDEA: '構想', BACKLOG: '着手待ち', READY: '着手可能', SCHEDULED: '着手予定',
-    DOING: '作業中', CODEX_RUNNING: 'AI実行中', WAITING: '待機中', BLOCKED: '停止中',
+    DOING: '作業中', CODEX_RUNNING: 'AI実行登録', WAITING: '待機中', BLOCKED: '停止中',
     HUMAN_REVIEW: 'レビュー段階', ACCEPTANCE: '受入段階', DONE: '完了登録', CANCELLED: '取消済み' };
   const isClosedWork = work => ['DONE', 'CANCELLED'].includes(work.state);
   const priorityRank = value => {
@@ -39,6 +39,29 @@
   const jst = value => new Date(value).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo',
     year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' JST';
   const evidenceDay = value => new Date(value + 9 * 3600000).toISOString().slice(0, 10);
+  // Issue #240: one vocabulary for source state across the six screens.
+  // "未観測" is never rendered as 0; a true 0 is only shown when the source is OK.
+  const STATE_KIND = { ok: 'ok', current: 'ok', partial: 'partial', stale: 'stale', failed: 'failed',
+    not_connected: 'unobserved', unobserved: 'unobserved', zero: 'zero', last_ok: 'last_ok' };
+  const STATE_TEXT = { ok: '正常', partial: '一部', stale: '期限切れ', failed: '失敗',
+    unobserved: '未観測', zero: '真の0', last_ok: '最終正常' };
+  const STATE_HINT = { ok: '取得済み・有効期限内。', partial: '一部だけ取得。欠けた分は0件扱いしません。',
+    stale: '有効期限切れ。現況とは限りません。', failed: '取得に失敗。0件ではありません。',
+    unobserved: '未接続・未取得。0件ではありません。', zero: '取得成功で該当0件。',
+    last_ok: '最後に正常取得できた時点の値です。' };
+  const SOURCE_LABEL = { work_items: 'Work', tasks: 'Work', today: 'TODAY', calendar: 'Calendar',
+    work_busy: 'WorkBusy', projects: 'Projects', capa: 'CAPA', milestones: 'Milestone', runs: 'Run',
+    context_observatory: 'Context' };
+  const stateKind = status => STATE_KIND[status] || 'failed';
+  const isCount = value => Number.isInteger(value) && value >= 0;
+  const countText = (value, unit = '件') => isCount(value) ? `${value}${unit}` : '未観測';
+  const clip = (value, max = 40) => {
+    const chars = Array.from(String(value ?? ''));
+    return chars.length > max ? chars.slice(0, max).join('') + '…' : chars.join('');
+  };
+  const safeCode = value => typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(value) ? value : null;
+  const shortJst = value => Number.isFinite(stamp(value)) ? new Date(value).toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' JST' : null;
 
   function assessWork(w, { trusted, detail, outcome, history, pullRequest, at }) {
     if (!trusted) return { label: '取得未確認', reason: '最新のWorkデータを確認できません。' };
@@ -86,7 +109,9 @@
     const reason = detail?.status === 'unavailable' ? 'Notion本文を取得できません。' :
       outcome ? '成果条件に到達を確認できる証拠がありません。' :
       '日付付きの実績または関連する実行履歴を確認できません。';
-    return { label: WORK_STAGES[w.state] || '段階未確認', reason: `${reason} Notionの登録状態を表示しています。` };
+    const running = w.state === 'CODEX_RUNNING'
+      ? ' 実行IDを確認できないため、AI対応中とは扱いません。' : '';
+    return { label: WORK_STAGES[w.state] || '段階未確認', reason: `${reason} Notionの登録状態を表示しています。${running}` };
   }
   const INBOX_KINDS = { human_review: 'Human Review', acceptance: 'Acceptance', blocked: 'Blocked解除', idea: 'Idea', context_candidate: 'Context candidate' };
   const laneLimits = { now: 1, next: 2, quick_wins: 2, waiting_preview: 2 };
@@ -167,9 +192,54 @@
     const state = value => PROJECT_STATES.includes(value) ? value : 'STATUS未確認';
     const badge = value => el('span', value, 'kp-badge kp-' + (PROJECT_STATES.includes(value) ? value.toLowerCase() : 'unknown'));
     const sourceState = name => health(data?.sources?.[name], now);
+    // State chip: "Work 正常" / "Calendar 期限切れ" etc. Never a bare English code.
+    function stateChip(status, label, parent) {
+      const kind = stateKind(status);
+      const chip = add('span', `${label} ${STATE_TEXT[kind]}`, `kp-state kp-state-${kind}`, parent);
+      chip.dataset.state = kind;
+      chip.title = STATE_HINT[kind];
+      return chip;
+    }
+    function sourceChips(names, parent, overrides = {}) {
+      const row = el('span', '', 'kp-states');
+      for (const name of names) {
+        if (!Object.hasOwn(overrides, name) && !data?.sources?.[name]) continue;
+        stateChip(overrides[name] || sourceState(name), SOURCE_LABEL[name] || name, row);
+      }
+      if (parent) parent.append(row);
+      return row;
+    }
+    // Decision brief: 今日の判断 → 理由・影響 → 対応証拠 → 次担当 (same order on every screen).
+    function brief(rows, parent = host, tone = '') {
+      const dl = add('dl', '', 'kp-brief', parent);
+      if (tone) dl.dataset.tone = tone;
+      for (const [label, value] of rows) {
+        if (value === null || value === undefined || value === '') continue;
+        add('dt', label, '', dl);
+        const dd = add('dd', typeof value === 'string' ? value : '', '', dl);
+        if (typeof value !== 'string') dd.append(value);
+      }
+      return dl;
+    }
     function notice(name, parent = host) {
       const status = sourceState(name);
-      if (status !== 'ok') add('p', `${status.toUpperCase().replace('_', ' ')} · ${status === 'partial' ? '一部情報を取得できていません。表示は取得済み範囲です。' : status === 'not_connected' ? '実データsourceは未接続です。0件ではありません。' : status === 'stale' ? '情報が古いため現況を確定できません。' : name === 'projects' ? 'Projectsを取得できません。0件ではありません。' : '取得できませんでした。0件ではありません。'}`, 'kp-notice', parent);
+      if (status !== 'ok') {
+        const kind = stateKind(status);
+        add('p', `${STATE_TEXT[kind]} · ${status === 'partial' ? '一部情報を取得できていません。表示は取得済み範囲です。' : status === 'not_connected' ? '実データsourceは未接続です。0件ではありません。' : status === 'stale' ? '情報が古いため現況を確定できません。' : name === 'projects' ? 'Projectsを取得できません。0件ではありません。' : '取得できませんでした。0件ではありません。'}`, 'kp-notice', parent);
+        const source = data?.sources?.[name];
+        const lastOk = shortJst(source?.snapshot_last_success_at);
+        const dataAt = shortJst(source?.snapshot_updated_at || source?.fetched_at);
+        if (lastOk) add('p', `最終正常取得 ${lastOk}`, 'kp-muted', parent);
+        else if (status === 'failed') add('p', '最終正常取得は未観測です。', 'kp-muted', parent);
+        if (dataAt && status === 'stale') add('p', `保存データ時点 ${dataAt} · 現在とは限りません。`, 'kp-muted', parent);
+        else if (dataAt && status === 'partial') add('p', `一部取得 ${dataAt}`, 'kp-muted', parent);
+        const code = safeCode(source?.snapshot_error_code) || safeCode(source?.error_code) || safeCode(source?.fetch_status);
+        if (status === 'failed') {
+          const more = fold('失敗の詳細', parent);
+          add('p', `取得元: ${SOURCE_LABEL[name] || name} · 状態コード: ${status}${code ? ` · 詳細コード: ${code}` : ''}`, 'kp-muted', more);
+          add('p', '画面の再表示で再取得します。直らない場合はこの詳細コードを開発担当へ伝えてください。', 'kp-muted', more);
+        }
+      }
       return status;
     }
     const projects = list(data?.projects), work = list(data?.work_items), capa = list(data?.capa_items);
@@ -317,12 +387,23 @@
         const a = add('a', label, 'kp-back kp-outcome-ref', panel);
         a.href = ref; a.target = '_blank'; a.rel = 'noopener noreferrer';
       }
-      line('進捗評価', assessment.label);
-      if (assessment.observed) {
-        line('評価根拠', `${assessment.observed.source} · ${assessment.observed.day} JST`);
-        evidenceLink(assessment.observed.ref, '評価根拠を開く');
-      }
-      add('p', assessment.reason, 'kp-muted', panel);
+      const runs = sourceState('runs') === 'ok' ? list(data?.active_runs) : null;
+      const liveRun = runs?.find(run => run.work_item_id === w.id && run.execution_status === 'running'
+        && typeof run.id === 'string' && run.id);
+      const nextOwner = owner ? '本人（下の依頼に回答）'
+        : liveRun ? `AI · Run ${liveRun.id}`
+        : w.state === 'CODEX_RUNNING' ? 'AI実行の登録あり（実行ID未確認・AI対応中とは扱わない）'
+        : `${w.next_actor || '担当未記録'} · ${w.next_action ? '次の行動は下記' : '次の行動未記録'}`;
+      const decided = brief([
+        ['今日の判断', `進捗評価: ${assessment.label}${owner ? ' · 本人の判断待ち' : ''}`],
+        ['理由・影響', assessment.reason],
+        ['対応証拠', assessment.observed
+          ? `評価根拠: ${assessment.observed.source} · ${assessment.observed.day} JST`
+          : '未観測（日付付きの証拠を確認できません）'],
+        ['次担当', nextOwner],
+      ], panel, assessment.tone === 'gap' ? 'stop' : owner ? 'warn' : '');
+      decided.dataset.workBrief = w.id;
+      if (assessment.observed) evidenceLink(assessment.observed.ref, '評価根拠を開く');
       if (w.work_id && Number.isFinite(revision)) line('登録状態', `${WORK_STAGES[w.state] || w.state} · ${jst(revision)}`);
       if (outcome) line('完成条件', outcomeCounts(outcome));
       if (detail?.work_evidence?.schema_version === 'kaz-notion-work-evidence-v1') {
@@ -444,11 +525,31 @@
             ? new Date(observedAt).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',
                 month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST'
             : '時刻未確認';
-          add('p', `WorkBusy ${busyHealth.toUpperCase()} · 会社のBUSYは最終取得 ${observed} 時点の情報です。空き時間は予定上の目安です。`, 'kp-notice', head);
+          add('p', `WorkBusy ${STATE_TEXT[stateKind(busyHealth)]}（${busyHealth.toUpperCase().replace('_', ' ')}） · 会社のBUSYは最終取得 ${observed} 時点の情報です。空き時間は予定上の目安です。`, 'kp-notice', head);
         }
+        const v3Chips = { today: todayHealth, work_items: workHealth, calendar: calendarHealth, work_busy: busyHealth };
+        const confirmations = Array.isArray(data.today?.confirmations) ? data.today.confirmations.length : null;
+        if (safeToday) brief([
+          ['今日の判断', busyHealth === 'ok' ? '予定上の目安 · 下の空き時間とWork候補を確認'
+            : '一部未確認 · 会社のBUSYの最新状態を確認できません'],
+          ['理由・影響', `${fmt(data.v3_snapshot.generated_at)} JSTのSnapshot（今日分）。`
+            + (isCount(data.today?.calendar_state?.unknown_count) && data.today.calendar_state.unknown_count
+              ? `不明なCalendar予定 ${data.today.calendar_state.unknown_count}件は空き扱いしません。` : '')],
+          ['対応証拠', sourceChips(Object.keys(v3Chips), null, v3Chips)],
+          ['次担当', confirmations === null ? '確認待ちは未観測'
+            : confirmations ? `本人（確認待ち ${confirmations}件）` : 'なし（確認待ち 0件）'],
+        ], head, busyHealth === 'ok' ? '' : 'warn');
         if (!safeToday) {
           add('p', 'TODAY未確定 · 更新結果が揃っていないため、現在の空き時間・NOW・NEXT・時間付き配置は表示しません。', 'kp-notice', head);
-          add('p', `保存Snapshot: ${Number.isFinite(stamp(data.v3_snapshot?.generated_at)) ? fmt(data.v3_snapshot.generated_at) + ' JST / ' + snapshotDay : '時刻未確認'} · TODAY ${todayHealth.toUpperCase()} · Work ${workHealth.toUpperCase()} · Calendar ${calendarHealth.toUpperCase()} · WorkBusy ${busyHealth.toUpperCase()}`, 'kp-muted', head);
+          const savedAt = Number.isFinite(stamp(data.v3_snapshot?.generated_at)) ? fmt(data.v3_snapshot.generated_at) + ' JST / ' + snapshotDay : '時刻未確認';
+          brief([
+            ['今日の判断', 'TODAY未確定 · 今日の計画には使いません'],
+            ['理由・影響', snapshotDay && snapshotDay !== dayJst(now)
+              ? `保存Snapshotが前日以前（${snapshotDay}）のため。` : '必要な取得結果が揃っていないため。'],
+            ['対応証拠', sourceChips(Object.keys(v3Chips), null, v3Chips)],
+            ['次担当', '自動再取得（画面の再表示）'],
+          ], head, 'warn');
+          add('p', `保存Snapshot: ${savedAt} · 下の一覧は最終正常値（現況とは限りません）`, 'kp-muted', head);
           const saved = part('Work情報（最終保存値・現在とは限りません）');
           const catalog = data.last_known_work;
           const recordedAt = Number.isFinite(stamp(catalog?.generated_at))
@@ -488,9 +589,36 @@
           return;
         }
       }
+      if (!v3 && (workHealth !== 'ok' || !data?.today)) {
+        brief([
+          ['今日の判断', 'TODAYを確定できません · 空き時間・NOW・NEXTは表示しません'],
+          ['理由・影響', workHealth === 'ok' ? '今日の計画データが含まれていません。'
+            : `Workの取得状態が「${STATE_TEXT[stateKind(workHealth)]}」のため。`],
+          ['対応証拠', sourceChips(['work_items', 'calendar', 'work_busy'], null, { work_items: workHealth })],
+          ['次担当', '自動再取得（画面の再表示）'],
+        ], head, workHealth === 'failed' ? 'stop' : 'warn');
+      }
       if (workHealth !== 'ok' || !data?.today) return;
 
       const t = data.today, v2 = data.schema_version === 'kaz-today-plan-v2';
+      if (!v3) {
+        const nowItems = Array.isArray(t.now?.items) ? t.now.items : [];
+        const nextItems = Array.isArray(t.next?.items) ? t.next.items : [];
+        const degraded = ['calendar', 'work_busy'].filter(name => data.sources?.[name] && sourceState(name) !== 'ok');
+        const missingEstimate = isCount(t.missing_estimate_count) ? t.missing_estimate_count : null;
+        const first = nowItems[0] || nextItems[0];
+        brief([
+          ['今日の判断', `NOW ${nowItems.length}件 · NEXT ${nextItems.length}件`],
+          ['理由・影響', degraded.length
+            ? `${degraded.map(name => `${SOURCE_LABEL[name]} ${STATE_TEXT[stateKind(sourceState(name))]}`).join('・')}のため、該当する空き時間は未確認です。`
+            : isCount(t.calendar_state?.unknown_count) && t.calendar_state.unknown_count
+              ? `不明なCalendar予定 ${t.calendar_state.unknown_count}件は空き扱いしません。`
+              : '確認済みの予定と作業可能時間から算出しています。'],
+          ['対応証拠', sourceChips(['work_items', 'calendar', 'work_busy'], null)],
+          ['次担当', first ? `本人 · 「${clip(first.title || first.work_id || 'Work')}」から`
+            : missingEstimate ? `本人（所要時間の入力 ${missingEstimate}件）` : 'なし（着手候補 0件）'],
+        ], head, degraded.length ? 'warn' : '');
+      }
       const renderCandidate = (w, parent, label) => {
         const row = add('article', '', 'kp-work-row kp-today-row', parent);
         row.dataset.workItem = w.id;
@@ -621,7 +749,8 @@
         if (t.calendar_state?.unknown_count)
           add('p', `未分類/不明のCalendar予定 ${t.calendar_state.unknown_count}件は空き時間扱いしていません。`, 'kp-notice', overview);
         const confirmations = fold('確認待ち');
-        if (!(t.confirmations || []).length) add('p', '確認待ちはありません。', 'kp-muted', confirmations);
+        if (!Array.isArray(t.confirmations)) add('p', '確認待ちは未観測です（0件ではありません）。', 'kp-notice', confirmations);
+        else if (!t.confirmations.length) add('p', '確認待ちはありません。', 'kp-muted', confirmations);
         else (t.confirmations || []).forEach(item => {
           const row = add('article', '', 'kp-work-row', confirmations);
           add('strong', item.short_title || item.title || item.question || item.id || '確認事項', '', row);
@@ -785,8 +914,31 @@
         }
         return;
       }
-      if (!work.length) { add('p', 'この取得範囲のWork Itemは0件です。'); return; }
+      if (!work.length) {
+        add('p', workHealth === 'ok' ? 'Work Itemは0件です（取得成功・真の0）。'
+          : 'この取得範囲のWork Itemは0件です（一部取得のため全体の0件とは限りません）。');
+        return;
+      }
       head.classList.add('kp-work-list-head');
+      {
+        const open = work.filter(w => WORK_STATES.includes(w.state) && !isClosedWork(w));
+        const count = state => open.filter(w => w.state === state).length;
+        const blocked = count('BLOCKED'), review = count('HUMAN_REVIEW') + count('ACCEPTANCE');
+        const registeredAi = count('CODEX_RUNNING');
+        const fetched = shortJst(data?.sources?.work_items?.fetched_at);
+        brief([
+          ['今日の判断', `未完了 ${open.length}件 · 停止中 ${blocked}件 · レビュー/受入 ${review}件`],
+          ['理由・影響', blocked ? '停止中のWorkは解除するまで進みません。'
+            : review ? 'レビュー/受入は本人の確認で前に進みます。' : '停止・確認待ちのWorkはありません。'],
+          ['対応証拠', (() => {
+            const row = sourceChips(['work_items'], null, { work_items: workHealth });
+            if (fetched) row.append(el('span', `取得 ${fetched}`, 'kp-muted'));
+            if (registeredAi) row.append(el('span', `AI実行登録 ${registeredAi}件（実行ID未確認）`, 'kp-muted'));
+            return row;
+          })()],
+          ['次担当', review ? `本人（レビュー/受入 ${review}件）` : blocked ? `本人（Blocker解除 ${blocked}件）` : 'なし（各Workの次の行動に従う）'],
+        ], head, blocked ? 'warn' : '');
+      }
       const controls = add('div', '', 'kp-work-sort', head);
       function sortSelect(label, choices, value) {
         const field = add('label', label, '', controls);
@@ -852,15 +1004,34 @@
       if (!capa) { add('p', 'CAPA一覧を確認できません。重複・欠落を解消してください。', 'kp-notice'); return; }
       const activeItems = capa.filter(item => item.status !== 'Effective');
       const effectiveItems = capa.filter(item => item.status === 'Effective');
+      const CAPA_STATUS = { Captured: '記録済み', 'Corrective Action': '是正中', 'Preventive Action': '予防策中',
+        Monitoring: '効果確認中', Effective: '有効確認済み', Reopen: '再発' };
+      const reopened = capa.filter(item => item.status === 'Reopen').length;
+      const monitoring = capa.filter(item => item.status === 'Monitoring').length;
+      brief([
+        ['今日の判断', capa.length ? `未完了 ${activeItems.length}件（再発 ${reopened}件 · 効果確認中 ${monitoring}件）`
+          : capaHealth === 'ok' ? 'CAPAは0件（取得成功・真の0）' : 'CAPAは取得範囲で0件（一部取得）'],
+        ['理由・影響', reopened ? '再発したCAPAは是正策が効いていない可能性があります。'
+          : activeItems.length ? '有効確認前のCAPAは再発防止が未確定です。' : '未完了のCAPAはありません。'],
+        ['対応証拠', (() => {
+          const row = sourceChips(['capa'], null, { capa: capaHealth });
+          row.append(el('span', `有効確認済み ${effectiveItems.length}件`, 'kp-muted'));
+          return row;
+        })()],
+        ['次担当', reopened ? `本人（再発 ${reopened}件の是正）` : monitoring ? `本人（効果確認 ${monitoring}件）`
+          : activeItems.length ? `本人（是正・予防 ${activeItems.length}件）` : 'なし'],
+      ], head, reopened ? 'stop' : activeItems.length ? 'warn' : '');
       add('p', `${capa.length} CAPA · Open ${activeItems.length} · Effective ${effectiveItems.length}`, 'kp-muted', head);
       if (!capa.length) { add('p', 'この取得範囲のCAPAは0件です。'); return; }
       const rows = add('div', '', 'kp-work-list');
       const renderCapa = (item, parent) => {
         const row = add('article', '', 'kp-work-row', parent); row.dataset.capaItem = item.id;
         const top = add('div', '', 'kp-project-head', row);
-        top.append(el('strong', item.title));
-        top.append(el('span', item.status, 'kp-badge kp-' + String(item.status || '').toLowerCase().replaceAll(' ', '-')));
-        add('p', `${item.project} · ${item.created} · Effectiveness: ${item.effectiveness}`, 'kp-muted', row);
+        top.append(el('strong', item.title || 'タイトル未記録'));
+        const statusBadge = el('span', CAPA_STATUS[item.status] || item.status || '状態未記録', 'kp-badge kp-' + String(item.status || 'unknown').toLowerCase().replaceAll(' ', '-'));
+        statusBadge.title = item.status || '';
+        top.append(statusBadge);
+        add('p', `${item.project || 'Project未記録'} · ${item.created || '起票日未記録'} · 効果: ${item.effectiveness || '未記録'}`, 'kp-muted', row);
         if (Array.isArray(item.failure_classes) && item.failure_classes.length)
           add('p', item.failure_classes.join(' / '), 'kp-muted', row);
         if (item.trigger) add('p', `TRIGGER ${item.trigger}`, 'kp-blocker', row);
@@ -900,6 +1071,17 @@
         const p = project(selection.id);
         if (!p) { add('p', 'この取得範囲にProjectが見つかりません。'); return; }
         add('h3', p.title, 'kp-project-title'); host.append(badge(state(p.status)));
+        {
+          const contract = outcomeOf(p, 'project', 'projects');
+          const metric = milestones(p, data?.evidence, current && sourceState(data?.origin === 'notion_official_api' ? 'projects' : 'milestones') === 'ok');
+          const remaining = progressUi?.projects?.[p.id]?.remaining_work_count;
+          brief([
+            ['今日の判断', `${state(p.status)}${p.blocker ? ' · Blockerあり' : ''} · 残Work ${countText(remaining)}`],
+            ['理由・影響', p.blocker ? `Blocker: ${clip(p.blocker, 80)}` : `現在の焦点: ${clip(p.current_focus || '未記録', 80)}`],
+            ['対応証拠', contract ? `成果条件 ${outcomeCounts(contract)}` : metric.known ? metric.label : `${metric.label}（未観測）`],
+            ['次担当', `${p.next_actor || '担当未記録'} · ${p.next_action ? clip(p.next_action, 60) : '次の行動未記録'}`],
+          ], host, p.status === 'BLOCKED' || p.blocker ? 'stop' : p.status === 'REVIEW' ? 'warn' : '');
+        }
         const outcome = showOutcome(p, 'project', 'projects');
         add('p', `目的: ${detailText(p, 'purpose')}`);
         for (const [key, label] of [['description', '説明'], ['notes', 'メモ'], ['progress', '進捗記録']])
@@ -934,9 +1116,33 @@
         return;
       }
       const summary = projectSummary(data, now);
+      {
+        const known = projects.filter(p => PROJECT_STATES.includes(p.status));
+        const count = status => known.filter(p => p.status === status).length;
+        const blocked = count('BLOCKED'), review = count('REVIEW');
+        const fetched = shortJst(data?.sources?.projects?.fetched_at);
+        brief([
+          ['今日の判断', projects.length ? `進行 ${count('ACTIVE')}件 · レビュー ${review}件 · 停止 ${blocked}件`
+            : current ? 'Projectは0件（取得成功・真の0）' : 'Projectは取得範囲で0件（一部取得）'],
+          ['理由・影響', blocked ? '停止中のProjectは配下のWorkも進みません。'
+            : review ? 'レビュー中のProjectは本人の確認で次へ進みます。' : '停止・レビュー待ちのProjectはありません。'],
+          ['対応証拠', (() => {
+            const row = sourceChips(['projects'], null, { projects: healthState });
+            if (fetched) row.append(el('span', `取得 ${fetched}`, 'kp-muted'));
+            if (known.length !== projects.length) row.append(el('span', `状態未確認 ${projects.length - known.length}件`, 'kp-muted'));
+            return row;
+          })()],
+          ['次担当', blocked ? `本人（停止 ${blocked}件の確認）` : review ? `本人（レビュー ${review}件）` : 'なし（各Projectの次の行動に従う）'],
+        ], head, blocked ? 'stop' : review ? 'warn' : '');
+      }
       if (summary) {
         const kpis = add('div', '', 'kp-kpis', head);
         Object.entries(summary).forEach(([key, count]) => { const n = add('div', '', '', kpis); n.dataset.projectKpi = key; add('strong', String(count), '', n); add('span', key === 'MOVED' ? 'moved this week' : key, '', n); });
+        if (!Object.hasOwn(summary, 'MOVED')) {
+          const n = add('div', '', 'kp-kpi-unobserved', kpis); n.dataset.projectKpi = 'MOVED';
+          add('strong', '未観測', '', n); add('span', 'moved this week', '', n);
+          n.title = '今週の変更履歴を取得できないため、0件とは扱いません。';
+        }
       }
       add('p', `${projects.length} Projects · ${progressUi ? '残Workの優先度順' : '取得順'} · ${current ? data.sources.projects.scope : '部分取得'}`, 'kp-muted', head);
       if (!projects.length) { add('p', 'この取得範囲のProjectは0件です。'); return; }
@@ -962,35 +1168,85 @@
       const source = data?.source || data?.sources?.context_observatory || null;
       if (!data || data.schema_version !== 'kaz-context-observatory-v1' || data.mode !== 'read_only'
           || !data.totals || !source || source.status !== 'ok' || source.complete !== true) {
-        add('p', 'Context Observatoryを取得できません。0件ではありません。', 'kp-notice', head);
+        const raw = source?.status;
+        const status = !source || !raw ? 'not_connected'
+          : raw === 'ok' ? 'partial' : ['partial', 'stale', 'failed', 'not_connected'].includes(raw) ? raw : 'failed';
+        const kind = stateKind(status);
+        add('p', `Context Observatoryを取得できません（${STATE_TEXT[kind]}）。0件ではありません。`, 'kp-notice', head);
+        const lastOk = shortJst(data?.generated_at);
+        brief([
+          ['今日の判断', 'Contextの件数は判断に使えません'],
+          ['理由・影響', `${STATE_HINT[kind]}${raw === 'ok' && source?.complete !== true ? '（completeが未確認）' : ''}`],
+          ['対応証拠', (() => {
+            const row = el('span', '', 'kp-states');
+            stateChip(status, 'Context', row);
+            if (lastOk) row.append(el('span', `最終生成 ${lastOk}`, 'kp-muted'));
+            return row;
+          })()],
+          ['次担当', '自動再取得（画面の再表示）'],
+        ], head, status === 'failed' ? 'stop' : 'warn');
+        if (status === 'failed') {
+          const more = fold('失敗の詳細', head);
+          add('p', `取得元: Context Observatory · 状態コード: ${safeCode(raw) || 'failed'}${safeCode(source?.error_code) ? ` · 詳細コード: ${source.error_code}` : ''}`, 'kp-muted', more);
+        }
         return;
       }
       const totals = data.totals;
-      const kpis = add('div', '', 'kp-kpis kc-kpis', head);
-      [
-        ['RAW', totals.raw],
-        ['SAVED', totals.saved_context],
-        ['HOLD', totals.raw_hold],
-        ['DECISION', totals.decision_candidate],
-        ['PAIN', totals.pain_point],
-        ['LESSON', totals.lesson],
-      ].forEach(([label, count]) => {
-        const box = add('div', '', '', kpis);
-        add('strong', String(count ?? 0), '', box);
-        add('span', label, '', box);
-      });
       const generated = Number.isFinite(stamp(data.generated_at))
         ? new Date(data.generated_at).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' JST'
         : '生成時刻未確認';
+      const hold = isCount(data.attention?.raw_hold_count) ? data.attention.raw_hold_count
+        : isCount(totals.raw_hold) ? totals.raw_hold : null;
+      brief([
+        ['今日の判断', `Saved Context ${countText(totals.saved_context)} · legacy Raw ${countText(totals.raw)}（別の母集団）`],
+        ['理由・影響', 'Savedは自動保存・明示保存された知識です。legacy Rawは旧取込の別集計で、件数・内訳を足し合わせて比較できません。'],
+        ['対応証拠', (() => {
+          const row = el('span', '', 'kp-states');
+          stateChip('ok', 'Context', row);
+          row.append(el('span', `生成 ${generated}`, 'kp-muted'));
+          return row;
+        })()],
+        ['次担当', hold === null ? 'RAW HOLDは未観測' : hold ? `本人（RAW HOLD ${hold}件の確認）` : 'なし（RAW HOLD 0件）'],
+      ], head, hold ? 'warn' : '');
       add('p', `実データ · GitHub / READ-ONLY · ${generated}`, 'kp-muted', head);
+
+      const kpiBox = (parent, label, value, note) => {
+        const box = add('div', '', isCount(value) ? '' : 'kp-kpi-unobserved', parent);
+        add('strong', isCount(value) ? String(value) : '未観測', '', box);
+        add('span', label, '', box);
+        if (note) box.title = note;
+        return box;
+      };
+      const saved = part('保存した知識（Saved Context）');
+      saved.dataset.contextPopulation = 'saved';
+      const savedKpis = add('div', '', 'kp-kpis kc-kpis', saved);
+      kpiBox(savedKpis, 'SAVED', totals.saved_context);
+      const savedDetail = add('dl', '', 'kc-population', saved);
+      // The current DTO has no Saved-side breakdown. Do not estimate it from Raw.
+      for (const label of ['分類内訳', '増分（期間別）', '重複', '検索・参照実績']) {
+        add('dt', label, '', savedDetail);
+        add('dd', '未観測（このDTOに含まれていません）', 'kc-unobserved', savedDetail);
+      }
+      add('p', 'Savedの分類・増分・重複・検索実績は推定しません。下のlegacy Raw内訳はSavedの分類ではありません。', 'kp-muted', saved);
+
+      const legacy = part('legacy Raw（旧Raw集計・Savedとは別母集団）');
+      legacy.dataset.contextPopulation = 'legacy_raw';
+      const rawKpis = add('div', '', 'kp-kpis kc-kpis', legacy);
+      kpiBox(rawKpis, 'RAW', totals.raw);
+      kpiBox(rawKpis, 'HOLD', totals.raw_hold);
+      add('p', 'legacy Rawの内訳（Saved Contextの内訳ではありません）', 'kc-population-label', legacy);
+      const rawBreakdown = add('div', '', 'kp-kpis kc-kpis kc-kpis-sub', legacy);
+      kpiBox(rawBreakdown, 'DECISION', totals.decision_candidate);
+      kpiBox(rawBreakdown, 'PAIN', totals.pain_point);
+      kpiBox(rawBreakdown, 'LESSON', totals.lesson);
 
       const pipeline = data.pipeline || {};
       const sources = pipeline.sources || {};
       const dispositions = pipeline.dispositions || {};
       const profileCounts = data.semantic_profile?.counts || {};
 
-      const flow = part('Context Flow');
-      add('p', '入力 → 分類 → Saved / Aggregate → Profile。押すと内訳を表示。', 'kp-muted', flow);
+      const flow = part('収集・処理の記録');
+      add('p', '下記はソース別の収集・処理件数です。件数単位・集計期間はDTOでは未観測で、Savedの意味単位数とは比較できません。押すと説明を表示します。', 'kp-muted', flow);
       const flowGrid = add('div', '', 'kc-flow-grid', flow);
       const detail = add('div', '', 'kc-flow-detail', flow);
       const detailTitle = add('strong', 'Context pipeline', '', detail);
@@ -1000,16 +1256,18 @@
         detailText.textContent = bodyText;
       };
       [
-        ['ChatGPT', sources.chatgpt?.saved_context ?? totals.saved_context ?? 0, '会話から意味単位をSaved Contextへ自動保存。'],
-        ['Gmail', sources.gmail?.federated ?? 0, '日次取得。重要メール粒度でSAVE / AGGREGATE / IGNOREへ分類。'],
-        ['LINE', sources.line?.federated ?? 0, '月次export。行動・生活Contextを日単位AGGREGATEへ。'],
-        ['Calendar', sources.calendar?.federated ?? 0, '日次取得。予定をSAVE / AGGREGATE / IGNOREへ分類。'],
+        // ChatGPT uses its own source count only; Saved total is a different population.
+        ['ChatGPT', sources.chatgpt?.saved_context, '会話から意味単位をSaved Contextへ自動保存。'],
+        ['Gmail', sources.gmail?.federated, '日次取得。重要メール粒度でSAVE / AGGREGATE / IGNOREへ分類。'],
+        ['LINE', sources.line?.federated, '月次export。行動・生活Contextを日単位AGGREGATEへ。'],
+        ['Calendar', sources.calendar?.federated, '日次取得。予定をSAVE / AGGREGATE / IGNOREへ分類。'],
       ].forEach(([label, count, bodyText]) => {
         const button = add('button', '', 'kc-flow-node', flowGrid);
         button.type = 'button';
+        if (!isCount(count)) button.classList.add('kc-unobserved');
         add('span', label, '', button);
-        add('strong', String(count), '', button);
-        button.addEventListener('click', () => showDetail(label, `${bodyText} 現在 ${count}件。`));
+        add('strong', isCount(count) ? String(count) : '未観測', '', button);
+        button.addEventListener('click', () => showDetail(label, `${bodyText} 現在 ${countText(count)}。`));
       });
 
       const arrow = add('div', '↓', 'kc-flow-arrow', flow);
@@ -1019,14 +1277,16 @@
       const dispositionSources = pipeline.disposition_sources || {};
       const sourceLabel = source => ({gmail:'Gmail',line_export:'LINE',google_calendar:'Calendar',chatgpt:'ChatGPT'}[source] || source);
       [
-        ['SAVE', 'save', dispositions.save ?? 0, 'Saved Contextへ昇格する外部signal。'],
-        ['AGGREGATE', 'aggregate', dispositions.aggregate ?? 0, '傾向・パターン分析の材料として保持。'],
-        ['IGNORE', 'ignore', dispositions.ignore ?? 0, '低価値ノイズとして上位Contextへは送らない。'],
-      ].forEach(([label, key, count, bodyText]) => {
+        ['SAVE', 'save', dispositions.save, 'Saved Contextへ昇格する外部signal。'],
+        ['AGGREGATE', 'aggregate', dispositions.aggregate, '傾向・パターン分析の材料として保持。'],
+        ['IGNORE', 'ignore', dispositions.ignore, '低価値ノイズとして上位Contextへは送らない。'],
+      ].forEach(([label, key, rawCount, bodyText]) => {
+        const count = countText(rawCount, '');
         const button = add('button', '', 'kc-flow-node kc-flow-node-compact', classGrid);
         button.type = 'button';
+        if (!isCount(rawCount)) button.classList.add('kc-unobserved');
         add('span', label, '', button);
-        add('strong', String(count), '', button);
+        add('strong', count, '', button);
         button.addEventListener('click', () => {
           const sourceCounts = dispositionSources[key] || {};
           const breakdown = Object.entries(sourceCounts)
@@ -1034,7 +1294,7 @@
             .sort((a,b) => Number(b[1]) - Number(a[1]))
             .map(([source, value]) => `${sourceLabel(source)} ${value}件`)
             .join(' / ') || 'source内訳なし';
-          showDetail(label, `${bodyText} 現在 ${count}件。内訳: ${breakdown}`);
+          showDetail(label, `${bodyText} 現在 ${countText(rawCount)}。内訳: ${breakdown}`);
           const matching = (pipeline.recent || []).filter(item => String(item.disposition || '').toUpperCase() === label);
           if (matching.length) {
             const list = matching.slice(0, 8).map(item => `${sourceLabel(item.source)}: ${item.summary || 'summaryなし'}`).join('｜');
@@ -1044,24 +1304,26 @@
       });
 
       const profile = part('Semantic Profile');
-      add('p', 'Phase 2で育てる4カテゴリ。バブルを押すと件数を確認。', 'kp-muted', profile);
+      add('p', 'Phase 2で育てる4カテゴリ。押すと件数を確認。', 'kp-muted', profile);
       const bubbles = add('div', '', 'kc-profile-bubbles', profile);
       [
-        ['Career / Market', profileCounts.career_market ?? 0],
-        ['Services', profileCounts.services_spending ?? 0],
-        ['Family / Behavior', profileCounts.family_behavior ?? 0],
-        ['Active Topics', profileCounts.active_topics ?? 0],
-      ].forEach(([label, count]) => {
+        ['Career / Market', profileCounts.career_market],
+        ['Services', profileCounts.services_spending],
+        ['Family / Behavior', profileCounts.family_behavior],
+        ['Active Topics', profileCounts.active_topics],
+      ].forEach(([label, rawCount]) => {
+        const count = countText(rawCount, '');
         const button = add('button', '', 'kc-profile-bubble', bubbles);
         button.type = 'button';
-        add('strong', String(count), '', button);
+        if (!isCount(rawCount)) button.classList.add('kc-unobserved');
+        add('strong', count, '', button);
         add('span', label, '', button);
         button.addEventListener('click', () => {
           if (label === 'Services' && data.services_profile?.available) {
             const services = (data.services_profile.active_services || [])
               .map(item => `${item.service} ${item.count}件`).join(' / ') || 'service未確認';
             const weekly = data.services_profile.weekly_trend?.status || 'insufficient';
-            showDetail(label, `観測 ${data.services_profile.observation_count ?? count}件。利用: ${services}。週次Trend: ${weekly}。支出総額はまだ計算していません。`);
+            showDetail(label, `観測 ${countText(data.services_profile.observation_count ?? rawCount)}。利用: ${services}。週次Trend: ${weekly}。支出総額はまだ計算していません。`);
             return;
           }
           if (label === 'Family / Behavior' && data.family_behavior_profile?.available) {
@@ -1081,7 +1343,7 @@
             showDetail(label, `観測 ${active.observation_count}件。テーマ: ${themes}。週次Trend: ${trend}。`);
             return;
           }
-          showDetail(label, `Semantic Profileの観測数は ${count}件。Phase 2で時系列・傾向・フィードバックを追加予定。`);
+          showDetail(label, `Semantic Profileの観測数は ${countText(rawCount)}。Phase 2で時系列・傾向・フィードバックを追加予定。`);
         });
       });
 
@@ -1091,14 +1353,8 @@
         add('p', 'Advisory projectionはまだありません。', 'kp-muted', advisory);
       } else {
         const summary = add('div', '', 'kp-kpis kc-kpis', advisory);
-        [
-          ['候補', adv.candidate_count ?? 0],
-          ['観測継続', adv.observe_only_count ?? 0],
-        ].forEach(([label, count]) => {
-          const box = add('div', '', '', summary);
-          add('strong', String(count), '', box);
-          add('span', label, '', box);
-        });
+        kpiBox(summary, '候補', adv.candidate_count);
+        kpiBox(summary, '観測継続', adv.observe_only_count);
         add('p', 'READ-ONLY · Derived Context · 自動反映なし', 'kp-muted', advisory);
         (adv.items || []).forEach(item => {
           const row = add('button', '', 'kc-feedback-row', advisory);
@@ -1120,15 +1376,11 @@
         add('p', 'Outcome Feedbackはまだありません。', 'kp-muted', feedback);
       } else {
         const summary = add('div', '', 'kp-kpis kc-kpis', feedback);
-        [
-          ['Events', fb.event_count ?? 0],
-          ['Success', fb.assessment_counts?.success ?? 0],
-          ['Failure', fb.assessment_counts?.failure ?? 0],
-        ].forEach(([label, count]) => {
-          const box = add('div', '', '', summary);
-          add('strong', String(count), '', box);
-          add('span', label, '', box);
-        });
+        // Failure is never defaulted to 0: a missing count is "未観測".
+        kpiBox(summary, 'Events', fb.event_count);
+        kpiBox(summary, 'Success', fb.assessment_counts?.success);
+        kpiBox(summary, 'Failure（失敗）', fb.assessment_counts?.failure,
+          '失敗件数がDTOにない場合は未観測として表示します。');
         add('p', 'REAL OUTCOME · READ-ONLY · Human Review', 'kp-muted', feedback);
         (fb.items || []).forEach(item => {
           const row = add('button', '', 'kc-feedback-row', feedback);
@@ -1164,15 +1416,15 @@
         (data.by_topic || []).forEach(item => {
           const row = add('div', '', 'kc-topic-row', rows);
           add('span', item.topic || 'other', '', row);
-          add('strong', String(item.count ?? 0), '', row);
+          add('strong', isCount(item.count) ? String(item.count) : '未観測', '', row);
         });
       }
 
       const attention = part('要確認');
-      const hold = data.attention?.raw_hold_count ?? totals.raw_hold ?? 0;
-      const high = data.attention?.high_importance_recent_count ?? 0;
-      add('p', hold ? `RAW HOLD ${hold}件` : 'RAW HOLDなし', hold ? 'kp-notice' : 'kp-muted', attention);
-      if (high) add('p', `最近のHigh importance ${high}件`, 'kp-muted', attention);
+      const high = data.attention?.high_importance_recent_count;
+      add('p', hold === null ? 'RAW HOLD 未観測（0件ではありません）' : hold ? `RAW HOLD ${hold}件（legacy Raw）` : 'RAW HOLDなし（真の0）',
+        hold === 0 ? 'kp-muted' : 'kp-notice', attention);
+      if (isCount(high) && high) add('p', `最近のHigh importance ${high}件`, 'kp-muted', attention);
 
       const recent = part('最近のContext');
       if (!(data.recent || []).length) add('p', '最近のContextはありません。', 'kp-muted', recent);
@@ -1186,7 +1438,7 @@
           : '時刻未確認';
         add('p', `${when} · ${(item.topics || []).join(' / ') || 'other'}`, 'kp-muted', row);
       });
-      add('p', 'Saved Contextは明示保存した即時参照Context。Raw/Intermediateは自動整理用。Gardenerが重複・統合・成熟を進め、Canonical/Core変更だけHuman Reviewを通します。', 'kp-muted');
+      add('p', 'Saved Contextには自動保存と明示保存の経路があります。Raw/Intermediateは別の処理段階です。Canonical/Coreへの変更にはHuman Reviewが必要です。', 'kp-muted');
       return;
     }
 

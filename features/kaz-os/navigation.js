@@ -1427,8 +1427,13 @@
         }
         if (selection.page === 'today') recordTodayDiagnostic(todayFailureStage,
           'unresolved', error?.transportClassification || (error?.httpStatus ? 'http' : 'unknown'), todaySafeError(error));
-        const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox' }[selection.page];
-        globalThis.KazPersonalView.render(host, selection, { sources: { [sourceName]: { status: 'failed' } } });
+        const sourceName = { today: 'work_items', work: 'work_items', projects: 'projects', capa: 'capa', inbox: 'inbox', context: 'context_observatory' }[selection.page];
+        const safeCode = typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code)
+          ? error.code : 'DASHBOARD_READ_OR_RENDER_FAILED';
+        globalThis.KazPersonalView.render(host, selection, { sources: { [sourceName]: {
+          status: 'failed', complete: false, snapshot_error_code: safeCode,
+          failure_stage: todayFailureStage,
+        } } });
         appendAutonomous(host, null);
       }
       return;
@@ -1505,6 +1510,49 @@
       ['完走時間の中央値', 'elapsed_ms', elapsed], ['人間介入回数の中央値', 'human_interventions', number],
       ['手戻り率', 'rework_rate', rate], ['判定カバレッジ', 'coverage', rate]];
     const metric = (stat, format) => `${format(stat?.value)}（算定 ${stat?.known ?? 'unknown'}/${stat?.total ?? 'unknown'}件）`;
+    // Issue240: known/total は評価カバレッジ。部分母数・不足サンプル・母数不一致・不正値は大きく数値を出さず判定保留にする。
+    const MIN_SAMPLE = 5;
+    const isCount = n => Number.isSafeInteger(n) && n >= 0;
+    const rateKeys = ['one_shot_rate', 'completion_rate', 'rework_rate'];
+    const rateParts = {one_shot_rate:['初回Attemptで完走', '試行証拠のあるWork'],
+      completion_rate:['完走', '判定確定（完走+失敗確定）'], rework_rate:['手戻りあり', '算定できたWork']};
+    function judge(key, stat, scope, outcomes) {
+      const held = reason => ({state:'held', reason, known:stat?.known, total:stat?.total});
+      if (!isCount(scope)) return held(`対象Work数が不正（${scope ?? 'unknown'}）`);
+      if (!stat || typeof stat !== 'object') return held('値なし');
+      const {known, total, value} = stat;
+      if (!isCount(known) || !isCount(total) || known > total)
+        return held(`算定件数が不正（確定 ${known ?? 'unknown'} / 対象 ${total ?? 'unknown'}）`);
+      if (total > scope || (key === 'completion_rate' && total !== scope))
+        return held(`母数不一致（算定対象 ${total}件 / 対象Work ${scope}件）`);
+      if (known === 0) return held('判定確定なし');
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || (rateKeys.includes(key) && value > 1))
+        return held(`値が不正（${String(value)}）`);
+      let numerator = null;
+      if (rateKeys.includes(key)) {
+        numerator = Math.round(value * known);
+        if (Math.abs(value * known - numerator) > 1e-6) return held(`分子が整数にならない（値 ${value} × 確定 ${known}）`);
+      }
+      if (key === 'completion_rate' && outcomes && isCount(outcomes.complete) && isCount(outcomes.failed)
+          && (outcomes.complete !== numerator || outcomes.complete + outcomes.failed !== known))
+        return held(`内訳不一致（完走 ${outcomes.complete} + 失敗確定 ${outcomes.failed} ≠ 確定 ${known}）`);
+      const result = {known, total, value, numerator};
+      if (known < total) return {...result, state:'held', reason:`部分母数（未確定 ${total - known}件）`};
+      if (known < MIN_SAMPLE) return {...result, state:'held', reason:`サンプル不足（${known}件 < ${MIN_SAMPLE}件）`};
+      return {...result, state:'ok'};
+    }
+    function judged(key, stat, scope, format, outcomes) {
+      const j = judge(key, stat, scope, outcomes);
+      const parts = rateParts[key];
+      const fraction = parts && Number.isInteger(j.numerator) ? `${parts[0]} ${j.numerator} ÷ ${parts[1]} ${j.known}件` : '';
+      if (j.state === 'ok') {
+        return {ok:true, value:j.value, big:format(j.value),
+          note: fraction ? `${fraction}（未確定 ${j.total - j.known}件）` : `中央値 · 算定 ${j.known} / ${j.total}件`};
+      }
+      const counts = isCount(j.known) && isCount(j.total) ? ` · 確定 ${j.known} / 対象 ${j.total}件` : '';
+      return {ok:false, value:null, big:'判定保留',
+        note:`判定保留: ${j.reason}${counts}${fraction ? ` · 確定分の参考 ${fraction}` : ''}`};
+    }
     function render() {
       const data = periods[range.value];
       body.replaceChildren();
@@ -1513,8 +1561,12 @@
       add(body, 'p', `収集 ${number(data.sessions)}セッション · Work紐付け ${number(data.linked_sessions)}セッション`);
       if (Number.isFinite(latest)) add(body, 'p', `期間内の最終セッション記録 ${new Date(latest).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'})} JST`);
       const confirmed = summary.completion_rate?.known;
-      add(body, 'p', `計測対象 ${number(summary.works)} Work · 判定確定 ${number(confirmed)} / ${number(summary.works)} Work`);
-      if (Number.isInteger(confirmed) && Number.isInteger(summary.works) && confirmed < summary.works) {
+      const countsValid = isCount(confirmed) && isCount(summary.works) && confirmed <= summary.works;
+      add(body, 'p', `計測対象 ${number(summary.works)} Work · 判定確定 ${number(confirmed)} / ${number(summary.works)} Work · 判定未確定 ${countsValid ? number(summary.works - confirmed) : '—'} Work`);
+      add(body, 'p', '判定確定 = 完走または失敗確定の終端記録があるWork。完走率 = 完走 ÷ 判定確定（対象Work全体ではない）。判定カバレッジ = 判定確定 ÷ 対象Work。'
+        + `未確定が残る（部分母数）・確定${MIN_SAMPLE}件未満・母数不一致・不正値の指標は「判定保留」と表示。`).className = 'development-productivity-note';
+      add(body, 'p', '一発完走率は初回Attemptの試行証拠に基づく別指標で、完走率とは母数が異なる。完走/失敗確定は記録された判定をそのまま表示し、PR作成・CI通過・main反映・配備はそれぞれ別の証拠で単独では完走と同義ではない（各Workの根拠欄を参照）。').className = 'development-productivity-note';
+      if (countsValid && confirmed < summary.works) {
         const reasons = new Map();
         for (const work of data.works) {
           if (['complete', 'failed'].includes(work.outcome)) continue;
@@ -1532,11 +1584,18 @@
         const card = add(cards, 'section', '');
         card.className = 'development-metrics-card';
         add(card, 'h4', label);
-        add(card, 'strong', key === 'completion_rate' && confirmed === 0 ? '—（判定確定なし）' : format(summary[key]?.value));
-        const stat = summary[key];
-        add(card, 'p', key === 'coverage'
-          ? `判定確定 ${summary.completion_rate?.known ?? 'unknown'} / ${summary.works}件`
-          : `算定 ${stat?.known ?? 'unknown'} / ${stat?.total ?? 'unknown'}件`);
+        let shown;
+        if (key === 'coverage') {
+          const cov = summary.coverage?.value;
+          const covValid = countsValid && summary.works > 0 && typeof cov === 'number' && Number.isFinite(cov)
+            && Math.abs(cov - confirmed / summary.works) < 1e-6;
+          shown = covValid
+            ? {ok:true, big:rate(cov), note:`判定確定 ${confirmed} ÷ 対象Work ${summary.works}件（未確定 ${summary.works - confirmed}件）`}
+            : {ok:false, big:'判定保留', note:`判定保留: カバレッジ値と件数が整合しない（値 ${String(cov ?? 'unknown')} · 確定 ${confirmed ?? 'unknown'} / 対象 ${summary.works ?? 'unknown'}）`};
+        } else shown = judged(key, summary[key], summary.works, format, key === 'completion_rate' ? summary.outcomes : null);
+        if (!shown.ok) card.className = 'development-metrics-card development-metrics-held';
+        add(card, 'strong', shown.big);
+        add(card, 'p', shown.note);
       }
       if (data.session_scope) {
         const scopes = {unregistered_development:'Work未登録の開発', non_development:'調査・相談（明示）',
@@ -1545,39 +1604,48 @@
           `${label} ${data.session_scope[key] ?? 'unknown'}件`).join(' · '));
       }
       add(body, 'p', Object.entries(status).map(([key, label]) => `${label} ${summary.outcomes?.[key] ?? 'unknown'}件`).join(' · '));
+      const execution = judged('execution_ms', summary.execution_ms, summary.works, elapsed);
       add(body, 'p', '完走時間は初回Attempt開始から確認まで。記録できた実行時間の中央値は '
-        + metric(summary.execution_ms, elapsed) + '。');
+        + `${execution.big}（${execution.note}）。`);
       add(body, 'h4', '推移');
-      const points = data.trend?.[grain.value] || [];
+      const points = Array.isArray(data.trend?.[grain.value]) ? data.trend[grain.value] : [];
       if (!points.length) add(body, 'p', '期間内に紐付け済みの観測がありません。');
+      else add(body, 'p', '各区間も同じ判定ルール。判定保留の区間は棒グラフを表示しない。').className = 'development-productivity-note';
       const trendFields = [['完走率','completion_rate',rate],['人間介入','human_interventions',number],
         ['完走時間','elapsed_ms',elapsed]];
+      const trendJudged = points.map(point => Object.fromEntries(trendFields.map(([, key, format]) =>
+        [key, judged(key, point?.[key], point?.works, format)])));
       const maxima = Object.fromEntries(trendFields.map(([,key]) => [key, key === 'completion_rate'
-        ? 1 : Math.max(1, ...points.map(point => point[key]?.value ?? 0))]));
-      for (const point of points) {
+        ? 1 : Math.max(1, ...trendJudged.map(item => item[key].ok ? item[key].value : 0))]));
+      points.forEach((point, index) => {
         const row = add(body, 'div', '');
         row.className = 'development-productivity-point';
-        add(row, 'strong', `${point.period} · ${point.works} Work`);
-        for (const [label, key, format] of trendFields) {
-          const stat = point[key];
-          const text = `${label} ${metric(stat, format)}`;
-          add(row, 'span', text);
-          if (Number.isFinite(stat?.value)) {
+        add(row, 'strong', `${point?.period ?? '期間不明'} · ${number(point?.works)} Work`);
+        for (const [label, key] of trendFields) {
+          const shown = trendJudged[index][key];
+          const text = `${label} ${shown.big}（${shown.note}）`;
+          const span = add(row, 'span', text);
+          if (!shown.ok) span.className = 'development-productivity-held';
+          if (shown.ok) {
             const meter = document.createElement('meter');
             meter.max = maxima[key];
-            meter.value = stat.value;
+            meter.value = shown.value;
             meter.setAttribute('aria-label', text);
             row.append(meter);
           }
         }
-      }
+      });
       add(body, 'h4', 'モデル別比較');
       if (!data.models.length) add(body, 'p', '比較できるWorkがありません。');
       for (const model of data.models) {
         const card = add(body, 'section', '');
         card.className = 'development-metrics-card';
         add(card, 'h5', `${model.model} / ${model.reasoning_level} · ${model.works} Work`);
-        for (const [label, key, format] of labels.slice(0, 5)) add(card, 'p', `${label} ${metric(model[key], format)}`);
+        for (const [label, key, format] of labels.slice(0, 5)) {
+          const shown = judged(key, model[key], model.works, format);
+          const line = add(card, 'p', `${label} ${shown.big}（${shown.note}）`);
+          if (!shown.ok) line.className = 'development-productivity-held';
+        }
         add(card, 'p', `入力 ${metric(model.input_tokens, number)} · 出力 ${metric(model.output_tokens, number)} · cached ${metric(model.cached_input_tokens, number)}`);
         add(card, 'p', `API費用 ${metric(model.api_cost_usd, v => show(v, n => '$' + n.toFixed(4)))}`);
       }
@@ -1589,7 +1657,7 @@
         card.className = 'development-metrics-card';
         add(card, 'h5', `${work.work_id} · ${status[work.outcome] || '判定不能'}`);
         add(card, 'p', `${work.model} / ${work.reasoning_level} · Attempt ${number(work.attempt_count)} · ${work.session_count} セッション`);
-        add(card, 'p', `完走 ${elapsed(work.elapsed_ms)} · 実行 ${elapsed(work.execution_ms)} · ${evidence[work.evidence] || '根拠 unknown'}`);
+        add(card, 'p', `完走までの時間 ${elapsed(work.elapsed_ms)} · 実行 ${elapsed(work.execution_ms)} · ${evidence[work.evidence] || '根拠 unknown'}`);
         if (work.self_reported_complete) add(card, 'p', 'Codexの完了報告あり');
         for (const link of work.github_links || []) {
           if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(link.repository || '')) continue;
@@ -1795,6 +1863,13 @@
       list.append(row);
     }
     host.append(list);
+    // On a phone each detail row is a vertical record with explicit labels.
+    for (const table of host.querySelectorAll?.('.development-metrics-table') || []) {
+      const labels = Array.from(table.querySelectorAll('thead th')).map(cell => cell.textContent);
+      for (const row of table.querySelectorAll('tbody tr')) {
+        Array.from(row.children).forEach((cell, index) => { cell.dataset.label = labels[index] || '値'; });
+      }
+    }
     host.querySelector('.development-metrics-return')?.remove();
     const nodes = Array.from(host.children);
     const titleIndex = nodes.findIndex(node => node.tag === 'h2' || node.tagName?.toLowerCase() === 'h2');
