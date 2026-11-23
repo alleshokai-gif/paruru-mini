@@ -1,123 +1,167 @@
-# Private match video read API (implementation contract, not deployed)
+# Private match video read API (Draft, not deployed)
 
-## Scope and release boundary
+## Scope, impact and rollback
 
-Problem: the requested tournament/match link collection needs a private server
-source and an explicit viewer boundary. No production defect or real catalog was
-inspected. This change adds only three read-only Mini actions, using the existing
-Firebase authentication and private Script Properties pattern. It adds no model
-calls, external fetches, scopes, credentials, service hops, writes or public data.
-Family Inbox's household review capability is deliberately not sufficient and its
-receiver/protocol is unchanged. UI implementation is a separate worktree/task.
+The collection must page through at least 51 videos, preserve unclassified entries
+and provide authenticated thumbnails. No real catalog, school/team/LINE material,
+video or production settings were inspected. The three Mini read actions reuse
+current Firebase identity/membership plus `home.read` AND a dedicated exact
+`homeId + memberUserId` reader allowlist. No family-wide role fallback exists.
+Family Inbox's receiver, protocol, capabilities and credentials remain unchanged.
 
-Side effects: each request freshly verifies Firebase identity/membership and
-`home.read`, reads the current dedicated allowlist and then the private catalog.
-There is no actor/catalog/link/thumbnail cache. Invalid or missing configuration
-fails closed. Rollback: revert this feature commit; private properties are not
-created/changed by the code. No deployment, real data import or merge is part of
-this task. Future live acceptance must verify allowed and denied actors and that
-neither browser storage nor diagnostics retain responses.
+The catalog is now a dedicated restricted Drive JSON file referenced by one
+private Script Property, not JSON squeezed into a property. Only that exact file
+is read; no folder search/scan/shortcut resolution. Existing `drive` and
+`script.external_request` scopes suffice; manifests/scopes are unchanged.
+No writes, imports, ACL changes, caches or model calls. The only provider request
+is an authenticated thumbnail action: one official metadata request, then at most
+one official image request. Revert this feature to roll back; no property/file
+changes are performed by this code. Merge, provisioning and deployment are outside
+this Draft task. Future live acceptance must verify actual Firebase/Drive access,
+private UI rendering, denial cases and no browser persistence.
 
-## UI transport (contract frozen for parallel implementation)
+## UI transport and response envelope
 
-Use the existing `callHomeControlApi(payload)` / `postAuthenticatedApi_` flow:
-authenticated POST with `cache: 'no-store'`. Do not supply home/member/role from UI.
-The helper removes client identity fields and attaches the current Firebase token.
-GET, legacy pairing and Family Inbox service tokens cannot access these actions.
+Use existing `callHomeControlApi(payload)` / `postAuthenticatedApi_`:
+authenticated POST with `cache: 'no-store'`. Never send client home/member/role.
+The helper strips client identity fields and attaches the current Firebase token.
+Each action freshly resolves the server actor (not cached Home authentication),
+then reads the current allowlist; only an exact allowed tuple can read Drive or
+contact YouTube. GET/legacy pairing/Family Inbox service tokens cannot grant access.
 
-All responses use `schemaVersion: 'handball-match-videos-1.0'` and the existing
-`{success, data, error, message}` envelope. On failure data is `{}`, message is
-fixed, and error.code is one of `FORBIDDEN`, `INVALID_INPUT`, `NOT_FOUND`,
-`CONFIGURATION_ERROR`, `SERVICE_UNAVAILABLE`. Authentication failures are
-intentionally reduced to `FORBIDDEN` on this sensitive endpoint.
+All responses retain `schemaVersion: 'handball-match-videos-1.0'` and the existing
+`{success, data, error, message}` envelope. Failed data is `{}`, message is fixed;
+error.code is `FORBIDDEN`, `INVALID_INPUT`, `NOT_FOUND`, `CONFIGURATION_ERROR`,
+`SERVICE_UNAVAILABLE` or `REVISION_CONFLICT`. Auth failures are `FORBIDDEN` here.
+No errors/logs expose request/response bodies, private URLs, file IDs or actor IDs.
 
 ### `listHandballMatchVideos`
 
-Request fields: `action`, optional `tournamentId`, `matchId`, `offset` (default 0,
-0..50), `limit` (default 20, 1..20). The transport adds `auth`. Unknown fields are
-rejected. Filtering IDs are opaque, not names or URLs. Empty filters are omitted.
+Request: `action`, optional `tournamentId`, `matchId`, `offset` (default 0, 0..1000),
+`limit` (default 20, 1..20), `catalogRevision`. Transport adds `auth`; unknown
+fields are rejected. Omit a filter for all; explicit `null` selects unclassified
+rows in that dimension. Non-null filters are opaque IDs, never names or URLs.
+No match filter is applied by default: tournament-only videos remain visible.
 
-Data: `{items, total, offset, limit, hasMore}`. Each item has only:
+Data: `{items, total, offset, limit, hasMore, catalogRevision, filters}`.
+`filters` always covers ALL rows in this actor's home, independent of page/filter:
+
+- `tournaments: [{id, label, count}]`
+- `matches: [{id, label, tournamentId, count}]`
+- `unclassifiedTournamentCount`, `unassignedMatchCount`
+
+Build dropdowns from `filters`, NOT the first 20 returned items. Client can narrow
+match options by `tournamentId`. Preserve an explicit unclassified option and an
+all option. Traverse offsets until `hasMore` is false. Send the first response's
+`catalogRevision` on subsequent pages; `REVISION_CONFLICT` requires discarding the
+old paging session and starting again, not concatenating different revisions.
+
+Each item contains only:
 
 ```js
 {
   id: 'hv_' + '1'.repeat(32),
-  tournamentId: 'ht_' + '2'.repeat(32), tournamentLabel: '架空大会A',
-  matchId: 'hm_' + '3'.repeat(32), matchLabel: '架空第1試合',
-  title: '架空動画A', playedOn: '2026-01-10',
-  thumbnail: {status: 'placeholder'}
+  tournamentId: 'ht_' + '2'.repeat(32), tournamentLabel: 'Synthetic tournament',
+  matchId: null, matchLabel: null,
+  title: 'Synthetic recording', playedOn: '', publishedOn: '2026-01-10',
+  classificationStatus: 'tournament_only', thumbnail: {status: 'not_requested'}
 }
 ```
 
-`playedOn` is a validated calendar date, or empty when unknown. The list contains
-no provider video ID, playback URL, thumbnail URL, storage locator or owner IDs.
-Order is private catalog order. Validate all catalog rows before returning any;
-duplicate/conflicting IDs or malformed fields fail the request, not a partial leak.
+`playedOn` is a validated match date and `publishedOn` a validated posting date;
+neither is inferred from the other. Empty means unknown. `matchId/matchLabel`
+must be both null or both valid; tournament pair is also nullable. Status is
+`match_identified`, `tournament_only`, or `unclassified`, derived from those pairs.
+If explicitly supplied in private data, it must agree. No provider video ID,
+playback URL, thumbnail URL, storage locator or home/member IDs appear in lists.
+Order is private catalog order; all rows validate before any data is returned.
 
 ### `getHandballMatchVideoLink`
 
-Request: `{action: 'getHandballMatchVideoLink', id}` plus transport auth. Invoke
-only after the viewer explicitly clicks. This request repeats full authentication,
-current allowlist and household/catalog checks, so a previous list is no grant.
-Data: `{id, url}`. Only strict HTTPS `youtube.com/watch?v=<11-character-id>`
-(optional `www`) or `youtu.be/<11-character-id>` is accepted in private storage;
-response is canonical `https://www.youtube.com/watch?v=...`. No redirectors,
-credentials, ports, other hosts/schemes, playlists, fragments or extra parameters.
-This validates syntax/host only, never existence, ownership or YouTube access.
-Opening the link uses YouTube's own access rules; Mini cannot grant/revoke YouTube
-rights or prevent a viewer retaining an already issued link. Do not embed,
-prefetch, preload or use a redirect GET. Set `noopener,noreferrer` on user-opened
-navigation and discard the result from application state immediately afterwards.
+Request `{action: 'getHandballMatchVideoLink', id}` plus transport auth, only after
+a viewer explicitly clicks. Repeat full auth/current allowlist/home/opaque-ID
+checks. A prior list is not a grant. Data `{id, url}`; strict HTTPS YouTube watch
+URL or short URL in storage is canonicalized to `https://www.youtube.com/watch?v=...`.
+Other hosts/schemes, redirectors, userinfo, ports, extra query and fragments fail.
+This verifies syntax, not ownership/availability or YouTube viewing rights.
+Mini cannot grant those rights or revoke a link already retained by a viewer.
+Do not embed/prefetch/preload or make a GET redirect endpoint. User-opened links
+use `noopener,noreferrer`; discard returned URL from application state afterwards.
 
 ### `getHandballMatchVideoThumbnail`
 
-Request: `{action: 'getHandballMatchVideoThumbnail', id}` plus transport auth.
-Same reauthorization as link action. Data: `{id, status: 'placeholder',
-reason: 'THUMBNAIL_UNAVAILABLE'}`. Render a local generic icon, not a remote image.
-No thumbnail metadata/URL/bytes are stored, returned or fetched in this stage.
-A real image proxy would need separately verified YouTube legality/access and
-bounded authenticated byte delivery with no persistent caching. Those conditions
-are unverified, so this implementation does not contact a third party.
+Request `{action: 'getHandballMatchVideoThumbnail', id}` plus transport auth.
+Only after ALL auth/allowlist/home/video checks, request fixed HTTPS YouTube oEmbed
+with that catalog video's canonical URL. Require 200, JSON MIME, <=32 KiB,
+provider `YouTube`, provider URL `https://www.youtube.com/` and video metadata.
+Use ONLY the metadata-supplied thumbnail URL, validated against exact
+`https://i.ytimg.com/vi/<same-video-id>/<known-size>.jpg`. No guessed image URL,
+query/fragment, other host/path/video, cookies or forwarded user credentials.
 
-## Private provisioning contract (do not populate in this task)
+At most one image request: require 200, `image/jpeg`, <=256 KiB, JPEG start/end
+signature. Both requests use TLS certificate validation, no redirects/retries,
+8-second per-request timeout. Refusal/hidden/invalid/redirect/error returns
+`{id, status:'placeholder', reason:'THUMBNAIL_UNAVAILABLE'}` without alternate
+paths. Success is `{id, status:'available', mimeType:'image/jpeg', base64}`.
+No original thumbnail URL is returned, and no image is persisted or cached.
 
-Two private Mini Script Properties; both JSON schemaVersion 1, each limited to
-8,500 characters (must also respect GAS's 9 KB property byte limit):
+UI: request only visible/explicitly needed rows, render a memory-only Blob/object
+URL (revoke on removal/account switch) or validated JPEG data URL. Never fetch
+YouTube/CDN directly or persist bytes/URLs. Render local generic icon on fallback.
+The byte cap is enforced before return and after fetch; GAS buffers the upstream
+HTTP response, so this is not a streaming download bandwidth cap.
 
-- `HANDBALL_VIDEO_READERS_JSON`: `{schemaVersion:1, readers:[{homeId,memberUserId}]}`.
-  1..20 exact verified server actor tuples. No role wildcard, family-wide grant,
-  default admin or client override. Re-read on every request. Missing is denied.
-- `HANDBALL_VIDEO_CATALOG_JSON`: `{schemaVersion:1, items:[...]}`; 0..50 rows,
-  each with `homeId`, all the list metadata fields except `thumbnail`, and
-  `youtubeUrl`. Each video's opaque ID is globally unique; tournament and match
-  IDs must not conflict across households/labels/parent tournaments. Never derive
-  an opaque ID from a provider video ID or another private identifier.
+## Private provisioning (not performed in this task)
 
-This bounded pilot uses existing private Script Properties, not an importer.
-No property values, actual school/team names, links, thumbnails or LINE source
-material belong in this public repository, public assets, fixtures, PRs or logs.
-Larger catalogs require the already restricted-store pattern, not public JSON.
+- `HANDBALL_VIDEO_READERS_JSON`: JSON `{schemaVersion:1, readers:[{homeId,
+  memberUserId}]}`, 1..20 exact server actor tuples, <=8,500 characters within
+  GAS property limits. No wildcard/default admin/client override.
+- `HANDBALL_VIDEO_CATALOG_FILE_ID`: ONLY dedicated Drive file ID, no catalog JSON.
+  The old `HANDBALL_VIDEO_CATALOG_JSON` property is NOT used and has no fallback.
+- The file: `{schemaVersion:1, revision:'hc_<32 lowercase hex>', items:[...]}`,
+  0..1000 rows, <=2 MiB UTF-8 JSON. Each row has `homeId`, list metadata fields
+  except `thumbnail`, and `youtubeUrl`; `classificationStatus`/`publishedOn` can
+  be omitted for older rows (derived status/unknown posted date). Opaque IDs use
+  `hv_`, `ht_`, `hm_` plus 32 lowercase hex characters; never provider IDs.
+  Every publication must use a new opaque `hc_` revision so pages detect changes.
 
-## XSS, storage and diagnostics boundary
+The exact file must be nontrashed, application/json or text/plain, and Drive
+`Access.PRIVATE`. Broad/domain/link-sharing classes, shortcuts, size mismatch,
+malformed JSON or conflicting IDs fail closed. This runtime check does NOT audit
+explicit individual ACL grants; approved restricted provisioning must establish
+those separately. No real file/ACL/property was accessed in this task. Do not
+put private names, links, IDs, source messages or thumbnails into this public repo.
 
-Use `textContent` for all labels. Backend rejects markup/control/bidi characters,
-URL-shaped labels and oversize fields; it never returns raw unexpected columns.
-No endpoint logs content or exceptions. Existing transport trace may record only
-its allowlisted stage/code/timing metadata, never request/response bodies.
-Never put responses/links in localStorage, IndexedDB, CacheStorage, service-worker
-messages, query strings, crash reports or console logs. Clear UI memory on logout
-and account switch. SW ignores POST; do not turn this API into an image GET or
-append returned references to app-shell/cache-first assets. Apps Script
-ContentService cannot set arbitrary Cache-Control headers: the current boundary
-relies on authenticated POST + the existing no-store fetch + no SW persistence;
-this is not a claim that downloaded values can be erased from a viewer's browser.
+## Browser/XSS/diagnostics
 
-## Verification
+Labels use `textContent`, never innerHTML. Backend rejects markup/control/bidi,
+URL-shaped labels and oversized fields, and allowlists output columns. Do not
+retain responses in localStorage, IndexedDB, CacheStorage, service-worker messages,
+query strings, crash reports or console. Clear memory on logout/account switch.
+SW ignores POST; do not add API/image GETs to cache-first/app-shell assets.
+ContentService cannot set arbitrary Cache-Control headers: current boundary is
+POST + existing no-store fetch + no SW persistence. Values delivered to an
+allowed browser cannot be guaranteed erased from that viewer's possession.
 
-`node --test test/handball-match-video-backend.test.js` uses only invented data,
-no provider calls. It covers exact tuple membership, unauthenticated/other member/
-other home, client actor spoofing, per-action reauthorization/revocation, XSS,
-URL and ID validation, filtering/paging, cross-home not-found, generic errors,
-thumbnail fallback and existing POST/SW non-persistence boundaries. Relevant
-existing authentication, Inbox gateway and required PR suites are run alongside.
-Real authentication, YouTube playback and mobile UI acceptance remain untested.
+## Verification and limits
+
+Synthetic tests execute actual GAS routing/auth wrapper with invented verified
+identity/Drive/provider adapters. They cover Japanese 51 and 317 rows, complete
+paging/filter choices, revision changes, nullable match/classification, exact
+reader tuple, cross-home denial, per-click reauthorization, URL/XSS/file validation,
+no external calls before auth, metadata refusal, redirects, MIME/byte caps and
+placeholder behavior. Relevant existing auth/Inbox/required PR suites also run.
+
+A separate local-only real HTTP POST probe used the public sample video from
+[YouTube's official IFrame API documentation](https://developers.google.com/youtube/iframe_api_reference).
+At 2026-11-23 15:45 UTC, actual oEmbed and its thumbnail both returned 200 (2
+requests); the unchanged handler returned `available`, image/jpeg, 22,712 bytes.
+Independent Pillow decode: 480x360 JPEG; SHA256
+`056129e50d3b499e3a6b2056bd73adcc97fe3f8365e34e91175ddc6ccf4314ac`.
+Auth and Drive were synthetic local fixtures, NOT production Firebase/Drive/GAS.
+No image or real target data was saved/committed; the probe output contained only
+aggregate status/size/hash. Live restricted-file access, production authentication,
+real target thumbnails and integrated UI acceptance remain untested.
+
+Official API references: [Drive File](https://developers.google.com/apps-script/reference/drive/file),
+[UrlFetchApp](https://developers.google.com/apps-script/reference/url-fetch/url-fetch-app).
