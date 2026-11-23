@@ -22,11 +22,11 @@ function row(overrides = {}) {
 function fixture(options = {}) {
   const state = {actor: {homeId: 'fixture-home-a', memberUserId: 'fixture-owner'},
     verified: 0, propertyReads: [], fileReads: [], externalCalls: [], fetchQueue: [], logs: [], capabilities: [], failure: '',
-    sharing: 'PRIVATE', fileMime: 'application/json', fileId: 'fixture_catalog_file',
+    sharing: 'PRIVATE', fileMime: 'application/json', fileId: 'fixture_catalog_file', configuredHome:'fixture-home-a',
     readers: {schemaVersion: 1, readers: [{homeId: 'fixture-home-a', memberUserId: 'fixture-owner'}]},
     catalog: {schemaVersion: 1, items: [row(), row({id: video2, tournamentId: tournament2,
       tournamentLabel: '架空大会B', matchId: match2, matchLabel: '架空試合B'}),
-    row({id: foreign, homeId: 'fixture-home-b', tournamentId: id('ht','3'), matchId: id('hm','3')})]}, ...options};
+    ]}, ...options};
   if (state.catalog && state.catalog.revision === undefined) state.catalog.revision = revision;
   const catalogText = () => state.rawCatalog !== undefined ? state.rawCatalog : JSON.stringify(state.catalog);
   const fail = code => {const e = new Error('private-sentinel-must-not-escape'); e.code = code; return e;};
@@ -36,9 +36,8 @@ function fixture(options = {}) {
     PropertiesService: {getScriptProperties: () => ({getProperty: key => {
       state.propertyReads.push(key);
       if (state.failure === 'property') throw fail('untrusted-private-error');
-      return key === 'HANDBALL_VIDEO_READERS_JSON'
-        ? (state.readers === null ? null : JSON.stringify(state.readers))
-        : state.fileId;
+      if (key === 'HANDBALL_VIDEO_READERS_JSON') throw fail('OLD_GALLERY_GRANT_MUST_NOT_BE_READ');
+      return key === 'PALURU_HOME_ID' ? state.configuredHome : state.fileId;
     }})},
     DriveApp: {Access:{PRIVATE:'PRIVATE'}, getFileById: fileId => {
       state.fileReads.push(fileId);
@@ -61,7 +60,7 @@ function fixture(options = {}) {
       return {provider: 'firebase', providerSubject: 'fixture-subject', authTime: 1};
     },
     resolveHomeIdentity_: () => state.actor,
-    getHomeMember_: () => ({...state.actor, role: 'fixture-role', status: state.failure === 'disabled' ? 'disabled' : 'active'}),
+    getHomeMember_: () => ({...state.actor, role: state.actor.role || 'admin', status: state.failure === 'disabled' ? 'disabled' : 'active'}),
     isHomeMemberPolicyMatch_: () => true,
     isHomeMemberAccessRole_: () => true,
     getEffectiveMemberCapabilities_: () => ['home.read'],
@@ -70,6 +69,11 @@ function fixture(options = {}) {
     firebaseAuthError_: fail, homeMembershipError_: fail,
   });
   for (const name of ['gas/TransportDiagnostics.js', 'gas/Code.js', 'gas/AuthenticatedActorService.js', 'gas/HandballMatchVideoService.js']) vm.runInContext(source(name), context);
+  if(options.realRolePolicy){
+    const roles=vm.createContext({});vm.runInContext(source('gas/HomeMembershipService.js'),roles);
+    for(const name of ['isHomeMemberAccessRole_','getEffectiveMemberCapabilities_','getEffectiveMemberAllowedViews_']) context[name]=roles[name];
+    context.authorizeCapability_=(actor,capability)=>{state.capabilities.push(capability);return roles.authorizeCapability_(actor,capability);};
+  }
   context.firebaseAuthBindingKey_ = () => 'fixture-binding';
   context.json_ = value => JSON.parse(JSON.stringify(value));
   const request = (action, fields = {}, auth = {provider: 'firebase', idToken: 'fixture-token'}) => context.doPost({postData: {contents: JSON.stringify({action, auth, ...fields})}});
@@ -98,27 +102,27 @@ test('legacy/device authentication cannot grant access', () => {
   assert.equal(state.verified, 0); assert.deepEqual(state.propertyReads, []);
 });
 for (const [name, actor] of [
-  ['another family member', {homeId:'fixture-home-a', memberUserId:'fixture-other'}],
+  ['unrecognized role in the same home', {homeId:'fixture-home-a', memberUserId:'fixture-other',role:'viewer'}],
   ['same member in another home', {homeId:'fixture-home-b', memberUserId:'fixture-owner'}],
   ['missing home', {memberUserId:'fixture-owner'}],
   ['missing member', {homeId:'fixture-home-a'}],
-]) test(name + ' is not authorized by ambient family role', () => {
+]) test(name + ' is denied by existing family/Home policy', () => {
   const {request, state} = fixture({actor}); denied(request('listHandballMatchVideos'), 'FORBIDDEN');
   assert.equal(state.fileReads.length > 0, false);
 });
 test('client actor/role/home spoofing is rejected', () => {
   const {request} = fixture(); denied(request('listHandballMatchVideos', {homeId:'fixture-home-a',memberUserId:'fixture-owner',role:'admin'}), 'INVALID_INPUT');
 });
-test('allowlist tuple comparison is exact, with no case folding or trimming', () => {
-  for (const actor of [{homeId:'fixture-home-a ',memberUserId:'fixture-owner'}, {homeId:'fixture-home-a',memberUserId:'FIXTURE-OWNER'}]) {
+test('resolved Home comparison is exact, with no case folding or trimming', () => {
+  for (const actor of [{homeId:'fixture-home-a ',memberUserId:'fixture-owner'}, {homeId:'FIXTURE-HOME-A',memberUserId:'fixture-owner'}]) {
     const {request,state} = fixture({actor}); denied(request('listHandballMatchVideos'),'FORBIDDEN');
     assert.equal(state.fileReads.length > 0,false);
   }
 });
-test('missing or malformed reader configuration fails closed', () => {
-  for (const readers of [null, {}, {schemaVersion:1, readers:[]}, {schemaVersion:1, readers:[{homeId:'fixture-home-a',memberUserId:'fixture-owner',role:'admin'}]}]) {
-    const {request, state} = fixture({readers}); assert.equal(request('listHandballMatchVideos').success, false);
-    assert.equal(state.fileReads.length > 0, false);
+test('missing or malformed existing canonical Home fails closed', () => {
+  for (const configuredHome of [null, '', 'home/invalid', {}, 'x'.repeat(201)]) {
+    const {request, state} = fixture({configuredHome}); denied(request('listHandballMatchVideos'),'CONFIGURATION_ERROR');
+    assert.equal(state.fileReads.length,0);assert.deepEqual(state.externalCalls,[]);
   }
 });
 test('disabled membership and denied home.read fail before catalog', () => {
@@ -126,19 +130,19 @@ test('disabled membership and denied home.read fail before catalog', () => {
     const {request, state} = fixture({failure}); denied(request('listHandballMatchVideos'), 'FORBIDDEN'); assert.deepEqual(state.propertyReads, []);
   }
 });
-test('link and thumbnail each freshly authenticate and recheck allowlist', () => {
+test('link and thumbnail each freshly authenticate and reject disabled membership', () => {
   const {request, state} = fixture(); request('listHandballMatchVideos');
   const link = request('getHandballMatchVideoLink', {id:video1}); assert.deepEqual(link.data, {id:video1,url:syntheticUrl});
   const thumbnail = request('getHandballMatchVideoThumbnail', {id:video1});
   assert.deepEqual(thumbnail.data, {id:video1,status:'placeholder',reason:'THUMBNAIL_UNAVAILABLE'});
   assert.equal(state.verified, 3);
-  state.readers.readers = [{homeId:'fixture-home-a',memberUserId:'fixture-other'}];
+  state.failure = 'disabled';
   denied(request('getHandballMatchVideoLink', {id:video1}), 'FORBIDDEN');
   denied(request('getHandballMatchVideoThumbnail', {id:video1}), 'FORBIDDEN');
   assert.equal(state.verified, 5);
 });
-test('changing current member after list never reuses old actor', () => {
-  const {request, state} = fixture(); request('listHandballMatchVideos'); state.actor.memberUserId = 'fixture-other';
+test('changing current Home after list never reuses old actor', () => {
+  const {request, state} = fixture(); request('listHandballMatchVideos'); state.actor.homeId = 'fixture-home-b';
   denied(request('getHandballMatchVideoLink', {id:video1}), 'FORBIDDEN');
 });
 test('other home and unknown video return same not-found for both detail actions', () => {
@@ -290,8 +294,8 @@ test('only configured private nontrashed JSON file is read without scans or publ
     const f=fixture(options);assert.equal(f.request('listHandballMatchVideos').success,false);assert.deepEqual(f.state.externalCalls,[]);
   }
 });
-test('unauthenticated or unallowlisted thumbnail request performs zero Drive or provider reads',()=>{
-  for(const options of [{failure:'auth'},{actor:{homeId:'fixture-home-a',memberUserId:'fixture-other'}}]) {
+test('unauthenticated or other-home thumbnail request performs zero Drive or provider reads',()=>{
+  for(const options of [{failure:'auth'},{actor:{homeId:'fixture-home-b',memberUserId:'fixture-other'}}]) {
     const {request,state}=fixture(options);denied(request('getHandballMatchVideoThumbnail',{id:video1}),'FORBIDDEN');
     assert.deepEqual(state.fileReads,[]);assert.deepEqual(state.externalCalls,[]);
   }
@@ -325,4 +329,41 @@ test('image redirect, wrong MIME, wrong bytes or oversized response returns only
     assert.deepEqual(request('getHandballMatchVideoThumbnail',{id:video1}).data,{id:video1,status:'placeholder',reason:'THUMBNAIL_UNAVAILABLE'});
     assert.equal(state.externalCalls.length,2);assert.deepEqual(state.logs,[]);
   }
+});
+
+test('all existing shopping family roles read without a gallery member allowlist',()=>{
+  for(const role of ['admin','guardian','self_record']){
+    const {request,state}=fixture({actor:{homeId:'fixture-home-a',memberUserId:'synthetic-family-'+role,role},readers:null});
+    assert.equal(request('listHandballMatchVideos').success,true);
+    assert.equal(request('getHandballMatchVideoLink',{id:video1}).success,true);
+    assert.equal(request('getHandballMatchVideoThumbnail',{id:video1}).success,true);
+    assert.equal(state.propertyReads.includes('HANDBALL_VIDEO_READERS_JSON'),false);
+  }
+});
+test('actual existing role policy permits ordinary family profiles and denies unknown roles',()=>{
+  for(const role of ['admin','guardian','self_record']){
+    const {request}=fixture({realRolePolicy:true,readers:null,actor:{homeId:'fixture-home-a',memberUserId:'synthetic-'+role,role}});
+    assert.equal(request('listHandballMatchVideos').success,true);
+    assert.equal(request('getHandballMatchVideoLink',{id:video1}).success,true);
+  }
+  const {request,state}=fixture({realRolePolicy:true,actor:{homeId:'fixture-home-a',memberUserId:'synthetic-outsider',role:'viewer'}});
+  denied(request('listHandballMatchVideos'),'FORBIDDEN');assert.equal(state.fileReads.length,0);
+});
+test('configured_home catalog needs no private member or home identifiers in the artifact',()=>{
+  const item=row();delete item.homeId;
+  const {request}=fixture({actor:{homeId:'fixture-home-a',memberUserId:'synthetic-younger-member',role:'self_record'},
+    catalog:{schemaVersion:1,homeBinding:'configured_home',items:[item]}});
+  const r=request('listHandballMatchVideos');assert.equal(r.success,true);assert.equal(r.data.total,1);
+  assert.doesNotMatch(JSON.stringify(r),/homeId|memberUserId|synthetic-younger/);
+});
+test('foreign catalog Home and unbound identifier-free artifact fail closed',()=>{
+  for(const catalog of [{schemaVersion:1,items:[row({homeId:'fixture-other-home'})]},
+      {schemaVersion:1,homeBinding:'another_home',items:[row()]},
+      {schemaVersion:1,items:[Object.fromEntries(Object.entries(row()).filter(([k])=>k!=='homeId'))]}]){
+    const {request}=fixture({catalog});denied(request('listHandballMatchVideos'),'CONFIGURATION_ERROR');
+  }
+});
+test('client or obsolete reader configuration cannot select a different family Home',()=>{
+  const {request,state}=fixture({actor:{homeId:'fixture-home-b',memberUserId:'fixture-owner'},readers:{schemaVersion:1,readers:[{homeId:'fixture-home-b',memberUserId:'fixture-owner'}]}});
+  denied(request('listHandballMatchVideos'),'FORBIDDEN');assert.equal(state.fileReads.length,0);assert.deepEqual(state.externalCalls,[]);
 });

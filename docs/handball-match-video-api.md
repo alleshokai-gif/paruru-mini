@@ -5,8 +5,10 @@
 The collection must page through at least 51 videos, preserve unclassified entries
 and provide authenticated thumbnails. No real catalog, school/team/LINE material,
 video or production settings were inspected. The three Mini read actions reuse
-current Firebase identity/membership plus `home.read` AND a dedicated exact
-`homeId + memberUserId` reader allowlist. No family-wide role fallback exists.
+current Firebase identity/membership, existing `home.read`, the same family roles
+as shopping, and the deployment's existing canonical `PALURU_HOME_ID`. Every
+active authenticated member of that Home can read; no gallery-only member grants
+or manual roster/owner-session matching are required.
 Family Inbox's receiver, protocol, capabilities and credentials remain unchanged.
 
 The catalog is now a dedicated restricted Drive JSON file referenced by one
@@ -26,8 +28,10 @@ Use existing `callHomeControlApi(payload)` / `postAuthenticatedApi_`:
 authenticated POST with `cache: 'no-store'`. Never send client home/member/role.
 The helper strips client identity fields and attaches the current Firebase token.
 Each action freshly resolves the server actor (not cached Home authentication),
-then reads the current allowlist; only an exact allowed tuple can read Drive or
-contact YouTube. GET/legacy pairing/Family Inbox service tokens cannot grant access.
+verifies active identity/member and existing `home.read`, accepts only the same
+`admin` / `guardian` / `self_record` roles as shopping, and compares its Home to
+existing server configuration before any Drive or YouTube read. No client Home,
+first-caller binding or display-name inference is used. GET/legacy pairing/Family Inbox service tokens cannot grant access.
 
 All responses retain `schemaVersion: 'handball-match-videos-1.0'` and the existing
 `{success, data, error, message}` envelope. Failed data is `{}`, message is fixed;
@@ -79,7 +83,7 @@ Order is private catalog order; all rows validate before any data is returned.
 ### `getHandballMatchVideoLink`
 
 Request `{action: 'getHandballMatchVideoLink', id}` plus transport auth, only after
-a viewer explicitly clicks. Repeat full auth/current allowlist/home/opaque-ID
+a viewer explicitly clicks. Repeat full auth/current membership/canonical-Home/opaque-ID
 checks. A prior list is not a grant. Data `{id, url}`; strict HTTPS YouTube watch
 URL or short URL in storage is canonicalized to `https://www.youtube.com/watch?v=...`.
 Other hosts/schemes, redirectors, userinfo, ports, extra query and fragments fail.
@@ -91,7 +95,7 @@ use `noopener,noreferrer`; discard returned URL from application state afterward
 ### `getHandballMatchVideoThumbnail`
 
 Request `{action: 'getHandballMatchVideoThumbnail', id}` plus transport auth.
-Only after ALL auth/allowlist/home/video checks, request fixed HTTPS YouTube oEmbed
+Only after ALL auth/existing-family/canonical-Home/video checks, request fixed HTTPS YouTube oEmbed
 with that catalog video's canonical URL. Require 200, JSON MIME, <=32 KiB,
 provider `YouTube`, provider URL `https://www.youtube.com/` and video metadata.
 Use ONLY the metadata-supplied thumbnail URL, validated against exact
@@ -113,17 +117,34 @@ HTTP response, so this is not a streaming download bandwidth cap.
 
 ## Private provisioning (not performed in this task)
 
-- `HANDBALL_VIDEO_READERS_JSON`: JSON `{schemaVersion:1, readers:[{homeId,
-  memberUserId}]}`, 1..20 exact server actor tuples, <=8,500 characters within
-  GAS property limits. No wildcard/default admin/client override.
-- `HANDBALL_VIDEO_CATALOG_FILE_ID`: ONLY dedicated Drive file ID, no catalog JSON.
-  The old `HANDBALL_VIDEO_CATALOG_JSON` property is NOT used and has no fallback.
-- The file: `{schemaVersion:1, revision:'hc_<32 lowercase hex>', items:[...]}`,
-  0..1000 rows, <=2 MiB UTF-8 JSON. Each row has `homeId`, list metadata fields
-  except `thumbnail`, and `youtubeUrl`; `classificationStatus`/`publishedOn` can
-  be omitted for older rows (derived status/unknown posted date). Opaque IDs use
-  `hv_`, `ht_`, `hm_` plus 32 lowercase hex characters; never provider IDs.
-  Every publication must use a new opaque `hc_` revision so pages detect changes.
+- Reuse existing `PALURU_HOME_ID` internally, as already used by the deployment's
+  Home operations. It must exist and match the verified actor's Home. Do not
+  create a new authentication mode, gallery role, roster or member allowlist.
+  No Home/member values need to be copied to the catalog or UI. Missing/invalid
+  existing Home configuration fails closed, with no first-caller fallback.
+- `HANDBALL_VIDEO_CATALOG_FILE_ID`: ONLY the dedicated private Drive file ID.
+  This remains the one gallery-specific data-source setting; authentication and
+  Home setup are the existing application's. The legacy readers property is not
+  consulted, changed or deleted (preserve it if present for rollback).
+- Preferred file: `{schemaVersion:1, revision:'hc_<32 lowercase hex>',
+  homeBinding:'configured_home', items:[...]}`, 0..1000 rows, <=2 MiB UTF-8 JSON.
+  Each row has list metadata except `thumbnail`, and `youtubeUrl`; no private
+  home/member ID is required. The service binds every row to the verified existing
+  configured Home internally. A legacy explicit `homeId` is allowed only when it
+  matches that configured Home; any foreign or mixed Home is rejected wholesale.
+  Without `homeBinding:'configured_home'`, every row must explicitly name the
+  configured Home. Unknown binding markers fail closed.
+  `classificationStatus` / `publishedOn` can be omitted for older rows (derived
+  status / unknown posted date). Opaque IDs use `hv_`, `ht_`, `hm_` plus 32 lowercase
+  hex characters, never provider IDs. Each publication needs a new `hc_` revision.
+
+No change to Google/Firestore/Firebase roles, member statuses, Drive sharing or
+family permissions is part of this change. The private file remains owner-only;
+family readers receive only authenticated API projections, not Drive access.
+The regular server resolver rechecks mapping/active member on each list, link
+and thumbnail request. Removing/disabling membership takes effect without editing
+a second gallery roster. A synthetic `self_record` profile tests the same existing
+permission class as younger family members; it is not a real-account acceptance.
 
 The exact file must be nontrashed, application/json or text/plain, and Drive
 `Access.PRIVATE`. Broad/domain/link-sharing classes, shortcuts, size mismatch,
@@ -147,9 +168,9 @@ allowed browser cannot be guaranteed erased from that viewer's possession.
 
 Synthetic tests execute actual GAS routing/auth wrapper with invented verified
 identity/Drive/provider adapters. They cover Japanese 51 and 317 rows, complete
-paging/filter choices, revision changes, nullable match/classification, exact
-reader tuple, cross-home denial, per-click reauthorization, URL/XSS/file validation,
-no external calls before auth, metadata refusal, redirects, MIME/byte caps and
+paging/filter choices, revision changes, nullable match/classification, existing
+family roles/canonical Home, cross-home denial, per-click reauthorization, URL/XSS/file validation,
+no Drive/provider reads for unauthenticated or other-Home actors, metadata refusal, redirects, MIME/byte caps and
 placeholder behavior. Relevant existing auth/Inbox/required PR suites also run.
 
 A separate local-only real HTTP POST probe used the public sample video from
@@ -165,3 +186,23 @@ real target thumbnails and integrated UI acceptance remain untested.
 
 Official API references: [Drive File](https://developers.google.com/apps-script/reference/drive/file),
 [UrlFetchApp](https://developers.google.com/apps-script/reference/url-fetch/url-fetch-app).
+
+## Family access follow-up and release boundary
+
+The owner explicitly replaced the earlier per-member proposal with the existing
+family shopping authentication model. Source references: Mini
+`AuthenticatedActorService.js` / `HomeMembershipService.js`;
+`kaz-context/tools/kaz-os/family_shopping_route.py` / `read_transport_v2.py`
+verify active mapped membership, allowed family role and a configured Home.
+Existing Mini Home operations use the canonical `PALURU_HOME_ID` setting.
+No live property value, roster, credential or private catalog was read for this
+implementation. The earlier Sheets 403 is not retried or worked around.
+
+UI #246 stays unchanged: its authenticated POST adapter/menu inherits Home and
+the same existing roles as shopping, not the public bus data route. It remains a
+separate Draft until the agreed release order/production API acceptance. Tests
+combine the exact UI head with this backend using only fictional family profiles
+and 51 rows; real family/younger-member and actual catalog acceptance remain open.
+Apps Script Web App version updates remain owner-only; ordinary source preparation
+is distinct from public deployment. There is no new sign-in, PC-front operation,
+manual roster check or secret-copying step in the family data setup contract.
