@@ -74,6 +74,10 @@ function doPost(e) {
       return json_({ success: false, status: 400, message: 'action is required' });
     }
 
+    if (action === 'listHandballMatchVideos' || action === 'getHandballMatchVideoLink' || action === 'getHandballMatchVideoThumbnail') {
+      return handballMatchVideos_(body);
+    }
+
     if (action === 'auth.config.get') {
       recordCodeTransport_(transportTrace, 'CONFIG_READ_START', { outcome: 'progress' });
       const config = getFirebasePublicAuthConfig_();
