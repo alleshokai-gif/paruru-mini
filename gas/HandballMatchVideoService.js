@@ -1,4 +1,4 @@
-// Read-only private catalog. Never put real rows, thumbnails or reader IDs in Git.
+// Read-only private family catalog. Never put real rows or thumbnails in Git.
 const HANDBALL_VIDEO_MAX_ITEMS = 1000;
 const HANDBALL_VIDEO_MAX_CATALOG_BYTES = 2 * 1024 * 1024;
 const HANDBALL_VIDEO_MAX_THUMBNAIL_BYTES = 256 * 1024;
@@ -13,10 +13,10 @@ function handballMatchVideos_(body) {
   try {
     const actor = resolveHandballVideoReadActor_(body);
     const properties = PropertiesService.getScriptProperties();
-    handballVideoAuthorize_(actor, handballVideoProperty_(properties, 'HANDBALL_VIDEO_READERS_JSON'));
+    const homeId = handballVideoHome_(actor, properties);
     const input = handballVideoInput_(body);
-    // Read only after current authentication AND the explicit reader tuple check.
-    const catalog = handballVideoLoadCatalog_(properties);
+    // Same existing family/Home boundary as shopping; never a per-member video grant.
+    const catalog = handballVideoLoadCatalog_(properties, homeId);
     if (input.catalogRevision && input.catalogRevision !== catalog.revision) throw handballVideoError_('REVISION_CONFLICT');
     const rows = catalog.items.filter(function(row) { return row.homeId === actor.homeId; });
     let data;
@@ -56,24 +56,18 @@ function handballVideoKeys_(value, keys) {
 function handballVideoIdentifier_(value, prefix) {
   return typeof value === 'string' && value.length === prefix.length + 33 && new RegExp('^' + prefix + '_[0-9a-f]{32}$').test(value);
 }
-function handballVideoProperty_(properties, key) {
-  let raw;
-  try { raw = properties.getProperty(key); } catch (_) { throw handballVideoError_('SERVICE_UNAVAILABLE'); }
-  if (typeof raw !== 'string' || !raw || raw.length > 8500) throw handballVideoError_('CONFIGURATION_ERROR');
-  try { return JSON.parse(raw); } catch (_) { throw handballVideoError_('CONFIGURATION_ERROR'); }
-}
-function handballVideoAuthorize_(actor, config) {
-  if (!actor || typeof actor.homeId !== 'string' || !actor.homeId || typeof actor.memberUserId !== 'string' || !actor.memberUserId
-      || !handballVideoKeys_(config, ['schemaVersion', 'readers']) || config.schemaVersion !== 1
-      || !Array.isArray(config.readers) || !config.readers.length || config.readers.length > 20) throw handballVideoError_('FORBIDDEN');
-  const valid = config.readers.every(function(reader) {
-    return handballVideoKeys_(reader, ['homeId', 'memberUserId'])
-      && typeof reader.homeId === 'string' && !!reader.homeId
-      && typeof reader.memberUserId === 'string' && !!reader.memberUserId;
-  });
-  if (!valid || !config.readers.some(function(reader) {
-    return reader.homeId === actor.homeId && reader.memberUserId === actor.memberUserId;
-  })) throw handballVideoError_('FORBIDDEN');
+function handballVideoHome_(actor, properties) {
+  if (!actor || typeof actor.homeId !== 'string' || !actor.homeId
+      || typeof actor.memberUserId !== 'string' || !actor.memberUserId) throw handballVideoError_('FORBIDDEN');
+  let homeId;
+  try { homeId = properties.getProperty('PALURU_HOME_ID'); }
+  catch (_) { throw handballVideoError_('SERVICE_UNAVAILABLE'); }
+  if (typeof homeId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(homeId.trim()) || homeId.trim().length > 200) throw handballVideoError_('CONFIGURATION_ERROR');
+  homeId = homeId.trim();
+  // Reuse the deployment's existing canonical Home, not a request, first caller,
+  // display name, first admin row or new gallery-only member allowlist.
+  if (actor.homeId !== homeId) throw handballVideoError_('FORBIDDEN');
+  return homeId;
 }
 function handballVideoInput_(body) {
   if (!handballVideoObject_(body) || !Object.prototype.hasOwnProperty.call(HANDBALL_VIDEO_ACTIONS, body.action)) throw handballVideoError_('INVALID_INPUT');
@@ -105,8 +99,10 @@ function handballVideoUrl_(value) {
   if (!match) throw handballVideoError_('CONFIGURATION_ERROR');
   return 'https://www.youtube.com/watch?v=' + match[1];
 }
-function handballVideoCatalog_(config) {
-  if (!handballVideoKeys_(config, ['schemaVersion', 'revision', 'items']) || config.schemaVersion !== 1
+function handballVideoCatalog_(config, homeId) {
+  if (!handballVideoKeys_(config, ['schemaVersion', 'revision', 'homeBinding', 'items']) || config.schemaVersion !== 1
+      || typeof homeId !== 'string' || !homeId
+      || (config.homeBinding !== undefined && config.homeBinding !== 'configured_home')
       || !handballVideoIdentifier_(config.revision, 'hc')
       || !Array.isArray(config.items) || config.items.length > HANDBALL_VIDEO_MAX_ITEMS) throw handballVideoError_('CONFIGURATION_ERROR');
   const ids = Object.create(null);
@@ -114,7 +110,8 @@ function handballVideoCatalog_(config) {
   const matches = Object.create(null);
   return config.items.map(function(row) {
     if (!handballVideoKeys_(row, ['homeId', 'id', 'tournamentId', 'tournamentLabel', 'matchId', 'matchLabel', 'title', 'playedOn', 'publishedOn', 'classificationStatus', 'youtubeUrl'])
-        || typeof row.homeId !== 'string' || !row.homeId || !handballVideoIdentifier_(row.id, 'hv')
+        || (row.homeId === undefined ? config.homeBinding !== 'configured_home' : row.homeId !== homeId)
+        || !handballVideoIdentifier_(row.id, 'hv')
         || (row.tournamentId !== null && !handballVideoIdentifier_(row.tournamentId, 'ht'))
         || (row.matchId !== null && !handballVideoIdentifier_(row.matchId, 'hm')) || ids[row.id]) throw handballVideoError_('CONFIGURATION_ERROR');
     ids[row.id] = true;
@@ -126,15 +123,15 @@ function handballVideoCatalog_(config) {
     if (row.classificationStatus !== undefined && row.classificationStatus !== classificationStatus) throw handballVideoError_('CONFIGURATION_ERROR');
     const title = handballVideoText_(row.title, 120);
     // IDs must not ambiguously name another household, tournament or display label.
-    const tournamentKey = JSON.stringify([row.homeId, tournamentLabel]);
-    const matchKey = JSON.stringify([row.homeId, row.tournamentId, matchLabel]);
+    const tournamentKey = JSON.stringify([homeId, tournamentLabel]);
+    const matchKey = JSON.stringify([homeId, row.tournamentId, matchLabel]);
     if ((row.tournamentId !== null && tournaments[row.tournamentId] && tournaments[row.tournamentId] !== tournamentKey)
         || (row.matchId !== null && matches[row.matchId] && matches[row.matchId] !== matchKey)) throw handballVideoError_('CONFIGURATION_ERROR');
     if (row.tournamentId !== null) tournaments[row.tournamentId] = tournamentKey;
     if (row.matchId !== null) matches[row.matchId] = matchKey;
     const date = handballVideoDate_(row.playedOn);
     const publishedOn = handballVideoDate_(row.publishedOn === undefined ? '' : row.publishedOn);
-    return { homeId: row.homeId, id: row.id, tournamentId: row.tournamentId, tournamentLabel: tournamentLabel,
+    return { homeId: homeId, id: row.id, tournamentId: row.tournamentId, tournamentLabel: tournamentLabel,
       matchId: row.matchId, matchLabel: matchLabel, title: title, playedOn: date,
       publishedOn: publishedOn, classificationStatus: classificationStatus, youtubeUrl: handballVideoUrl_(row.youtubeUrl) };
   });
@@ -151,7 +148,7 @@ function handballVideoDate_(date) {
       || !Number.isFinite(Date.parse(date + 'T00:00:00Z')) || new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) !== date))) throw handballVideoError_('CONFIGURATION_ERROR');
   return date;
 }
-function handballVideoLoadCatalog_(properties) {
+function handballVideoLoadCatalog_(properties, homeId) {
   let fileId;
   try { fileId = properties.getProperty('HANDBALL_VIDEO_CATALOG_FILE_ID'); }
   catch (_) { throw handballVideoError_('SERVICE_UNAVAILABLE'); }
@@ -171,7 +168,7 @@ function handballVideoLoadCatalog_(properties) {
     if (error && error.code === 'CONFIGURATION_ERROR') throw error;
     throw handballVideoError_('SERVICE_UNAVAILABLE');
   }
-  return { revision: config && config.revision, items: handballVideoCatalog_(config) };
+  return { revision: config && config.revision, items: handballVideoCatalog_(config, homeId) };
 }
 function handballVideoFilters_(rows) {
   const tournaments = Object.create(null), matches = Object.create(null);

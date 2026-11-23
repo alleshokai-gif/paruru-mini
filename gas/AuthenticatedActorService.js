@@ -6,6 +6,8 @@ const FIREBASE_READ_ACTOR_CACHE_PREFIX = 'firebase-read-actor-v1:';
 function resolveHandballVideoReadActor_(body) {
   const actor = resolveFirebaseAuthenticatedActor_(body);
   authorizeCapability_(actor, 'home.read');
+  // The same existing family roles accepted by the authenticated shopping API.
+  if (['admin', 'guardian', 'self_record'].indexOf(actor.role) < 0) throw homeMembershipError_('FORBIDDEN');
   return actor;
 }
 
