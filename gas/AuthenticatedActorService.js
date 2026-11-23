@@ -1,6 +1,14 @@
 const FIREBASE_READ_ACTOR_CACHE_TTL_SECONDS = 8;
 const FIREBASE_READ_ACTOR_CACHE_PREFIX = 'firebase-read-actor-v1:';
 
+// Sensitive video reads always resolve a current server actor; do not use the
+// short-lived Home read cache or client-supplied household/member fields.
+function resolveHandballVideoReadActor_(body) {
+  const actor = resolveFirebaseAuthenticatedActor_(body);
+  authorizeCapability_(actor, 'home.read');
+  return actor;
+}
+
 function resolveFirebaseAuthenticatedActor_(body, overrides, transportTrace) {
   const input = body || {};
   const auth = input.auth && typeof input.auth === 'object' ? input.auth : {};
