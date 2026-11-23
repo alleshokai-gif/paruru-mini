@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src blob:; connect-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>試合動画 UI フィクスチャ（合成データのみ）</title>
+<link rel="stylesheet" href="../../features/match-videos/view.css">
+<style>
+  /* Fixture-only stand-ins for existing app shell styles. Not production CSS. */
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: #f7f8ff; color: #202236; font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; }
+  button, select { font-family: inherit; }
+  .fx-topbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 12px; background: #fff; border-bottom: 1px solid #dde1f2; }
+  .fx-brand { margin: 0; font-size: 1.05rem; font-weight: 800; color: #4654a3; letter-spacing: .04em; }
+  .fx-brand small { font-weight: 600; color: #6c7087; font-size: .72rem; margin-left: 6px; letter-spacing: 0; }
+  .fx-menu-button { min-width: 48px; min-height: 48px; border: 1px solid #dde1f2; border-radius: 12px; background: #fff; font-size: 1.1rem; color: #202236; }
+  .fx-layout { display: block; }
+  .fx-sidenav { display: none; }
+  .app-shell { max-width: 1180px; margin: 0 auto; padding: 12px 12px 96px; min-width: 0; }
+  .app-view { min-width: 0; }
+  .app-view[hidden] { display: none; }
+  .view-header { display: flex; align-items: center; gap: 12px; }
+  .secondary-button { min-height: 48px; padding: 0 14px; font-size: 16px; border: 1px solid #dde1f2; border-radius: 12px; background: #fff; color: #4654a3; font-weight: 700; cursor: pointer; }
+  .fx-console { margin: 0 0 16px; padding: 10px 12px; background: #fff; border: 2px dashed #b8bfe3; border-radius: 12px; font-size: .88rem; }
+  .fx-console summary { min-height: 44px; display: flex; align-items: center; font-weight: 700; cursor: pointer; }
+  .fx-console-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 8px; }
+  .fx-console:not([open]) > .fx-console-grid { display: none; }
+  .fx-console label { display: grid; gap: 4px; font-weight: 600; }
+  .fx-console select { min-height: 44px; font-size: 16px; width: 100%; max-width: 100%; }
+  .fx-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  .fx-buttons button { min-height: 44px; padding: 0 12px; font-size: 15px; border: 1px solid #c6cce6; background: #f7f8ff; border-radius: 10px; cursor: pointer; }
+  .fx-out { margin: 0; padding: 8px; background: #f2f3f9; border-radius: 8px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .78rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .fx-bottomnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #fff; border-top: 1px solid #dde1f2; }
+  .fx-bottomnav button, .fx-sidenav button { min-height: 56px; border: 0; background: none; font-size: .8rem; color: #6c7087; cursor: pointer; }
+  .fx-bottomnav button[aria-current="page"], .fx-sidenav button[aria-current="page"] { color: #4654a3; font-weight: 800; }
+  @media (min-width: 960px) {
+    .fx-menu-button, .fx-bottomnav { display: none; }
+    .fx-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+    .fx-sidenav { display: grid; align-content: start; gap: 4px; padding: 16px 12px; min-height: calc(100vh - 57px); background: #fff; border-right: 1px solid #dde1f2; }
+    .fx-sidenav button { min-height: 48px; text-align: left; padding: 0 14px; border-radius: 12px; font-size: .95rem; }
+    .fx-sidenav button[aria-current="page"] { background: #eef0fb; }
+    .app-shell { padding: 20px 24px 48px; }
+    .fx-console-grid { grid-template-columns: minmax(0, 280px) minmax(0, 1fr); align-items: end; }
+    .fx-out { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+  <header class="fx-topbar app-topbar">
+    <button type="button" class="fx-menu-button" aria-label="メニュー（検証用・無効）" data-fx-nav="placeholder">≡</button>
+    <p class="fx-brand">PALURU<small>検証用シェル</small></p>
+  </header>
+  <div class="fx-layout">
+    <nav class="fx-sidenav" aria-label="メインメニュー（検証用）">
+      <button type="button" data-fx-nav="placeholder">ホーム（仮）</button>
+      <button type="button" data-fx-nav="placeholder">お知らせ（仮）</button>
+      <button type="button" data-fx-nav="match-videos" aria-current="page">試合動画</button>
+      <button type="button" data-fx-nav="placeholder">設定（仮）</button>
+    </nav>
+    <main class="app-shell">
+      <details class="fx-console" open>
+        <summary>検証用コントロール（合成データのみ・通信なし）</summary>
+        <div class="fx-console-grid">
+          <label>シナリオ
+            <select id="fxScenario"></select>
+          </label>
+          <div class="fx-buttons">
+            <button type="button" id="fxOpen">開く</button>
+            <button type="button" id="fxClose">閉じる</button>
+            <button type="button" id="fxLogout">ログアウト</button>
+            <button type="button" id="fxLogin">ログイン（権限あり）</button>
+            <button type="button" id="fxDeny">権限なしにする</button>
+            <button type="button" id="fxRecreate">再作成</button>
+          </div>
+          <p class="fx-out" id="fxOut" role="log" aria-live="polite"></p>
+        </div>
+      </details>
+      <section id="matchVideosView" class="app-view" data-view="match-videos" hidden><div id="matchVideosRoot"></div></section>
+    </main>
+  </div>
+  <nav class="fx-bottomnav" aria-label="下部メニュー（検証用）">
+    <button type="button" data-fx-nav="placeholder">ホーム（仮）</button>
+    <button type="button" data-fx-nav="placeholder">お知らせ（仮）</button>
+    <button type="button" data-fx-nav="match-videos" aria-current="page">試合動画</button>
+    <button type="button" data-fx-nav="placeholder">設定（仮）</button>
+  </nav>
+  <script src="../../features/match-videos/media.js"></script>
+  <script src="../../features/match-videos/page.js"></script>
+  <script src="match-videos-fixture.js"></script>
+</body>
+</html>
