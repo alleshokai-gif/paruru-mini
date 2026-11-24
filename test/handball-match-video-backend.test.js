@@ -101,13 +101,42 @@ function denied(result, code) {
   assert.doesNotMatch(JSON.stringify(result), /private-sentinel|youtube|fixture-home|fixture-owner/);
 }
 
-test('normal authenticated POST lists only opaque metadata for current home', () => {
+test('normal authenticated POST retains old metadata page and adds one private link catalog', () => {
   const {request, state} = fixture(); const result = request('listHandballMatchVideos');
   assert.equal(result.success, true); assert.equal(result.schemaVersion, 'handball-match-videos-1.0');
   assert.deepEqual(result.data.items.map(x => x.id), [video1, video2]);
   assert.deepEqual(Object.keys(result.data.items[0]).sort(), ['id','tournamentId','tournamentLabel','matchId','matchLabel','title','playedOn','publishedOn','classificationStatus','thumbnail'].sort());
-  assert.doesNotMatch(JSON.stringify(result), /youtube|youtu\.be|fixture-home|fixture-owner|AbCdEf123_-/);
+  assert.doesNotMatch(JSON.stringify(result.data.items), /youtube|youtu\.be|fixture-home|fixture-owner|AbCdEf123_-/);
+  assert.equal(result.data.linkCatalog.format,'family-links-1');
+  assert.equal(result.data.linkCatalog.items.length,2);
+  assert.equal(result.data.linkCatalog.items[0].watchUrl,syntheticUrl);
+  assert.equal(result.data.linkCatalog.items[0].thumbnailUrl,'https://i.ytimg.com/vi/'+fakeProviderId+'/mqdefault.jpg');
+  assert.doesNotMatch(JSON.stringify(result),/fixture-home|fixture-owner/);
+  assert.deepEqual(state.externalCalls,[]);
   assert.deepEqual(state.capabilities, ['home.read']); assert.equal(state.verified, 1); assert.deepEqual(state.logs, []);
+});
+
+test('51 and 317 rows arrive in one family-scoped link catalog with zero media provider calls',()=>{
+  for(const count of [51,317]){
+    const items=Array.from({length:count},(_,i)=>row({id:'hv_'+(i+1).toString(16).padStart(32,'0')}));
+    const {request,state}=fixture({catalog:{schemaVersion:1,items}});
+    const first=request('listHandballMatchVideos');
+    assert.equal(first.data.items.length,20);assert.equal(first.data.hasMore,true);
+    assert.equal(first.data.linkCatalog.items.length,count);assert.equal(first.data.linkCatalog.total,count);
+    assert.equal(first.data.linkCatalog.catalogRevision,first.data.catalogRevision);
+    assert.equal(first.data.linkCatalog.diagnostics.authenticatedReads,1);
+    assert.equal(first.data.linkCatalog.diagnostics.mediaProviderCalls,0);
+    assert.equal(state.verified,1);assert.equal(state.homeReads.length,1);
+    assert.equal(state.fileReads.length,1);assert.deepEqual(state.externalCalls,[]);
+    assert.equal(request('listHandballMatchVideos',{offset:20}).data.linkCatalog,undefined);
+  }
+});
+
+test('anonymous and foreign Home never receive direct links or image references',()=>{
+  for(const options of [{failure:'auth'},{actor:{homeId:'fixture-home-b',memberUserId:'synthetic-other',role:'guardian'}}]){
+    const {request,state}=fixture(options);denied(request('listHandballMatchVideos'),'FORBIDDEN');
+    assert.deepEqual(state.fileReads,[]);assert.deepEqual(state.externalCalls,[]);
+  }
 });
 test('missing token is denied before private property access', () => {
   const {request, state} = fixture(); denied(request('listHandballMatchVideos', {}, {provider:'firebase'}), 'FORBIDDEN');
@@ -247,7 +276,7 @@ test('property or authentication exceptions never echo data or log raw errors', 
 test('read-only implementation cannot write, search, cache, log or use Family Inbox credentials', () => {
   const service = source('gas/HandballMatchVideoService.js');
   assert.doesNotMatch(service, /CacheService|setProperty|setProperties|SpreadsheetApp|Logger\.|console\.|getServiceSecret_|familyInboxGatewayCallService_|searchFiles|getFilesByName|getFolders/);
-  assert.doesNotMatch(service, /thumbnailUrl/);
+  assert.match(service, /thumbnailUrl: 'https:\/\/i\.ytimg\.com\/vi\//);
   assert.match(service, /followRedirects: false/);
   assert.match(source('gas/AuthenticatedActorService.js'),/function resolveHandballVideoReadActor_\(body\)\s*\{\s*const actor = resolveFirebaseAuthenticatedActor_\(body\)/);
 });

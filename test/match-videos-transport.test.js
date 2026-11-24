@@ -70,6 +70,67 @@ test('account switch during enumeration or link issuance cannot mix member paylo
   await assert.rejects(c.callAuthenticatedMatchVideos_(),{code:'UNAUTHENTICATED'});
   await assert.rejects(c.callAuthenticatedMatchVideoLink_('fixture-upload-a'),{code:'UNAUTHENTICATED'});
 });
+
+const compactRows = () => Array.from({length:51},(_,i)=>({id:'fixture-direct-'+i,tournamentId:'fixture-cup',tournamentLabel:'架空大会',
+  matchId:null,matchLabel:null,playedOn:'',publishedOn:'2026-01-02',title:'架空動画',classificationStatus:'tournament_only',
+  watchUrl:'https://www.youtube.com/watch?v=fx'+String(i).padStart(9,'0'),thumbnailUrl:'https://i.ytimg.com/vi/fx'+String(i).padStart(9,'0')+'/mqdefault.jpg'}));
+
+test('failed legacy worker cannot schedule another page or erase its failure diagnostics',async()=>{
+  const {context:c}=harness(),rows=Array.from({length:81},(_,i)=>({...compactRows()[0],id:'fixture-'+i}));
+  const view={dataset:{}},offsets=[];let late;
+  c.document={querySelector:()=>view};
+  c.callHomeControlApi=async(p,o)=>{offsets.push(p.offset);o.onRequestStart();if(p.offset===20)throw Object.assign(new Error('synthetic'),{code:'SERVICE_UNAVAILABLE'});
+    if(p.offset===40)await new Promise(resolve=>{late=resolve;});return pageData(rows,p.offset);};
+  await assert.rejects(c.callAuthenticatedMatchVideos_(),{code:'SERVICE_UNAVAILABLE'});
+  late();await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(offsets,[0,20,40]);assert.equal(view.dataset.readError,'SERVICE_UNAVAILABLE');assert.equal(view.dataset.readStage,'FAILED');
+});
+
+test('previous read cannot overwrite a newer read diagnostic',async()=>{
+  const {context:c}=harness(),view={dataset:{}},waiting=[];
+  c.document={querySelector:()=>view};c.callHomeControlApi=()=>new Promise((resolve,reject)=>waiting.push({resolve,reject}));
+  const previous=c.callAuthenticatedMatchVideos_(),current=c.callAuthenticatedMatchVideos_();
+  waiting[0].reject(Object.assign(new Error('synthetic'),{code:'SERVICE_UNAVAILABLE'}));
+  await assert.rejects(previous,{code:'SERVICE_UNAVAILABLE'});assert.equal(view.dataset.readError,'');
+  waiting[1].resolve(pageData([]));await current;assert.equal(view.dataset.readError,'');assert.equal(view.dataset.readStage,'LEGACY_COMPLETE');
+});
+
+test('one authenticated compact response gives all 51 direct rows, with no detail request',async()=>{
+  const {context:c}=harness(),calls=[],rows=compactRows();
+  c.callHomeControlApi=async(p,o)=>{calls.push(p);o.onRequestStart();const page=pageData(rows);return {...page,linkCatalog:{format:'family-links-1',catalogRevision:REV,total:51,items:rows}};};
+  const result=await c.callAuthenticatedMatchVideos_();
+  assert.equal(calls.length,1);assert.equal(result.items.length,51);
+  assert.equal(result.items[50].watchUrl,rows[50].watchUrl);
+  assert.equal(result.diagnostics.requestCount,1);assert.equal(result.diagnostics.protocol,'family-links-1');
+  for(const mutate of [x=>x.items.pop(),x=>x.catalogRevision='hc_'+'b'.repeat(32),
+    x=>x.items[0].watchUrl='https://www.youtube.com.invalid.example/watch?v=fx000000000',
+    x=>x.items[0].thumbnailUrl='https://i.ytimg.com/vi/fx000000001/mqdefault.jpg']){
+    c.callHomeControlApi=async()=>{const page=pageData(rows),compact={format:'family-links-1',catalogRevision:REV,total:51,items:structuredClone(rows)};mutate(compact);return {...page,linkCatalog:compact};};
+    await assert.rejects(c.callAuthenticatedMatchVideos_(),{code:'MATCH_VIDEOS_INVALID_RESPONSE'});
+  }
+});
+
+test('v206 fallback uses two bounded concurrent pages after the first; all still validate',async()=>{
+  const {context:c}=harness(),rows=compactRows(),waiting=[];let active=0,maxActive=0;
+  c.callHomeControlApi=async(p,o)=>{o.onRequestStart();if(p.offset){active++;maxActive=Math.max(maxActive,active);await new Promise(resolve=>waiting.push(resolve));active--;}return pageData(rows,p.offset);};
+  const pending=c.callAuthenticatedMatchVideos_();
+  for(let i=0;i<10&&waiting.length<2;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(waiting.length,2);for(const resolve of waiting)resolve();
+  const result=await pending;
+  assert.equal(maxActive,2);assert.equal(result.items.length,51);assert.equal(result.diagnostics.requestCount,3);
+  assert.equal(result.diagnostics.protocol,'legacy-pages');assert(!Object.hasOwn(result.items[0],'watchUrl'));
+});
+
+test('timeout is bounded at 30s, typed, and emits only fixed diagnostic codes/counts',async()=>{
+  const {context:c}=harness();let timeout,delay,cleared=false;const view={dataset:{}};
+  c.document={querySelector:()=>view};c.setTimeout=(fn,ms)=>{timeout=fn;delay=ms;return 1;};c.clearTimeout=()=>{cleared=true;};
+  c.callHomeControlApi=async(p,o)=>{o.onRequestStart();return new Promise((resolve,reject)=>o.signal.addEventListener('abort',()=>reject(new Error('SYNTHETIC_PRIVATE_ERROR'))));};
+  const pending=c.callAuthenticatedMatchVideos_();timeout();
+  await assert.rejects(pending,{code:'MATCH_VIDEOS_TIMEOUT'});
+  assert.equal(delay,30000);assert(cleared);assert.equal(view.dataset.readError,'MATCH_VIDEOS_TIMEOUT');
+  assert.equal(view.dataset.readRequests,'1');assert.equal(view.dataset.readStage,'FAILED');
+  assert.doesNotMatch(JSON.stringify(view.dataset),/SYNTHETIC_PRIVATE|youtube|member|homeId/);
+});
 test('each explicit opaque id request reauthorizes through the existing facade; invalid IDs fail before IO',async()=>{
   const {context:c,calls}=harness();
   await c.callAuthenticatedMatchVideoLink_('fixture-upload-a');
@@ -79,6 +140,21 @@ test('each explicit opaque id request reauthorizes through the existing facade; 
   assert.equal(calls.length,2);
   c.callHomeControlApi=async p=>({id:p.id,url:'https://invalid.example/fixture-only'});
   await assert.rejects(c.callAuthenticatedMatchVideoLink_('fixture-upload-a'),{code:'MATCH_VIDEOS_INVALID_RESPONSE'});
+});
+
+test('authentication wait also times out; late auth resolution cannot start an aborted HTTP request',async()=>{
+  const {context:c}=harness();let trigger;
+  c.setTimeout=fn=>{trigger=fn;return 1;};c.clearTimeout=()=>{};
+  c.callHomeControlApi=()=>new Promise(()=>{});
+  const pending=c.callAuthenticatedMatchVideos_();trigger();
+  await assert.rejects(pending,{code:'MATCH_VIDEOS_TIMEOUT'});
+  const start=app.indexOf('async function postAuthenticatedApi_('),end=app.indexOf('async function callHomeControlReadOnlyApi_(',start);
+  let release,fetches=0,hooks=0;const controller=new AbortController();
+  c.firebaseAuthService={getAuthEnvelope:()=>new Promise(resolve=>{release=resolve;})};c.GAS_WEB_APP_URL='https://fixture.invalid/api';
+  c.fetch=()=>{fetches++;};vm.runInContext(app.slice(start,end),c);
+  const request=c.postAuthenticatedApi_({action:'listHandballMatchVideos'},{signal:controller.signal,onRequestStart:()=>hooks++});
+  controller.abort();release({provider:'fixture',idToken:'SYNTHETIC_TOKEN'});
+  await assert.rejects(request,{name:'AbortError'});assert.equal(fetches,0);assert.equal(hooks,0);
 });
 test('authenticated thumbnail bytes are bounded image Blobs; placeholder never becomes an external image',async()=>{
   const {context:c}=harness();

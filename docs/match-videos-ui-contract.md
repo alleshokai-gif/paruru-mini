@@ -1,3 +1,11 @@
+## 2026-11-24 additive lightweight catalog (requires a new GAS version)
+
+The first existing authenticated list page additionally returns `data.linkCatalog` with `format: family-links-1`, the same revision/total, and all filtered rows (at most 1000). Each row adds a server-validated canonical YouTube watch URL and exactly the matching official mqdefault thumbnail reference. Existing paged metadata and legacy detail actions remain compatible. Authentication, active family membership, capability and canonical Home validation still precede the one private file read. No media-provider call is made by the compact list. No public asset, service-worker cache, logging or persistent browser storage contains the catalog.
+
+The current published v206 does not emit this field. Its temporary client fallback keeps complete revision/filter validation and uses two concurrent remaining pages after the first, without retries or partial-success claims. Request deadlines cover authentication as well as fetch (30s each, 90s total enumeration budget). Fixed-code DOM diagnostics contain only stage/count/timing/error code, not raw errors, credentials or catalog fields. New compact mode renders ordinary links immediately; clicks make zero GAS calls. Small official thumbnails are assigned on viewport intersection and failures become placeholders. Legacy v206 still needs its existing per-card media/link calls.
+
+Rollout: compatible client may ship before the backend. Stage only the one reviewed GAS service file while preserving live HEAD/manifest/settings. A new immutable GAS version is blocked by the 200-version cap; this change authorizes no further deletion or alternate deployment. Do not claim direct-mode production acceptance before that version is published.
+
 # 試合動画 UI / 取得連携（Draft）
 
 この差分は架空データによるUIと既存アプリへの連携です。実データ取得・登録、merge、本番配備は実施しません。実際の学校名、LINE内容、動画ID、リンク、画像は使用しません。

@@ -2636,6 +2636,9 @@ async function postAuthenticatedApi_(payload, options = {}) {
   const request = Object.assign({}, source);
   ["auth", "deviceId", "pairingToken", "memberUserId", "userId", "userDisplayName", "calendarSuffix", "role", "capabilities", "homeId", "_authenticatedActor"].forEach((key) => delete request[key]);
   request.auth = await firebaseAuthService.getAuthEnvelope(false);
+  if (options.signal?.aborted) throw Object.assign(new Error("REQUEST_ABORTED"), {name:"AbortError"});
+  // Optional metadata-only instrumentation; never pass credentials to the hook.
+  try { if (typeof options.onRequestStart === "function") options.onRequestStart(); } catch (_) {}
   return fetch(GAS_WEB_APP_URL, {
     method: "POST",
     cache: "no-store",
@@ -5730,60 +5733,116 @@ function matchVideoFilterMaps_(filters, total) {
   }
   return {tournaments,matches};
 }
+let matchVideoReadGeneration_ = 0;
+function recordMatchVideoReadDiagnostic_(metrics, error) {
+  if (metrics.generation !== matchVideoReadGeneration_) return;
+  if (typeof document === "undefined") return;
+  const view = document.querySelector('[data-view="match-videos"] .mv');
+  if (!view || view.dataset.state === "closed") return;
+  const code = String(error?.code || "");
+  const allowed = new Set(["UNAUTHENTICATED","FORBIDDEN","AUTHENTICATION_REQUIRED","MATCH_VIDEOS_TIMEOUT",
+    "MATCH_VIDEOS_INCOMPLETE","MATCH_VIDEOS_INVALID_RESPONSE","REVISION_CONFLICT","SERVICE_UNAVAILABLE","HOME_CONTROL_UNAVAILABLE"]);
+  if (error) metrics.failureCode = allowed.has(code) ? code : "READ_FAILED";
+  view.dataset.readStage = metrics.stage;
+  view.dataset.readMs = String(Math.max(0, Date.now() - metrics.startedAt));
+  view.dataset.readRequests = String(metrics.httpRequests);
+  view.dataset.readAttempts = String(metrics.attempts);
+  view.dataset.readCompleted = String(metrics.completed);
+  view.dataset.readError = metrics.failureCode || "";
+  view.dataset.readPages = JSON.stringify(metrics.pages.slice(-50));
+}
+
+function projectMatchVideoCatalog_(items, filters, total, direct) {
+  const invalid = () => { throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE"); };
+  if (!Array.isArray(items) || items.length !== total) invalid();
+  const maps = matchVideoFilterMaps_(filters, total), ids = new Set();
+  const tournamentCounts = new Map(), matchCounts = new Map();
+  let noTournament = 0, noMatch = 0;
+  const result = items.map(item => {
+    if (typeof item?.id !== "string" || !item.id || ids.has(item.id)) invalid();
+    const tournamentId = item.tournamentId ?? null, matchId = item.matchId ?? null;
+    const matchKey = JSON.stringify([tournamentId,matchId]);
+    const tournament = tournamentId === null ? null : maps.tournaments.get(tournamentId);
+    const match = matchId === null ? null : maps.matches.get(matchKey);
+    const classification = matchId !== null ? 'match_identified' : tournamentId !== null ? 'tournament_only' : 'unclassified';
+    if (item.classificationStatus !== classification
+        || tournamentId !== null && (!tournament || item.tournamentLabel !== tournament.label)
+        || matchId !== null && (!match || item.matchLabel !== match.label)
+        || tournamentId === null && item.tournamentLabel !== null
+        || matchId === null && item.matchLabel !== null) invalid();
+    ids.add(item.id);
+    if (tournament) tournamentCounts.set(tournamentId,(tournamentCounts.get(tournamentId)||0)+1); else noTournament++;
+    if (match) matchCounts.set(matchKey,(matchCounts.get(matchKey)||0)+1); else noMatch++;
+    const row = {id:item.id,tournamentId,tournamentLabel:tournament?.label ?? null,
+      matchId,matchLabel:match?.label ?? null,matchDate:item.playedOn || null,
+      postedAt:item.publishedOn || null,partLabel:item.title ?? null,classificationStatus:classification};
+    if (direct) {
+      const token = typeof item.watchUrl === "string" && /^https:\/\/www\.youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})$/.exec(item.watchUrl);
+      if (!token || item.thumbnailUrl !== "https://i.ytimg.com/vi/" + token[1] + "/mqdefault.jpg") invalid();
+      row.watchUrl = item.watchUrl; row.thumbnailUrl = item.thumbnailUrl;
+    }
+    return row;
+  });
+  if (noTournament !== filters.unclassifiedTournamentCount || noMatch !== filters.unassignedMatchCount
+      || [...maps.tournaments].some(([key,row])=>tournamentCounts.get(key)!==row.count)
+      || [...maps.matches].some(([key,row])=>matchCounts.get(key)!==row.count)) invalid();
+  return result;
+}
+
 async function callAuthenticatedMatchVideos_() {
   requireMatchVideoAccess_();
-  const membership = activeMembershipContext, startedAt = Date.now();
-  const items = [], ids = new Set(), tournamentCounts = new Map(), matchCounts = new Map();
-  let offset = 0, total = null, revision = null, filters = null, maps = null;
-  let noTournament = 0, noMatch = 0;
-  for (let page = 0; page < 50; page++) {
-    if (Date.now() - startedAt > 60000) throw createHomeControlError("MATCH_VIDEOS_INCOMPLETE");
-    const request = {action:"listHandballMatchVideos", offset, limit:20};
-    if (revision) request.catalogRevision = revision;
-    const data = await callMatchVideoRead_(request);
-    requireMatchVideoAccess_();
-    if (activeMembershipContext !== membership) throw createHomeControlError("UNAUTHENTICATED");
-    if (!Array.isArray(data?.items) || data.items.length > 20
-        || !Number.isInteger(data.total) || data.total < 0 || data.total > 1000
-        || data.offset !== offset || data.limit !== 20 || typeof data.hasMore !== "boolean"
-        || !/^hc_[a-f0-9]{32}$/.test(data.catalogRevision || "")
-        || total !== null && data.total !== total) throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
-    if (revision && data.catalogRevision !== revision) throw createHomeControlError("REVISION_CONFLICT");
-    total = data.total; revision = data.catalogRevision;
-    const pageMaps = matchVideoFilterMaps_(data.filters, total);
-    if (!maps) { maps = pageMaps; filters = data.filters; }
-    for (const item of data.items) {
-      if (typeof item?.id !== "string" || !item.id || ids.has(item.id)) throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
-      const tournamentId = item.tournamentId ?? null, matchId = item.matchId ?? null;
-      const matchKey = JSON.stringify([tournamentId,matchId]);
-      const tournament = tournamentId === null ? null : maps.tournaments.get(tournamentId);
-      const match = matchId === null ? null : maps.matches.get(matchKey);
-      const classification = matchId !== null ? 'match_identified' : tournamentId !== null ? 'tournament_only' : 'unclassified';
-      if (item.classificationStatus !== classification
-          || tournamentId !== null && (!tournament || item.tournamentLabel !== tournament.label)
-          || matchId !== null && (!match || item.matchLabel !== match.label)
-          || tournamentId === null && item.tournamentLabel !== null
-          || matchId === null && item.matchLabel !== null) throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
-      ids.add(item.id);
-      if (tournament) tournamentCounts.set(tournamentId,(tournamentCounts.get(tournamentId)||0)+1); else noTournament++;
-      if (match) matchCounts.set(matchKey,(matchCounts.get(matchKey)||0)+1); else noMatch++;
-      // Dropdown labels come from the ALL-row server filters, after complete paging.
-      // Only declared display metadata is translated; no list links/image locations.
-      items.push({id:item.id,tournamentId,tournamentLabel:tournament?.label ?? null,
-        matchId,matchLabel:match?.label ?? null,matchDate:item.playedOn || null,
-        postedAt:item.publishedOn || null,partLabel:item.title ?? null,classificationStatus:classification});
+  const membership = activeMembershipContext;
+  const metrics = {generation:++matchVideoReadGeneration_,startedAt:Date.now(),httpRequests:0,attempts:0,completed:0,pages:[],stage:"FIRST_PAGE"};
+  recordMatchVideoReadDiagnostic_(metrics);
+  let first, failure = null;
+  const readPage = async offset => {
+    if (Date.now()-metrics.startedAt > 90000) throw createHomeControlError("MATCH_VIDEOS_TIMEOUT");
+    const at=Date.now(),request={action:"listHandballMatchVideos",offset,limit:20};
+    if(first)request.catalogRevision=first.catalogRevision;
+    metrics.attempts++;
+    try {
+      const data=await callMatchVideoRead_(request,{timeoutMs:Math.max(1,Math.min(30000,90000-(Date.now()-metrics.startedAt))),
+        onRequestStart:()=>{metrics.httpRequests++;recordMatchVideoReadDiagnostic_(metrics);}});
+      requireMatchVideoAccess_();
+      if(activeMembershipContext!==membership)throw createHomeControlError("UNAUTHENTICATED");
+      if(!Array.isArray(data?.items)||data.items.length>20||!Number.isInteger(data.total)||data.total<0||data.total>1000
+          ||data.offset!==offset||data.limit!==20||typeof data.hasMore!=="boolean"||!/^hc_[a-f0-9]{32}$/.test(data.catalogRevision||"")
+          ||data.items.length!==Math.min(20,Math.max(0,data.total-offset))||data.hasMore!==(offset+data.items.length<data.total))
+        throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
+      if(first&&(data.total!==first.total||data.catalogRevision!==first.catalogRevision))throw createHomeControlError("REVISION_CONFLICT");
+      if(first&&JSON.stringify(data.filters)!==JSON.stringify(first.filters))throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
+      matchVideoFilterMaps_(data.filters,data.total);
+      metrics.completed++;metrics.pages.push({offset,elapsedMs:Date.now()-at,outcome:"success"});
+      recordMatchVideoReadDiagnostic_(metrics);return data;
+    }catch(error){metrics.pages.push({offset,elapsedMs:Date.now()-at,outcome:"failed"});throw error;}
+  };
+  try {
+    first=await readPage(0);
+    if(first.linkCatalog!==undefined){
+      const compact=first.linkCatalog;
+      if(compact?.format!=="family-links-1"||compact.total!==first.total||compact.catalogRevision!==first.catalogRevision)
+        throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
+      const items=projectMatchVideoCatalog_(compact.items,first.filters,first.total,true);
+      metrics.stage="COMPACT_COMPLETE";
+      return {items,diagnostics:{protocol:"family-links-1",requestCount:metrics.httpRequests}};
     }
-    offset += data.items.length;
-    if (offset > total || data.hasMore !== (offset < total) || data.hasMore && !data.items.length)
-      throw createHomeControlError("MATCH_VIDEOS_INCOMPLETE");
-    if (!data.hasMore) {
-      if (noTournament !== filters.unclassifiedTournamentCount || noMatch !== filters.unassignedMatchCount
-          || [...maps.tournaments].some(([key,row])=>tournamentCounts.get(key)!==row.count)
-          || [...maps.matches].some(([key,row])=>matchCounts.get(key)!==row.count)) throw createHomeControlError("MATCH_VIDEOS_INCOMPLETE");
-      return {items};
-    }
-  }
-  throw createHomeControlError("MATCH_VIDEOS_INCOMPLETE");
+    metrics.stage="LEGACY_PAGES";recordMatchVideoReadDiagnostic_(metrics);
+    const offsets=[];for(let offset=20;offset<first.total;offset+=20)offsets.push(offset);
+    const pages=[first];let cursor=0, stopped=false;
+    // Compatibility while v206 remains live: bounded two-request concurrency,
+    // no retry, unchanged revision/completeness validation and no partial success.
+    await Promise.all(Array.from({length:Math.min(2,offsets.length)},async()=>{
+      while(!stopped&&cursor<offsets.length){
+        const offset=offsets[cursor++];
+        try{pages.push(await readPage(offset));}catch(error){stopped=true;throw error;}
+      }
+    }));
+    pages.sort((a,b)=>a.offset-b.offset);
+    const items=projectMatchVideoCatalog_(pages.flatMap(p=>p.items),first.filters,first.total,false);
+    metrics.stage="LEGACY_COMPLETE";
+    return {items,diagnostics:{protocol:"legacy-pages",requestCount:metrics.httpRequests}};
+  }catch(error){failure=error;metrics.stage="FAILED";throw error;}
+  finally{recordMatchVideoReadDiagnostic_(metrics,failure);}
 }
 
 async function callAuthenticatedMatchVideoLink_(id) {
@@ -5809,12 +5868,16 @@ async function callAuthenticatedMatchVideoThumbnail_(id) {
   return globalThis.PaluruMatchVideoMedia.decode(data,id);
 }
 
-async function callMatchVideoRead_(payload) {
+async function callMatchVideoRead_(payload, options = {}) {
   requireMatchVideoAccess_();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
-  try { return await callHomeControlApi(payload, {signal:controller.signal}); }
-  finally { clearTimeout(timer); }
+  const timeoutMs=Math.min(30000,Math.max(1,options.timeoutMs||30000));
+  let onAbort;
+  const deadline=new Promise((_,reject)=>{onAbort=()=>reject(createHomeControlError("MATCH_VIDEOS_TIMEOUT"));controller.signal.addEventListener("abort",onAbort,{once:true});});
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await Promise.race([callHomeControlApi(payload, {signal:controller.signal,onRequestStart:options.onRequestStart}),deadline]); }
+  catch(error){if(controller.signal.aborted)throw createHomeControlError("MATCH_VIDEOS_TIMEOUT");throw error;}
+  finally { clearTimeout(timer);controller.signal.removeEventListener("abort",onAbort); }
 }
 
 async function callAuthenticatedFamilySchedule_(payload) {
