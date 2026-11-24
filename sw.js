@@ -1,4 +1,4 @@
-importScripts("./build.js?v=v20261122-today-summary-v1");
+importScripts("./build.js?v=v20261123-match-videos-ui-v1");
 // Release: v20261107-location-history-page
 const CACHE_NAME = `paruru-mini-${globalThis.BUILD_ID}`;
 const versioned = (path) => `${path}?v=${globalThis.BUILD_ID}`;
@@ -13,6 +13,10 @@ const APP_SHELL_RUNTIME_ASSETS = [
   versioned("features/transport/read-v2-config.js"),
   versioned("features/transport/read-v2.js"),
   versioned("app.js"),
+  versioned("features/match-videos/page.js"),
+  versioned("features/match-videos/media.js"),
+  versioned("features/match-videos/integration.js"),
+  versioned("features/match-videos/view.css"),
   versioned("features/family-schedules/page.js"),
   versioned("features/family-schedules/view.css"),
   versioned("features/shopping/supermarket-poc.js"),

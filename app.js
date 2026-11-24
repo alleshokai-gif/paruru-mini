@@ -1107,6 +1107,9 @@ const activateMembershipContext_ = function(membershipContext) {
       kazOsInboxAnswerApi: callAuthenticatedKazOsInboxAnswer_,
       healthApi: callAuthenticatedHealth_,
       familyScheduleApi: callAuthenticatedFamilySchedule_,
+      matchVideosApi: callAuthenticatedMatchVideos_,
+      matchVideoLinkApi: callAuthenticatedMatchVideoLink_,
+      matchVideoThumbnailApi: callAuthenticatedMatchVideoThumbnail_,
       shoppingApi: callAuthenticatedShopping_,
       nurseOkanCommentApi: callNurseOkanComment_,
       petHealthApi: callAuthenticatedPetHealth_,
@@ -1119,6 +1122,7 @@ const activateMembershipContext_ = function(membershipContext) {
   if ((globalThis.location?.hash === "#family-schedules"
       || new URLSearchParams(globalThis.location?.search || "").get("familyScheduleSignage") === "1")
       && isViewAllowed_("family-schedules")) activeView = "family-schedules";
+  if (globalThis.location?.hash === "#match-videos" && isViewAllowed_("match-videos")) activeView = "match-videos";
   if (globalThis.location?.hash === "#shopping" && isViewAllowed_("shopping")) activeView = "shopping";
   if (globalThis.location?.hash === "#location-history" && isViewAllowed_("location-history")) activeView = "location-history";
   const initialViewLoad = switchView(activeView);
@@ -1966,7 +1970,8 @@ async function switchView(viewName) {
   const resolvedView = normalizeAllowedView_(viewName);
   if (!resolvedView) return;
   activeView = resolvedView;
-  const standaloneHashes = ["family-schedules", "shopping", "location-history"];
+  if (resolvedView !== "match-videos") document.dispatchEvent(new CustomEvent("match-videos:closed"));
+  const standaloneHashes = ["family-schedules", "shopping", "location-history", "match-videos"];
   if (standaloneHashes.includes(resolvedView) || standaloneHashes.includes(globalThis.location?.hash?.slice(1))) {
     const hash = standaloneHashes.includes(resolvedView) ? "#" + resolvedView : "";
     globalThis.history?.replaceState?.(globalThis.history?.state ?? null, "", `${globalThis.location?.pathname || ""}${globalThis.location?.search || ""}${hash}`);
@@ -1995,6 +2000,13 @@ async function switchView(viewName) {
   if (resolvedView === "location-history" && typeof CustomEvent === "function") {
     document.dispatchEvent(new CustomEvent("paruru:location-history-opened"));
     window.scrollTo({top: 0, behavior: "instant"});
+    return;
+  }
+  if (resolvedView === "match-videos") {
+    const pending = [];
+    document.dispatchEvent(new CustomEvent("match-videos:opened", {detail:{waitUntil(promise){pending.push(promise);}}}));
+    await Promise.allSettled(pending);
+    window.scrollTo({top:0,behavior:"instant"});
     return;
   }
   if (resolvedView === "family-schedules") {
@@ -5570,7 +5582,7 @@ function saveUserProfileFromForm() {
 function isViewAllowed_(viewName) {
   if (viewName === "location-history") return activeMembershipContext?.role === "admin" && isViewAllowed_("settings");
   // A read-only child of the existing Home permission, with the same API roles.
-  if (viewName === "family-schedules" || viewName === "shopping") return isViewAllowed_("home")
+  if (viewName === "family-schedules" || viewName === "shopping" || viewName === "match-videos") return isViewAllowed_("home")
     && ["admin", "guardian", "self_record"].includes(activeMembershipContext?.role);
   if (viewName === "kaz-os" && activeMembershipContext?.role !== "admin") return false;
   return appAuthenticationState === "active_member"
@@ -5691,6 +5703,118 @@ async function callAuthenticatedShopping_(operation, requestId) {
     if (!response.ok) throw createHomeControlError(body?.error?.code || "SHOPPING_UNAVAILABLE");
     return body;
   } finally { clearTimeout(timer); }
+}
+
+// Same authenticated POST/no-store boundary as the existing Home reads.
+// The server must authorize the collection and reauthorize each opaque video id.
+function requireMatchVideoAccess_() {
+  if (appAuthenticationState !== "active_member") throw createHomeControlError("UNAUTHENTICATED");
+  if (!isViewAllowed_("match-videos")) throw createHomeControlError("FORBIDDEN");
+}
+function matchVideoFilterMaps_(filters, total) {
+  const invalid = () => { throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE"); };
+  if (!filters || !Array.isArray(filters.tournaments) || !Array.isArray(filters.matches)
+      || filters.tournaments.length > 1000 || filters.matches.length > 1000) invalid();
+  const tournaments = new Map(), matches = new Map();
+  for (const [rows, map, match] of [[filters.tournaments,tournaments,false],[filters.matches,matches,true]]) {
+    let sum = 0;
+    for (const row of rows) {
+      if (typeof row?.id !== "string" || !row.id || typeof row.label !== "string"
+          || !row.label || row.label.length > 200 || !Number.isInteger(row.count) || row.count < 1 || row.count > total) invalid();
+      const key = match ? JSON.stringify([row.tournamentId ?? null,row.id]) : row.id;
+      if (map.has(key)) invalid();
+      map.set(key, row); sum += row.count;
+    }
+    const missing = match ? filters.unassignedMatchCount : filters.unclassifiedTournamentCount;
+    if (!Number.isInteger(missing) || missing < 0 || sum + missing !== total) invalid();
+  }
+  return {tournaments,matches};
+}
+async function callAuthenticatedMatchVideos_() {
+  requireMatchVideoAccess_();
+  const membership = activeMembershipContext, startedAt = Date.now();
+  const items = [], ids = new Set(), tournamentCounts = new Map(), matchCounts = new Map();
+  let offset = 0, total = null, revision = null, filters = null, maps = null;
+  let noTournament = 0, noMatch = 0;
+  for (let page = 0; page < 50; page++) {
+    if (Date.now() - startedAt > 60000) throw createHomeControlError("MATCH_VIDEOS_INCOMPLETE");
+    const request = {action:"listHandballMatchVideos", offset, limit:20};
+    if (revision) request.catalogRevision = revision;
+    const data = await callMatchVideoRead_(request);
+    requireMatchVideoAccess_();
+    if (activeMembershipContext !== membership) throw createHomeControlError("UNAUTHENTICATED");
+    if (!Array.isArray(data?.items) || data.items.length > 20
+        || !Number.isInteger(data.total) || data.total < 0 || data.total > 1000
+        || data.offset !== offset || data.limit !== 20 || typeof data.hasMore !== "boolean"
+        || !/^hc_[a-f0-9]{32}$/.test(data.catalogRevision || "")
+        || total !== null && data.total !== total) throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
+    if (revision && data.catalogRevision !== revision) throw createHomeControlError("REVISION_CONFLICT");
+    total = data.total; revision = data.catalogRevision;
+    const pageMaps = matchVideoFilterMaps_(data.filters, total);
+    if (!maps) { maps = pageMaps; filters = data.filters; }
+    for (const item of data.items) {
+      if (typeof item?.id !== "string" || !item.id || ids.has(item.id)) throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
+      const tournamentId = item.tournamentId ?? null, matchId = item.matchId ?? null;
+      const matchKey = JSON.stringify([tournamentId,matchId]);
+      const tournament = tournamentId === null ? null : maps.tournaments.get(tournamentId);
+      const match = matchId === null ? null : maps.matches.get(matchKey);
+      const classification = matchId !== null ? 'match_identified' : tournamentId !== null ? 'tournament_only' : 'unclassified';
+      if (item.classificationStatus !== classification
+          || tournamentId !== null && (!tournament || item.tournamentLabel !== tournament.label)
+          || matchId !== null && (!match || item.matchLabel !== match.label)
+          || tournamentId === null && item.tournamentLabel !== null
+          || matchId === null && item.matchLabel !== null) throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
+      ids.add(item.id);
+      if (tournament) tournamentCounts.set(tournamentId,(tournamentCounts.get(tournamentId)||0)+1); else noTournament++;
+      if (match) matchCounts.set(matchKey,(matchCounts.get(matchKey)||0)+1); else noMatch++;
+      // Dropdown labels come from the ALL-row server filters, after complete paging.
+      // Only declared display metadata is translated; no list links/image locations.
+      items.push({id:item.id,tournamentId,tournamentLabel:tournament?.label ?? null,
+        matchId,matchLabel:match?.label ?? null,matchDate:item.playedOn || null,
+        postedAt:item.publishedOn || null,partLabel:item.title ?? null,classificationStatus:classification});
+    }
+    offset += data.items.length;
+    if (offset > total || data.hasMore !== (offset < total) || data.hasMore && !data.items.length)
+      throw createHomeControlError("MATCH_VIDEOS_INCOMPLETE");
+    if (!data.hasMore) {
+      if (noTournament !== filters.unclassifiedTournamentCount || noMatch !== filters.unassignedMatchCount
+          || [...maps.tournaments].some(([key,row])=>tournamentCounts.get(key)!==row.count)
+          || [...maps.matches].some(([key,row])=>matchCounts.get(key)!==row.count)) throw createHomeControlError("MATCH_VIDEOS_INCOMPLETE");
+      return {items};
+    }
+  }
+  throw createHomeControlError("MATCH_VIDEOS_INCOMPLETE");
+}
+
+async function callAuthenticatedMatchVideoLink_(id) {
+  requireMatchVideoAccess_();
+  const membership = activeMembershipContext;
+  if (typeof id !== "string" || !id.trim() || id.length > 256 || /[\x00-\x1f]/.test(id)) throw createHomeControlError("MATCH_VIDEO_INVALID_ID");
+  const data = await callMatchVideoRead_({action:"getHandballMatchVideoLink", id});
+  requireMatchVideoAccess_();
+  if (activeMembershipContext !== membership) throw createHomeControlError("UNAUTHENTICATED");
+  if (data?.id !== id || typeof data.url !== "string"
+      || !/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(data.url))
+    throw createHomeControlError("MATCH_VIDEOS_INVALID_RESPONSE");
+  return {watchUrl:data.url};
+}
+
+async function callAuthenticatedMatchVideoThumbnail_(id) {
+  requireMatchVideoAccess_();
+  const membership = activeMembershipContext;
+  if (typeof id !== "string" || !id.trim() || id.length > 256 || /[\x00-\x1f]/.test(id)) throw createHomeControlError("MATCH_VIDEO_INVALID_ID");
+  const data = await callMatchVideoRead_({action:"getHandballMatchVideoThumbnail", id});
+  requireMatchVideoAccess_();
+  if (activeMembershipContext !== membership) throw createHomeControlError("UNAUTHENTICATED");
+  return globalThis.PaluruMatchVideoMedia.decode(data,id);
+}
+
+async function callMatchVideoRead_(payload) {
+  requireMatchVideoAccess_();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try { return await callHomeControlApi(payload, {signal:controller.signal}); }
+  finally { clearTimeout(timer); }
 }
 
 async function callAuthenticatedFamilySchedule_(payload) {
