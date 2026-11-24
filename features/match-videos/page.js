@@ -3,8 +3,10 @@
  *
  * - No automatic initialisation, no global auth reads, no network access.
  * - Exposes globalThis.PaluruMatchVideos = { create, ...pure helpers }.
- * - List payload is DISPLAY METADATA ONLY. watchUrl / thumbnailUrl are never read.
- * - A watch link is obtained by getLink(id) only after the user's click, shown as a
+ * - Compact mode: an item carrying watchUrl/thumbnailUrl (from the one authenticated
+ *   catalog) renders an ordinary anchor immediately and a viewport-lazy mqdefault image.
+ *   Invalid present fields fail closed for that item; no per-item API is ever called.
+ * - Legacy mode (fields absent): getLink(id) only after the user's click, shown as a
  *   single-use, explicitly labelled YouTube anchor, and discarded afterwards.
  * - All payload text is rendered via textContent only. Nothing is persisted or logged.
  * See UI_NOTES.md for the lifecycle contract.
@@ -157,12 +159,46 @@
     return null;
   }
 
-  /** Reads ONLY whitelisted display-metadata keys. watchUrl/thumbnailUrl are never touched. */
+  /** Compact-mode watch URL: exactly https://www.youtube.com/watch?v=<11 chars>. Returns the video id or null. */
+  function directVideoId(value) {
+    if (typeof value !== 'string' || value.length > 64) return null;
+    const m = /^https:\/\/www\.youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})$/.exec(value);
+    return m ? m[1] : null;
+  }
+
+  /** Compact-mode thumbnail: only https://i.ytimg.com/vi/<SAME id>/mqdefault.jpg. */
+  function directThumbUrl(value, videoId) {
+    if (!videoId || typeof value !== 'string' || value.length > 80) return null;
+    const m = /^https:\/\/i\.ytimg\.com\/vi\/([A-Za-z0-9_-]{11})\/mqdefault\.jpg$/.exec(value);
+    return m && m[1] === videoId ? value : null;
+  }
+
+  /**
+   * Additive compact mode. Fields ABSENT -> legacy (getLink/readThumbnail).
+   * Fields PRESENT -> direct; each is validated independently and an invalid value
+   * fails closed for that item (never falls back to the legacy API).
+   */
+  function directFields(raw) {
+    const hasWatch = raw.watchUrl !== undefined, hasThumb = raw.thumbnailUrl !== undefined;
+    if (!hasWatch && !hasThumb) return { direct: false, watchUrl: null, thumbUrl: null };
+    const vid = directVideoId(raw.watchUrl);
+    return {
+      direct: true,
+      watchUrl: vid ? 'https://www.youtube.com/watch?v=' + vid : null,
+      thumbUrl: directThumbUrl(raw.thumbnailUrl, vid)
+    };
+  }
+
+  /** Reads whitelisted display-metadata keys plus the optional compact-mode link/image fields. */
   function normalizeItem(raw, order) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
     const id = cleanId(raw.id);
     if (!id) return null;
+    const d = directFields(raw);
     return Object.freeze({
+      direct: d.direct,
+      watchUrl: d.watchUrl,
+      thumbUrl: d.thumbUrl,
       id: id,
       order: order,
       status: normalizeStatus(raw.classificationStatus),
@@ -372,7 +408,8 @@
         if (entry.isIntersecting && item && isOpen && !destroyed) {
           thumbObserver.unobserve(entry.target);
           visibleThumbs.delete(entry.target);
-          queueThumb(item, entry.target);
+          if (item.direct) applyDirectThumb(item, entry.target);
+          else queueThumb(item, entry.target);
         }
       }
     }) : null;
@@ -414,7 +451,7 @@
     const header = el('div', 'view-header mv-header');
     if (onBack) header.append(button('戻る', 'secondary-button mv-back', function () { onBack(); }));
     header.append(el('h1', 'mv-title', '試合動画'));
-    const lead = el('p', 'mv-lead', '大会・試合ごとに動画を探せます。「リンクを取得」を押すと、YouTubeで開くリンクが表示されます。');
+    const lead = el('p', 'mv-lead', '大会・試合ごとに動画を探せます。動画はYouTubeで開きます。');
 
     const panel = el('div', 'mv-panel');
     const controls = el('div', 'mv-controls');
@@ -810,9 +847,28 @@
       const action = el('div', 'mv-part-action');
       li.append(thumb, text, action);
       const ctx = { item: p, slot: action, name: flags.context + ' ' + label };
-      renderLinkIdle(ctx, false);
+      if (p.direct) renderDirectLink(ctx);
+      else renderLinkIdle(ctx, false);
       attachThumb(p, thumb);
       return li;
+    }
+
+    /* ---------- direct links (compact mode): ordinary anchor, no API call ever ---------- */
+    function renderDirectLink(ctx) {
+      const slot = ctx.slot;
+      if (!ctx.item.watchUrl) {
+        slot.dataset.link = 'invalid';
+        slot.replaceChildren(el('span', 'mv-link-note is-muted', 'リンクを確認できません'));
+        return;
+      }
+      slot.dataset.link = 'direct';
+      const a = el('a', 'mv-button mv-button-primary mv-link-open');
+      a.href = ctx.item.watchUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.referrerPolicy = 'no-referrer';
+      a.append(el('span', null, 'YouTubeで開く'), el('span', 'mv-sr', '（' + ctx.name + '、新しいタブで開きます）'));
+      slot.replaceChildren(a);
     }
 
     /* ---------- links: fetched fresh on click, single use, never cached ---------- */
@@ -929,8 +985,32 @@
       img.src = result.url;
     }
 
+    /** Direct image: src assigned only once the slot intersects the viewport. */
+    function applyDirectThumb(item, slot) {
+      if (!item.thumbUrl || !slot.isConnected) { setThumb(slot, 'none'); return; }
+      const img = el('img', 'mv-thumb-img');
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.referrerPolicy = 'no-referrer';
+      img.width = 320;
+      img.height = 180;
+      img.addEventListener('error', function () { if (img.parentNode === slot) setThumb(slot, 'none'); });
+      slot.dataset.thumb = 'loaded';
+      slot.replaceChildren(img);
+      img.src = item.thumbUrl;
+    }
+
     function attachThumb(item, slot) {
       slots.set(item.id, slot);
+      if (item.direct) {
+        setThumb(slot, 'none');                 // placeholder until visible; never calls readThumbnail
+        if (item.thumbUrl && thumbObserver) {
+          visibleThumbs.set(slot, item);
+          thumbObserver.observe(slot);
+        }
+        return;
+      }
       if (!readThumbnail || !thumbObserver) { setThumb(slot, 'unavailable'); return; }
       setThumb(slot, 'none');
       visibleThumbs.set(slot, item);
@@ -1064,6 +1144,8 @@
     buildCatalog: buildCatalog,
     safeWatchUrl: safeWatchUrl,
     linkFromResponse: linkFromResponse,
+    directVideoId: directVideoId,
+    directThumbUrl: directThumbUrl,
     cleanText: cleanText,
     parseMatchDate: parseMatchDate,
     parsePostedAt: parsePostedAt,

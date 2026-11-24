@@ -11,8 +11,11 @@ const HANDBALL_VIDEO_ACTIONS = Object.freeze({
 
 function handballMatchVideos_(body) {
   try {
+    const startedAt = Date.now();
     const actor = resolveHandballVideoReadActor_(body);
+    const actorAt = Date.now();
     const homeId = handballVideoHome_(actor);
+    const homeAt = Date.now();
     const properties = PropertiesService.getScriptProperties();
     const input = handballVideoInput_(body);
     // Same existing family/Home boundary as shopping; never a per-member video grant.
@@ -30,6 +33,15 @@ function handballMatchVideos_(body) {
         total: filtered.length, offset: input.offset, limit: input.limit,
         hasMore: input.offset + input.limit < filtered.length,
         catalogRevision: catalog.revision, filters: handballVideoFilters_(rows),
+      };
+      // Additive to the old bounded page: modern clients need only this one
+      // authenticated read. No per-card GAS, oEmbed or player preflight follows.
+      if (input.offset === 0) data.linkCatalog = {
+        format: 'family-links-1', catalogRevision: catalog.revision,
+        total: filtered.length, items: filtered.map(handballVideoDirectMetadata_),
+        diagnostics: { actorMs: actorAt - startedAt, homeMs: homeAt - actorAt,
+          catalogMs: Date.now() - homeAt, totalMs: Date.now() - startedAt,
+          authenticatedReads: 1, catalogReads: 1, mediaProviderCalls: 0 },
       };
     } else {
       const row = rows.find(function(candidate) { return candidate.id === input.id; });
@@ -143,6 +155,17 @@ function handballVideoMetadata_(row) {
     matchId: row.matchId, matchLabel: row.matchLabel, title: row.title, playedOn: row.playedOn,
     publishedOn: row.publishedOn, classificationStatus: row.classificationStatus,
     thumbnail: { status: 'not_requested' } };
+}
+
+function handballVideoDirectMetadata_(row) {
+  const watchUrl = handballVideoUrl_(row.youtubeUrl);
+  const videoId = /[?]v=([A-Za-z0-9_-]{11})$/.exec(watchUrl)[1];
+  return Object.assign(handballVideoMetadata_(row), {
+    watchUrl: watchUrl,
+    // The only approved direct image source: exact official host, matching ID,
+    // fixed small image. This reference is returned only after family/Home auth.
+    thumbnailUrl: 'https://i.ytimg.com/vi/' + videoId + '/mqdefault.jpg',
+  });
 }
 
 function handballVideoDate_(date) {
