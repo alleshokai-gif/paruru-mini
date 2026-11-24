@@ -21,7 +21,7 @@ function row(overrides = {}) {
 }
 function fixture(options = {}) {
   const state = {actor: {homeId: 'fixture-home-a', memberUserId: 'fixture-owner'},
-    verified: 0, propertyReads: [], fileReads: [], externalCalls: [], fetchQueue: [], logs: [], capabilities: [], failure: '',
+    verified: 0, propertyReads: [], homeReads: [], homeFetches: [], fileReads: [], externalCalls: [], fetchQueue: [], logs: [], capabilities: [], failure: '',
     sharing: 'PRIVATE', fileMime: 'application/json', fileId: 'fixture_catalog_file', configuredHome:'fixture-home-a',
     readers: {schemaVersion: 1, readers: [{homeId: 'fixture-home-a', memberUserId: 'fixture-owner'}]},
     catalog: {schemaVersion: 1, items: [row(), row({id: video2, tournamentId: tournament2,
@@ -37,7 +37,8 @@ function fixture(options = {}) {
       state.propertyReads.push(key);
       if (state.failure === 'property') throw fail('untrusted-private-error');
       if (key === 'HANDBALL_VIDEO_READERS_JSON') throw fail('OLD_GALLERY_GRANT_MUST_NOT_BE_READ');
-      return key === 'PALURU_HOME_ID' ? state.configuredHome : state.fileId;
+      if (key === 'PALURU_HOME_ID') throw fail('NONEXISTENT_LEGACY_HOME_MUST_NOT_BE_READ');
+      return state.fileId;
     }})},
     DriveApp: {Access:{PRIVATE:'PRIVATE'}, getFileById: fileId => {
       state.fileReads.push(fileId);
@@ -47,8 +48,22 @@ function fixture(options = {}) {
         getSize:()=>state.fileSize === undefined ? bytes.length : state.fileSize,
         getBlob:()=>({getBytes:()=>state.blobBytes || [...bytes], getDataAsString:()=>bytes.toString('utf8')})};
     }},
-    Utilities: {base64Encode: bytes => Buffer.from(bytes.map(x=>x&255)).toString('base64')},
+    Utilities: {base64Encode: bytes => Buffer.from(bytes.map(x=>x&255)).toString('base64'),
+      base64Decode: value => [...Buffer.from(value,'base64')],
+      newBlob: bytes => ({getDataAsString:()=>Buffer.from(bytes).toString('utf8')})},
+    ScriptApp: {getOAuthToken:()=> 'synthetic-oauth-not-a-real-token'},
+    PALURU_CALENDAR_SERVICE_HOME_SECRET: 'KAZ_OS_PROGRESS_OWNER_HOME_ID',
+    loadInternalCalendarSecret_: name => {
+      state.homeReads.push(name);
+      if(state.failure==='home') throw fail('untrusted-private-error');
+      return state.configuredHome;
+    },
     UrlFetchApp: {fetch:(url,options)=>{
+      if(url==='https://secretmanager.googleapis.com/v1/projects/paluru-bus/secrets/KAZ_OS_PROGRESS_OWNER_HOME_ID/versions/latest:access'){
+        state.homeFetches.push(url);
+        return state.failure==='home' ? response(403,'application/json',Buffer.from('{}'))
+          : response(200,'application/json',Buffer.from(JSON.stringify({payload:{data:Buffer.from(String(state.configuredHome)).toString('base64')}})));
+      }
       state.externalCalls.push({url,options});
       const next = state.fetchQueue.shift();
       if (next instanceof Error) throw next;
@@ -69,6 +84,7 @@ function fixture(options = {}) {
     firebaseAuthError_: fail, homeMembershipError_: fail,
   });
   for (const name of ['gas/TransportDiagnostics.js', 'gas/Code.js', 'gas/AuthenticatedActorService.js', 'gas/HandballMatchVideoService.js']) vm.runInContext(source(name), context);
+  if(options.realCanonicalHome)vm.runInContext(source('gas/InternalCalendarApi.js'),context);
   if(options.realRolePolicy){
     const roles=vm.createContext({});vm.runInContext(source('gas/HomeMembershipService.js'),roles);
     for(const name of ['isHomeMemberAccessRole_','getEffectiveMemberCapabilities_','getEffectiveMemberAllowedViews_']) context[name]=roles[name];
@@ -124,6 +140,31 @@ test('missing or malformed existing canonical Home fails closed', () => {
     const {request, state} = fixture({configuredHome}); denied(request('listHandballMatchVideos'),'CONFIGURATION_ERROR');
     assert.equal(state.fileReads.length,0);assert.deepEqual(state.externalCalls,[]);
   }
+});
+
+test('v205 canonical loader works with no PALURU_HOME_ID or new Home property',()=>{
+  for(const role of ['admin','guardian','self_record']){
+    const {request,state}=fixture({realCanonicalHome:true,actor:{homeId:'fixture-home-a',memberUserId:'synthetic-'+role,role}});
+    assert.equal(request('listHandballMatchVideos').success,true);
+    assert.equal(state.homeFetches.length,1);
+    assert.deepEqual(state.propertyReads,['HANDBALL_VIDEO_CATALOG_FILE_ID']);
+    assert.deepEqual(state.logs,[]);
+  }
+});
+
+test('v205 canonical source failure or a different Home denies before private catalog read',()=>{
+  for(const options of [{failure:'home'},{actor:{homeId:'fixture-home-b',memberUserId:'synthetic-family',role:'guardian'}}]){
+    const {request,state}=fixture({...options,realCanonicalHome:true});
+    denied(request('listHandballMatchVideos'),options.failure?'SERVICE_UNAVAILABLE':'FORBIDDEN');
+    assert.equal(state.homeFetches.length,1);assert.deepEqual(state.propertyReads,[]);
+    assert.deepEqual(state.fileReads,[]);assert.deepEqual(state.externalCalls,[]);assert.deepEqual(state.logs,[]);
+  }
+});
+
+test('canonical loader unavailable fails closed without an actor-selected Home fallback',()=>{
+  const {context,request,state}=fixture();context.loadInternalCalendarSecret_=undefined;
+  denied(request('listHandballMatchVideos'),'SERVICE_UNAVAILABLE');
+  assert.deepEqual(state.propertyReads,[]);assert.deepEqual(state.fileReads,[]);
 });
 test('disabled membership and denied home.read fail before catalog', () => {
   for (const failure of ['disabled','capability']) {
