@@ -6,7 +6,7 @@ The collection must page through at least 51 videos, preserve unclassified entri
 and provide authenticated thumbnails. No real catalog, school/team/LINE material,
 video or production settings were inspected. The three Mini read actions reuse
 current Firebase identity/membership, existing `home.read`, the same family roles
-as shopping, and the deployment's existing canonical `PALURU_HOME_ID`. Every
+as shopping, and the deployment's existing canonical family Home. Every
 active authenticated member of that Home can read; no gallery-only member grants
 or manual roster/owner-session matching are required.
 Family Inbox's receiver, protocol, capabilities and credentials remain unchanged.
@@ -32,6 +32,16 @@ verifies active identity/member and existing `home.read`, accepts only the same
 `admin` / `guardian` / `self_record` roles as shopping, and compares its Home to
 existing server configuration before any Drive or YouTube read. No client Home,
 first-caller binding or display-name inference is used. GET/legacy pairing/Family Inbox service tokens cannot grant access.
+
+The production v205 shopping client calls Gateway `/v2/family/shopping` directly.
+Gateway resolves fresh active Firebase/Home membership and compares Home against
+its fixed `KAZ_OS_PROGRESS_OWNER_HOME_ID`, injected from the same-named existing
+Secret Manager source (`kaz-context/tools/kaz-os/deploy/read-transport-v2-canary.json`).
+Mini v205 already has `loadInternalCalendarSecret_(PALURU_CALENDAR_SERVICE_HOME_SECRET)`
+for that same canonical source. Gallery reuses this existing loader and existing
+permissions; it does not read a new `PALURU_HOME_ID` Script Property. No family
+roster selection, first-admin lookup or new Home/reader configuration is needed.
+Unavailable or invalid canonical configuration fails closed before Drive access.
 
 All responses retain `schemaVersion: 'handball-match-videos-1.0'` and the existing
 `{success, data, error, message}` envelope. Failed data is `{}`, message is fixed;
@@ -117,8 +127,10 @@ HTTP response, so this is not a streaming download bandwidth cap.
 
 ## Private provisioning (not performed in this task)
 
-- Reuse existing `PALURU_HOME_ID` internally, as already used by the deployment's
-  Home operations. It must exist and match the verified actor's Home. Do not
+- Reuse v205's `loadInternalCalendarSecret_(PALURU_CALENDAR_SERVICE_HOME_SECRET)`
+  internally for `KAZ_OS_PROGRESS_OWNER_HOME_ID`, the same existing canonical
+  source used by Gateway's shopping boundary. It must load and match the verified
+  actor's Home; no new Script Property is required for Home. Do not
   create a new authentication mode, gallery role, roster or member allowlist.
   No Home/member values need to be copied to the catalog or UI. Missing/invalid
   existing Home configuration fails closed, with no first-caller fallback.
@@ -194,7 +206,11 @@ family shopping authentication model. Source references: Mini
 `AuthenticatedActorService.js` / `HomeMembershipService.js`;
 `kaz-context/tools/kaz-os/family_shopping_route.py` / `read_transport_v2.py`
 verify active mapped membership, allowed family role and a configured Home.
-Existing Mini Home operations use the canonical `PALURU_HOME_ID` setting.
+Public v205's shopping transport and Gateway's deployment mapping use
+`KAZ_OS_PROGRESS_OWNER_HOME_ID`. The old follow-up's assumption that
+`PALURU_HOME_ID` was a configured production property was incorrect; v205's
+existing canonical Secret Manager loader is reused instead. No runtime credential
+or central Home value is fetched by the development/tests or copied to this repo.
 No live property value, roster, credential or private catalog was read for this
 implementation. The earlier Sheets 403 is not retried or worked around.
 

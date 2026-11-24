@@ -12,8 +12,8 @@ const HANDBALL_VIDEO_ACTIONS = Object.freeze({
 function handballMatchVideos_(body) {
   try {
     const actor = resolveHandballVideoReadActor_(body);
+    const homeId = handballVideoHome_(actor);
     const properties = PropertiesService.getScriptProperties();
-    const homeId = handballVideoHome_(actor, properties);
     const input = handballVideoInput_(body);
     // Same existing family/Home boundary as shopping; never a per-member video grant.
     const catalog = handballVideoLoadCatalog_(properties, homeId);
@@ -56,11 +56,13 @@ function handballVideoKeys_(value, keys) {
 function handballVideoIdentifier_(value, prefix) {
   return typeof value === 'string' && value.length === prefix.length + 33 && new RegExp('^' + prefix + '_[0-9a-f]{32}$').test(value);
 }
-function handballVideoHome_(actor, properties) {
+function handballVideoHome_(actor) {
   if (!actor || typeof actor.homeId !== 'string' || !actor.homeId
       || typeof actor.memberUserId !== 'string' || !actor.memberUserId) throw handballVideoError_('FORBIDDEN');
   let homeId;
-  try { homeId = properties.getProperty('PALURU_HOME_ID'); }
+  // v205 already reads the canonical shopping/Gateway Home from this exact
+  // existing Secret Manager source. Reuse its loader and existing permissions.
+  try { homeId = loadInternalCalendarSecret_(PALURU_CALENDAR_SERVICE_HOME_SECRET); }
   catch (_) { throw handballVideoError_('SERVICE_UNAVAILABLE'); }
   if (typeof homeId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(homeId.trim()) || homeId.trim().length > 200) throw handballVideoError_('CONFIGURATION_ERROR');
   homeId = homeId.trim();
