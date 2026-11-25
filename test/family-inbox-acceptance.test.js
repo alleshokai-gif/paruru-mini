@@ -141,6 +141,18 @@ test('verify checks exact group, counts, SHA, home and needs_review across both 
     const sheet = f.state.sheets.Family_Review_Items; const index = sheet.values[0].indexOf(field); const original = sheet.values[1][index];
     sheet.values[1][index] = value; assert.equal(f.post(req).success, false); sheet.values[1][index] = original;
   }
+  const candidateSheet = f.state.sheets.Family_Candidates;
+  const resultColumn = candidateSheet.values[0].indexOf('domainWriteResult');
+  assert.notEqual(resultColumn, -1);
+  const previousResult = candidateSheet.values[1][resultColumn];
+  candidateSheet.values[1][resultColumn] = 'synthetic-write-result';
+  const beforeVerify = JSON.stringify(f.state.sheets);
+  const rejected = f.post(req);
+  assert.equal(rejected.success, false);
+  assert.equal(rejected.error.code, 'DATA_INTEGRITY_ERROR');
+  assert.equal(JSON.stringify(f.state.sheets), beforeVerify);
+  candidateSheet.values[1][resultColumn] = previousResult;
+  assert.equal(f.post(req).data.groupMatched, true);
   const serialized = JSON.stringify(f.post(req));
   for (const forbidden of ['sourceSha256', 'originalRef', 'homeId', 'publishRequestId', 'payloadDigest']) assert(!serialized.includes(forbidden));
 });
