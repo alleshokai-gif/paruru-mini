@@ -55,10 +55,7 @@ function doGet(e) {
       message: 'unknown action',
     });
   } catch (error) {
-    return json_({
-      success: false,
-      message: error.message,
-    });
+    return miniPublicFailure_(error);
   }
 }
 
@@ -298,13 +295,25 @@ function doPost(e) {
     return json_({ success: false, status: 400, message: 'unknown action' });
   } catch (error) {
     recordCodeTransport_(transportTrace, 'UNHANDLED_FAILURE', {
-      classification: 'business', outcome: 'unresolved', errorCode: error && error.code || 'INTERNAL_ERROR'
+      classification: 'business', outcome: 'unresolved', errorCode: miniPublicErrorCode_(error)
     });
-    return json_({
-      success: false,
-      message: error.message,
-    });
+    return miniPublicFailure_(error);
   }
+}
+
+function miniPublicErrorCode_(error) {
+  const allowed = ['AUTH_CONFIGURATION_ERROR', 'AUTH_PROJECT_MISMATCH', 'AUTH_PROVIDER_NOT_ALLOWED',
+    'AUTH_SESSION_REVOKED', 'AUTH_TOKEN_EXPIRED', 'AUTH_TOKEN_INVALID', 'AUTH_UID_MISMATCH',
+    'AUTH_USER_DISABLED', 'AUTH_VERIFIER_UNAVAILABLE', 'FORBIDDEN', 'MEMBERSHIP_NOT_FOUND',
+    'MEMBERSHIP_CONFLICT', 'UNAUTHORIZED_DEVICE', 'CONFIGURATION_ERROR',
+    'MEMO_OWNERSHIP_INCONSISTENT', 'MEMO_OWNERSHIP_CONFIGURATION_ERROR'];
+  const code = error && error.code;
+  return typeof code === 'string' && allowed.indexOf(code) >= 0 ? code : 'INTERNAL_ERROR';
+}
+
+function miniPublicFailure_(error) {
+  const code = miniPublicErrorCode_(error);
+  return json_({ success: false, data: {}, error: { code: code }, message: code });
 }
 
 function recordCodeTransport_(trace, stage, values) {
