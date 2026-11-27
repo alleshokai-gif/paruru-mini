@@ -82,6 +82,13 @@ storage/retention limits and original-image requirements. If these cannot fit,
 report the precise missing capability rather than increasing permissions,
 discarding images or treating interactive vision as unattended execution.
 
+OCR improvement is paused after that result. The existing ChatGPT-authenticated
+host vision worker is the next candidate, using its public-only input boundary.
+See `supermarket-whole-corpus.md`: Draft #254 prepares IY's source-bound inputs
+without starting a model. Existing per-face CLI/time limits are not USD limits
+or Cloud Run 300-second acceptance. The 151 interactive rows remain a separate
+local reference artifact, never unattended output or an expired production lot.
+
 Rollback of this local experiment means stopping its own process and retaining
 the isolated evidence; the source and live DBs, images, schedules and settings
 were never changed. Repository content includes code, fictional tests and this

@@ -34,6 +34,28 @@ Every face has full PSM11 and overlapping native 1600px tiles. Failed later pass
 
 `read-public-flyer-once.py` prepares every face from an already acquired, hashed official OK manifest. It requires existing local Pillow and an existing Windows ChatGPT-authenticated native Codex CLI; it creates no login, key or service.
 
+Draft #254 adds a separate `prepare-iy` command for the saved official 00521
+edition: read-only discovery metadata, two saved face records, existing image
+SHA/size and canonical document checks are mandatory. The normal `prepare`
+command remains OK-only. IY's explicit 48MP maximum does not raise OK's 24MP
+limit; both retain the 50-attachment per-face bound. IY preparation pins all
+model-input files (including prompt/schema/overview) for verification before
+`run`. This extension is local preparation, not approval to transmit new source
+scope and not an enabled unattended daily lane.
+
+```sh
+python scripts/supermarket/read-public-flyer-once.py prepare-iy saved-source.sqlite existing-images new-private-input
+```
+
+On November 27, saved 51325 prepared 25 images per face (50 total), with no
+model invocation or source request. The installed native CLI was 0.149.0 and
+reported an existing ChatGPT login; Pillow and the required CLI flags were
+available. No credential/config values were inspected. Current model availability,
+subscription quota, provider HTTP retry count, incremental USD and any hard USD
+cap were not verified. Do not describe those unknowns as zero or bypass the
+source gate. The earlier documented four model runs are historical OK evidence,
+not IY or current daily acceptance.
+
 ```sh
 python scripts/supermarket/read-public-flyer-once.py prepare manifest.json private-new-input
 python scripts/supermarket/read-public-flyer-once.py run private-new-input/front
