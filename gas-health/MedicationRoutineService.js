@@ -20,10 +20,17 @@ function medicationAuthorizeService_(body,configure) {
   medicationAssert_(!configure||guardian,'FORBIDDEN');
   medicationAssert_(body.actorUserId===body.targetUserId||guardian,'FORBIDDEN');
 }
+function medicationStoredInstant_(value) {
+  const text=Object.prototype.toString.call(value)==='[object Date]'?value.toISOString():String(value||'');
+  return text?medicationInstant_(text).toISOString():'';
+}
+function medicationStoredDate_(value) {
+  return medicationDate_(Object.prototype.toString.call(value)==='[object Date]'?medicationLocalDate_(value.toISOString()):String(value));
+}
 function medicationRows_(tables,body) {
   const match=function(row){return row.homeId===body.homeId&&row.targetUserId===body.targetUserId;};
-  const plans=tables.plans.rows.filter(match).map(function(row){let plan;try{plan=medicationPlan_(JSON.parse(row.planJson));}catch(_){throw medicationError_('DATA_INTEGRITY_ERROR');}medicationAssert_(medicationUuid_(row.planId)&&Number.isInteger(Number(row.revision))&&Number(row.revision)>0,'DATA_INTEGRITY_ERROR');return {planId:row.planId,revision:Number(row.revision),plan:plan,recordedAt:String(row.recordedAt)};});
-  const events=tables.events.rows.filter(match).map(function(row){return {eventId:String(row.eventId),planId:String(row.planId),planRevision:Number(row.planRevision),localDate:String(row.localDate),slot:String(row.slot),status:String(row.status),occurredAt:String(row.occurredAt||''),expectedEventId:String(row.expectedEventId||''),recordedAt:String(row.recordedAt)};});
+  const plans=tables.plans.rows.filter(match).map(function(row){let plan;try{plan=medicationPlan_(JSON.parse(row.planJson));}catch(_){throw medicationError_('DATA_INTEGRITY_ERROR');}medicationAssert_(medicationUuid_(row.planId)&&Number.isInteger(Number(row.revision))&&Number(row.revision)>0,'DATA_INTEGRITY_ERROR');return {planId:row.planId,revision:Number(row.revision),plan:plan,recordedAt:medicationStoredInstant_(row.recordedAt)};});
+  const events=tables.events.rows.filter(match).map(function(row){return {eventId:String(row.eventId),planId:String(row.planId),planRevision:Number(row.planRevision),localDate:medicationStoredDate_(row.localDate),slot:String(row.slot),status:String(row.status),occurredAt:medicationStoredInstant_(row.occurredAt),expectedEventId:String(row.expectedEventId||''),recordedAt:medicationStoredInstant_(row.recordedAt)};});
   return {plans:plans,events:events};
 }
 function medicationGet_(body) {
@@ -43,7 +50,7 @@ function medicationAppend_(table,value) {
   Object.keys(value).forEach(function(key){medicationAssert_(table.table.map[key]!==undefined,'CONFIGURATION_ERROR');row[table.table.map[key]]=value[key];});
   table.sheet.appendRow(row);
 }
-function medicationReceipt_(row,kind,replayed) {return {persisted:true,planId:String(row.planId),eventId:kind==='events'?String(row.eventId):'',revision:Number(kind==='events'?row.planRevision:row.revision),recordedAt:String(row.recordedAt),replayed:Boolean(replayed)};}
+function medicationReceipt_(row,kind,replayed) {return {persisted:true,planId:String(row.planId),eventId:kind==='events'?String(row.eventId):'',revision:Number(kind==='events'?row.planRevision:row.revision),recordedAt:medicationStoredInstant_(row.recordedAt),replayed:Boolean(replayed)};}
 function medicationWrite_(body) {
   const configure=body.operation==='health.medication.plan.put';
   medicationAuthorizeService_(body,configure);

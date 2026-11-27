@@ -71,6 +71,16 @@ test('anonymous private service access is rejected before data access',()=>{
   const f=fixture();let touched=0;f.service.medicationTables_=()=>{touched++;throw Error('should not be called');};
   const out=f.service.doPost({postData:{contents:JSON.stringify({operation:'health.medication.get',localDate:f.date})}});assert.equal(out.error.code,'UNAUTHORIZED');assert.equal(touched,0);
 });
+test('Sheets Date cells retain JST occurrence day and real instant, including replay receipts',()=>{
+  const f=configured(),request=record(f),receipt=f.api('health.medication.record',request);
+  for(const name of ['Health_Routine_Plans','Health_Routine_Events']){
+    const sheet=f.sheets[name],headers=sheet.values[0];
+    for(const key of ['recordedAt','occurredAt']){const index=headers.indexOf(key);if(index>=0)sheet.values[1][index]=new Date(sheet.values[1][index]);}
+    const day=headers.indexOf('localDate');if(day>=0)sheet.values[1][day]=new Date(f.date+'T00:00:00+09:00');
+  }
+  const item=read(f).occurrences.find(x=>x.slot==='evening');assert.equal(item.localDate,f.date);assert.equal(item.occurredAt,'2030-04-03T10:55:00.000Z');
+  const retry=f.api('health.medication.record',request);assert.equal(retry.data.eventId,receipt.data.eventId);assert.equal(retry.data.recordedAt,'2030-04-03T11:00:00.000Z');
+});
 test('generic projection needs enabled current unrecorded item and rejects late/catchup; no names',()=>{
   const f=configured(),data=read(f),item=data.occurrences.find(x=>x.slot==='evening');item.remindersEnabled=true;
   let notices=f.service.medicationDueReminders_([item],'2030-04-03T20:12:00+09:00',{});assert.equal(notices.length,1);assert(!JSON.stringify(notices).includes('項目A'));assert(!JSON.stringify(notices).includes('設定内容A'));

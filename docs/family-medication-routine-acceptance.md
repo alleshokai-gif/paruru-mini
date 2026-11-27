@@ -20,7 +20,7 @@ Codex integrated the UI and fixed JST/server-clock, lifecycle and replay behavio
 
 ## Local evidence (synthetic only)
 
-50 tests passed: new domain/store/gateway and UI tests plus existing Health
+51 tests passed: new domain/store/gateway and UI tests plus existing Health
 security, target, gateway and routine tests and the three required repository
 suites. Syntax checks and `git diff --check` passed.
 
