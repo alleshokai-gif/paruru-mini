@@ -7,6 +7,7 @@ import {corpusCatalog,ingestCorpus} from './whole-corpus-store.mjs';
 import {readRosen,ROSEN_STORE,isCompleteRosenPacket} from './rosen-dom.mjs';
 import {rosenPolicy} from './rosen-policy.mjs';
 import {collectCurrentEdition,OFFICIAL} from './edition-discovery.mjs';
+import {applyRegisteredReference} from './reference-registry.mjs';
 import { identifyIyEdition, IY_SOURCE, IY_IMAGE } from './iy-ocr.mjs';
 import { identifyYaokoEdition, YAOKO_SOURCE, YAOKO_STORE, YAOKO_IMAGE } from './yaoko-ocr.mjs';
 import {TOKUBAI_EDITIONS,TOKUBAI_ROBOTS,verifyTokubaiRobots,identifyTokubaiEdition} from './tokubai-ocr.mjs';
@@ -239,7 +240,7 @@ export async function collectRosen(db,date,fetcher=fetch,{read=readRosen,onSourc
 
 // Explicitly separate from OK so enabling one store cannot re-fetch another.
 // Its caller owns a durable once-a-day claim before this function can do I/O.
-export async function collectIy(db,date,fetcher=fetch,{ocr}={}) {
+export async function collectIy(db,date,fetcher=fetch,{ocr,referenceArtifactsEnabled=false}={}) {
   if (!realDay(date)) throw new Error('INVALID_RUN_DAY');
   const previous=db.prepare('SELECT * FROM status WHERE store=?').get('iy');
   if(previous?.day===date && previous.state!=='held') return snapshot(db,date);
@@ -247,7 +248,7 @@ export async function collectIy(db,date,fetcher=fetch,{ocr}={}) {
   // This template is current-edition only. Never substitute its weekly paper
   // end date for the item's three-day limit, or assume it covers future papers.
   if(date<'2026-11-18'||date>'2026-11-20') {
-    return collectDiscovered('iy',db,date,fetcher);
+    return collectDiscovered('iy',db,date,fetcher,{referenceArtifactsEnabled});
   }
   const evidenceId=sha(IY_IMAGE);
   set.run('iy',date,'failed',IY_SOURCE,evidenceId,'INCOMPLETE_RUN');
@@ -346,12 +347,17 @@ export async function collectTokubai(id,db,date,fetcher=fetch,{ocr}={}) {
 }
 
 // Private SQLite/log codes are separate from the shared API allowlist.
-async function collectDiscovered(id,db,date,fetcher){
+async function collectDiscovered(id,db,date,fetcher,{referenceArtifactsEnabled=false}={}){
   const discovery=await collectCurrentEdition(id,db,date,fetcher);
   const edition=discovery.edition_id?db.prepare('SELECT source FROM flyer_discovered_editions WHERE edition_id=?').get(discovery.edition_id):null;
+  let error=discovery.error||'DISCOVERY_ANALYSIS_NOT_CONNECTED';
+  if(id==='iy'&&referenceArtifactsEnabled===true&&discovery.phase!=='failed'){
+    try{const applied=applyRegisteredReference(db,discovery,date,{enabled:true});error=['applied_reference','unchanged'].includes(applied.state)?null:'DISCOVERY_REFERENCE_NOT_REGISTERED';}
+    catch(_){error='DISCOVERY_REFERENCE_REJECTED';}
+  }
   db.prepare('INSERT OR REPLACE INTO status VALUES(?,?,?,?,?,?)').run(id,date,
     discovery.phase==='failed'?'failed':'needs_review',edition?.source||OFFICIAL[id],null,
-    discovery.error||'DISCOVERY_ANALYSIS_NOT_CONNECTED');
+    error);
   return snapshot(db,date);
 }
 export function portableResult(result) {
@@ -366,6 +372,7 @@ export function portableResult(result) {
     CONTENT_TYPE:'unsupported_format', BODY_LIMIT:'unsupported_format', NOT_ENABLED:'not_configured',
     INCOMPLETE_RUN:'source_unavailable', HTTP_404:'source_unavailable',
     DISCOVERY_ANALYSIS_NOT_CONNECTED:'not_configured',DISCOVERY_PRIOR_DENIAL:'http_denied',
+    DISCOVERY_REFERENCE_NOT_REGISTERED:'not_configured',DISCOVERY_REFERENCE_REJECTED:'extract_unverified',
     DISCOVERY_ROBOTS_DISALLOW:'robots_disallow',DISCOVERY_ROBOTS_UNAVAILABLE:'robots_unreachable',
   };
   const reason = e => (Object.hasOwn(explicit,e) ? explicit[e] : null) || (e?.startsWith('ROBOTS_') ? 'robots_unreachable' :

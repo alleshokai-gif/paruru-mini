@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import {gzipSync,gunzipSync} from 'node:zlib';
 import {DatabaseSync} from 'node:sqlite';
 import {pathToFileURL} from 'node:url';
+import {performance} from 'node:perf_hooks';
 const exec=promisify(execFile),hash=b=>createHash('sha256').update(b).digest('hex');
 const implementationSha=hash(await readFile(new URL(import.meta.url)));
 export function tiles(width,height,size=1600,overlap=320) {
@@ -89,30 +90,38 @@ export function regionsFromWords(words,width,height) {
       review_reasons:['PRODUCT_BOUNDARY_UNVERIFIED','LABEL_PRICE_ASSOCIATION_UNVERIFIED','ITEM_DATE_SCOPE_UNVERIFIED','TAX_UNIT_MEMBER_SCOPE_UNVERIFIED',...(values.length>1?['NUMERIC_READ_DISAGREEMENT']:[])],reads,observations:r.observations};
   });
 }
-export async function extractPage(input,{run=exec,prior=null,maxPixels=24000000}={}) {
+export async function extractPage(input,{run=exec,prior=null,maxPixels=24000000,budgetMs=null,maxPasses=null,now=()=>performance.now(),onCheckpoint=async()=>{}}={}) {
   const started=Date.now();
+  if(budgetMs!==null&&(!Number.isInteger(budgetMs)||budgetMs<1||budgetMs>280000)||maxPasses!==null&&(!Number.isInteger(maxPasses)||maxPasses<1||maxPasses>128))throw Error('OCR_BUDGET_INVALID');
+  const deadline=budgetMs===null?Infinity:now()+budgetMs;
   const work=await mkdtemp(join(tmpdir(),'paluru-whole-'));
   const options={timeout:90000,maxBuffer:12*1024*1024,windowsHide:true,env:{PATH:process.env.PATH,LANG:'C.UTF-8',OMP_THREAD_LIMIT:'1',MAGICK_THREAD_LIMIT:'1',MAGICK_MEMORY_LIMIT:'256MiB',MAGICK_MAP_LIMIT:'256MiB',MAGICK_DISK_LIMIT:'512MiB'}};
+  const boundedRun=async(command,args)=>{const left=deadline-now();if(left<1)throw Object.assign(Error('OCR_DEADLINE'),{code:'ETIMEDOUT',killed:true});return run(command,args,{...options,timeout:Math.max(1,Math.min(options.timeout,Math.floor(left)))});};
   try{
-    const dim=(await run('identify',['-ping','-format','%w %h',input],options)).stdout.trim().split(' ').map(Number);
+    const dim=(await boundedRun('identify',['-ping','-format','%w %h',input])).stdout.trim().split(' ').map(Number);
     const [width,height]=dim;if(!Number.isInteger(maxPixels)||maxPixels<1||maxPixels>48000000||!dim.every(Number.isInteger)||width<1||height<1||width*height>maxPixels)throw Error('IMAGE_DIMENSIONS');
     const plan=[{id:'full-psm11',x:0,y:0,w:width,h:height,psm:11,language:'jpn',render_scale:Math.min(1,4000/Math.max(width,height))},...tiles(width,height).map((t,i)=>({...t,id:'tile-'+i+'-best-psm11',psm:11,language:'jpn_best',render_scale:1}))];
     if(prior&&(prior.width!==width||prior.height!==height||!['jpn','jpn_full+jpn_best_tiles'].includes(prior.language)))throw Error('PRIOR_OCR_SCOPE');
     const words=prior?[...prior.words]:[],passes=prior?[...prior.passes]:[],failed=[];
+    let newPasses=0;
     for(const p of plan){const file=join(work,'pass.png');
       if(passes.some(q=>q.id===p.id&&q.x===p.x&&q.y===p.y&&q.w===p.w&&q.h===p.h))continue;
+      if(now()>=deadline||maxPasses!==null&&newPasses>=maxPasses)break;
       let operation='convert';
       try{
       const args=[input];if(p.w!==width||p.h!==height)args.push('-crop',`${p.w}x${p.h}+${p.x}+${p.y}`,'+repage');
       if(p.render_scale!==1)args.push('-resize',String(p.render_scale*100)+'%');
-      await run('convert',[...args,'-grayscale','Rec601Luma','-depth','8',file],options);
-      operation='tesseract';const passStarted=Date.now(),tsv=(await run('tesseract',[file,'stdout','-l',p.language,'--psm',String(p.psm),'tsv'],options)).stdout;
+      await boundedRun('convert',[...args,'-grayscale','Rec601Luma','-depth','8',file]);
+      operation='tesseract';const passStarted=Date.now(),tsv=(await boundedRun('tesseract',[file,'stdout','-l',p.language,'--psm',String(p.psm),'tsv'])).stdout;
       const parsed=parseTsv(tsv,p.id,p);words.push(...parsed);passes.push({...p,implementation_sha256:implementationSha,word_count:parsed.length,tsv_sha256:hash(tsv),elapsed_ms:Date.now()-passStarted});
       process.stderr.write(JSON.stringify({stage:'ocr_pass',pass:p.id,word_count:parsed.length,elapsed_ms:Date.now()-passStarted})+'\n');
       }catch(e){failed.push({...p,operation,exit_code:typeof e.code==='number'?e.code:null,signal:e.signal??null,reason:e.killed||e.code==='ETIMEDOUT'?'OCR_TIMEOUT':'OCR_PASS_FAILED'});}
+      newPasses++;
+      await onCheckpoint({width,height,language:'jpn_full+jpn_best_tiles',words,passes,failed_passes:failed,planned_passes:plan});
     }
+    const deferred=plan.filter(p=>!passes.some(q=>q.id===p.id)&&!failed.some(q=>q.id===p.id));
     const regions=regionsFromWords(words,width,height);
-    return {width,height,status:failed.length?'page_partial':'processed',pixel_coverage:rectangleCoverage(passes,width,height),language:'jpn_full+jpn_best_tiles',passes,failed_passes:failed,previous_failed_passes:prior?.failed_passes??[],words,text_blocks:textBlocks(words),regions,elapsed_ms:Date.now()-started};
+    return {width,height,status:failed.length||deferred.length?'page_partial':'processed',pixel_coverage:rectangleCoverage(passes,width,height),language:'jpn_full+jpn_best_tiles',passes,planned_passes:plan,deferred_passes:deferred,failed_passes:failed,previous_failed_passes:prior?.failed_passes??[],words,text_blocks:textBlocks(words),regions,elapsed_ms:Date.now()-started};
   }finally{await rm(work,{recursive:true,force:true});}
 }
 export function rectangleCoverage(rectangles,width,height){
