@@ -593,6 +593,9 @@ const NURSE_OKAN_HEALTH_ACTIONS = new Set([
   "health.weight.correct",
   "health.profile.get",
   "health.profile.update",
+  "health.medication.get",
+  "health.medication.plan.put",
+  "health.medication.record",
 ]);
 const KAZ_OS_READ_TIMEOUT_MS = 8000;
 const KAZ_OS_READ_RETRY_DELAY_MS = 120;
@@ -817,6 +820,7 @@ function showAuthenticationState(message, state = "locked") {
   appAuthenticationState = state;
   renderAuthenticationOnboardingState_(state);
   if (state !== "active_member") {
+    if (typeof CustomEvent === "function" && typeof document.dispatchEvent === "function") document.dispatchEvent(new CustomEvent("medication-routine:locked"));
     if (authenticatedBackgroundReadsTimerId !== null) {
       window.clearTimeout(authenticatedBackgroundReadsTimerId);
       authenticatedBackgroundReadsTimerId = null;

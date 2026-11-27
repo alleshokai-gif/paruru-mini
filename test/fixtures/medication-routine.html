@@ -1,0 +1,9 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PALURU #251 合成受入</title>
+<link rel="stylesheet" href="/view.css"><style>body{margin:0;font:16px system-ui;background:#f8fafc}main{max-width:720px;margin:auto;padding:12px}button,select{min-height:44px;font:inherit}h1{font-size:1.3rem}</style>
+<main><h1>合成データのみ・通知なし</h1><label for="actor">合成アカウント</label><select id="actor"><option value="guardian">保護者役</option><option value="self">記録者役</option><option value="disabled">無効メンバー役</option></select><button id="lock">ロック</button><button id="refresh">再取得</button>
+<h2>Home</h2><div id="homeMedicationRoutineMount"></div><h2>ナース設定</h2><div id="medicationRoutineMount"></div><p id="evidence" role="status"></p></main>
+<script src="/routine.js"></script><script src="/entry.js"></script><script>
+let calls=0,writes=0;
+function login(){const actor=document.getElementById('actor').value;document.dispatchEvent(new CustomEvent('paruru:authenticated',{detail:{context:{memberUserId:actor,capabilities:['health.self.read']},healthApi:async(action,body)=>{calls++;if(action!=='health.medication.get')writes++;document.getElementById('evidence').textContent='合成API '+calls+' 回 / 変更 '+writes+' 回';const response=await fetch('/synthetic-api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,body,actor})});const out=await response.json();if(!out.success)throw out.error;return out.data;}}}));}
+document.getElementById('actor').addEventListener('change',login);document.getElementById('lock').onclick=()=>document.dispatchEvent(new CustomEvent('medication-routine:locked'));document.getElementById('refresh').onclick=()=>document.dispatchEvent(new Event('nurse-okan:opened'));login();
+</script></html>

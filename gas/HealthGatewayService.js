@@ -2,6 +2,7 @@ const HEALTH_OPS = Object.freeze({
   'health.context.get': true, 'health.daily.get': true, 'health.daily.list': true, 'health.daily.recordSlot': true,
   'health.weight.list': true, 'health.weight.record': true, 'health.weight.correct': true,
   'health.profile.get': true, 'health.profile.update': true,
+  'health.medication.get': true, 'health.medication.plan.put': true, 'health.medication.record': true,
 });
 
 function healthGateway_(body) {
@@ -13,8 +14,19 @@ function healthGateway_(body) {
       return json_({ success: true, data: { homeId: context.actor.homeId, actor: { userId: context.actor.memberUserId, role: context.actor.role }, targets: context.targets }, message: 'ok' });
     }
     if (!context.targetUserId) throw healthGatewayError_('INVALID_INPUT');
-    authorizeTargetOperation_(context.actor, context.targetUserId, input.action);
+    const medication = String(input.action).indexOf('health.medication.') === 0;
+    const targetOperation = medication ? input.action === 'health.medication.get' ? 'health.daily.get' : 'health.daily.recordSlot' : input.action;
+    authorizeTargetOperation_(context.actor, context.targetUserId, targetOperation);
+    if (input.action === 'health.medication.plan.put' &&
+        (['admin','guardian'].indexOf(context.actor.role) < 0 || !hasRoleCapability_(context.actor, 'health.supervision.record'))) throw healthGatewayError_('FORBIDDEN');
     const data = fetchHealthGatewayData_(input, context.actor, context.targetUserId);
+    if (input.action === 'health.medication.get') {
+      data.canConfigure = ['admin','guardian'].indexOf(context.actor.role) >= 0 && hasRoleCapability_(context.actor, 'health.supervision.record');
+      data.canRecord = hasRoleCapability_(context.actor, context.targetUserId === context.actor.memberUserId ? 'health.self.record' : 'health.supervision.record');
+      const ownMember = getHomeMember_(context.actor.homeId, context.actor.memberUserId);
+      const ownTarget = ownMember ? {userId:ownMember.memberUserId,displayName:ownMember.displayName || '自分'} : null;
+      data.targets = (ownTarget ? [ownTarget] : []).concat(context.canSuperviseHealth ? context.targets.filter(function(target){return target.userId !== context.actor.memberUserId;}) : []);
+    }
     if (input.action === 'health.context.get') {
       const actorMember = getHomeMember_(context.actor.homeId, context.actor.memberUserId);
       const selfTarget = actorMember ? { userId: actorMember.memberUserId, displayName: actorMember.displayName } : null;
@@ -27,7 +39,7 @@ function healthGateway_(body) {
     return json_({ success: true, data: data, message: 'ok' });
   } catch (error) {
     const code = error && error.code;
-    const safeCode = (/^AUTH_|^IDENTITY_/.test(String(code || '')) || ['MEMBERSHIP_NOT_FOUND', 'FORBIDDEN', 'CONFIGURATION_ERROR', 'INVALID_INPUT', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR', 'HEALTH_UNAVAILABLE'].indexOf(code) >= 0) ? code : 'HEALTH_UNAVAILABLE';
+    const safeCode = (/^AUTH_|^IDENTITY_/.test(String(code || '')) || ['MEMBERSHIP_NOT_FOUND', 'FORBIDDEN', 'CONFIGURATION_ERROR', 'INVALID_INPUT', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR', 'HEALTH_UNAVAILABLE', 'REVISION_CONFLICT', 'ROUTINE_NOT_CONFIGURED'].indexOf(code) >= 0) ? code : 'HEALTH_UNAVAILABLE';
     return json_({ success: false, data: {}, error: { code: safeCode }, message: 'health request failed' });
   }
 }
@@ -71,7 +83,7 @@ function fetchHealthGatewayData_(input, actor, targetUserId) {
   try { result = JSON.parse(String(response.getContentText() || '')); } catch (_) { throw healthGatewayError_('HEALTH_UNAVAILABLE'); }
   if (!result || result.success !== true || !result.data || typeof result.data !== 'object') {
     const upstreamCode = result && result.error && result.error.code;
-    throw healthGatewayError_(['INVALID_INPUT', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR'].indexOf(upstreamCode) >= 0 ? upstreamCode : 'HEALTH_UNAVAILABLE');
+    throw healthGatewayError_(['INVALID_INPUT', 'IDEMPOTENCY_CONFLICT', 'DATA_INTEGRITY_ERROR', 'REVISION_CONFLICT', 'ROUTINE_NOT_CONFIGURED', 'FORBIDDEN'].indexOf(upstreamCode) >= 0 ? upstreamCode : 'HEALTH_UNAVAILABLE');
   }
   retireLegacyServiceSecret_('HEALTH_SERVICE_TOKEN');
   return result.data;
