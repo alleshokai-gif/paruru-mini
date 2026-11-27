@@ -1,0 +1,34 @@
+.mr-root{box-sizing:border-box;width:100%;max-width:100%;min-width:0;padding:12px;font:16px/1.5 system-ui,-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;color:#1f2933;overflow-wrap:anywhere}
+.mr-root *{box-sizing:border-box;min-width:0;max-width:100%}
+.mr-title{margin:0 0 4px;font-size:1.15rem}
+.mr-slot-title{margin:16px 0 8px;font-size:1rem}
+.mr-target{margin:0 0 8px;color:#52606d}
+.mr-status{min-height:1.5em;margin:8px 0;font-weight:600}
+.mr-bad{color:#b42318}
+.mr-note,.mr-hint{margin:6px 0;color:#52606d;font-size:.9rem}
+.mr-transport{padding:8px 10px;border:1px solid #9aa5b1;border-radius:8px;background:#f5f7fa}
+.mr-card{margin:8px 0;padding:12px;border:1px solid #cbd2d9;border-left-width:6px;border-radius:10px;background:#fff}
+.mr-card.mr-completed{border-left-color:#2f855a}
+.mr-card.mr-held{border-left-color:#b7791f}
+.mr-card.mr-unrecorded{border-left-color:#7b8794}
+.mr-card-head{display:flex;flex-wrap:wrap;gap:6px 10px;justify-content:space-between;align-items:baseline}
+.mr-badge{padding:2px 8px;border-radius:999px;background:#e4e7eb;font-size:.85rem;white-space:normal}
+.mr-dose,.mr-time,.mr-timer{margin:4px 0}
+.mr-actual{font-weight:700}
+.mr-remain{font-weight:700;font-variant-numeric:tabular-nums}
+.mr-actions{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.mr-btn{min-height:44px;padding:8px 14px;border:1px solid #616e7c;border-radius:8px;background:#fff;color:#1f2933;font:inherit;cursor:pointer}
+.mr-btn.mr-primary{background:#1f4e79;border-color:#1f4e79;color:#fff}
+.mr-btn:disabled{opacity:.55;cursor:not-allowed}
+.mr-btn:focus-visible,.mr-input:focus-visible,.mr-details summary:focus-visible,.mr-check input:focus-visible{outline:3px solid #f0b429;outline-offset:2px}
+.mr-details{margin-top:10px}
+.mr-details summary{min-height:44px;padding:10px 0;cursor:pointer}
+.mr-form{display:flex;flex-direction:column;gap:10px}
+.mr-field{display:flex;flex-direction:column;gap:4px}
+.mr-field[hidden],.mr-pick[hidden],.mr-settings[hidden]{display:none}
+.mr-input{width:100%;min-height:44px;padding:8px;border:1px solid #616e7c;border-radius:8px;background:#fff;color:inherit;font:inherit}
+.mr-check{display:flex;align-items:center;gap:10px;min-height:44px}
+.mr-check input{width:24px;height:24px;flex:none}
+.mr-settings{margin-top:16px;padding-top:8px;border-top:1px solid #cbd2d9}
+@media (min-width:600px){.mr-actions{flex-direction:row;flex-wrap:wrap}.mr-btn{min-width:200px}}
+@media (prefers-reduced-motion:reduce){.mr-root *{transition:none!important;animation:none!important}}
