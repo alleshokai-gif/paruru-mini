@@ -56,6 +56,13 @@ cap were not verified. Do not describe those unknowns as zero or bypass the
 source gate. The earlier documented four model runs are historical OK evidence,
 not IY or current daily acceptance.
 
+The subsequent billing check could not establish zero additional charges:
+included usage may transition automatically to credits under the official
+contract. The owner has authorized public-flyer LLM experiments, but not new paid
+usage. The IY model remains unstarted. Default-OFF registration/reuse of existing
+readings is described in `supermarket-reference-registry.md`; it does not call
+the model or enable the daily production lane.
+
 ```sh
 python scripts/supermarket/read-public-flyer-once.py prepare manifest.json private-new-input
 python scripts/supermarket/read-public-flyer-once.py run private-new-input/front
