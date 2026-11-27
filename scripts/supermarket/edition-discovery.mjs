@@ -29,20 +29,40 @@ const canonical=u=>/^https:\/\/promo\.hatobase\.jp\/flyers\/00521\/\d+\/\d+$/.te
 const image=u=>/^https:\/\/content\.hatobase\.jp\/flyer_details\/\d+\/[^/?#]+\.(?:jpg|jpeg|png)(?:\.progressive\.jpeg)?$/.test(u);
 const nofollow=(html,header)=>/\b(?:nofollow|none)\b/i.test([header,...tags(html,'meta').filter(a=>a.name?.toLowerCase()==='robots').map(a=>a.content)].join(','));
 const day=(y,m,d)=>{const v=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;demand(new Date(v).toISOString().slice(0,10)===v,'DATE_INVALID');return v;};
+function iyPeriod(label,date){
+ const raw=label.normalize('NFKC').replace(/\([月火水木金土日]\)/g,'').replace(/\s+/g,'');
+ const m=raw.match(/^(?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})[~〜](?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})/);
+ if(!m)return null;
+ const year=Number(m[1]||date.slice(0,4));
+ return {from:day(year,+m[2],+m[3]),until:day(Number(m[4]||year+(+m[5]<+m[2])),+m[5],+m[6]),printedYear:Boolean(m[1])};
+}
+// /new can point to an undated tenant advertisement. Choose by explicit paper
+// dates in the same official store's index, never by an edition ID or food SKU.
+export function parseIyIndex(html,url,date){
+ demand(canonical(url),'STORE_SCOPE');
+ const found=new Map();
+ for(const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)){
+  const link=tags('<a '+match[1]+'>','a')[0];if(!link?.href)continue;
+  if(/(?:^|\s)nofollow(?:\s|$)/i.test(link.rel||''))continue;
+  const source=new URL(link.href,url).href;if(!canonical(source))continue;
+  const label=decode(match[2].replace(/<[^>]*>/g,'')).trim(),period=iyPeriod(label,date);
+  if(period&&period.from<=date&&date<=period.until)found.set(source,{source,...period});
+ }
+ demand(found.size<=32,'INDEX_SCOPE');
+ return [...found.values()].sort((a,b)=>b.from.localeCompare(a.from)||a.until.localeCompare(b.until)||a.source.localeCompare(b.source));
+}
 export function parseIyCurrent(html,url,date){
  demand(canonical(url),'STORE_SCOPE');
  demand(tags(html,'a').some(a=>a.href?.replace(/\/$/,'')===OFFICIAL.iy.replace(/\/$/,'')),'STORE_LINK');
  const meta=tags(html,'meta');demand(meta.some(a=>a.property==='og:url'&&a.content===url),'CANONICAL');
  const label=meta.find(a=>a.name==='description')?.content;demand(typeof label==='string','PERIOD_MISSING');
- const raw=label.normalize('NFKC').replace(/\([月火水木金土日]\)/g,'');
- const m=raw.match(/^(?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})[~〜](?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})/);
- demand(m,'PERIOD_MISSING');const year=Number(m[1]||date.slice(0,4)),from=day(year,+m[2],+m[3]),until=day(Number(m[4]||year+(+m[5]<+m[2])),+m[5],+m[6]);
+ const period=iyPeriod(label,date);demand(period,'PERIOD_MISSING');const {from,until}=period;
  demand(from<=date&&date<=until,'NO_CURRENT_ISSUE');
  const title=html.match(/<title>([^<]*)<\/title>/i)?.[1];demand(title,'STORE_TITLE');
  const expected=(decode(title)+' '+label).replace(/\s+/g,' ').trim();
  const pages=[...new Set(tags(html,'img').filter(a=>a['aria-hidden']!=='true'&&a.alt?.replace(/\s+/g,' ').trim()===expected&&image(a.src)).map(a=>a.src))];
  demand(pages.length>0&&pages.length<=12,'PAGE_SCOPE');
- return {store:'iy',source:url,label,from,until,period_basis:m[1]?'printed_year':'official_current_route_observation_year',pages:pages.map((source,index)=>({ordinal:index+1,source,kind:'image'}))};
+ return {store:'iy',source:url,label,from,until,period_basis:period.printedYear?'printed_year':'official_current_route_observation_year',pages:pages.map((source,index)=>({ordinal:index+1,source,kind:'image'}))};
 }
 export function parseLifeWidget(html,url){
  demand(new URL(url).hostname==='widgets.tokubai.co.jp'&&new URL(url).pathname==='/224224/leaflet_widget','STORE_SCOPE');
@@ -109,7 +129,15 @@ export async function collectCurrentEdition(store,db,date,fetcher=fetch,{onRespo
    let r=await session.get('https://promo.hatobase.jp/flyers/00521/new');
    if([301,302,303,307,308].includes(r.status)){const url=new URL(r.location,r.url).href;demand(canonical(url),'REDIRECT_SCOPE');r=await session.get(url);}
    demand(r.status===200&&/^text\/html/i.test(r.type),'EDITION_UNAVAILABLE');
-   demand(!nofollow(r.body.toString('utf8'),r.robots),'NOFOLLOW');edition=parseIyCurrent(r.body.toString('utf8'),r.url,date);
+   const indexHtml=r.body.toString('utf8');demand(!nofollow(indexHtml,r.robots),'NOFOLLOW');
+   const candidates=parseIyIndex(indexHtml,r.url,date);let current=null;
+   try{current=parseIyCurrent(indexHtml,r.url,date);}catch(error){if(!['DISCOVERY_PERIOD_MISSING','DISCOVERY_NO_CURRENT_ISSUE'].includes(error.message))throw error;}
+   if(current&&!candidates.some(c=>c.source===current.source))candidates.push(current);
+   candidates.sort((a,b)=>b.from.localeCompare(a.from)||a.until.localeCompare(b.until)||a.source.localeCompare(b.source));
+   demand(candidates.length,'NO_CURRENT_ISSUE');const selected=candidates[0];
+   if(selected.source!==r.url){r=await session.get(selected.source);demand(r.status===200&&/^text\/html/i.test(r.type),'EDITION_UNAVAILABLE');demand(!nofollow(r.body.toString('utf8'),r.robots),'NOFOLLOW');}
+   edition=parseIyCurrent(r.body.toString('utf8'),r.url,date);
+   demand(edition.from===selected.from&&edition.until===selected.until,'INDEX_PERIOD_MISMATCH');
   }else{
    const links=tags(html,'a').map(a=>a.href).filter(Boolean).map(u=>new URL(u,OFFICIAL.life).href);
    const widgets=links.filter(u=>{const p=new URL(u);return p.hostname==='widgets.tokubai.co.jp'&&p.pathname==='/224224/leaflet_widget';});demand(new Set(widgets).size===1,'OFFICIAL_LINK');

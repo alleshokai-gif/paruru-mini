@@ -38,6 +38,37 @@ test('whole pages persist privately; repeat day and same edition never repeat as
   assert.equal(db.prepare('SELECT count(*) n FROM editions').get().n,0);
  }finally{db.close();}
 });
+test('undated /new advertisement selects latest active same-store paper and verifies both faces',async()=>{
+ const {openDb}=await import('../scripts/supermarket/collector.mjs'),{collectCurrentEdition}=await import('../scripts/supermarket/edition-discovery.mjs');
+ const tenant='https://promo.hatobase.jp/flyers/00521/1322/51299',paper='https://promo.hatobase.jp/flyers/00521/1323/51325',old='https://promo.hatobase.jp/flyers/00521/1313/51034';
+ const sidebar='<a href="'+old+'">11/21(土)〜11/24(火) expired</a><a href="'+paper+'"><span>11/25(水)〜11/27(金)</span> paper</a><a href="https://promo.hatobase.jp/flyers/00522/1/2">11/27(金)〜11/29(日) other store</a>';
+ const calls=[],db=openDb(':memory:');try{
+  const base=fake(calls,{source:tenant,body:html(tenant,'Undated tenant advertisement',[image('tenant')])+sidebar});
+  const fetcher=async url=>url===paper?(calls.push(url),new Response(html(paper,'11/25(水)〜11/27(金) paper',[a,b]),{headers:{'Content-Type':'text/html'}})):base(url);
+  const out=await collectCurrentEdition('iy',db,'2026-11-27',fetcher);
+  assert.equal(out.phase,'detected');assert.equal(out.edition.source,paper);assert.equal(out.edition.until_day,'2026-11-27');assert.equal(out.pages.length,2);assert(out.pages.every(p=>p.state==='saved'));
+  assert(!calls.includes(image('tenant')));assert(!calls.includes(old));assert(calls.length<=12);assert.equal(out.product_count,null);
+ }finally{db.close();}
+});
+test('sidebar dates cannot grant another period or future/expired issue, and denial never falls back',async()=>{
+ const {parseIyIndex,collectCurrentEdition}=await import('../scripts/supermarket/edition-discovery.mjs'),{openDb}=await import('../scripts/supermarket/collector.mjs');
+ assert.equal(parseIyIndex('<a href="'+next+'">11/25(水)〜11/27(金) paper</a>',current,'2026-11-28').length,0);
+ const calls=[],db=openDb(':memory:');try{
+  const index=html(current,'Undated',[image('tenant')])+'<a href="'+next+'">11/25(水)〜11/28(土) paper</a>';
+  const base=fake(calls,{body:index});
+  const out=await collectCurrentEdition('iy',db,'2026-11-25',async url=>url===next?(calls.push(url),new Response(html(next,'11/25(水)〜11/27(金) changed',[a,b]),{headers:{'Content-Type':'text/html'}})):base(url));
+  assert.equal(out.error,'DISCOVERY_INDEX_PERIOD_MISMATCH');assert(!calls.includes(a));assert(!calls.includes(image('tenant')));
+ }finally{db.close();}
+});
+test('nofollow sidebar links are not followed even when their dates are current',async()=>{
+ const {parseIyIndex,collectCurrentEdition}=await import('../scripts/supermarket/edition-discovery.mjs'),{openDb}=await import('../scripts/supermarket/collector.mjs');
+ const link='<a rel="external NoFollow" href="'+next+'">11/25(水)〜11/28(土) paper</a>';
+ assert.equal(parseIyIndex(link,current,'2026-11-25').length,0);
+ const calls=[],db=openDb(':memory:');try{
+  const out=await collectCurrentEdition('iy',db,'2026-11-25',fake(calls,{body:html(current,'Undated tenant')+link}));
+  assert.equal(out.error,'DISCOVERY_NO_CURRENT_ISSUE');assert(!calls.includes(next));assert(!calls.includes(a));
+ }finally{db.close();}
+});
 test('a later issue is discovered without changing fixed IDs or invoking the old SKU OCR',async()=>{
  const {openDb,collectIy}=await import('../scripts/supermarket/collector.mjs'),{discoverySummary}=await import('../scripts/supermarket/edition-discovery.mjs');
  const db=openDb(':memory:');try{
@@ -89,5 +120,17 @@ test('existing DB and discovered page denominator survive storage exhaustion wit
   assert.equal(r.phase,'detected');assert.equal(r.pages.length,2);assert(r.pages.every(p=>p.state==='storage_limited'&&p.bytes===null));
   assert(!calls.includes(a)&&!calls.includes(b));assert.equal(db.prepare('SELECT length(value) n FROM existing_private_data').get().n,12582912);
   await collectCurrentEdition('iy',db,'2026-11-22',fake(calls));assert(!calls.includes(a)&&!calls.includes(b));
+ }finally{db.close();}
+});
+test('current-sized two-face paper cannot displace an existing DB or silently become complete',async()=>{
+ const {openDb}=await import('../scripts/supermarket/collector.mjs'),{collectCurrentEdition}=await import('../scripts/supermarket/edition-discovery.mjs');
+ const db=openDb(':memory:'),calls=[];try{
+  db.exec('CREATE TABLE existing_rows(value BLOB); INSERT INTO existing_rows VALUES(zeroblob(5722112))');
+  const base=fake(calls),sizes={[a]:5712074,[b]:5938916};
+  const out=await collectCurrentEdition('iy',db,'2026-11-21',async url=>{
+   if(!sizes[url])return base(url);calls.push(url);const body=Buffer.alloc(sizes[url]);body.set(jpeg);return new Response(body,{headers:{'Content-Type':'image/jpeg'}});
+  });
+  assert.equal(out.pages[0].state,'saved');assert.equal(out.pages[1].state,'storage_limited');assert.equal(out.phase,'failed');assert.equal(out.error,'DISCOVERY_BODY_LIMIT');assert.equal(out.product_count,null);
+  assert.equal(db.prepare('SELECT length(value) n FROM existing_rows').get().n,5722112);
  }finally{db.close();}
 });
